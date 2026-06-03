@@ -1,0 +1,26 @@
+# Architecture Decision Records
+
+These ADRs capture the significant architectural decisions for **Trip Archive** (a self-hosted
+komoot organization replacement). Each record follows the Michael Nygard format:
+**Status / Context / Decision / Consequences**.
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [0001](./0001-rust-leptos-fullstack.md) | Rust full-stack with Leptos (SSR + hydration on Axum) | Accepted |
+| [0002](./0002-sqlite-local-disk.md) | SQLite (sqlx), local disk only | Accepted |
+| [0003](./0003-track-as-geojson-blob-in-sqlite.md) | Track geometry as a GeoJSON blob in SQLite | Accepted |
+| [0004](./0004-import-via-axum-multipart.md) | Import via native Axum multipart handler | Accepted |
+| [0005](./0005-leaflet-osm-via-wasm-interop.md) | Leaflet + OSM raster tiles via wasm-bindgen interop | Accepted |
+| [0006](./0006-uplot-elevation-chart.md) | uPlot for the elevation chart | Accepted |
+| [0007](./0007-blobstore-abstraction.md) | `BlobStore` storage abstraction (local now, ownCloud later) | Accepted |
+| [0008](./0008-json-first-api.md) | JSON-first API | Accepted |
+| [0009](./0009-utc-timestamp-normalization.md) | Normalize timestamps to UTC; document EXIF-offset assumption | Accepted |
+| [0010](./0010-single-user-optional-auth.md) | Single-user; optional shared-password auth | Accepted |
+| [0011](./0011-filtering-search-geo-queries.md) | Filtering, search & geographic queries on SQLite (no PostGIS) | Accepted |
+| [0012](./0012-tdd-test-strategy.md) | TDD; requirement-covering tests, mock only externals | Accepted |
+
+## Conventions
+
+- ADRs are immutable once **Accepted**; to change a decision, add a new ADR that **supersedes**
+  the old one and update both `Status` lines (e.g. `Superseded by ADR-00NN` / `Supersedes ADR-00MM`).
+- Status values: `Proposed` → `Accepted` → `Superseded` / `Deprecated`.
