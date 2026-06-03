@@ -1,0 +1,52 @@
+# ───────── Claude Code ─────────
+# Personal, machine-specific settings (settings.json IS shared — keep it)
+.claude/settings.local.json
+.claude/*.local.json
+
+# Local session / runtime state
+.claude/.session/
+.claude/shell-snapshots/
+.claude/todos/
+.claude/statsig/
+.claude/projects/
+.claude/plans/
+
+# Keep shared project assets: .claude/commands, .claude/agents,
+# .claude/skills, .claude/helpers, .claude/settings.json
+
+# ───────── claude-flow / ruflo runtime ─────────
+# Generated state, metrics, vector stores, neural data, logs
+.claude-flow/data/
+.claude-flow/metrics/
+.claude-flow/neural/
+.claude-flow/cache/
+.claude-flow/logs/
+.claude-flow/*.db
+.claude-flow/*.log
+.claude-flow/memory/
+.swarm/
+.hive-mind/
+/memory/
+*.sqlite
+*.sqlite-journal
+# Keep: .claude-flow/config.yaml, .claude-flow/CAPABILITIES.md
+
+# ───────── Secrets / env ─────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# ───────── Node (if applicable) ─────────
+node_modules/
+dist/
+build/
+coverage/
+*-debug.log*
+
+# ───────── OS / editor ─────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
