@@ -35,6 +35,8 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-13** | As the owner, I can filter the list of my trips by activity type, date interval, distance and free search of the name. | List shows only trips matching the selected filter criteria. |
 | **US-14** | As the owner, I can filter the list of my trips by geographic region by selecting an area in a map. | List shows only trips matching the selected region. |
 | **US-15** | As the owner, I can edit trip details (name and activity type) from the **trip details page** to correct mistakes. | The new values for name and activity type are saved to the database. |
+| **US-21** | As the owner, I can **download the original GPX file** I imported, from the trip detail page, so I keep an untouched copy of the source. | The exact uploaded GPX bytes are stored on import; the detail page offers a download link; downloading returns the original file byte-for-byte with `Content-Type: application/gpx+xml` and a sensible filename. |
+
 
 ## Future User Stories (must not be precluded by v1)
 
@@ -58,6 +60,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 ## Traceability (stories → key decisions)
 
 - US-1/US-8 → ADR-0004 (import handler), ADR-0003 (track storage)
+- US-21 → ADR-0003 (original GPX stored in DB with the track), ADR-0008 (download endpoint)
 - US-2 → ADR-0004 (import + add-photos-later via the same pipeline)
 - US-3/US-4 → ADR-0009 (timezone normalization)
 - US-7 → ADR-0005 (Leaflet/OSM), ADR-0006 (uPlot elevation chart)
