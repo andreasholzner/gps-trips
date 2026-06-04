@@ -18,6 +18,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0010](./0010-single-user-optional-auth.md) | Single-user; optional shared-password auth | Accepted |
 | [0011](./0011-filtering-search-geo-queries.md) | Filtering, search & geographic queries on SQLite (no PostGIS) | Accepted |
 | [0012](./0012-tdd-test-strategy.md) | TDD; requirement-covering tests, mock only externals | Accepted |
+| [0013](./0013-integer-surrogate-keys.md) | Integer surrogate primary keys (revisit only for offline-first replication) | Accepted |
 
 ## Conventions
 
