@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="trip-archive-test"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Oslo Hills Walk</name>
+    <trkseg>
+      <!-- Point 1: valley floor -->
+      <trkpt lat="59.9139" lon="10.7522">
+        <ele>10.0</ele>
+        <time>2024-06-01T08:00:00Z</time>
+      </trkpt>
+      <!-- Point 2: hilltop — ascent 40 m -->
+      <trkpt lat="59.9200" lon="10.7600">
+        <ele>50.0</ele>
+        <time>2024-06-01T08:30:00Z</time>
+      </trkpt>
+      <!-- Point 3: descent — descent 20 m -->
+      <trkpt lat="59.9250" lon="10.7650">
+        <ele>30.0</ele>
+        <time>2024-06-01T09:00:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

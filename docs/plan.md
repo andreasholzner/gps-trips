@@ -108,13 +108,12 @@ Router::new()
 
 ```sql
 trip(
-  id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL,
   activity_type TEXT NOT NULL,        -- e.g. 'cycling' | 'hiking' | ... (US-11; editable US-15)
   start_time TEXT, end_time TEXT, duration_secs INTEGER,
   distance_m REAL NOT NULL, ascent_m REAL, descent_m REAL,
   min_lat REAL, min_lon REAL, max_lat REAL, max_lon REAL,
-  point_count INTEGER NOT NULL,
-  source TEXT NOT NULL DEFAULT 'gpx', created_at TEXT NOT NULL
+  created_at TEXT NOT NULL
 );
 -- 1:1 with trip; kept separate so list queries never load the blob
 track(
