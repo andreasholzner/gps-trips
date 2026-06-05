@@ -22,6 +22,9 @@ surface:
   only (no track geometry).
 - `GET /api/trips/:id` — trip detail metadata.
 - `GET /api/trips/:id/track.geojson` — the track GeoJSON blob.
+- `GET /api/trips/:id/gpx` — download the original uploaded GPX byte-for-byte (US-21).
+  Not JSON — serves the stored file with `Content-Type: application/gpx+xml` and an RFC 6266
+  `Content-Disposition` attachment filename.
 - `POST /api/import` — create a trip from GPX (+ optional photos), activity type and name included.
 - `POST /api/trips/:id/photos` — add photos to an existing trip (US-2).
 - `PATCH /api/trips/:id` — edit trip name and activity type (US-15).

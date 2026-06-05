@@ -8,56 +8,13 @@
 //! temporary SQLite database (the only mocked thing would be externals — there
 //! are none in US-1).
 
+mod common;
+
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
-    Router,
 };
-use tower::ServiceExt; // .oneshot()
-use trip_archive::server::{db, http, state::AppState};
-
-const SAMPLE_GPX: &[u8] = include_bytes!("fixtures/sample.gpx");
-const NO_TRACKS_GPX: &[u8] = include_bytes!("fixtures/no_tracks.gpx");
-
-/// A router backed by a fresh temp database. The returned `TempDir` must be kept
-/// alive for the duration of the test (dropping it deletes the database).
-async fn test_app() -> (Router, tempfile::TempDir) {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let pool = db::create_pool(&dir.path().join("test.db"))
-        .await
-        .expect("create pool");
-    (http::router(AppState { pool }), dir)
-}
-
-/// Build a `multipart/form-data` POST to `/api/import` carrying a single `gpx` file.
-fn import_request(gpx: &[u8]) -> Request<Body> {
-    let boundary = "BoundaryUS1";
-    let mut body = Vec::new();
-    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-    body.extend_from_slice(
-        b"Content-Disposition: form-data; name=\"gpx\"; filename=\"track.gpx\"\r\n",
-    );
-    body.extend_from_slice(b"Content-Type: application/gpx+xml\r\n\r\n");
-    body.extend_from_slice(gpx);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-
-    Request::builder()
-        .method(Method::POST)
-        .uri("/api/import")
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(Body::from(body))
-        .unwrap()
-}
-
-async fn body_string(response: axum::response::Response) -> String {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    String::from_utf8(bytes.to_vec()).unwrap()
-}
+use common::{body_string, get, import, import_sample, send, test_app, NO_TRACKS_GPX, SAMPLE_GPX};
 
 // ── Acceptance: a valid GPX creates a trip and redirects to its detail page ──
 
@@ -65,7 +22,7 @@ async fn body_string(response: axum::response::Response) -> String {
 async fn us1_valid_gpx_redirects_to_detail_page() {
     let (app, _dir) = test_app().await;
 
-    let response = app.oneshot(import_request(SAMPLE_GPX)).await.unwrap();
+    let response = import(&app, SAMPLE_GPX).await;
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let location = response
@@ -84,31 +41,9 @@ async fn us1_valid_gpx_redirects_to_detail_page() {
 #[tokio::test]
 async fn us1_detail_page_shows_the_imported_trip() {
     let (app, _dir) = test_app().await;
+    let id = import_sample(&app).await;
 
-    // Import, then follow the redirect to the detail page.
-    let redirect = app
-        .clone()
-        .oneshot(import_request(SAMPLE_GPX))
-        .await
-        .unwrap();
-    let location = redirect
-        .headers()
-        .get("location")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_owned();
-
-    let detail = app
-        .oneshot(
-            Request::builder()
-                .uri(&location)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
+    let detail = get(&app, &format!("/trips/{id}")).await;
     assert_eq!(detail.status(), StatusCode::OK);
     let html = body_string(detail).await;
     assert!(
@@ -124,7 +59,7 @@ async fn us1_missing_gpx_field_is_rejected_with_400() {
     let (app, _dir) = test_app().await;
 
     // Valid multipart, but no `gpx` field.
-    let boundary = "BoundaryUS1";
+    let boundary = "TripArchiveTestBoundary";
     let body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMy Trip\r\n--{boundary}--\r\n"
     );
@@ -138,7 +73,7 @@ async fn us1_missing_gpx_field_is_rejected_with_400() {
         .body(Body::from(body))
         .unwrap();
 
-    let response = app.oneshot(request).await.unwrap();
+    let response = send(&app, request).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(body_string(response).await.contains("gpx"));
 }
@@ -146,7 +81,7 @@ async fn us1_missing_gpx_field_is_rejected_with_400() {
 #[tokio::test]
 async fn us1_gpx_without_tracks_is_rejected_with_422() {
     let (app, _dir) = test_app().await;
-    let response = app.oneshot(import_request(NO_TRACKS_GPX)).await.unwrap();
+    let response = import(&app, NO_TRACKS_GPX).await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert!(body_string(response).await.to_lowercase().contains("track"));
 }
@@ -154,9 +89,6 @@ async fn us1_gpx_without_tracks_is_rejected_with_422() {
 #[tokio::test]
 async fn us1_invalid_xml_is_rejected_with_422() {
     let (app, _dir) = test_app().await;
-    let response = app
-        .oneshot(import_request(b"not xml at all"))
-        .await
-        .unwrap();
+    let response = import(&app, b"not xml at all").await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }

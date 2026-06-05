@@ -4,14 +4,15 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use crate::models::TripDetail;
 use crate::server::gpx::TrackStats;
 
-/// Insert a new trip and its track blob in a single transaction (ADR-0003).
-/// Returns the new trip id.
+/// Insert a new trip together with its derived geometry and the original GPX
+/// file, in a single transaction (ADR-0003). Returns the new trip id.
 pub async fn insert_trip(
     pool: &SqlitePool,
     name: &str,
     activity_type: &str,
     stats: &TrackStats,
     geojson: &str,
+    gpx: &[u8],
 ) -> Result<i64, sqlx::Error> {
     let created_at = to_rfc3339(OffsetDateTime::now_utc());
     let start_time = stats.start_time.map(to_rfc3339);
@@ -44,14 +45,41 @@ pub async fn insert_trip(
     .await?
     .last_insert_rowid();
 
-    sqlx::query("INSERT INTO track (trip_id, geojson) VALUES (?,?)")
+    sqlx::query("INSERT INTO track (trip_id, geojson, gpx) VALUES (?,?,?)")
         .bind(trip_id)
         .bind(geojson)
+        .bind(gpx)
         .execute(&mut *tx)
         .await?;
 
     tx.commit().await?;
     Ok(trip_id)
+}
+
+/// The original GPX file plus the trip name, for serving a download (US-21).
+pub struct GpxDownload {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Fetch the original GPX of a trip together with its name (for the download
+/// filename), or `None` if no such trip exists. One query via the 1:1 join.
+pub async fn get_original_gpx(
+    pool: &SqlitePool,
+    id: i64,
+) -> Result<Option<GpxDownload>, sqlx::Error> {
+    sqlx::query(
+        r#"SELECT t.name AS name, k.gpx AS gpx
+           FROM trip t JOIN track k ON k.trip_id = t.id
+           WHERE t.id = ?"#,
+    )
+    .bind(id)
+    .map(|row: SqliteRow| GpxDownload {
+        name: row.get("name"),
+        bytes: row.get("gpx"),
+    })
+    .fetch_optional(pool)
+    .await
 }
 
 /// Format a timestamp as RFC-3339 for storage. Formatting a valid `OffsetDateTime`
@@ -108,9 +136,16 @@ mod tests {
         let track = parse_gpx(SAMPLE_GPX).unwrap();
         let stats = compute_stats(&track.points);
         let geojson = build_track_geojson(&track.points);
-        insert_trip(pool, "Oslo Hills Walk", "hiking", &stats, &geojson)
-            .await
-            .expect("insert_trip")
+        insert_trip(
+            pool,
+            "Oslo Hills Walk",
+            "hiking",
+            &stats,
+            &geojson,
+            SAMPLE_GPX,
+        )
+        .await
+        .expect("insert_trip")
     }
 
     #[tokio::test]
@@ -153,6 +188,27 @@ mod tests {
             .expect("track row exists");
         let parsed: serde_json::Value = serde_json::from_str(&geojson).unwrap();
         assert_eq!(parsed["geometry"]["type"], "LineString");
+    }
+
+    #[tokio::test]
+    async fn us21_stores_and_returns_original_gpx_verbatim() {
+        let db = TestDb::new().await;
+        let id = insert_sample_trip(&db.pool).await;
+        let download = get_original_gpx(&db.pool, id)
+            .await
+            .unwrap()
+            .expect("original GPX exists");
+        assert_eq!(download.name, "Oslo Hills Walk");
+        assert_eq!(
+            download.bytes, SAMPLE_GPX,
+            "stored GPX must match the uploaded bytes exactly"
+        );
+    }
+
+    #[tokio::test]
+    async fn us21_original_gpx_is_none_for_unknown_trip() {
+        let db = TestDb::new().await;
+        assert!(get_original_gpx(&db.pool, 999).await.unwrap().is_none());
     }
 
     #[tokio::test]

@@ -104,7 +104,7 @@ C4Component
     Container_Boundary(server, "Application Server") {
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, optional shared-password auth middleware.")
         Component(ssr, "Leptos SSR + Routes", "leptos_axum", "Server-side render of pages; serves hydration bundle.")
-        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; serves track.geojson.")
+        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; serves track.geojson and the original GPX download.")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads; orchestrates a transaction.")
         Component(gpx, "GPX Parser & Stats", "gpx + geo", "Parse track; compute distance, ascent/descent, duration, bbox, start/end.")
         Component(photo, "Photo Ingestion", "Rust (kamadak-exif, image, rayon)", "EXIF GPS/time, thumbnail, time-match to track.")

@@ -30,6 +30,12 @@ in its **own table** so the trip-list query (`SELECT … FROM trip`) never loads
 only summary stats. The trip-detail endpoint reads the blob and serves it raw to the client,
 which feeds it to both Leaflet and the elevation chart.
 
+The **original uploaded GPX file** is retained in the same `track` table as a `BLOB` column
+(`gpx`), for byte-for-byte download (US-21). It is track data — the source the geometry was
+derived from — so it belongs with the track and stays in the DB (local, transactional), **not**
+in the photo `BlobStore`/ownCloud path ([ADR-0007](./0007-blobstore-abstraction.md)). It is heavy
+and likewise never loaded by list queries.
+
 ## Consequences
 
 - Each trip is one atomic, transactional unit; backup is a single DB file.
@@ -40,3 +46,4 @@ which feeds it to both Leaflet and the elevation chart.
 - Editing a track means rewriting the blob (acceptable — tracks are imported, rarely edited).
 - Keeping the blob out of `trip` is what lets the filter/search queries (US-13/US-14) scan only
   lightweight rows; this reinforces, rather than conflicts with, the new filtering requirements.
+- The original GPX (US-21) cascades away with the trip too, so deleting a trip leaves nothing behind.

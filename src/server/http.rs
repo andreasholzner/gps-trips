@@ -1,6 +1,7 @@
 use axum::{
     extract::{Path, State},
-    response::Html,
+    http::header,
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Router,
 };
@@ -15,6 +16,7 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(index))
         .route("/api/import", post(handle_import))
         .route("/trips/:id", get(trip_detail))
+        .route("/api/trips/:id/gpx", get(download_gpx))
         .with_state(state)
 }
 
@@ -32,6 +34,79 @@ async fn trip_detail(
         .await?
         .ok_or(AppError::NotFound)?;
     Ok(Html(render_detail(&trip)))
+}
+
+/// GET `/api/trips/:id/gpx` — download the original uploaded GPX file
+/// byte-for-byte, named after the trip (US-21).
+async fn download_gpx(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let gpx = repo::get_original_gpx(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let headers = [
+        (header::CONTENT_TYPE, "application/gpx+xml".to_string()),
+        (
+            header::CONTENT_DISPOSITION,
+            gpx_content_disposition(&gpx.name),
+        ),
+    ];
+    Ok((headers, gpx.bytes).into_response())
+}
+
+/// Build an RFC 6266-compliant `Content-Disposition` for the GPX download:
+/// a plain ASCII `filename` fallback plus a UTF-8 `filename*`, so non-ASCII trip
+/// names (e.g. Norwegian "Tromsø") download with their real name in modern
+/// browsers while older ones still get a usable name.
+fn gpx_content_disposition(trip_name: &str) -> String {
+    let filename = format!("{}.gpx", sanitize_filename(trip_name));
+    let ascii_fallback: String = filename
+        .chars()
+        .map(|c| if c.is_ascii() { c } else { '_' })
+        .collect();
+    format!(
+        "attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{}",
+        rfc5987_encode(&filename)
+    )
+}
+
+/// Make a trip name safe as a filename: drop control characters and the bytes
+/// that would break a header or imply a path. Keeps Unicode (handled by
+/// `filename*`). Falls back to `trip` if nothing usable remains.
+fn sanitize_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | '"') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        "trip".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Percent-encode a string for the `filename*` parameter value per RFC 5987:
+/// keep the `attr-char` set literal, encode every other byte as `%XX`.
+fn rfc5987_encode(s: &str) -> String {
+    const ATTR_CHARS: &[u8] = b"!#$&+-.^_`|~";
+    let mut out = String::with_capacity(s.len());
+    for &byte in s.as_bytes() {
+        if byte.is_ascii_alphanumeric() || ATTR_CHARS.contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
 }
 
 const INDEX_HTML: &str = r#"<!DOCTYPE html>
@@ -91,9 +166,11 @@ fn render_detail(trip: &TripDetail) -> String {
     <li>Descent: {descent}</li>
     <li>Duration: {duration}</li>
   </ul>
+  <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
   <p><a href="/">← Import another trip</a></p>
 </body>
 </html>"#,
+        id = trip.id,
         name = html_escape(&trip.name),
         activity = html_escape(&trip.activity_type),
         start = html_escape(&start),
@@ -122,4 +199,50 @@ fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // US-21: the download filename derived from the trip name.
+
+    #[test]
+    fn us21_disposition_uses_trip_name_for_ascii_names() {
+        let cd = gpx_content_disposition("Oslo Hills Walk");
+        assert!(
+            cd.contains(r#"filename="Oslo Hills Walk.gpx""#),
+            "ASCII fallback should be the trip name; got: {cd}"
+        );
+        assert!(
+            cd.contains("filename*=UTF-8''Oslo%20Hills%20Walk.gpx"),
+            "got: {cd}"
+        );
+    }
+
+    #[test]
+    fn us21_disposition_handles_non_ascii_names() {
+        // "Tromsø" — ø is UTF-8 0xC3 0xB8.
+        let cd = gpx_content_disposition("Tromsø");
+        assert!(
+            cd.contains(r#"filename="Troms_.gpx""#),
+            "non-ASCII chars become _ in the ASCII fallback; got: {cd}"
+        );
+        assert!(
+            cd.contains("filename*=UTF-8''Troms%C3%B8.gpx"),
+            "filename* must be RFC-5987 percent-encoded UTF-8; got: {cd}"
+        );
+    }
+
+    #[test]
+    fn sanitize_filename_replaces_path_and_quote_characters() {
+        assert_eq!(sanitize_filename("a/b\\c\"d"), "a_b_c_d");
+    }
+
+    #[test]
+    fn sanitize_filename_falls_back_when_empty() {
+        assert_eq!(sanitize_filename("   "), "trip");
+    }
 }

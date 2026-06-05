@@ -58,7 +58,7 @@ pub async fn handle_import(
         .filter(|a| !a.trim().is_empty())
         .unwrap_or_else(|| "unspecified".to_string());
 
-    let trip_id = insert_trip(&state.pool, &name, &activity, &stats, &geojson).await?;
+    let trip_id = insert_trip(&state.pool, &name, &activity, &stats, &geojson, &raw).await?;
 
     Ok(Redirect::to(&format!("/trips/{trip_id}")))
 }

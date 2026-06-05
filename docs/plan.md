@@ -51,8 +51,9 @@ Photo blob I/O goes through a **`BlobStore` trait** (`src/server/storage.rs`) �
 **API is JSON-first** ([ADR-0008](./adr/0008-json-first-api.md)). Reads/writes are plain Axum JSON
 handlers: `GET /api/trips` (with filter params — activity, date interval, distance, free-text `q`,
 and `bbox` region), `GET /api/trips/:id`, `GET /api/trips/:id/track.geojson` (reads the blob from
-the `track` table), `POST /api/import`, `POST /api/trips/:id/photos` (add photos to an existing
-trip), `PATCH /api/trips/:id` (edit name + activity type), `DELETE /api/trips/:id`. The Leptos UI
+the `track` table), `GET /api/trips/:id/gpx` (downloads the original GPX verbatim, US-21),
+`POST /api/import`, `POST /api/trips/:id/photos` (add photos to an existing trip),
+`PATCH /api/trips/:id` (edit name + activity type), `DELETE /api/trips/:id`. The Leptos UI
 consumes these same endpoints.
 
 **Import = a plain Axum route, not a Leptos server function.** A normal
@@ -66,7 +67,7 @@ rows in one transaction, and redirects to the trip page. ([ADR-0004](./adr/0004-
 ```
 Cargo.toml            # ssr/hydrate features; optional server deps; [package.metadata.leptos]
 rust-toolchain.toml   # pin stable + wasm32-unknown-unknown
-migrations/0001_init.sql
+migrations/            # 0001_init.sql, 0002_track_original_gpx.sql, …
 .sqlx/                # committed offline query cache
 public/
   js/leaflet_glue.js  # thin Leaflet ES-module wrapper
@@ -74,7 +75,7 @@ public/
   vendor/             # pinned leaflet.{js,css}, uplot.{js,css}
 style/main.scss
 data/                 # gitignored runtime dir (TRIP_ARCHIVE_DATA_DIR)
-  trip-archive.db     # holds trip + track(GeoJSON blob) + photo metadata
+  trip-archive.db     # holds trip + track(GeoJSON + original GPX) + photo metadata
   photos/<trip_id>/{orig,thumb}/<photo_id>.<ext>
 src/
   main.rs             # ssr: Axum bootstrap; hydrate entry
@@ -115,10 +116,11 @@ trip(
   min_lat REAL, min_lon REAL, max_lat REAL, max_lon REAL,
   created_at TEXT NOT NULL
 );
--- 1:1 with trip; kept separate so list queries never load the blob
+-- 1:1 with trip; kept separate so list queries never load the heavy columns
 track(
   trip_id INTEGER PRIMARY KEY REFERENCES trip(id) ON DELETE CASCADE,
-  geojson TEXT NOT NULL        -- LineString + elevation + distance/time arrays in properties
+  geojson TEXT NOT NULL,       -- LineString + elevation/distance arrays in properties
+  gpx     BLOB NOT NULL        -- the original uploaded GPX, stored verbatim (US-21)
 );
 photo(
   id INTEGER PRIMARY KEY,
