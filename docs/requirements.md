@@ -48,6 +48,10 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-19** | As the owner, I can put a **single shared password** in front of my instance. | Optional auth middleware; no multi-user accounts. |
 | **US-20** | As the owner, my changes of name and activity type can be synced to komoot. | Optional sync of name and activity type to my komoot account. |
 
+> **Deployment is intentionally deferred** — the app runs **laptop-local, on demand** for now.
+> The phone/cloud/ownCloud topology will be chosen later from real use; see
+> [ADR-0014](./adr/0014-defer-deployment-topology.md) for the decision and its revisit triggers.
+
 ## Non-functional requirements
 
 - **Self-contained:** no external API keys (OSM raster tiles, no key); single binary + assets.
