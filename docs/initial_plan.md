@@ -1,7 +1,11 @@
-# Trip Archive — Implementation Plan
+# Trip Archive — Initial Plan (frozen)
 
-> Companion docs: [`requirements.md`](./requirements.md) (user stories) ·
-> [`architecture.md`](./architecture.md) (C4 diagrams) · [`adr/`](./adr/) (architecture decision records).
+> ⚠️ **Historical document — no longer maintained.** This captures the *initial*
+> plan and was useful for forming a shared picture of the whole project. It is a
+> snapshot and may drift from the code. The **living** docs are:
+> [`requirements.md`](./requirements.md) (user stories) ·
+> [`architecture.md`](./architecture.md) (C4 diagrams) · [`adr/`](./adr/) (decisions).
+> Don't update this file; record changes in those instead.
 
 ## Context
 

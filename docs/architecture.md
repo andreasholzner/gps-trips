@@ -5,7 +5,7 @@ System Context**, **Level 2 Containers**, and **Level 3 Components**. Level 4 (c
 intentionally omitted — the source is the code-level truth.
 
 Diagrams are written in Mermaid C4 syntax (renders on GitHub). Companion docs:
-[`requirements.md`](./requirements.md) · [`plan.md`](./plan.md) · [`adr/`](./adr/).
+[`requirements.md`](./requirements.md) · [`adr/`](./adr/) · [`initial_plan.md`](./initial_plan.md) (frozen).
 
 Legend: solid = v1; elements/relationships marked **[planned]** are future extensions
 (US-16–US-20) that the architecture must not preclude, not part of v1.

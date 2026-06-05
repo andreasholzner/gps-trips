@@ -71,5 +71,6 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 - US-17 → ADR-0007 (BlobStore enables ownCloud), ADR-0002 (DB stays local)
 - US-19 → ADR-0010 (optional shared-password auth)
 
-See [`adr/`](./adr/) for the full Architecture Decision Records and [`plan.md`](./plan.md)
-for the implementation plan.
+See [`adr/`](./adr/) for the full Architecture Decision Records and
+[`architecture.md`](./architecture.md) for the C4 diagrams. The original
+[`initial_plan.md`](./initial_plan.md) is kept as a frozen historical snapshot.
