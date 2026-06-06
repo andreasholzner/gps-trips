@@ -1,7 +1,7 @@
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-use crate::models::TripDetail;
+use crate::models::{TripDetail, TripSummary};
 use crate::server::gpx::TrackStats;
 
 /// Insert a new trip together with its derived geometry and the original GPX
@@ -89,6 +89,27 @@ fn to_rfc3339(t: OffsetDateTime) -> String {
         .expect("RFC-3339 formatting of a valid OffsetDateTime never fails")
 }
 
+/// List all trips as lightweight summaries, most recent first (US-6).
+/// Reads only the `trip` table — never the track geometry — so it stays cheap.
+/// `start_time` may be NULL (GPX without times); SQLite sorts NULLs last under DESC.
+pub async fn list_trips(pool: &SqlitePool) -> Result<Vec<TripSummary>, sqlx::Error> {
+    sqlx::query(
+        r#"SELECT id, name, start_time, distance_m, ascent_m, duration_secs
+           FROM trip
+           ORDER BY start_time DESC, id DESC"#,
+    )
+    .map(|row: SqliteRow| TripSummary {
+        id: row.get("id"),
+        name: row.get("name"),
+        start_time: row.get("start_time"),
+        distance_m: row.get("distance_m"),
+        ascent_m: row.get("ascent_m"),
+        duration_secs: row.get("duration_secs"),
+    })
+    .fetch_all(pool)
+    .await
+}
+
 /// Fetch full trip detail by id, or `None` if no such trip exists.
 pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, sqlx::Error> {
     sqlx::query(
@@ -129,6 +150,7 @@ mod tests {
     use crate::server::db::testing::TestDb;
     use crate::server::geojson::build_track_geojson;
     use crate::server::gpx::{compute_stats, parse_gpx};
+    use time::macros::datetime;
 
     const SAMPLE_GPX: &[u8] = include_bytes!("../../tests/fixtures/sample.gpx");
 
@@ -146,6 +168,22 @@ mod tests {
         )
         .await
         .expect("insert_trip")
+    }
+
+    /// Minimal stats with a chosen start time, for ordering tests.
+    fn stats_at(start: OffsetDateTime) -> TrackStats {
+        TrackStats {
+            distance_m: 1_000.0,
+            ascent_m: 10.0,
+            descent_m: 5.0,
+            duration_secs: Some(600),
+            start_time: Some(start),
+            end_time: Some(start),
+            min_lat: 0.0,
+            min_lon: 0.0,
+            max_lat: 0.0,
+            max_lon: 0.0,
+        }
     }
 
     #[tokio::test]
@@ -230,5 +268,70 @@ mod tests {
             remaining.is_none(),
             "cascade delete should remove the track row"
         );
+    }
+
+    // ── US-6: browse the trip list ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn us6_list_trips_is_empty_for_a_new_db() {
+        let db = TestDb::new().await;
+        assert!(list_trips(&db.pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn us6_list_trips_returns_summary_fields() {
+        let db = TestDb::new().await;
+        insert_sample_trip(&db.pool).await;
+        let trips = list_trips(&db.pool).await.unwrap();
+        assert_eq!(trips.len(), 1);
+        let t = &trips[0];
+        assert_eq!(t.name, "Oslo Hills Walk");
+        assert!(t.distance_m > 1_000.0);
+        assert_eq!(t.ascent_m, Some(40.0));
+        assert_eq!(t.duration_secs, Some(3600));
+        assert!(t.start_time.as_deref().unwrap().starts_with("2024-06-01"));
+    }
+
+    #[tokio::test]
+    async fn us6_list_trips_orders_most_recent_first() {
+        let db = TestDb::new().await;
+        insert_trip(
+            &db.pool,
+            "Older",
+            "hiking",
+            &stats_at(datetime!(2024-01-01 08:00 UTC)),
+            "{}",
+            b"x",
+        )
+        .await
+        .unwrap();
+        insert_trip(
+            &db.pool,
+            "Newer",
+            "hiking",
+            &stats_at(datetime!(2024-06-01 08:00 UTC)),
+            "{}",
+            b"x",
+        )
+        .await
+        .unwrap();
+
+        let trips = list_trips(&db.pool).await.unwrap();
+        assert_eq!(trips[0].name, "Newer");
+        assert_eq!(trips[1].name, "Older");
+    }
+
+    #[tokio::test]
+    async fn us6_list_trips_does_not_require_track_geometry() {
+        let db = TestDb::new().await;
+        let id = insert_sample_trip(&db.pool).await;
+        // Remove the geometry; the list must still work (it reads only `trip`).
+        sqlx::query("DELETE FROM track WHERE trip_id = ?")
+            .bind(id)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        let trips = list_trips(&db.pool).await.unwrap();
+        assert_eq!(trips.len(), 1, "list must not depend on the track row");
     }
 }

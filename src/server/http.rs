@@ -6,23 +6,30 @@ use axum::{
     Router,
 };
 
-use crate::models::TripDetail;
+use crate::models::{TripDetail, TripSummary};
 use crate::server::{error::AppError, import::handle_import, repo, state::AppState};
 
 /// Build the application router. Shared by `main` and the integration tests so
 /// both exercise the exact same routing (ADR-0012).
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(index))
+        .route("/", get(trip_list))
+        .route("/import", get(import_form))
         .route("/api/import", post(handle_import))
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .with_state(state)
 }
 
-/// GET `/` — the import form (US-1: the owner uploads a GPX file).
-async fn index() -> Html<&'static str> {
-    Html(INDEX_HTML)
+/// GET `/` — the trip list, the archive's home (US-6).
+async fn trip_list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let trips = repo::list_trips(&state.pool).await?;
+    Ok(Html(render_trip_list(&trips)))
+}
+
+/// GET `/import` — the import form (US-1: the owner uploads a GPX file).
+async fn import_form() -> Html<&'static str> {
+    Html(IMPORT_HTML)
 }
 
 /// GET `/trips/:id` — the trip detail page (the redirect target after import).
@@ -109,7 +116,7 @@ fn rfc5987_encode(s: &str) -> String {
     out
 }
 
-const INDEX_HTML: &str = r#"<!DOCTYPE html>
+const IMPORT_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -140,6 +147,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     </p>
     <button type="submit">Import</button>
   </form>
+  <p><a href="/">← All trips</a></p>
 </body>
 </html>"#;
 
@@ -167,7 +175,7 @@ fn render_detail(trip: &TripDetail) -> String {
     <li>Duration: {duration}</li>
   </ul>
   <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
-  <p><a href="/">← Import another trip</a></p>
+  <p><a href="/">← All trips</a></p>
 </body>
 </html>"#,
         id = trip.id,
@@ -177,6 +185,62 @@ fn render_detail(trip: &TripDetail) -> String {
         distance = distance_km,
         ascent = ascent,
         descent = descent,
+        duration = duration,
+    )
+}
+
+/// Render the trip list page (US-6). Shows each trip's name (linking to its
+/// detail), date, distance, ascent, and duration; an empty state otherwise.
+fn render_trip_list(trips: &[TripSummary]) -> String {
+    let body = if trips.is_empty() {
+        "<p>No trips yet. <a href=\"/import\">Import your first trip</a>.</p>".to_string()
+    } else {
+        let rows: String = trips.iter().map(render_trip_row).collect();
+        format!(
+            "<table>\n\
+             <thead><tr><th>Trip</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
+             <tbody>\n{rows}</tbody>\n\
+             </table>"
+        )
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trip Archive</title>
+</head>
+<body>
+  <h1>Trips</h1>
+  <p><a href="/import">Import a trip</a></p>
+  {body}
+</body>
+</html>"#
+    )
+}
+
+/// One row of the trip list table.
+fn render_trip_row(trip: &TripSummary) -> String {
+    // start_time is RFC-3339 (e.g. "2024-06-01T08:00:00+00:00"); show the date part.
+    let date = trip
+        .start_time
+        .as_deref()
+        .and_then(|s| s.split('T').next())
+        .unwrap_or("—");
+    let distance_km = trip.distance_m / 1000.0;
+    let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
+    let duration = trip.duration_secs.map(fmt_duration).unwrap_or_else(dash);
+
+    format!(
+        "<tr><td><a href=\"/trips/{id}\">{name}</a></td>\
+         <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td></tr>\n",
+        id = trip.id,
+        name = html_escape(&trip.name),
+        date = html_escape(date),
+        distance = distance_km,
+        ascent = ascent,
         duration = duration,
     )
 }
