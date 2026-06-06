@@ -5,6 +5,8 @@
 //! test binary uses every helper, so dead-code warnings are silenced here.
 #![allow(dead_code)]
 
+use std::sync::Arc;
+
 use axum::{
     body::Body,
     http::{Method, Request},
@@ -12,19 +14,25 @@ use axum::{
     Router,
 };
 use tower::ServiceExt; // .oneshot()
-use trip_archive::server::{db, http, state::AppState};
+use trip_archive::server::{
+    db, http,
+    state::AppState,
+    storage::{BlobStore, LocalDisk},
+};
 
 pub const SAMPLE_GPX: &[u8] = include_bytes!("../fixtures/sample.gpx");
 pub const NO_TRACKS_GPX: &[u8] = include_bytes!("../fixtures/no_tracks.gpx");
 
-/// A router backed by a fresh temp database. Keep the returned `TempDir` alive
-/// for the whole test — dropping it deletes the database.
+/// A router backed by a fresh temp database and a `LocalDisk` blob store, both
+/// under one `TempDir`. Keep the returned `TempDir` alive for the whole test —
+/// dropping it deletes the database and the stored photos.
 pub async fn test_app() -> (Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("temp dir");
     let pool = db::create_pool(&dir.path().join("test.db"))
         .await
         .expect("create pool");
-    (http::router(AppState { pool }), dir)
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    (http::router(AppState { pool, store }), dir)
 }
 
 /// Drive a single request through the router.
@@ -41,27 +49,67 @@ pub async fn get(app: &Router, uri: &str) -> Response {
     .await
 }
 
-/// A `multipart/form-data` POST to `/api/import` carrying a single `gpx` file.
-pub fn import_request(gpx: &[u8]) -> Request<Body> {
-    let boundary = "TripArchiveTestBoundary";
-    let mut body = Vec::new();
-    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-    body.extend_from_slice(
-        b"Content-Disposition: form-data; name=\"gpx\"; filename=\"track.gpx\"\r\n",
-    );
-    body.extend_from_slice(b"Content-Type: application/gpx+xml\r\n\r\n");
-    body.extend_from_slice(gpx);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+const BOUNDARY: &str = "TripArchiveTestBoundary";
 
+/// Append one `multipart/form-data` file part to `body`.
+fn append_file_part(
+    body: &mut Vec<u8>,
+    field: &str,
+    filename: &str,
+    content_type: &str,
+    data: &[u8],
+) {
+    body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"{field}\"; filename=\"{filename}\"\r\n")
+            .as_bytes(),
+    );
+    body.extend_from_slice(format!("Content-Type: {content_type}\r\n\r\n").as_bytes());
+    body.extend_from_slice(data);
+    body.extend_from_slice(b"\r\n");
+}
+
+/// Append `(filename, bytes)` photo parts under the `photos` field.
+fn append_photo_parts(body: &mut Vec<u8>, photos: &[(&str, &[u8])]) {
+    for (filename, data) in photos {
+        append_file_part(body, "photos", filename, "image/jpeg", data);
+    }
+}
+
+fn multipart_request(uri: &str, body: Vec<u8>) -> Request<Body> {
     Request::builder()
         .method(Method::POST)
-        .uri("/api/import")
+        .uri(uri)
         .header(
             "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
+            format!("multipart/form-data; boundary={BOUNDARY}"),
         )
         .body(Body::from(body))
         .unwrap()
+}
+
+/// A `multipart/form-data` POST to `/api/import` carrying a single `gpx` file.
+pub fn import_request(gpx: &[u8]) -> Request<Body> {
+    import_request_with_photos(gpx, &[])
+}
+
+/// An import POST carrying the `gpx` file plus `(filename, bytes)` photo parts
+/// (US-2: photos uploaded with the import).
+pub fn import_request_with_photos(gpx: &[u8], photos: &[(&str, &[u8])]) -> Request<Body> {
+    let mut body = Vec::new();
+    append_file_part(&mut body, "gpx", "track.gpx", "application/gpx+xml", gpx);
+    append_photo_parts(&mut body, photos);
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+    multipart_request("/api/import", body)
+}
+
+/// A `POST /api/trips/:id/photos` carrying `(filename, bytes)` photo parts
+/// (US-2: photos added at a later time).
+pub fn add_photos_request(trip_id: i64, photos: &[(&str, &[u8])]) -> Request<Body> {
+    let mut body = Vec::new();
+    append_photo_parts(&mut body, photos);
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+    multipart_request(&format!("/api/trips/{trip_id}/photos"), body)
 }
 
 /// POST a GPX import and return the raw response (for asserting the redirect).
@@ -69,10 +117,9 @@ pub async fn import(app: &Router, gpx: &[u8]) -> Response {
     send(app, import_request(gpx)).await
 }
 
-/// Import the sample GPX and return the new trip id (parsed from the redirect).
-pub async fn import_sample(app: &Router) -> i64 {
-    let redirect = import(app, SAMPLE_GPX).await;
-    redirect
+/// Parse the `/trips/<id>` redirect target into a trip id.
+fn trip_id_from_redirect(response: &Response) -> i64 {
+    response
         .headers()
         .get("location")
         .expect("Location header")
@@ -82,6 +129,18 @@ pub async fn import_sample(app: &Router) -> i64 {
         .expect("redirect to /trips/<id>")
         .parse()
         .expect("numeric trip id")
+}
+
+/// Import the sample GPX and return the new trip id (parsed from the redirect).
+pub async fn import_sample(app: &Router) -> i64 {
+    let redirect = import(app, SAMPLE_GPX).await;
+    trip_id_from_redirect(&redirect)
+}
+
+/// Import the sample GPX with photos and return the new trip id.
+pub async fn import_sample_with_photos(app: &Router, photos: &[(&str, &[u8])]) -> i64 {
+    let redirect = send(app, import_request_with_photos(SAMPLE_GPX, photos)).await;
+    trip_id_from_redirect(&redirect)
 }
 
 pub async fn body_bytes(response: Response) -> Vec<u8> {

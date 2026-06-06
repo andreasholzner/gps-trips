@@ -1,7 +1,7 @@
-use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-use crate::models::{TripDetail, TripSummary};
+use crate::models::{Photo, TripDetail, TripSummary};
 use crate::server::gpx::TrackStats;
 
 /// Insert a new trip together with its derived geometry and the original GPX
@@ -14,11 +14,26 @@ pub async fn insert_trip(
     geojson: &str,
     gpx: &[u8],
 ) -> Result<i64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let trip_id = insert_trip_in_tx(&mut tx, name, activity_type, stats, geojson, gpx).await?;
+    tx.commit().await?;
+    Ok(trip_id)
+}
+
+/// Insert the trip + track rows on an existing transaction, without committing.
+/// Import drives this directly so the trip, its track and its photos all land in
+/// one transaction — a failed import leaves no partial trip (ADR-0004).
+pub async fn insert_trip_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    activity_type: &str,
+    stats: &TrackStats,
+    geojson: &str,
+    gpx: &[u8],
+) -> Result<i64, sqlx::Error> {
     let created_at = to_rfc3339(OffsetDateTime::now_utc());
     let start_time = stats.start_time.map(to_rfc3339);
     let end_time = stats.end_time.map(to_rfc3339);
-
-    let mut tx = pool.begin().await?;
 
     let trip_id = sqlx::query(
         r#"INSERT INTO trip
@@ -41,7 +56,7 @@ pub async fn insert_trip(
     .bind(stats.max_lat)
     .bind(stats.max_lon)
     .bind(&created_at)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?
     .last_insert_rowid();
 
@@ -49,11 +64,76 @@ pub async fn insert_trip(
         .bind(trip_id)
         .bind(geojson)
         .bind(gpx)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
-    tx.commit().await?;
     Ok(trip_id)
+}
+
+/// Fields for a new `photo` row. The `created_at` timestamp is set on insert;
+/// the image bytes themselves are written to the `BlobStore` under `blob_key`.
+pub struct NewPhoto<'a> {
+    pub original_name: &'a str,
+    pub content_type: Option<&'a str>,
+    pub byte_len: i64,
+    pub blob_key: &'a str,
+}
+
+/// Insert one photo row associating it with `trip_id` (US-2). Runs on the
+/// caller's transaction so it commits atomically with the rest of an import.
+/// Returns the new photo id.
+pub async fn insert_photo(
+    tx: &mut Transaction<'_, Sqlite>,
+    trip_id: i64,
+    photo: &NewPhoto<'_>,
+) -> Result<i64, sqlx::Error> {
+    let created_at = to_rfc3339(OffsetDateTime::now_utc());
+    let id = sqlx::query(
+        r#"INSERT INTO photo (trip_id, original_name, content_type, byte_len, blob_key, created_at)
+           VALUES (?,?,?,?,?,?)"#,
+    )
+    .bind(trip_id)
+    .bind(photo.original_name)
+    .bind(photo.content_type)
+    .bind(photo.byte_len)
+    .bind(photo.blob_key)
+    .bind(&created_at)
+    .execute(&mut **tx)
+    .await?
+    .last_insert_rowid();
+    Ok(id)
+}
+
+/// How many photos a trip already has — used to assign stable, non-colliding
+/// blob keys when photos are appended to a trip later (US-2).
+pub async fn count_photos(
+    tx: &mut Transaction<'_, Sqlite>,
+    trip_id: i64,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT COUNT(*) FROM photo WHERE trip_id = ?")
+        .bind(trip_id)
+        .fetch_one(&mut **tx)
+        .await
+}
+
+/// List a trip's photos, oldest first (US-2). Reads only the `photo` table.
+pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, sqlx::Error> {
+    sqlx::query(
+        r#"SELECT id, trip_id, original_name, content_type, byte_len, blob_key, created_at
+           FROM photo WHERE trip_id = ? ORDER BY id"#,
+    )
+    .bind(trip_id)
+    .map(|row: SqliteRow| Photo {
+        id: row.get("id"),
+        trip_id: row.get("trip_id"),
+        original_name: row.get("original_name"),
+        content_type: row.get("content_type"),
+        byte_len: row.get("byte_len"),
+        blob_key: row.get("blob_key"),
+        created_at: row.get("created_at"),
+    })
+    .fetch_all(pool)
+    .await
 }
 
 /// The original GPX file plus the trip name, for serving a download (US-21).
@@ -349,6 +429,95 @@ mod tests {
         let trips = list_trips(&db.pool).await.unwrap();
         assert_eq!(trips[0].name, "Newer");
         assert_eq!(trips[1].name, "Older");
+    }
+
+    // ── US-2: attach photos to a trip ────────────────────────────────────────
+
+    async fn add_photo(pool: &SqlitePool, trip_id: i64, name: &str, key: &str, len: i64) -> i64 {
+        let mut tx = pool.begin().await.unwrap();
+        let id = insert_photo(
+            &mut tx,
+            trip_id,
+            &NewPhoto {
+                original_name: name,
+                content_type: Some("image/jpeg"),
+                byte_len: len,
+                blob_key: key,
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        id
+    }
+
+    #[tokio::test]
+    async fn us2_inserted_photo_is_listed_with_its_metadata() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        add_photo(
+            &db.pool,
+            trip_id,
+            "beach.jpg",
+            "trips/1/0000-beach.jpg",
+            1234,
+        )
+        .await;
+
+        let photos = list_photos(&db.pool, trip_id).await.unwrap();
+        assert_eq!(photos.len(), 1);
+        let p = &photos[0];
+        assert_eq!(p.trip_id, trip_id);
+        assert_eq!(p.original_name, "beach.jpg");
+        assert_eq!(p.content_type.as_deref(), Some("image/jpeg"));
+        assert_eq!(p.byte_len, 1234);
+        assert_eq!(p.blob_key, "trips/1/0000-beach.jpg");
+    }
+
+    #[tokio::test]
+    async fn us2_list_photos_is_empty_for_a_trip_without_photos() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        assert!(list_photos(&db.pool, trip_id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn us2_list_photos_returns_only_the_given_trips_photos() {
+        let db = TestDb::new().await;
+        let a = insert_sample_trip(&db.pool).await;
+        let b = insert_sample_trip(&db.pool).await;
+        add_photo(&db.pool, a, "a.jpg", "trips/a/0000-a.jpg", 10).await;
+        add_photo(&db.pool, b, "b.jpg", "trips/b/0000-b.jpg", 20).await;
+
+        let photos_a = list_photos(&db.pool, a).await.unwrap();
+        assert_eq!(photos_a.len(), 1);
+        assert_eq!(photos_a[0].original_name, "a.jpg");
+    }
+
+    #[tokio::test]
+    async fn us2_count_photos_reflects_inserts() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        add_photo(&db.pool, trip_id, "a.jpg", "trips/1/0000-a.jpg", 10).await;
+        add_photo(&db.pool, trip_id, "b.jpg", "trips/1/0001-b.jpg", 10).await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        assert_eq!(count_photos(&mut tx, trip_id).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn us2_deleting_a_trip_cascades_to_its_photos() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        add_photo(&db.pool, trip_id, "a.jpg", "trips/1/0000-a.jpg", 10).await;
+
+        sqlx::query("DELETE FROM trip WHERE id = ?")
+            .bind(trip_id)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        assert!(list_photos(&db.pool, trip_id).await.unwrap().is_empty());
     }
 
     #[tokio::test]

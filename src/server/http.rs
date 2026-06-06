@@ -3,12 +3,17 @@ use axum::{
     http::header,
     response::{Html, IntoResponse, Response},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use tower_http::services::ServeDir;
 
-use crate::models::{TripDetail, TripSummary};
-use crate::server::{error::AppError, import::handle_import, repo, state::AppState};
+use crate::models::{Photo, TripDetail, TripSummary};
+use crate::server::{
+    error::AppError,
+    import::{handle_add_photos, handle_import},
+    repo,
+    state::AppState,
+};
 
 /// Build the application router. Shared by `main` and the integration tests so
 /// both exercise the exact same routing (ADR-0012).
@@ -20,6 +25,11 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
+        // US-2: attach photos later (POST) and list a trip's photos (GET).
+        .route(
+            "/api/trips/:id/photos",
+            post(handle_add_photos).get(list_trip_photos),
+        )
         // Vendored, self-hosted map/chart assets and glue (ADR-0005/0006, US-10).
         // Resolved relative to the working directory (run from the project root),
         // matching the `./data` default in `main`; ADR-0014 defers deployment.
@@ -81,6 +91,19 @@ async fn track_geojson(
         .ok_or(AppError::NotFound)?;
     let headers = [(header::CONTENT_TYPE, "application/geo+json")];
     Ok((headers, geojson).into_response())
+}
+
+/// GET `/api/trips/:id/photos` — the trip's photos as JSON (US-2), the read side
+/// of the photo association and the source the US-7 gallery will consume
+/// (JSON-first API, ADR-0008). 404 if the trip does not exist.
+async fn list_trip_photos(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<Photo>>, AppError> {
+    if repo::get_trip(&state.pool, id).await?.is_none() {
+        return Err(AppError::NotFound);
+    }
+    Ok(Json(repo::list_photos(&state.pool, id).await?))
 }
 
 /// Build an RFC 6266-compliant `Content-Disposition` for the GPX download:
@@ -165,6 +188,10 @@ const IMPORT_HTML: &str = r#"<!DOCTYPE html>
       <label for="gpx">GPX file</label><br>
       <input type="file" id="gpx" name="gpx" accept=".gpx,application/gpx+xml" required>
     </p>
+    <p>
+      <label for="photos">Photos (optional)</label><br>
+      <input type="file" id="photos" name="photos" accept="image/*" multiple>
+    </p>
     <button type="submit">Import</button>
   </form>
   <p><a href="/">← All trips</a></p>
@@ -215,6 +242,12 @@ fn render_detail(trip: &TripDetail) -> String {
 
   <div id="map"></div>
   <div id="elevation"></div>
+
+  <h2>Photos</h2>
+  <form method="post" action="/api/trips/{id}/photos" enctype="multipart/form-data">
+    <input type="file" name="photos" accept="image/*" multiple>
+    <button type="submit">Add photos</button>
+  </form>
 
   <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
   <p><a href="/">← All trips</a></p>

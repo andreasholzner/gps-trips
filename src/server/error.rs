@@ -18,6 +18,9 @@ pub enum AppError {
 
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
+
+    #[error("Storage error: {0}")]
+    Storage(#[from] std::io::Error),
 }
 
 impl IntoResponse for AppError {
@@ -27,6 +30,7 @@ impl IntoResponse for AppError {
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
             AppError::Import(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             AppError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            AppError::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
         (status, body).into_response()
     }

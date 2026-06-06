@@ -4,5 +4,7 @@ pub mod geojson;
 pub mod gpx;
 pub mod http;
 pub mod import;
+pub mod photos;
 pub mod repo;
 pub mod state;
+pub mod storage;
