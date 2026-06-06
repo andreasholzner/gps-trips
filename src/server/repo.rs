@@ -110,6 +110,16 @@ pub async fn list_trips(pool: &SqlitePool) -> Result<Vec<TripSummary>, sqlx::Err
     .await
 }
 
+/// Fetch a trip's track geometry as the stored GeoJSON string (US-7), or `None`
+/// if the trip has no track. Reads only the `track` table; the blob is returned
+/// verbatim so the map and elevation chart share a single fetch (ADR-0005/0006).
+pub async fn get_track_geojson(pool: &SqlitePool, id: i64) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT geojson FROM track WHERE trip_id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+}
+
 /// Fetch full trip detail by id, or `None` if no such trip exists.
 pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, sqlx::Error> {
     sqlx::query(
@@ -268,6 +278,26 @@ mod tests {
             remaining.is_none(),
             "cascade delete should remove the track row"
         );
+    }
+
+    // ── US-7: relive a trip (track geometry for the map + elevation chart) ────
+
+    #[tokio::test]
+    async fn us7_get_track_geojson_returns_stored_blob() {
+        let db = TestDb::new().await;
+        let id = insert_sample_trip(&db.pool).await;
+        let geojson = get_track_geojson(&db.pool, id)
+            .await
+            .unwrap()
+            .expect("track geometry exists");
+        let parsed: serde_json::Value = serde_json::from_str(&geojson).unwrap();
+        assert_eq!(parsed["geometry"]["type"], "LineString");
+    }
+
+    #[tokio::test]
+    async fn us7_get_track_geojson_is_none_for_unknown_trip() {
+        let db = TestDb::new().await;
+        assert!(get_track_geojson(&db.pool, 999).await.unwrap().is_none());
     }
 
     // ── US-6: browse the trip list ───────────────────────────────────────────

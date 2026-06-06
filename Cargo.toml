@@ -7,6 +7,8 @@ edition = "2021"
 # Web server
 axum  = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1",   features = ["rt-multi-thread", "macros", "net"] }
+# Serving the vendored, self-hosted map/chart assets under public/ (ADR-0005/0006)
+tower-http = { version = "0.5", features = ["fs"] }
 
 # Persistence — SQLite via sqlx (ADR-0002); timestamps stored as RFC-3339 TEXT
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }

@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use tower_http::services::ServeDir;
 
 use crate::models::{TripDetail, TripSummary};
 use crate::server::{error::AppError, import::handle_import, repo, state::AppState};
@@ -18,6 +19,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/import", post(handle_import))
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
+        .route("/api/trips/:id/track.geojson", get(track_geojson))
+        // Vendored, self-hosted map/chart assets and glue (ADR-0005/0006, US-10).
+        // Resolved relative to the working directory (run from the project root),
+        // matching the `./data` default in `main`; ADR-0014 defers deployment.
+        .nest_service("/static", ServeDir::new("public"))
         .with_state(state)
 }
 
@@ -61,6 +67,20 @@ async fn download_gpx(
         ),
     ];
     Ok((headers, gpx.bytes).into_response())
+}
+
+/// GET `/api/trips/:id/track.geojson` — the track geometry as GeoJSON (US-7).
+/// The client fetches this once to draw both the map polyline and the elevation
+/// chart (geometry + elevation/distance arrays travel together; ADR-0005/0006).
+async fn track_geojson(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let geojson = repo::get_track_geojson(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let headers = [(header::CONTENT_TYPE, "application/geo+json")];
+    Ok((headers, geojson).into_response())
 }
 
 /// Build an RFC 6266-compliant `Content-Disposition` for the GPX download:
@@ -151,8 +171,16 @@ const IMPORT_HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
-/// Render the trip detail page. Minimal for US-1 — the map, elevation chart and
-/// photo gallery come in later milestones (US-7).
+/// Render the trip detail page — relive a trip (US-7): the track on an OSM map
+/// and an elevation profile, plus the summary stats and GPX download.
+///
+/// The map and chart are drawn client-side by `trip_detail.js`, which fetches
+/// the track GeoJSON once and feeds both (ADR-0005/0006). The page only emits the
+/// containers and the vendored, self-hosted assets (US-10); the server owns the
+/// data URL and hands it to the script via the `data-track-url` attribute.
+///
+/// The photo gallery (the remaining part of US-7's acceptance) depends on the
+/// photo stories (US-2…US-5) and lands with them.
 fn render_detail(trip: &TripDetail) -> String {
     let distance_km = trip.distance_m / 1000.0;
     let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
@@ -163,8 +191,18 @@ fn render_detail(trip: &TripDetail) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>{name}</title></head>
-<body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{name}</title>
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  <link rel="stylesheet" href="/static/vendor/uPlot.min.css">
+  <style>
+    #map {{ height: 24rem; }}
+    #elevation {{ margin-top: 1rem; }}
+  </style>
+</head>
+<body data-track-url="/api/trips/{id}/track.geojson">
   <h1>{name}</h1>
   <p><strong>Activity:</strong> {activity}</p>
   <p><strong>Start:</strong> {start}</p>
@@ -174,8 +212,16 @@ fn render_detail(trip: &TripDetail) -> String {
     <li>Descent: {descent}</li>
     <li>Duration: {duration}</li>
   </ul>
+
+  <div id="map"></div>
+  <div id="elevation"></div>
+
   <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
   <p><a href="/">← All trips</a></p>
+
+  <script src="/static/vendor/leaflet.js"></script>
+  <script src="/static/vendor/uPlot.iife.min.js"></script>
+  <script src="/static/js/trip_detail.js"></script>
 </body>
 </html>"#,
         id = trip.id,
