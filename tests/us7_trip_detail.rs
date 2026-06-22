@@ -4,17 +4,17 @@
 //!   "Shows the track on an OSM map, an elevation profile, and a photo gallery
 //!    with map markers."
 //!
-//! The photo gallery depends on the photo stories (US-2…US-5), which are not yet
-//! implemented; this milestone covers the **track map** and the **elevation
-//! profile**. Both are driven from a single track-GeoJSON fetch (ADR-0005/0006),
-//! so the tests assert (a) that endpoint and (b) the page wiring that consumes it.
+//! The track map and elevation profile are driven from a single track-GeoJSON fetch
+//! (ADR-0005/0006). The photo gallery (US-2) fetches `/api/trips/:id/photos` and
+//! renders images served at `/media/*path`. Photo map markers depend on US-3/US-4
+//! (EXIF + interpolated coordinates) and are not yet implemented.
 //!
 //! Drives the real Axum router in-process against a real temp SQLite DB (ADR-0012).
 
 mod common;
 
 use axum::http::StatusCode;
-use common::{body_string, get, import_sample, test_app};
+use common::{body_string, get, import_sample, import_sample_with_photos, test_app};
 
 // ── The track GeoJSON endpoint: data for the map + elevation chart ───────────
 
@@ -103,6 +103,62 @@ async fn us7_detail_page_404_for_unknown_trip() {
     let (app, _dir) = test_app().await;
     let response = get(&app, "/trips/999").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ── Photo gallery: images served + gallery container ─────────────────────────
+
+#[tokio::test]
+async fn us7_photos_json_includes_a_serving_url() {
+    let (app, _dir) = test_app().await;
+    let id =
+        import_sample_with_photos(&app, &[("photo.jpg", b"\xFF\xD8\xFF-fake-jpeg".as_slice())])
+            .await;
+
+    let response = get(&app, &format!("/api/trips/{id}/photos")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+
+    let url = json[0]["url"].as_str().expect("photo must have a url field");
+    assert!(!url.is_empty(), "url must not be empty");
+    assert!(url.starts_with('/'), "url must be an absolute path; got: {url}");
+}
+
+#[tokio::test]
+async fn us7_photo_blob_is_served_at_its_url() {
+    const FAKE_JPEG: &[u8] = b"\xFF\xD8\xFF-fake-jpeg-blob";
+    let (app, _dir) = test_app().await;
+    let id = import_sample_with_photos(&app, &[("photo.jpg", FAKE_JPEG)]).await;
+
+    let response = get(&app, &format!("/api/trips/{id}/photos")).await;
+    let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+    let url = json[0]["url"].as_str().unwrap().to_string();
+
+    let photo_response = get(&app, &url).await;
+    assert_eq!(photo_response.status(), StatusCode::OK);
+    assert_eq!(common::body_bytes(photo_response).await, FAKE_JPEG);
+}
+
+#[tokio::test]
+async fn us7_media_endpoint_returns_404_for_missing_blob() {
+    let (app, _dir) = test_app().await;
+    let response = get(&app, "/media/trips/999/0000-nope.jpg").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn us7_detail_page_has_gallery_container_and_photos_data_url() {
+    let (app, _dir) = test_app().await;
+    let id = import_sample(&app).await;
+
+    let html = body_string(get(&app, &format!("/trips/{id}")).await).await;
+    assert!(
+        html.contains(r#"id="gallery""#),
+        "must have gallery container; got: {html}"
+    );
+    assert!(
+        html.contains(&format!("data-photos-url=\"/api/trips/{id}/photos\"")),
+        "must expose photos URL as data attribute; got: {html}"
+    );
 }
 
 // The map and chart are useless if their assets 404; assert they are served
