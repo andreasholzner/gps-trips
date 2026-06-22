@@ -35,4 +35,6 @@ surface:
 - A future native or PWA client is purely additive — it reuses the existing endpoints.
 - Minor duplication compared to using Leptos server functions everywhere, accepted for the
   decoupling benefit.
-- The contract is centralized in `models.rs`, keeping server and any client in sync.
+- The contract is centralized in `models.rs` for DB-backed fields. Response-only fields
+  (computed URLs, thumbnails) live in `*Response` types in `http.rs` — see
+  [ADR-0015](./0015-db-model-response-type-separation.md).
