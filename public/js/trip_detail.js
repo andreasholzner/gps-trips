@@ -1,33 +1,45 @@
-// Trip detail page: draw the track on an OSM map and an elevation profile (US-7).
+// Trip detail page: track on an OSM map, elevation profile, and photo gallery (US-7).
 //
-// Both views come from a single fetch of the track GeoJSON (ADR-0005/0006): the
-// LineString geometry feeds Leaflet; the parallel `cumulative_distance_m` /
-// `elevation_m` arrays in `properties` feed the uPlot elevation chart.
+// The map and chart come from a single fetch of the track GeoJSON (ADR-0005/0006):
+// the LineString geometry feeds Leaflet; `cumulative_distance_m` / `elevation_m`
+// arrays in `properties` feed the uPlot chart. The gallery fetches the photos JSON
+// and renders <img> elements served from /media/*path.
 "use strict";
 
 (async function () {
   const trackUrl = document.body.dataset.trackUrl;
-  if (!trackUrl) return;
+  const photosUrl = document.body.dataset.photosUrl;
 
-  let track;
-  try {
-    const response = await fetch(trackUrl);
-    if (!response.ok) {
-      console.error("failed to load track:", response.status);
-      return;
+  if (trackUrl) {
+    let track;
+    try {
+      const response = await fetch(trackUrl);
+      if (!response.ok) {
+        console.error("failed to load track:", response.status);
+      } else {
+        track = await response.json();
+      }
+    } catch (err) {
+      console.error("failed to load track:", err);
     }
-    track = await response.json();
-  } catch (err) {
-    // Network failure or a malformed body — leave the page as-is rather than
-    // throwing an unhandled rejection.
-    console.error("failed to load track:", err);
-    return;
+    if (track) {
+      // Render the two views independently so a failure in one does not blank the other.
+      tryRender("map", () => drawMap(track));
+      tryRender("elevation", () => drawElevation(track));
+    }
   }
 
-  // Render the two views independently so a failure in one does not blank the
-  // other (they share only the fetched data, not each other's success).
-  tryRender("map", () => drawMap(track));
-  tryRender("elevation", () => drawElevation(track));
+  if (photosUrl) {
+    try {
+      const response = await fetch(photosUrl);
+      if (response.ok) {
+        const photos = await response.json();
+        tryRender("gallery", () => drawGallery(photos));
+      }
+    } catch (err) {
+      console.error("failed to load photos:", err);
+    }
+  }
 })();
 
 function tryRender(what, render) {
@@ -55,6 +67,24 @@ function drawMap(track) {
   if (bounds.isValid()) {
     map.fitBounds(bounds);
   }
+}
+
+// Render the photo gallery: one <img> per photo, or a "no photos" message.
+function drawGallery(photos) {
+  const container = document.getElementById("gallery");
+  if (!container) return;
+  if (!photos || photos.length === 0) {
+    container.textContent = "No photos yet.";
+    return;
+  }
+  photos.forEach((photo) => {
+    const img = document.createElement("img");
+    img.src = photo.url;
+    img.alt = photo.original_name;
+    img.style.maxHeight = "200px";
+    img.style.marginRight = "0.5rem";
+    container.appendChild(img);
+  });
 }
 
 // Render elevation (m) against cumulative distance (km) as a uPlot line chart.

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     extract::{Path, State},
     http::header,
@@ -5,6 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use serde::Serialize;
 use tower_http::services::ServeDir;
 
 use crate::models::{Photo, TripDetail, TripSummary};
@@ -14,6 +17,36 @@ use crate::server::{
     repo,
     state::AppState,
 };
+
+/// The JSON shape returned by `GET /api/trips/:id/photos` (ADR-0008).
+///
+/// Wraps the DB `Photo` record and adds the public `url` that the client uses to
+/// fetch the image bytes. Constructed at the HTTP boundary so the DB model stays
+/// a plain record with no HTTP concerns.
+#[derive(Serialize)]
+struct PhotoResponse {
+    id: i64,
+    trip_id: i64,
+    original_name: String,
+    content_type: Option<String>,
+    byte_len: i64,
+    created_at: String,
+    url: String,
+}
+
+impl PhotoResponse {
+    fn from_photo(photo: Photo, url: String) -> Self {
+        Self {
+            id: photo.id,
+            trip_id: photo.trip_id,
+            original_name: photo.original_name,
+            content_type: photo.content_type,
+            byte_len: photo.byte_len,
+            created_at: photo.created_at,
+            url,
+        }
+    }
+}
 
 /// Build the application router. Shared by `main` and the integration tests so
 /// both exercise the exact same routing (ADR-0012).
@@ -30,6 +63,9 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/:id/photos",
             post(handle_add_photos).get(list_trip_photos),
         )
+        // US-7: serve photo blobs stored by the BlobStore (ADR-0007).
+        // The wildcard captures the blob key so any backend's url_for works here.
+        .route("/media/*path", get(serve_media))
         // Vendored, self-hosted map/chart assets and glue (ADR-0005/0006, US-10).
         // Resolved relative to the working directory (run from the project root),
         // matching the `./data` default in `main`; ADR-0014 defers deployment.
@@ -93,17 +129,59 @@ async fn track_geojson(
     Ok((headers, geojson).into_response())
 }
 
-/// GET `/api/trips/:id/photos` — the trip's photos as JSON (US-2), the read side
-/// of the photo association and the source the US-7 gallery will consume
-/// (JSON-first API, ADR-0008). 404 if the trip does not exist.
+/// GET `/api/trips/:id/photos` — the trip's photos as JSON (US-2/US-7).
+/// Each photo includes a `url` the gallery can use to fetch the image bytes.
+/// 404 if the trip does not exist.
 async fn list_trip_photos(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<Photo>>, AppError> {
+) -> Result<Json<Vec<PhotoResponse>>, AppError> {
     if repo::get_trip(&state.pool, id).await?.is_none() {
         return Err(AppError::NotFound);
     }
-    Ok(Json(repo::list_photos(&state.pool, id).await?))
+    let photos = repo::list_photos(&state.pool, id)
+        .await?
+        .into_iter()
+        .map(|p| {
+            let url = state.store.url_for(&p.blob_key);
+            PhotoResponse::from_photo(p, url)
+        })
+        .collect();
+    Ok(Json(photos))
+}
+
+/// GET `/media/*path` — serve a photo blob from the `BlobStore` (US-7).
+/// The path is the blob key as emitted by `BlobStore::url_for`. Returns 404
+/// when the key does not exist, 500 for any other I/O error.
+async fn serve_media(
+    State(state): State<AppState>,
+    Path(path): Path<String>,
+) -> Result<Response, AppError> {
+    let content_type = content_type_from_path(&path);
+    let store = Arc::clone(&state.store);
+    let bytes = tokio::task::spawn_blocking(move || store.get(&path))
+        .await
+        .expect("blob store task panicked")
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AppError::NotFound
+            } else {
+                AppError::Storage(e)
+            }
+        })?;
+    Ok(([(header::CONTENT_TYPE, content_type)], bytes).into_response())
+}
+
+/// Derive a MIME type from a blob key's file extension. Falls back to
+/// `application/octet-stream` for anything unrecognised.
+fn content_type_from_path(path: &str) -> &'static str {
+    match path.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Build an RFC 6266-compliant `Content-Disposition` for the GPX download:
@@ -198,16 +276,13 @@ const IMPORT_HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
-/// Render the trip detail page — relive a trip (US-7): the track on an OSM map
-/// and an elevation profile, plus the summary stats and GPX download.
+/// Render the trip detail page — relive a trip (US-7): the track on an OSM map,
+/// an elevation profile, and a photo gallery.
 ///
-/// The map and chart are drawn client-side by `trip_detail.js`, which fetches
-/// the track GeoJSON once and feeds both (ADR-0005/0006). The page only emits the
-/// containers and the vendored, self-hosted assets (US-10); the server owns the
-/// data URL and hands it to the script via the `data-track-url` attribute.
-///
-/// The photo gallery (the remaining part of US-7's acceptance) depends on the
-/// photo stories (US-2…US-5) and lands with them.
+/// The map and chart are driven from a single track-GeoJSON fetch (ADR-0005/0006);
+/// the gallery fetches the photos JSON (US-2) and renders `<img>` elements. The
+/// page only emits the containers and the vendored, self-hosted assets (US-10);
+/// data URLs are handed to the client via `data-*` attributes on `<body>`.
 fn render_detail(trip: &TripDetail) -> String {
     let distance_km = trip.distance_m / 1000.0;
     let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
@@ -229,7 +304,8 @@ fn render_detail(trip: &TripDetail) -> String {
     #elevation {{ margin-top: 1rem; }}
   </style>
 </head>
-<body data-track-url="/api/trips/{id}/track.geojson">
+<body data-track-url="/api/trips/{id}/track.geojson"
+      data-photos-url="/api/trips/{id}/photos">
   <h1>{name}</h1>
   <p><strong>Activity:</strong> {activity}</p>
   <p><strong>Start:</strong> {start}</p>
@@ -244,6 +320,7 @@ fn render_detail(trip: &TripDetail) -> String {
   <div id="elevation"></div>
 
   <h2>Photos</h2>
+  <div id="gallery"></div>
   <form method="post" action="/api/trips/{id}/photos" enctype="multipart/form-data">
     <input type="file" name="photos" accept="image/*" multiple>
     <button type="submit">Add photos</button>
