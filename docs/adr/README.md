@@ -20,6 +20,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0012](./0012-tdd-test-strategy.md) | TDD; requirement-covering tests, mock only externals | Accepted |
 | [0013](./0013-integer-surrogate-keys.md) | Integer surrogate primary keys (revisit only for offline-first replication) | Accepted |
 | [0014](./0014-defer-deployment-topology.md) | Defer deployment topology; local-first for now | Accepted |
+| [0015](./0015-db-model-response-type-separation.md) | Separate DB models from API response types | Accepted |
 
 ## Conventions
 
