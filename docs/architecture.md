@@ -204,3 +204,5 @@ C4Component
 | Filter/region queries in Repositories | [ADR-0011](./adr/0011-filtering-search-geo-queries.md) |
 | Trait seams as test mocks | [ADR-0012](./adr/0012-tdd-test-strategy.md) |
 | Static assets served next to the binary | [ADR-0016](./adr/0016-assets-relative-to-executable.md) |
+
+See [`deployment.md`](./deployment.md) for how to build and run a self-hosted instance (US-10).
