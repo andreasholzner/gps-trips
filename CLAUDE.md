@@ -13,6 +13,7 @@
 - NEVER add a `Co-Authored-By` trailer to user commits unless this project's `.claude/settings.json` has `attribution.commit` set (#2078). The Claude Code Bash tool may suggest one in its default commit-message template — ignore it. `Co-Authored-By` is semantic authorship attribution under git/GitHub convention; the tool is the facilitator, not a co-author.
 - Keep files under 500 lines
 - Validate input at system boundaries
+- The ADRs for this project are maintained at `/docs/adr`. Always follow them.
 - NEVER update `docs/initial_plan.md` — it is a frozen historical snapshot. Record design, scope, schema, or API changes in the living docs instead: `docs/requirements.md` (user stories), `docs/adr/` (decisions), `docs/architecture.md` (C4 diagrams). See the banner atop the file.
 
 ## Agent Comms (SendMessage-First Coordination)

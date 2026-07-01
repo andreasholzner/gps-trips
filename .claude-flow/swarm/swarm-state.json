@@ -1,0 +1,24 @@
+{
+  "swarms": {
+    "swarm-1782078958482-7visv9": {
+      "swarmId": "swarm-1782078958482-7visv9",
+      "topology": "hierarchical",
+      "maxAgents": 15,
+      "status": "running",
+      "agents": [],
+      "tasks": [],
+      "config": {
+        "topology": "hierarchical",
+        "maxAgents": 15,
+        "strategy": "specialized",
+        "communicationProtocol": "message-bus",
+        "autoScaling": true,
+        "consensusMechanism": "majority"
+      },
+      "createdAt": "2026-06-21T21:55:58.482Z",
+      "updatedAt": "2026-06-21T21:55:58.482Z",
+      "pid": 450273
+    }
+  },
+  "version": "3.0.0"
+}
