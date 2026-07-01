@@ -14,7 +14,7 @@ use crate::models::{Photo, TripDetail, TripSummary};
 use crate::server::{
     error::AppError,
     import::{handle_add_photos, handle_import},
-    repo,
+    paths, repo,
     state::AppState,
 };
 
@@ -67,9 +67,9 @@ pub fn router(state: AppState) -> Router {
         // The wildcard captures the blob key so any backend's url_for works here.
         .route("/media/*path", get(serve_media))
         // Vendored, self-hosted map/chart assets and glue (ADR-0005/0006, US-10).
-        // Resolved relative to the working directory (run from the project root),
-        // matching the `./data` default in `main`; ADR-0014 defers deployment.
-        .nest_service("/static", ServeDir::new("public"))
+        // Resolved relative to the executable, not the CWD, so "binary + adjacent
+        // public/ folder" is a deployable unit startable from anywhere (ADR-0016).
+        .nest_service("/static", ServeDir::new(paths::assets_dir()))
         .with_state(state)
 }
 
