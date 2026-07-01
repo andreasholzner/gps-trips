@@ -72,7 +72,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 - US-7 → ADR-0005 (Leaflet/OSM), ADR-0006 (uPlot elevation chart)
 - US-11/US-15 → ADR-0008 (write API: import metadata + edit endpoint)
 - US-13/US-14 → ADR-0011 (filtering, search & geographic queries on SQLite)
-- US-10 → ADR-0002 (local SQLite), ADR-0010 (self-hosted, optional auth)
+- US-10 → ADR-0002 (local SQLite), ADR-0010 (self-hosted, optional auth), ADR-0016 (assets relative to executable)
 - US-16 → ADR-0008 (JSON-first API enables a future client)
 - US-17 → ADR-0007 (BlobStore enables ownCloud), ADR-0002 (DB stays local)
 - US-19 → ADR-0010 (optional shared-password auth)

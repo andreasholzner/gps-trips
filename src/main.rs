@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
@@ -14,9 +13,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let data_dir = std::env::var("TRIP_ARCHIVE_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("./data"));
+    let data_dir = server::paths::data_dir();
     std::fs::create_dir_all(&data_dir)?;
 
     let pool = server::db::create_pool(&data_dir.join("trip-archive.db")).await?;
