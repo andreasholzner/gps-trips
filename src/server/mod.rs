@@ -1,4 +1,5 @@
 pub mod db;
+pub mod delete;
 pub mod error;
 pub mod geojson;
 pub mod gpx;

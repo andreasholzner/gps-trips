@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::header,
+    http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -12,6 +12,7 @@ use tower_http::services::ServeDir;
 
 use crate::models::{Photo, TripDetail, TripSummary};
 use crate::server::{
+    delete,
     error::AppError,
     import::{handle_add_photos, handle_import},
     paths, repo,
@@ -58,6 +59,8 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
+        // US-9: delete a trip and its photo blobs.
+        .route("/api/trips/:id", axum::routing::delete(handle_delete_trip))
         // US-2: attach photos later (POST) and list a trip's photos (GET).
         .route(
             "/api/trips/:id/photos",
@@ -127,6 +130,21 @@ async fn track_geojson(
         .ok_or(AppError::NotFound)?;
     let headers = [(header::CONTENT_TYPE, "application/geo+json")];
     Ok((headers, geojson).into_response())
+}
+
+/// DELETE `/api/trips/:id` — delete a trip and its photo blobs (US-9, the v1
+/// API surface fixed by ADR-0008). Removes the trip row (cascading to
+/// `track`/`photo`) and best-effort removes each photo's blob. 404 if no such
+/// trip exists; 204 with an empty body on success.
+async fn handle_delete_trip(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, AppError> {
+    let deleted = delete::delete_trip(&state.pool, &state.store, id).await?;
+    if !deleted {
+        return Err(AppError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// GET `/api/trips/:id/photos` — the trip's photos as JSON (US-2/US-7).
@@ -305,7 +323,8 @@ fn render_detail(trip: &TripDetail) -> String {
   </style>
 </head>
 <body data-track-url="/api/trips/{id}/track.geojson"
-      data-photos-url="/api/trips/{id}/photos">
+      data-photos-url="/api/trips/{id}/photos"
+      data-trip-id="{id}">
   <h1>{name}</h1>
   <p><strong>Activity:</strong> {activity}</p>
   <p><strong>Start:</strong> {start}</p>
@@ -327,6 +346,7 @@ fn render_detail(trip: &TripDetail) -> String {
   </form>
 
   <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
+  <p><button id="delete-trip">Delete trip</button></p>
   <p><a href="/">← All trips</a></p>
 
   <script src="/static/vendor/leaflet.js"></script>

@@ -200,6 +200,20 @@ pub async fn get_track_geojson(pool: &SqlitePool, id: i64) -> Result<Option<Stri
         .await
 }
 
+/// Delete a trip by id (US-9). `track`/`photo` are declared `ON DELETE CASCADE`
+/// (migrations 0001/0003) and `foreign_keys(true)` is enabled on every
+/// connection (`db::create_pool`), so this one statement also removes the
+/// trip's track row and all its photo rows via SQLite itself.
+/// Returns `true` if a trip with this id existed and was deleted, `false` if
+/// there was no such trip.
+pub async fn delete_trip(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM trip WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// Fetch full trip detail by id, or `None` if no such trip exists.
 pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, sqlx::Error> {
     sqlx::query(
@@ -517,6 +531,50 @@ mod tests {
             .await
             .unwrap();
 
+        assert!(list_photos(&db.pool, trip_id).await.unwrap().is_empty());
+    }
+
+    // ── US-9: delete a trip (and its files) ──────────────────────────────
+
+    #[tokio::test]
+    async fn us9_delete_trip_removes_the_row() {
+        let db = TestDb::new().await;
+        let id = insert_sample_trip(&db.pool).await;
+        delete_trip(&db.pool, id).await.unwrap();
+        assert!(get_trip(&db.pool, id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn us9_delete_trip_returns_true_when_a_row_was_removed() {
+        let db = TestDb::new().await;
+        let id = insert_sample_trip(&db.pool).await;
+        assert!(delete_trip(&db.pool, id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn us9_delete_trip_returns_false_for_an_unknown_id() {
+        let db = TestDb::new().await;
+        assert!(!delete_trip(&db.pool, 999).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn us9_delete_trip_via_the_repo_function_cascades_to_track_and_photos() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        add_photo(&db.pool, trip_id, "a.jpg", "trips/1/0000-a.jpg", 10).await;
+
+        delete_trip(&db.pool, trip_id).await.unwrap();
+
+        let track: Option<String> =
+            sqlx::query_scalar("SELECT geojson FROM track WHERE trip_id = ?")
+                .bind(trip_id)
+                .fetch_optional(&db.pool)
+                .await
+                .unwrap();
+        assert!(
+            track.is_none(),
+            "cascade delete should remove the track row"
+        );
         assert!(list_photos(&db.pool, trip_id).await.unwrap().is_empty());
     }
 
