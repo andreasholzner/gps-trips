@@ -49,6 +49,19 @@ pub async fn get(app: &Router, uri: &str) -> Response {
     .await
 }
 
+/// DELETE `uri` (US-9).
+pub async fn delete(app: &Router, uri: &str) -> Response {
+    send(
+        app,
+        Request::builder()
+            .method(Method::DELETE)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await
+}
+
 const BOUNDARY: &str = "TripArchiveTestBoundary";
 
 /// Append one `multipart/form-data` file part to `body`.

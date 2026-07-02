@@ -40,7 +40,32 @@
       console.error("failed to load photos:", err);
     }
   }
+
+  wireDeleteButton(document.body.dataset.tripId);
 })();
+
+// US-9: wire the "Delete trip" button. Plain HTML forms cannot issue a DELETE
+// request, so this fetch-based handler is the only trigger for
+// `DELETE /api/trips/:id` — kept deliberately thin, no other logic lives here.
+function wireDeleteButton(tripId) {
+  const button = document.getElementById("delete-trip");
+  if (!button || !tripId) return;
+
+  button.addEventListener("click", async () => {
+    if (!confirm("Delete this trip? This cannot be undone.")) return;
+    try {
+      const response = await fetch(`/api/trips/${tripId}`, { method: "DELETE" });
+      if (response.status === 204) {
+        window.location.href = "/";
+      } else {
+        alert(`Failed to delete trip (status ${response.status}).`);
+      }
+    } catch (err) {
+      console.error("failed to delete trip:", err);
+      alert("Failed to delete trip.");
+    }
+  });
+}
 
 function tryRender(what, render) {
   try {

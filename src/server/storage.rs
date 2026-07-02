@@ -22,6 +22,11 @@ pub trait BlobStore: Send + Sync {
     /// Read back the blob stored under `key`.
     fn get(&self, key: &str) -> io::Result<Vec<u8>>;
 
+    /// Remove the blob stored under `key`. Idempotent: deleting a key that no
+    /// longer exists is not an error — the desired end state ("no blob at
+    /// that key") already holds.
+    fn delete(&self, key: &str) -> io::Result<()>;
+
     /// The URL a client uses to fetch the blob (consumed by the gallery/map
     /// serving that lands with US-7); for `LocalDisk` this is a path under the
     /// served media prefix.
@@ -57,6 +62,14 @@ impl BlobStore for LocalDisk {
 
     fn get(&self, key: &str) -> io::Result<Vec<u8>> {
         std::fs::read(self.path_for(key))
+    }
+
+    fn delete(&self, key: &str) -> io::Result<()> {
+        match std::fs::remove_file(self.path_for(key)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     fn url_for(&self, key: &str) -> String {
@@ -109,5 +122,21 @@ mod tests {
             store.url_for("trips/1/0000-a.jpg"),
             "/media/trips/1/0000-a.jpg"
         );
+    }
+
+    // ── US-9: delete a trip (and its files) ──────────────────────────────
+
+    #[test]
+    fn us9_delete_removes_the_blob_so_a_later_get_fails() {
+        let (store, _dir) = local_disk();
+        store.put("trips/1/0000-a.jpg", b"the-bytes").unwrap();
+        store.delete("trips/1/0000-a.jpg").unwrap();
+        assert!(store.get("trips/1/0000-a.jpg").is_err());
+    }
+
+    #[test]
+    fn us9_delete_of_a_missing_key_is_not_an_error() {
+        let (store, _dir) = local_disk();
+        assert!(store.delete("does/not/exist").is_ok());
     }
 }
