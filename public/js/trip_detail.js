@@ -10,6 +10,11 @@
   const trackUrl = document.body.dataset.trackUrl;
   const photosUrl = document.body.dataset.photosUrl;
 
+  // Survives past the "map" tryRender call so photo markers (loaded
+  // separately, below) can be added to the same map instance (US-3).
+  // `undefined` if the track never loaded — drawPhotoMarkers no-ops on that.
+  let map;
+
   if (trackUrl) {
     let track;
     try {
@@ -24,7 +29,7 @@
     }
     if (track) {
       // Render the two views independently so a failure in one does not blank the other.
-      tryRender("map", () => drawMap(track));
+      map = tryRender("map", () => drawMap(track));
       tryRender("elevation", () => drawElevation(track));
     }
   }
@@ -35,6 +40,7 @@
       if (response.ok) {
         const photos = await response.json();
         tryRender("gallery", () => drawGallery(photos));
+        tryRender("markers", () => drawPhotoMarkers(map, photos));
       }
     } catch (err) {
       console.error("failed to load photos:", err);
@@ -69,17 +75,19 @@ function wireDeleteButton(tripId) {
 
 function tryRender(what, render) {
   try {
-    render();
+    return render();
   } catch (err) {
     console.error(`failed to render ${what}:`, err);
+    return undefined;
   }
 }
 
 // Render the track polyline on an OSM raster map. Keep attribution and cap
-// maxZoom at 19 per OSM's tile usage policy (ADR-0005).
+// maxZoom at 19 per OSM's tile usage policy (ADR-0005). Returns the map
+// instance so photo markers (US-3) can be added to the same map.
 function drawMap(track) {
   const container = document.getElementById("map");
-  if (!container) return;
+  if (!container) return null;
 
   const map = L.map(container);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -92,6 +100,23 @@ function drawMap(track) {
   if (bounds.isValid()) {
     map.fitBounds(bounds);
   }
+  return map;
+}
+
+// Plot a marker for every photo that has a position: US-3's "exif" source
+// today, and US-4's future "interpolated" source with no changes needed here
+// — only "none" (lat/lon both null) is skipped.
+function drawPhotoMarkers(map, photos) {
+  if (!map || !photos) return;
+  photos
+    .filter((p) => p.lat != null && p.lon != null)
+    .forEach((p) => {
+      const img = document.createElement("img");
+      img.src = p.url;
+      img.alt = p.original_name;
+      img.style.maxWidth = "150px";
+      L.marker([p.lat, p.lon]).addTo(map).bindPopup(img);
+    });
 }
 
 // Render the photo gallery: one <img> per photo, or a "no photos" message.

@@ -4,8 +4,9 @@
 //! Both entry points use it: `POST /api/import` (photos uploaded with the GPX)
 //! and `POST /api/trips/:id/photos` (photos added later). Keeping it in a single
 //! function means the storage/association behaviour cannot drift between the two
-//! (ADR-0004). EXIF map placement (US-3/US-4) and thumbnails (US-5) extend this
-//! path in their own stories.
+//! (ADR-0004). Each photo's EXIF GPS is extracted here too (US-3), so both entry
+//! points place photos on the map identically. US-4 (timestamp interpolation for
+//! photos without GPS) and thumbnails (US-5) extend this path in their own stories.
 
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ use sqlx::{Sqlite, Transaction};
 
 use crate::server::{
     error::AppError,
+    location,
     repo::{self, NewPhoto},
     storage::BlobStore,
 };
@@ -42,7 +44,21 @@ pub async fn ingest_photos(
     for photo in photos {
         let key = blob_key(trip_id, ordinal, &photo.original_name);
         let byte_len = photo.bytes.len() as i64;
-        put_blob(store, key.clone(), photo.bytes).await?;
+        // Extract GPS before the bytes move into the store (US-3). Best-effort:
+        // no GPS, unparseable EXIF, or an unsupported format all just mean
+        // `location_source = "none"`, never a failed import.
+        let (bytes, gps) = extract_gps(photo.bytes).await;
+        let (lat, lon, location_source) = match gps {
+            Some(pos) => (Some(pos.lat), Some(pos.lon), "exif"),
+            None => {
+                tracing::debug!(
+                    photo = %photo.original_name,
+                    "no usable EXIF GPS; location_source = none"
+                );
+                (None, None, "none")
+            }
+        };
+        put_blob(store, key.clone(), bytes).await?;
         let id = repo::insert_photo(
             tx,
             trip_id,
@@ -51,6 +67,9 @@ pub async fn ingest_photos(
                 content_type: photo.content_type.as_deref(),
                 byte_len,
                 blob_key: &key,
+                lat,
+                lon,
+                location_source,
             },
         )
         .await?;
@@ -97,6 +116,20 @@ async fn put_blob(store: &Arc<dyn BlobStore>, key: String, bytes: Vec<u8>) -> Re
         .await
         .expect("blob store task panicked")?;
     Ok(())
+}
+
+/// Run EXIF GPS extraction off the async runtime (US-3): parsing an
+/// untrusted upload's EXIF/TIFF structure is synchronous, potentially
+/// expensive work, the same class of risk `put_blob` offloads for the same
+/// reason (ADR-0004). Returns the bytes back so the caller can still move
+/// them into the `BlobStore` afterward without a copy.
+async fn extract_gps(bytes: Vec<u8>) -> (Vec<u8>, Option<location::GpsPosition>) {
+    tokio::task::spawn_blocking(move || {
+        let gps = location::extract_gps(&bytes);
+        (bytes, gps)
+    })
+    .await
+    .expect("EXIF extraction task panicked")
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -191,6 +224,65 @@ mod tests {
         assert_eq!(keys.len(), 3, "every photo must get a distinct blob key");
         // Each blob holds its own batch's bytes (no overwrite).
         assert_eq!(store.get(&listed[2].blob_key).unwrap(), b"third");
+    }
+
+    // ── US-3: photos with EXIF GPS appear on the map ─────────────────────
+
+    #[tokio::test]
+    async fn us3_ingest_sets_location_source_exif_and_coordinates_for_geotagged_photo() {
+        let db = TestDb::new().await;
+        let (store, _dir) = test_store();
+        let trip_id = a_trip(&db.pool).await;
+        let geotagged = location::fixtures::geotagged_bytes(45.5, 10.26);
+
+        let mut tx = db.pool.begin().await.unwrap();
+        ingest_photos(&mut tx, &store, trip_id, vec![photo("a.jpg", &geotagged)])
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let listed = list_photos(&db.pool, trip_id).await.unwrap();
+        assert_eq!(listed[0].location_source, "exif");
+        assert_eq!(listed[0].lat, Some(45.5));
+        assert_eq!(listed[0].lon, Some(10.26));
+    }
+
+    #[tokio::test]
+    async fn us3_ingest_sets_location_source_none_for_photo_without_gps() {
+        let db = TestDb::new().await;
+        let (store, _dir) = test_store();
+        let trip_id = a_trip(&db.pool).await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        ingest_photos(&mut tx, &store, trip_id, vec![photo("a.jpg", b"AAA")])
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let listed = list_photos(&db.pool, trip_id).await.unwrap();
+        assert_eq!(listed[0].location_source, "none");
+        assert_eq!(listed[0].lat, None);
+        assert_eq!(listed[0].lon, None);
+    }
+
+    #[tokio::test]
+    async fn us3_ingest_does_not_fail_when_photo_bytes_are_not_a_valid_image() {
+        // Regression guard: EXIF extraction must never turn a non-image byte
+        // string (as every other photo test in this suite uploads) into a
+        // failed import.
+        let db = TestDb::new().await;
+        let (store, _dir) = test_store();
+        let trip_id = a_trip(&db.pool).await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        let result = ingest_photos(
+            &mut tx,
+            &store,
+            trip_id,
+            vec![photo("a.jpg", b"\xFF\xD8\xFF-fake-jpeg")],
+        )
+        .await;
+        assert!(result.is_ok());
     }
 
     #[test]

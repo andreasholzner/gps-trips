@@ -23,7 +23,9 @@ use crate::server::{
 ///
 /// Wraps the DB `Photo` record and adds the public `url` that the client uses to
 /// fetch the image bytes. Constructed at the HTTP boundary so the DB model stays
-/// a plain record with no HTTP concerns.
+/// a plain record with no HTTP concerns. `lat`/`lon`/`location_source` (US-3)
+/// are derived once at import and persisted, so — unlike `url` — they travel
+/// straight from `photo` with no extra constructor argument (ADR-0015).
 #[derive(Serialize)]
 struct PhotoResponse {
     id: i64,
@@ -33,6 +35,9 @@ struct PhotoResponse {
     byte_len: i64,
     created_at: String,
     url: String,
+    lat: Option<f64>,
+    lon: Option<f64>,
+    location_source: String,
 }
 
 impl PhotoResponse {
@@ -45,6 +50,9 @@ impl PhotoResponse {
             byte_len: photo.byte_len,
             created_at: photo.created_at,
             url,
+            lat: photo.lat,
+            lon: photo.lon,
+            location_source: photo.location_source,
         }
     }
 }

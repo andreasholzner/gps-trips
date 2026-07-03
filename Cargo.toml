@@ -17,6 +17,8 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 gpx  = "0.10"
 geo  = "0.28"
 time = { version = "0.3", features = ["formatting", "macros"] }
+# EXIF GPS extraction (US-3, ADR-0017)
+kamadak-exif = "0.6"
 
 # Serialization (track GeoJSON blob + JSON models)
 serde      = { version = "1", features = ["derive"] }
@@ -28,6 +30,14 @@ thiserror          = "2"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[features]
+# Exposes src/server/location.rs's TIFF/EXIF byte-fixture builder (normally
+# #[cfg(test)]-only, so invisible outside this crate) to tests/ integration
+# tests via the self-dependency below — a single source of truth for the
+# fixture format instead of a hand-maintained duplicate under tests/.
+test-support = []
+
 [dev-dependencies]
 tempfile = "3"
 tower    = { version = "0.4", features = ["util"] } # ServiceExt::oneshot in tests
+trip-archive = { path = ".", features = ["test-support"] }
