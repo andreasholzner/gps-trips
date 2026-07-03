@@ -56,6 +56,7 @@ async fn delete_blob(store: &Arc<dyn BlobStore>, key: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ActivityType;
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
     use crate::server::photos::{ingest_photos, UploadedPhoto};
@@ -81,7 +82,7 @@ mod tests {
             max_lat: 0.0,
             max_lon: 0.0,
         };
-        insert_trip(pool, "Trip", "hiking", &stats, "{}", b"x")
+        insert_trip(pool, "Trip", ActivityType::Hiking, &stats, "{}", b"x")
             .await
             .unwrap()
     }

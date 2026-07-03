@@ -4,7 +4,7 @@
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
-use crate::models::{TripDetail, TripSummary};
+use crate::models::{ActivityType, TripDetail, TripSummary};
 use crate::server::gpx::TrackStats;
 
 use super::to_rfc3339;
@@ -14,7 +14,7 @@ use super::to_rfc3339;
 pub async fn insert_trip(
     pool: &SqlitePool,
     name: &str,
-    activity_type: &str,
+    activity_type: ActivityType,
     stats: &TrackStats,
     geojson: &str,
     gpx: &[u8],
@@ -31,7 +31,7 @@ pub async fn insert_trip(
 pub async fn insert_trip_in_tx(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
-    activity_type: &str,
+    activity_type: ActivityType,
     stats: &TrackStats,
     geojson: &str,
     gpx: &[u8],
@@ -197,7 +197,7 @@ mod tests {
         insert_trip(
             pool,
             "Oslo Hills Walk",
-            "hiking",
+            ActivityType::Hiking,
             &stats,
             &geojson,
             SAMPLE_GPX,
@@ -236,7 +236,7 @@ mod tests {
         let detail = get_trip(&db.pool, id).await.unwrap().expect("trip exists");
         assert_eq!(detail.id, id);
         assert_eq!(detail.name, "Oslo Hills Walk");
-        assert_eq!(detail.activity_type, "hiking");
+        assert_eq!(detail.activity_type, ActivityType::Hiking);
     }
 
     #[tokio::test]
@@ -354,7 +354,7 @@ mod tests {
         insert_trip(
             &db.pool,
             "Older",
-            "hiking",
+            ActivityType::Hiking,
             &stats_at(datetime!(2024-01-01 08:00 UTC)),
             "{}",
             b"x",
@@ -364,7 +364,7 @@ mod tests {
         insert_trip(
             &db.pool,
             "Newer",
-            "hiking",
+            ActivityType::Hiking,
             &stats_at(datetime!(2024-06-01 08:00 UTC)),
             "{}",
             b"x",
@@ -403,6 +403,7 @@ mod tests {
     #[tokio::test]
     async fn us9_delete_trip_via_the_repo_function_cascades_to_track_and_photos() {
         use super::super::photo::{insert_photo, list_photos, NewPhoto};
+        use crate::models::LocationSource;
 
         let db = TestDb::new().await;
         let trip_id = insert_sample_trip(&db.pool).await;
@@ -417,7 +418,7 @@ mod tests {
                 blob_key: "trips/1/0000-a.jpg",
                 lat: None,
                 lon: None,
-                location_source: "none",
+                location_source: LocationSource::None,
             },
         )
         .await

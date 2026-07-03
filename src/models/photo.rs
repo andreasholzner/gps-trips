@@ -1,3 +1,5 @@
+use crate::models::LocationSource;
+
 /// A photo attached to a trip (US-2). The image *bytes* live in the `BlobStore`
 /// under `blob_key` (ADR-0007); this is the metadata row that associates them
 /// with a trip. `lat`/`lon`/`location_source` place the photo on the map
@@ -17,5 +19,5 @@ pub struct Photo {
     pub created_at: String,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
-    pub location_source: String,
+    pub location_source: LocationSource,
 }

@@ -118,9 +118,14 @@ async fn us7_photos_json_includes_a_serving_url() {
     assert_eq!(response.status(), StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
 
-    let url = json[0]["url"].as_str().expect("photo must have a url field");
+    let url = json[0]["url"]
+        .as_str()
+        .expect("photo must have a url field");
     assert!(!url.is_empty(), "url must not be empty");
-    assert!(url.starts_with('/'), "url must be an absolute path; got: {url}");
+    assert!(
+        url.starts_with('/'),
+        "url must be an absolute path; got: {url}"
+    );
 }
 
 #[tokio::test]

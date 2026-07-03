@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use sqlx::{Sqlite, Transaction};
 
+use crate::models::LocationSource;
 use crate::server::{
     error::AppError,
     location,
@@ -49,13 +50,13 @@ pub async fn ingest_photos(
         // `location_source = "none"`, never a failed import.
         let (bytes, gps) = extract_gps(photo.bytes).await;
         let (lat, lon, location_source) = match gps {
-            Some(pos) => (Some(pos.lat), Some(pos.lon), "exif"),
+            Some(pos) => (Some(pos.lat), Some(pos.lon), LocationSource::Exif),
             None => {
                 tracing::debug!(
                     photo = %photo.original_name,
                     "no usable EXIF GPS; location_source = none"
                 );
-                (None, None, "none")
+                (None, None, LocationSource::None)
             }
         };
         put_blob(store, key.clone(), bytes).await?;
@@ -140,6 +141,7 @@ async fn extract_gps(bytes: Vec<u8>) -> (Vec<u8>, Option<location::GpsPosition>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ActivityType;
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
     use crate::server::repo::{insert_trip, list_photos};
@@ -172,7 +174,7 @@ mod tests {
             max_lat: 0.0,
             max_lon: 0.0,
         };
-        insert_trip(pool, "Trip", "hiking", &stats, "{}", b"x")
+        insert_trip(pool, "Trip", ActivityType::Hiking, &stats, "{}", b"x")
             .await
             .unwrap()
     }
@@ -242,7 +244,7 @@ mod tests {
         tx.commit().await.unwrap();
 
         let listed = list_photos(&db.pool, trip_id).await.unwrap();
-        assert_eq!(listed[0].location_source, "exif");
+        assert_eq!(listed[0].location_source, LocationSource::Exif);
         assert_eq!(listed[0].lat, Some(45.5));
         assert_eq!(listed[0].lon, Some(10.26));
     }
@@ -260,7 +262,7 @@ mod tests {
         tx.commit().await.unwrap();
 
         let listed = list_photos(&db.pool, trip_id).await.unwrap();
-        assert_eq!(listed[0].location_source, "none");
+        assert_eq!(listed[0].location_source, LocationSource::None);
         assert_eq!(listed[0].lat, None);
         assert_eq!(listed[0].lon, None);
     }
