@@ -4,7 +4,7 @@
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
-use crate::models::Photo;
+use crate::models::{LocationSource, Photo};
 
 use super::to_rfc3339;
 
@@ -18,7 +18,7 @@ pub struct NewPhoto<'a> {
     pub blob_key: &'a str,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
-    pub location_source: &'a str,
+    pub location_source: LocationSource,
 }
 
 /// Insert one photo row associating it with `trip_id` (US-2). Runs on the
@@ -92,6 +92,7 @@ pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ActivityType;
     use crate::server::db::testing::TestDb;
     use crate::server::geojson::build_track_geojson;
     use crate::server::gpx::{compute_stats, parse_gpx};
@@ -106,7 +107,7 @@ mod tests {
         insert_trip(
             pool,
             "Oslo Hills Walk",
-            "hiking",
+            ActivityType::Hiking,
             &stats,
             &geojson,
             SAMPLE_GPX,
@@ -127,7 +128,7 @@ mod tests {
                 blob_key: key,
                 lat: None,
                 lon: None,
-                location_source: "none",
+                location_source: LocationSource::None,
             },
         )
         .await
@@ -156,7 +157,7 @@ mod tests {
                 blob_key: key,
                 lat: Some(lat),
                 lon: Some(lon),
-                location_source: "exif",
+                location_source: LocationSource::Exif,
             },
         )
         .await
@@ -256,7 +257,7 @@ mod tests {
         let p = &photos[0];
         assert_eq!(p.lat, Some(45.5));
         assert_eq!(p.lon, Some(10.26));
-        assert_eq!(p.location_source, "exif");
+        assert_eq!(p.location_source, LocationSource::Exif);
     }
 
     #[tokio::test]
@@ -270,6 +271,6 @@ mod tests {
         let p = &photos[0];
         assert_eq!(p.lat, None);
         assert_eq!(p.lon, None);
-        assert_eq!(p.location_source, "none");
+        assert_eq!(p.location_source, LocationSource::None);
     }
 }

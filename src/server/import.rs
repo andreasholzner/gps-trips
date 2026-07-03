@@ -4,6 +4,7 @@ use axum::{
 };
 use time::OffsetDateTime;
 
+use crate::models::ActivityType;
 use crate::server::{
     error::AppError,
     geojson::build_track_geojson,
@@ -63,14 +64,12 @@ pub async fn handle_import(
     let geojson = build_track_geojson(&parsed.points);
 
     let name = resolve_name(form_name, parsed.name, stats.start_time);
-    let activity = form_activity
-        .filter(|a| !a.trim().is_empty())
-        .unwrap_or_else(|| "unspecified".to_string());
+    let activity = resolve_activity_type(form_activity)?;
 
     // Trip, track and photos commit in one transaction, so a failed import
     // leaves no trip behind (reliability NFR; ADR-0004).
     let mut tx = state.pool.begin().await?;
-    let trip_id = insert_trip_in_tx(&mut tx, &name, &activity, &stats, &geojson, &raw).await?;
+    let trip_id = insert_trip_in_tx(&mut tx, &name, activity, &stats, &geojson, &raw).await?;
     ingest_photos(&mut tx, &state.store, trip_id, photos).await?;
     tx.commit().await?;
 
@@ -159,11 +158,24 @@ fn resolve_name(
     format!("{prefix} Imported Trip")
 }
 
+/// Resolve the `activity_type` form field into an `ActivityType` (ADR-0018): a
+/// blank or missing field (the "— unspecified —" option) is `Unknown`; any
+/// other value must be one of the known variants, or the request is rejected
+/// as a 400 — the form only ever submits a known value, so an unrecognized one
+/// means a malformed/hand-crafted request, not a case to silently paper over.
+fn resolve_activity_type(form_activity: Option<String>) -> Result<ActivityType, AppError> {
+    match form_activity.filter(|a| !a.trim().is_empty()) {
+        None => Ok(ActivityType::Unknown),
+        Some(value) => value.parse().map_err(AppError::BadRequest),
+    }
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_name;
+    use super::{resolve_activity_type, resolve_name};
+    use crate::models::ActivityType;
     use time::macros::datetime;
 
     // US-12: trip naming precedence and the date-prefixed default.
@@ -198,5 +210,33 @@ mod tests {
     fn us12_without_name_or_start_time_uses_unknown_date() {
         let name = resolve_name(None, None, None);
         assert_eq!(name, "Unknown date Imported Trip");
+    }
+
+    // ADR-0018: activity_type as a closed enum, not a free-form string.
+
+    #[test]
+    fn resolve_activity_type_defaults_to_unknown_when_missing() {
+        assert_eq!(resolve_activity_type(None).unwrap(), ActivityType::Unknown);
+    }
+
+    #[test]
+    fn resolve_activity_type_defaults_to_unknown_when_blank() {
+        assert_eq!(
+            resolve_activity_type(Some("   ".to_string())).unwrap(),
+            ActivityType::Unknown
+        );
+    }
+
+    #[test]
+    fn resolve_activity_type_parses_a_known_value() {
+        assert_eq!(
+            resolve_activity_type(Some("mountaineering".to_string())).unwrap(),
+            ActivityType::Mountaineering
+        );
+    }
+
+    #[test]
+    fn resolve_activity_type_rejects_an_unrecognized_value() {
+        assert!(resolve_activity_type(Some("unicycling".to_string())).is_err());
     }
 }

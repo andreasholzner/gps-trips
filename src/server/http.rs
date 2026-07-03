@@ -10,7 +10,7 @@ use axum::{
 use serde::Serialize;
 use tower_http::services::ServeDir;
 
-use crate::models::{Photo, TripDetail, TripSummary};
+use crate::models::{LocationSource, Photo, TripDetail, TripSummary};
 use crate::server::{
     delete,
     error::AppError,
@@ -37,7 +37,7 @@ struct PhotoResponse {
     url: String,
     lat: Option<f64>,
     lon: Option<f64>,
-    location_source: String,
+    location_source: LocationSource,
 }
 
 impl PhotoResponse {
@@ -201,7 +201,12 @@ async fn serve_media(
 /// Derive a MIME type from a blob key's file extension. Falls back to
 /// `application/octet-stream` for anything unrecognised.
 fn content_type_from_path(path: &str) -> &'static str {
-    match path.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+    match path
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("png") => "image/png",
         Some("webp") => "image/webp",
@@ -283,9 +288,12 @@ const IMPORT_HTML: &str = r#"<!DOCTYPE html>
       <select id="activity_type" name="activity_type">
         <option value="">— unspecified —</option>
         <option value="hiking">Hiking</option>
+        <option value="mountaineering">Mountaineering</option>
         <option value="cycling">Cycling</option>
-        <option value="running">Running</option>
-        <option value="skiing">Skiing</option>
+        <option value="bikepacking">Bikepacking</option>
+        <option value="kayaking">Kayaking</option>
+        <option value="ski_touring">Ski touring</option>
+        <option value="cross_country_skiing">Cross-country skiing</option>
       </select>
     </p>
     <p>
@@ -364,7 +372,7 @@ fn render_detail(trip: &TripDetail) -> String {
 </html>"#,
         id = trip.id,
         name = html_escape(&trip.name),
-        activity = html_escape(&trip.activity_type),
+        activity = html_escape(trip.activity_type.as_str()),
         start = html_escape(&start),
         distance = distance_km,
         ascent = ascent,

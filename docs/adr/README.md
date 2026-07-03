@@ -23,6 +23,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0015](./0015-db-model-response-type-separation.md) | Separate DB models from API response types | Accepted |
 | [0016](./0016-assets-relative-to-executable.md) | Resolve static assets relative to the executable, not the CWD | Accepted |
 | [0017](./0017-kamadak-exif-for-gps-extraction.md) | Use `kamadak-exif` for EXIF GPS extraction | Accepted |
+| [0018](./0018-enums-for-closed-string-sets.md) | Prefer Rust enums over closed sets of string values | Accepted |
 
 ## Conventions
 
