@@ -16,6 +16,14 @@
 - The ADRs for this project are maintained at `/docs/adr`. Always follow them.
 - NEVER update `docs/initial_plan.md` — it is a frozen historical snapshot. Record design, scope, schema, or API changes in the living docs instead: `docs/requirements.md` (user stories), `docs/adr/` (decisions), `docs/architecture.md` (C4 diagrams). See the banner atop the file.
 
+## Code Review Focus
+
+Every code review (manual or via `/code-review`) must check:
+- **Correctness** — logic bugs, edge cases, error handling
+- **Test coverage** — every user story's acceptance criteria has a corresponding test (see ADR-0012)
+- **Readability** — naming, comments only where non-obvious, consistent with surrounding code
+- **Rust conventions** — idiomatic error handling, ownership, no unnecessary clones/allocations, `clippy`-clean
+
 ## Agent Comms (SendMessage-First Coordination)
 
 Named agents coordinate via `SendMessage`, not polling or shared state.
