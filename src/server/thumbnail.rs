@@ -7,10 +7,7 @@ use std::io::Cursor;
 use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, ImageReader};
 
-/// The thumbnail's maximum long-edge dimension (owner-confirmed default).
-const MAX_DIMENSION: u32 = 400;
-/// JPEG quality for the re-encoded thumbnail (owner-confirmed default).
-const JPEG_QUALITY: u8 = 80;
+use crate::config::thumbnail::{JPEG_QUALITY, MAX_DIMENSION};
 
 /// Generate a thumbnail from a photo's original bytes, honoring EXIF
 /// orientation (`orientation`, the raw tag value from

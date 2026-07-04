@@ -10,17 +10,19 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::config::storage::{ASSETS_DIR_ENV_VAR, DATA_DIR_ENV_VAR, DEFAULT_DATA_DIR};
+
 /// Where the SQLite DB and photo blobs live. `TRIP_ARCHIVE_DATA_DIR`, or `./data`.
 pub fn data_dir() -> PathBuf {
-    std::env::var("TRIP_ARCHIVE_DATA_DIR")
+    std::env::var(DATA_DIR_ENV_VAR)
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("./data"))
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_DATA_DIR))
 }
 
 /// Where the vendored static assets (`public/`) live.
 pub fn assets_dir() -> PathBuf {
     resolve_assets_dir(
-        std::env::var("TRIP_ARCHIVE_ASSETS_DIR").ok(),
+        std::env::var(ASSETS_DIR_ENV_VAR).ok(),
         std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(Path::to_path_buf)),
