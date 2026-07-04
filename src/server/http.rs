@@ -400,7 +400,8 @@ fn render_detail(trip: &TripDetail) -> String {
 }
 
 /// Render the trip list page (US-6). Shows each trip's name (linking to its
-/// detail), date, distance, ascent, and duration; an empty state otherwise.
+/// detail), activity type (US-11), date, distance, ascent, and duration; an
+/// empty state otherwise.
 fn render_trip_list(trips: &[TripSummary]) -> String {
     let body = if trips.is_empty() {
         "<p>No trips yet. <a href=\"/import\">Import your first trip</a>.</p>".to_string()
@@ -408,7 +409,7 @@ fn render_trip_list(trips: &[TripSummary]) -> String {
         let rows: String = trips.iter().map(render_trip_row).collect();
         format!(
             "<table>\n\
-             <thead><tr><th>Trip</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
+             <thead><tr><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
              <tbody>\n{rows}</tbody>\n\
              </table>"
         )
@@ -444,10 +445,11 @@ fn render_trip_row(trip: &TripSummary) -> String {
     let duration = trip.duration_secs.map(fmt_duration).unwrap_or_else(dash);
 
     format!(
-        "<tr><td><a href=\"/trips/{id}\">{name}</a></td>\
+        "<tr><td><a href=\"/trips/{id}\">{name}</a></td><td>{activity}</td>\
          <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td></tr>\n",
         id = trip.id,
         name = html_escape(&trip.name),
+        activity = html_escape(trip.activity_type.as_str()),
         date = html_escape(date),
         distance = distance_km,
         ascent = ascent,

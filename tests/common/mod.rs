@@ -89,6 +89,17 @@ fn append_photo_parts(body: &mut Vec<u8>, photos: &[(&str, &[u8])]) {
     }
 }
 
+/// Append one `multipart/form-data` plain text field to `body` (e.g. `name`,
+/// `activity_type`, `timezone`).
+fn append_text_part(body: &mut Vec<u8>, field: &str, value: &str) {
+    body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"{field}\"\r\n\r\n").as_bytes(),
+    );
+    body.extend_from_slice(value.as_bytes());
+    body.extend_from_slice(b"\r\n");
+}
+
 fn multipart_request(uri: &str, body: Vec<u8>) -> Request<Body> {
     Request::builder()
         .method(Method::POST)
@@ -109,8 +120,21 @@ pub fn import_request(gpx: &[u8]) -> Request<Body> {
 /// An import POST carrying the `gpx` file plus `(filename, bytes)` photo parts
 /// (US-2: photos uploaded with the import).
 pub fn import_request_with_photos(gpx: &[u8], photos: &[(&str, &[u8])]) -> Request<Body> {
+    import_request_with_fields(gpx, &[], photos)
+}
+
+/// An import POST carrying the `gpx` file plus arbitrary text fields (e.g.
+/// `name`, `activity_type`, `timezone`) and `(filename, bytes)` photo parts.
+pub fn import_request_with_fields(
+    gpx: &[u8],
+    fields: &[(&str, &str)],
+    photos: &[(&str, &[u8])],
+) -> Request<Body> {
     let mut body = Vec::new();
     append_file_part(&mut body, "gpx", "track.gpx", "application/gpx+xml", gpx);
+    for (field, value) in fields {
+        append_text_part(&mut body, field, value);
+    }
     append_photo_parts(&mut body, photos);
     body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
     multipart_request("/api/import", body)
@@ -131,7 +155,7 @@ pub async fn import(app: &Router, gpx: &[u8]) -> Response {
 }
 
 /// Parse the `/trips/<id>` redirect target into a trip id.
-fn trip_id_from_redirect(response: &Response) -> i64 {
+pub fn trip_id_from_redirect(response: &Response) -> i64 {
     response
         .headers()
         .get("location")

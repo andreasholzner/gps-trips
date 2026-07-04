@@ -114,13 +114,14 @@ pub async fn get_original_gpx(
 /// `start_time` may be NULL (GPX without times); SQLite sorts NULLs last under DESC.
 pub async fn list_trips(pool: &SqlitePool) -> Result<Vec<TripSummary>, sqlx::Error> {
     sqlx::query(
-        r#"SELECT id, name, start_time, distance_m, ascent_m, duration_secs
+        r#"SELECT id, name, activity_type, start_time, distance_m, ascent_m, duration_secs
            FROM trip
            ORDER BY start_time DESC, id DESC"#,
     )
     .map(|row: SqliteRow| TripSummary {
         id: row.get("id"),
         name: row.get("name"),
+        activity_type: row.get("activity_type"),
         start_time: row.get("start_time"),
         distance_m: row.get("distance_m"),
         ascent_m: row.get("ascent_m"),
@@ -367,6 +368,7 @@ mod tests {
         assert_eq!(trips.len(), 1);
         let t = &trips[0];
         assert_eq!(t.name, "Oslo Hills Walk");
+        assert_eq!(t.activity_type, ActivityType::Hiking);
         assert!(t.distance_m > 1_000.0);
         assert_eq!(t.ascent_m, Some(40.0));
         assert_eq!(t.duration_secs, Some(3600));
