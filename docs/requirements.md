@@ -49,6 +49,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-18** | 📋 | As the owner, I import trips from **Garmin Connect**. | Plugs into the same import pipeline as an alternate ingestion source. |
 | **US-19** | 📋 | As the owner, I can put a **single shared password** in front of my instance. | Optional auth middleware; no multi-user accounts. |
 | **US-20** | 📋 | As the owner, my changes of name and activity type can be synced to komoot. | Optional sync of name and activity type to my komoot account. |
+| **US-21** | 📋 | As the owner, I can manually place attached photos on a track location. | Photos can be placed by selecting a point on the map, the track is shown when selecting a new location. Automaticly determined locations (exif or interpolated) can be overwritten manually after a warning. | 
 
 > **Deployment is intentionally deferred** — the app runs **laptop-local, on demand** for now.
 > The phone/cloud/ownCloud topology will be chosen later from real use; see
