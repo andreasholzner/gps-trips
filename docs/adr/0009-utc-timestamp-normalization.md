@@ -28,3 +28,11 @@ unplaced (`location_source = none`).
 - A documented, predictable failure mode when the offset is unknown (rather than silent
   mis-placement).
 - The assumed offset is a per-import (or configurable) input, not a hidden constant.
+
+## Addendum (US-4 implementation)
+
+The configured trip-local UTC offset is represented as a per-trip **IANA timezone name**, rather
+than a raw UTC-minutes number, auto-guessed from the track's start coordinate via
+[ADR-0019](./0019-tzf-rs-time-tz-for-timezone-lookup.md)'s timezone lookup, with an optional
+owner override. There is no mechanism to edit a trip's timezone after import, nor to retroactively
+recompute photos already placed.

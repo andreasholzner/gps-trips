@@ -135,12 +135,78 @@ pub fn compute_stats(points: &[TrackPoint]) -> TrackStats {
     }
 }
 
+// ── Timestamp interpolation (US-4, ADR-0009) ─────────────────────────────────
+
+/// A track point reduced to just what interpolation needs.
+#[derive(Debug, Clone, Copy)]
+pub struct TimedPoint {
+    pub time: OffsetDateTime,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+/// Points with a timestamp, sorted ascending by time (a stable sort — ties
+/// keep their original order). GPX doesn't guarantee `<time>` is monotonic
+/// across `<trkpt>`s (paused/resumed recordings, clock jumps); this is the
+/// only place that invariant is established, so callers build this once per
+/// trip, not once per photo.
+pub fn timed_points(points: &[TrackPoint]) -> Vec<TimedPoint> {
+    let mut timed: Vec<TimedPoint> = points
+        .iter()
+        .filter_map(|p| {
+            p.time.map(|time| TimedPoint {
+                time,
+                lat: p.lat,
+                lon: p.lon,
+            })
+        })
+        .collect();
+    timed.sort_by_key(|p| p.time);
+    timed
+}
+
+/// Estimate a position at `at` by linearly interpolating between the
+/// bracketing points in `timed_points` (must already be sorted ascending by
+/// time — see `timed_points`). `None` if fewer than two points have a
+/// timestamp, or `at` falls strictly outside `[first.time, last.time]`;
+/// the endpoints themselves are inclusive (US-4: "falls within the track
+/// range"). A run of points sharing an identical timestamp is handled by a
+/// zero-length-span guard rather than dividing by zero: when `at` matches the
+/// run exactly, the bracket search lands on the last point of the run.
+pub fn interpolate_position(timed_points: &[TimedPoint], at: OffsetDateTime) -> Option<(f64, f64)> {
+    let first = timed_points.first()?;
+    let last = timed_points.last()?;
+    if timed_points.len() < 2 || at < first.time || at > last.time {
+        return None;
+    }
+
+    let idx = timed_points.partition_point(|p| p.time <= at);
+    if idx == 0 {
+        return Some((first.lat, first.lon));
+    }
+    if idx == timed_points.len() {
+        return Some((last.lat, last.lon));
+    }
+
+    let a = &timed_points[idx - 1];
+    let b = &timed_points[idx];
+    let span = (b.time - a.time).as_seconds_f64();
+    let elapsed = (at - a.time).as_seconds_f64();
+    let frac = if span > 0.0 { elapsed / span } else { 0.0 };
+
+    Some((
+        a.lat + (b.lat - a.lat) * frac,
+        a.lon + (b.lon - a.lon) * frac,
+    ))
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use time::format_description::well_known::Rfc3339;
+    use time::macros::datetime;
 
     const SAMPLE_GPX: &[u8] = include_bytes!("../../tests/fixtures/sample.gpx");
     const NO_TRACKS_GPX: &[u8] = include_bytes!("../../tests/fixtures/no_tracks.gpx");
@@ -261,5 +327,105 @@ mod tests {
         let end = stats.end_time.unwrap().format(&Rfc3339).unwrap();
         assert!(start.starts_with("2024-06-01T08:00:00"), "start={start}");
         assert!(end.starts_with("2024-06-01T09:00:00"), "end={end}");
+    }
+
+    // ── US-4: timestamp interpolation ────────────────────────────────────────
+
+    fn point(lat: f64, lon: f64, time: Option<OffsetDateTime>) -> TrackPoint {
+        TrackPoint {
+            lat,
+            lon,
+            ele: None,
+            time,
+        }
+    }
+
+    #[test]
+    fn timed_points_filters_out_points_without_a_timestamp() {
+        let points = vec![
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(2.0, 2.0, None),
+            point(3.0, 3.0, Some(datetime!(2024-01-01 09:00 UTC))),
+        ];
+        assert_eq!(timed_points(&points).len(), 2);
+    }
+
+    #[test]
+    fn timed_points_sorts_out_of_order_input() {
+        let points = vec![
+            point(2.0, 2.0, Some(datetime!(2024-01-01 09:00 UTC))),
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+        ];
+        let timed = timed_points(&points);
+        assert_eq!(timed[0].lat, 1.0);
+        assert_eq!(timed[1].lat, 2.0);
+    }
+
+    #[test]
+    fn interpolate_position_returns_none_with_fewer_than_two_timed_points() {
+        let timed = timed_points(&[point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC)))]);
+        assert!(interpolate_position(&timed, datetime!(2024-01-01 08:00 UTC)).is_none());
+    }
+
+    #[test]
+    fn interpolate_position_returns_none_before_the_track_range() {
+        let timed = timed_points(&[
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(2.0, 2.0, Some(datetime!(2024-01-01 09:00 UTC))),
+        ]);
+        assert!(interpolate_position(&timed, datetime!(2024-01-01 07:00 UTC)).is_none());
+    }
+
+    #[test]
+    fn interpolate_position_returns_none_after_the_track_range() {
+        let timed = timed_points(&[
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(2.0, 2.0, Some(datetime!(2024-01-01 09:00 UTC))),
+        ]);
+        assert!(interpolate_position(&timed, datetime!(2024-01-01 10:00 UTC)).is_none());
+    }
+
+    #[test]
+    fn interpolate_position_matches_the_first_point_exactly() {
+        let timed = timed_points(&[
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(2.0, 2.0, Some(datetime!(2024-01-01 09:00 UTC))),
+        ]);
+        let (lat, lon) = interpolate_position(&timed, datetime!(2024-01-01 08:00 UTC)).unwrap();
+        assert_eq!((lat, lon), (1.0, 1.0));
+    }
+
+    #[test]
+    fn interpolate_position_matches_the_last_point_exactly() {
+        let timed = timed_points(&[
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(2.0, 2.0, Some(datetime!(2024-01-01 09:00 UTC))),
+        ]);
+        let (lat, lon) = interpolate_position(&timed, datetime!(2024-01-01 09:00 UTC)).unwrap();
+        assert_eq!((lat, lon), (2.0, 2.0));
+    }
+
+    #[test]
+    fn interpolate_position_linearly_interpolates_the_midpoint() {
+        let timed = timed_points(&[
+            point(0.0, 0.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(10.0, 20.0, Some(datetime!(2024-01-01 10:00 UTC))),
+        ]);
+        let (lat, lon) = interpolate_position(&timed, datetime!(2024-01-01 09:00 UTC)).unwrap();
+        assert!((lat - 5.0).abs() < 1e-9);
+        assert!((lon - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn interpolate_position_handles_duplicate_timestamps_without_dividing_by_zero() {
+        // When `at` matches a run of duplicate timestamps, the bracket search
+        // lands on the last of the run (deterministic, not a panic/NaN).
+        let timed = timed_points(&[
+            point(1.0, 1.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(2.0, 2.0, Some(datetime!(2024-01-01 08:00 UTC))),
+            point(3.0, 3.0, Some(datetime!(2024-01-01 09:00 UTC))),
+        ]);
+        let (lat, lon) = interpolate_position(&timed, datetime!(2024-01-01 08:00 UTC)).unwrap();
+        assert_eq!((lat, lon), (2.0, 2.0));
     }
 }

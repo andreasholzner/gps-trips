@@ -108,6 +108,7 @@ mod tests {
             pool,
             "Oslo Hills Walk",
             ActivityType::Hiking,
+            "Europe/Oslo",
             &stats,
             &geojson,
             SAMPLE_GPX,

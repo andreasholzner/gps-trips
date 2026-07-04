@@ -8,6 +8,8 @@ pub mod import;
 pub mod location;
 pub mod paths;
 pub mod photos;
+pub mod placement;
 pub mod repo;
 pub mod state;
 pub mod storage;
+pub mod timezone;

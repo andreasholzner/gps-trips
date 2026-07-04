@@ -15,12 +15,14 @@ pub async fn insert_trip(
     pool: &SqlitePool,
     name: &str,
     activity_type: ActivityType,
+    tz_name: &str,
     stats: &TrackStats,
     geojson: &str,
     gpx: &[u8],
 ) -> Result<i64, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let trip_id = insert_trip_in_tx(&mut tx, name, activity_type, stats, geojson, gpx).await?;
+    let trip_id =
+        insert_trip_in_tx(&mut tx, name, activity_type, tz_name, stats, geojson, gpx).await?;
     tx.commit().await?;
     Ok(trip_id)
 }
@@ -28,10 +30,15 @@ pub async fn insert_trip(
 /// Insert the trip + track rows on an existing transaction, without committing.
 /// Import drives this directly so the trip, its track and its photos all land in
 /// one transaction — a failed import leaves no partial trip (ADR-0004).
+///
+/// `tz_name` (US-4, ADR-0009/0019) is always a concrete IANA timezone at this
+/// point — import always resolves either an explicit owner override or an
+/// auto-guess from the track's start coordinate before calling this.
 pub async fn insert_trip_in_tx(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
     activity_type: ActivityType,
+    tz_name: &str,
     stats: &TrackStats,
     geojson: &str,
     gpx: &[u8],
@@ -42,14 +49,15 @@ pub async fn insert_trip_in_tx(
 
     let trip_id = sqlx::query(
         r#"INSERT INTO trip
-               (name, activity_type, start_time, end_time, duration_secs,
+               (name, activity_type, tz_name, start_time, end_time, duration_secs,
                 distance_m, ascent_m, descent_m,
                 min_lat, min_lon, max_lat, max_lon,
                 created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
     )
     .bind(name)
     .bind(activity_type)
+    .bind(tz_name)
     .bind(&start_time)
     .bind(&end_time)
     .bind(stats.duration_secs)
@@ -149,7 +157,7 @@ pub async fn delete_trip(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error
 /// Fetch full trip detail by id, or `None` if no such trip exists.
 pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, sqlx::Error> {
     sqlx::query(
-        r#"SELECT id, name, activity_type, start_time, end_time,
+        r#"SELECT id, name, activity_type, tz_name, start_time, end_time,
                   distance_m, ascent_m, descent_m, duration_secs,
                   min_lat, min_lon, max_lat, max_lon
            FROM trip WHERE id = ?"#,
@@ -160,11 +168,27 @@ pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, 
     .await
 }
 
+/// Persist a trip's timezone (US-4): used by the lazy backfill path when
+/// photos are added to a trip imported before `tz_name` existed.
+pub async fn set_trip_timezone(
+    pool: &SqlitePool,
+    id: i64,
+    tz_name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE trip SET tz_name = ? WHERE id = ?")
+        .bind(tz_name)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 fn row_to_detail(row: SqliteRow) -> TripDetail {
     TripDetail {
         id: row.get("id"),
         name: row.get("name"),
         activity_type: row.get("activity_type"),
+        tz_name: row.get("tz_name"),
         start_time: row.get("start_time"),
         end_time: row.get("end_time"),
         distance_m: row.get("distance_m"),
@@ -198,6 +222,7 @@ mod tests {
             pool,
             "Oslo Hills Walk",
             ActivityType::Hiking,
+            "Europe/Oslo",
             &stats,
             &geojson,
             SAMPLE_GPX,
@@ -355,6 +380,7 @@ mod tests {
             &db.pool,
             "Older",
             ActivityType::Hiking,
+            "Europe/Oslo",
             &stats_at(datetime!(2024-01-01 08:00 UTC)),
             "{}",
             b"x",
@@ -365,6 +391,7 @@ mod tests {
             &db.pool,
             "Newer",
             ActivityType::Hiking,
+            "Europe/Oslo",
             &stats_at(datetime!(2024-06-01 08:00 UTC)),
             "{}",
             b"x",

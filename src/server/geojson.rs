@@ -1,4 +1,4 @@
-use crate::server::gpx::TrackPoint;
+use crate::server::gpx::{TimedPoint, TrackPoint};
 
 /// Build the GeoJSON blob stored in the `track` table (ADR-0003).
 ///
@@ -52,6 +52,44 @@ pub fn build_track_geojson(points: &[TrackPoint]) -> String {
         }
     })
     .to_string()
+}
+
+/// Parse a stored track GeoJSON blob back into timed points (US-4): the
+/// inverse of `build_track_geojson`'s `coordinates`/`properties.timestamps`
+/// arrays. `handle_add_photos` uses this instead of re-parsing the original
+/// GPX XML (which it doesn't have in memory the way `handle_import` does) —
+/// the trip's track geometry is already parsed and stored, so reading it
+/// back is cheaper than a full XML re-parse. Malformed JSON, or a point whose
+/// timestamp is empty/unparseable (mirrors `build_track_geojson` writing
+/// `""` for a GPX point with no `<time>`), is skipped rather than failing
+/// the whole parse — same best-effort spirit as `gpx::timed_points`.
+pub fn parse_timed_points(geojson: &str) -> Vec<TimedPoint> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(geojson) else {
+        return Vec::new();
+    };
+    let Some(coordinates) = value["geometry"]["coordinates"].as_array() else {
+        return Vec::new();
+    };
+    let Some(timestamps) = value["properties"]["timestamps"].as_array() else {
+        return Vec::new();
+    };
+
+    let mut timed: Vec<TimedPoint> = coordinates
+        .iter()
+        .zip(timestamps)
+        .filter_map(|(coord, ts)| {
+            let lon = coord.get(0)?.as_f64()?;
+            let lat = coord.get(1)?.as_f64()?;
+            let time = time::OffsetDateTime::parse(
+                ts.as_str()?,
+                &time::format_description::well_known::Rfc3339,
+            )
+            .ok()?;
+            Some(TimedPoint { time, lat, lon })
+        })
+        .collect();
+    timed.sort_by_key(|p| p.time);
+    timed
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -128,5 +166,52 @@ mod tests {
         let ts = j["properties"]["timestamps"].as_array().unwrap();
         assert_eq!(ts.len(), 3);
         assert!(ts[0].as_str().unwrap().contains("2024-06-01"));
+    }
+
+    // ── US-4: parse_timed_points (the inverse used by handle_add_photos) ────
+
+    #[test]
+    fn parse_timed_points_round_trips_a_built_geojson_blob() {
+        let track = parse_gpx(SAMPLE_GPX).unwrap();
+        let geojson = build_track_geojson(&track.points);
+
+        let timed = parse_timed_points(&geojson);
+        assert_eq!(timed.len(), 3);
+        assert!((timed[0].lat - 59.9139).abs() < 1e-4);
+        assert!((timed[0].lon - 10.7522).abs() < 1e-4);
+    }
+
+    #[test]
+    fn parse_timed_points_returns_empty_for_malformed_json() {
+        assert!(parse_timed_points("not json").is_empty());
+    }
+
+    #[test]
+    fn parse_timed_points_skips_points_with_an_empty_timestamp() {
+        let geojson = serde_json::json!({
+            "geometry": { "coordinates": [[10.0, 59.0, 0.0], [11.0, 60.0, 0.0]] },
+            "properties": { "timestamps": ["2024-06-01T08:00:00Z", ""] }
+        })
+        .to_string();
+
+        let timed = parse_timed_points(&geojson);
+        assert_eq!(timed.len(), 1);
+        assert!((timed[0].lon - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_timed_points_sorts_out_of_order_timestamps() {
+        let geojson = serde_json::json!({
+            "geometry": { "coordinates": [[11.0, 60.0, 0.0], [10.0, 59.0, 0.0]] },
+            "properties": { "timestamps": ["2024-06-01T09:00:00Z", "2024-06-01T08:00:00Z"] }
+        })
+        .to_string();
+
+        let timed = parse_timed_points(&geojson);
+        assert!(
+            (timed[0].lon - 10.0).abs() < 1e-9,
+            "earlier timestamp first"
+        );
+        assert!((timed[1].lon - 11.0).abs() < 1e-9);
     }
 }

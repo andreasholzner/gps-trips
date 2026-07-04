@@ -4,9 +4,10 @@
 //! Both entry points use it: `POST /api/import` (photos uploaded with the GPX)
 //! and `POST /api/trips/:id/photos` (photos added later). Keeping it in a single
 //! function means the storage/association behaviour cannot drift between the two
-//! (ADR-0004). Each photo's EXIF GPS is extracted here too (US-3), so both entry
-//! points place photos on the map identically. US-4 (timestamp interpolation for
-//! photos without GPS) and thumbnails (US-5) extend this path in their own stories.
+//! (ADR-0004). Each photo's placement (US-3 EXIF GPS, US-4 timestamp
+//! interpolation) is decided by `placement::resolve_placement`; this module
+//! only owns the upload -> blob storage -> DB association mechanics.
+//! Thumbnails (US-5) extend this path in their own story.
 
 use std::sync::Arc;
 
@@ -16,6 +17,7 @@ use crate::models::LocationSource;
 use crate::server::{
     error::AppError,
     location,
+    placement::{resolve_placement, TripPhotoContext},
     repo::{self, NewPhoto},
     storage::BlobStore,
 };
@@ -37,6 +39,7 @@ pub async fn ingest_photos(
     tx: &mut Transaction<'_, Sqlite>,
     store: &Arc<dyn BlobStore>,
     trip_id: i64,
+    ctx: &TripPhotoContext<'_>,
     photos: Vec<UploadedPhoto>,
 ) -> Result<Vec<i64>, AppError> {
     let mut ordinal = repo::count_photos(tx, trip_id).await?;
@@ -45,20 +48,17 @@ pub async fn ingest_photos(
     for photo in photos {
         let key = blob_key(trip_id, ordinal, &photo.original_name);
         let byte_len = photo.bytes.len() as i64;
-        // Extract GPS before the bytes move into the store (US-3). Best-effort:
-        // no GPS, unparseable EXIF, or an unsupported format all just mean
-        // `location_source = "none"`, never a failed import.
-        let (bytes, gps) = extract_gps(photo.bytes).await;
-        let (lat, lon, location_source) = match gps {
-            Some(pos) => (Some(pos.lat), Some(pos.lon), LocationSource::Exif),
-            None => {
-                tracing::debug!(
-                    photo = %photo.original_name,
-                    "no usable EXIF GPS; location_source = none"
-                );
-                (None, None, LocationSource::None)
-            }
-        };
+        // Extract EXIF metadata before the bytes move into the store, then
+        // decide where the photo goes (US-3, US-4) — best-effort throughout,
+        // never a failed import.
+        let (bytes, metadata) = extract_photo_metadata(photo.bytes).await;
+        let (lat, lon, location_source) = resolve_placement(metadata, ctx);
+        if location_source == LocationSource::None {
+            tracing::debug!(
+                photo = %photo.original_name,
+                "no usable EXIF GPS or timestamp; location_source = none"
+            );
+        }
         put_blob(store, key.clone(), bytes).await?;
         let id = repo::insert_photo(
             tx,
@@ -119,15 +119,15 @@ async fn put_blob(store: &Arc<dyn BlobStore>, key: String, bytes: Vec<u8>) -> Re
     Ok(())
 }
 
-/// Run EXIF GPS extraction off the async runtime (US-3): parsing an
+/// Run EXIF extraction off the async runtime (US-3, US-4): parsing an
 /// untrusted upload's EXIF/TIFF structure is synchronous, potentially
 /// expensive work, the same class of risk `put_blob` offloads for the same
 /// reason (ADR-0004). Returns the bytes back so the caller can still move
 /// them into the `BlobStore` afterward without a copy.
-async fn extract_gps(bytes: Vec<u8>) -> (Vec<u8>, Option<location::GpsPosition>) {
+async fn extract_photo_metadata(bytes: Vec<u8>) -> (Vec<u8>, location::PhotoMetadata) {
     tokio::task::spawn_blocking(move || {
-        let gps = location::extract_gps(&bytes);
-        (bytes, gps)
+        let metadata = location::extract_photo_metadata(&bytes);
+        (bytes, metadata)
     })
     .await
     .expect("EXIF extraction task panicked")
@@ -136,7 +136,12 @@ async fn extract_gps(bytes: Vec<u8>) -> (Vec<u8>, Option<location::GpsPosition>)
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 //
 // The DB and the BlobStore are internal collaborators, so both are real: a temp
-// SQLite file and a `LocalDisk` rooted at a `tempdir`.
+// SQLite file and a `LocalDisk` rooted at a `tempdir`. The GPS/interpolation/
+// none placement *decision* itself (priority, edge cases) is unit-tested
+// directly and exhaustively in `placement.rs`, without a database — the tests
+// here focus on the storage/DB-association mechanics `ingest_photos` owns,
+// plus a couple of thin end-to-end checks that it wires `resolve_placement`'s
+// output through correctly.
 
 #[cfg(test)]
 mod tests {
@@ -146,6 +151,13 @@ mod tests {
     use crate::server::gpx::TrackStats;
     use crate::server::repo::{insert_trip, list_photos};
     use crate::server::storage::LocalDisk;
+
+    fn no_track_ctx() -> TripPhotoContext<'static> {
+        TripPhotoContext {
+            timed_points: &[],
+            tz_name: None,
+        }
+    }
 
     fn test_store() -> (Arc<dyn BlobStore>, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -174,9 +186,17 @@ mod tests {
             max_lat: 0.0,
             max_lon: 0.0,
         };
-        insert_trip(pool, "Trip", ActivityType::Hiking, &stats, "{}", b"x")
-            .await
-            .unwrap()
+        insert_trip(
+            pool,
+            "Trip",
+            ActivityType::Hiking,
+            "Europe/Oslo",
+            &stats,
+            "{}",
+            b"x",
+        )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
@@ -190,6 +210,7 @@ mod tests {
             &mut tx,
             &store,
             trip_id,
+            &no_track_ctx(),
             vec![photo("a.jpg", b"AAA"), photo("b.jpg", b"BBBB")],
         )
         .await
@@ -214,9 +235,15 @@ mod tests {
 
         for batch in [b"first".as_slice(), b"second", b"third"] {
             let mut tx = db.pool.begin().await.unwrap();
-            ingest_photos(&mut tx, &store, trip_id, vec![photo("p.jpg", batch)])
-                .await
-                .unwrap();
+            ingest_photos(
+                &mut tx,
+                &store,
+                trip_id,
+                &no_track_ctx(),
+                vec![photo("p.jpg", batch)],
+            )
+            .await
+            .unwrap();
             tx.commit().await.unwrap();
         }
 
@@ -228,43 +255,33 @@ mod tests {
         assert_eq!(store.get(&listed[2].blob_key).unwrap(), b"third");
     }
 
-    // ── US-3: photos with EXIF GPS appear on the map ─────────────────────
+    // ── Thin end-to-end checks: ingest_photos wires resolve_placement's
+    // output through to storage/DB correctly (US-3/US-4 exhaustive coverage
+    // of the decision itself lives in placement.rs) ──────────────────────
 
     #[tokio::test]
-    async fn us3_ingest_sets_location_source_exif_and_coordinates_for_geotagged_photo() {
+    async fn us3_ingest_stores_the_decided_location_source_and_coordinates() {
         let db = TestDb::new().await;
         let (store, _dir) = test_store();
         let trip_id = a_trip(&db.pool).await;
         let geotagged = location::fixtures::geotagged_bytes(45.5, 10.26);
 
         let mut tx = db.pool.begin().await.unwrap();
-        ingest_photos(&mut tx, &store, trip_id, vec![photo("a.jpg", &geotagged)])
-            .await
-            .unwrap();
+        ingest_photos(
+            &mut tx,
+            &store,
+            trip_id,
+            &no_track_ctx(),
+            vec![photo("a.jpg", &geotagged)],
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
 
         let listed = list_photos(&db.pool, trip_id).await.unwrap();
         assert_eq!(listed[0].location_source, LocationSource::Exif);
         assert_eq!(listed[0].lat, Some(45.5));
         assert_eq!(listed[0].lon, Some(10.26));
-    }
-
-    #[tokio::test]
-    async fn us3_ingest_sets_location_source_none_for_photo_without_gps() {
-        let db = TestDb::new().await;
-        let (store, _dir) = test_store();
-        let trip_id = a_trip(&db.pool).await;
-
-        let mut tx = db.pool.begin().await.unwrap();
-        ingest_photos(&mut tx, &store, trip_id, vec![photo("a.jpg", b"AAA")])
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
-
-        let listed = list_photos(&db.pool, trip_id).await.unwrap();
-        assert_eq!(listed[0].location_source, LocationSource::None);
-        assert_eq!(listed[0].lat, None);
-        assert_eq!(listed[0].lon, None);
     }
 
     #[tokio::test]
@@ -281,6 +298,7 @@ mod tests {
             &mut tx,
             &store,
             trip_id,
+            &no_track_ctx(),
             vec![photo("a.jpg", b"\xFF\xD8\xFF-fake-jpeg")],
         )
         .await;

@@ -19,6 +19,9 @@ geo  = "0.28"
 time = { version = "0.3", features = ["formatting", "macros"] }
 # EXIF GPS extraction (US-3, ADR-0017)
 kamadak-exif = "0.6"
+# Timezone lookup for photo-timestamp interpolation (US-4, ADR-0019)
+tzf-rs = { version = "1.3", default-features = false, features = ["bundled"] }
+time-tz = "2"
 
 # Serialization (track GeoJSON blob + JSON models)
 serde      = { version = "1", features = ["derive"] }

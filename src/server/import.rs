@@ -4,15 +4,18 @@ use axum::{
 };
 use time::OffsetDateTime;
 
-use crate::models::ActivityType;
+use crate::models::{ActivityType, TripDetail};
 use crate::server::{
     error::AppError,
-    geojson::build_track_geojson,
-    gpx::{compute_stats, parse_gpx},
+    geojson::{self, build_track_geojson},
+    gpx::{self, compute_stats, parse_gpx, TimedPoint},
     photos::{ingest_photos, UploadedPhoto},
+    placement::TripPhotoContext,
     repo::{self, insert_trip_in_tx},
     state::AppState,
+    timezone,
 };
+use sqlx::SqlitePool;
 
 /// `POST /api/import` — accepts a `multipart/form-data` body with a required
 /// `gpx` file field, optional `name` and `activity_type` text fields, and any
@@ -31,6 +34,7 @@ pub async fn handle_import(
     let mut gpx_bytes: Option<Vec<u8>> = None;
     let mut form_name: Option<String> = None;
     let mut form_activity: Option<String> = None;
+    let mut form_timezone: Option<String> = None;
     let mut photos: Vec<UploadedPhoto> = Vec::new();
 
     while let Some(field) = multipart
@@ -48,6 +52,7 @@ pub async fn handle_import(
             }
             Some("name") => form_name = Some(read_text(field).await?),
             Some("activity_type") => form_activity = Some(read_text(field).await?),
+            Some("timezone") => form_timezone = Some(read_text(field).await?),
             Some("photos") | Some("photo") => {
                 if let Some(photo) = read_photo_field(field).await? {
                     photos.push(photo);
@@ -65,12 +70,20 @@ pub async fn handle_import(
 
     let name = resolve_name(form_name, parsed.name, stats.start_time);
     let activity = resolve_activity_type(form_activity)?;
+    let guessed_tz = timezone::guess_timezone_from_track(&parsed.points);
+    let tz_name = resolve_timezone(form_timezone, guessed_tz)?;
+    let timed_points = gpx::timed_points(&parsed.points);
 
     // Trip, track and photos commit in one transaction, so a failed import
     // leaves no trip behind (reliability NFR; ADR-0004).
     let mut tx = state.pool.begin().await?;
-    let trip_id = insert_trip_in_tx(&mut tx, &name, activity, &stats, &geojson, &raw).await?;
-    ingest_photos(&mut tx, &state.store, trip_id, photos).await?;
+    let trip_id =
+        insert_trip_in_tx(&mut tx, &name, activity, &tz_name, &stats, &geojson, &raw).await?;
+    let ctx = TripPhotoContext {
+        timed_points: &timed_points,
+        tz_name: Some(&tz_name),
+    };
+    ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
     Ok(Redirect::to(&format!("/trips/{trip_id}")))
@@ -84,9 +97,9 @@ pub async fn handle_add_photos(
     Path(trip_id): Path<i64>,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
-    if repo::get_trip(&state.pool, trip_id).await?.is_none() {
-        return Err(AppError::NotFound);
-    }
+    let trip = repo::get_trip(&state.pool, trip_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
 
     let mut photos: Vec<UploadedPhoto> = Vec::new();
     while let Some(field) = multipart
@@ -101,11 +114,49 @@ pub async fn handle_add_photos(
         }
     }
 
+    let (timed_points, tz_name) = resolve_photo_context(&state.pool, trip_id, trip).await?;
+
+    let ctx = TripPhotoContext {
+        timed_points: &timed_points,
+        tz_name: Some(&tz_name),
+    };
     let mut tx = state.pool.begin().await?;
-    ingest_photos(&mut tx, &state.store, trip_id, photos).await?;
+    ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
     Ok(Redirect::to(&format!("/trips/{trip_id}")))
+}
+
+/// Resolve the track's timed points and a concrete timezone for adding photos
+/// to an existing trip (US-4). Reads the trip's already-parsed GeoJSON
+/// (`repo::get_track_geojson`) rather than re-parsing the original GPX XML —
+/// this endpoint doesn't have the track in memory the way `handle_import`
+/// does, and the stored GeoJSON already carries the same coordinate/timestamp
+/// data in parsed form.
+///
+/// Self-healing: a trip imported before `tz_name` existed gets it computed
+/// here (from the track's first point) and persisted, so it's stable and
+/// concrete from then on.
+async fn resolve_photo_context(
+    pool: &SqlitePool,
+    trip_id: i64,
+    trip: TripDetail,
+) -> Result<(Vec<TimedPoint>, String), AppError> {
+    let timed_points = match repo::get_track_geojson(pool, trip_id).await? {
+        Some(geojson) => geojson::parse_timed_points(&geojson),
+        None => Vec::new(),
+    };
+
+    let tz_name = match trip.tz_name {
+        Some(name) => name,
+        None => {
+            let guessed = timezone::guess_timezone_from_timed_points(&timed_points);
+            repo::set_trip_timezone(pool, trip_id, &guessed).await?;
+            guessed
+        }
+    };
+
+    Ok((timed_points, tz_name))
 }
 
 async fn read_text(field: Field<'_>) -> Result<String, AppError> {
@@ -170,11 +221,23 @@ fn resolve_activity_type(form_activity: Option<String>) -> Result<ActivityType, 
     }
 }
 
+/// Resolve the `timezone` form field into a concrete IANA timezone (US-4,
+/// ADR-0009/0019): a blank or missing field uses `guessed` (auto-detected
+/// from the track's start coordinate); an explicit value must be a
+/// recognized IANA name, or the request is rejected as a 400.
+fn resolve_timezone(form_timezone: Option<String>, guessed: String) -> Result<String, AppError> {
+    match form_timezone.filter(|t| !t.trim().is_empty()) {
+        None => Ok(guessed),
+        Some(value) if timezone::is_known_timezone(&value) => Ok(value),
+        Some(value) => Err(AppError::BadRequest(format!("Unknown timezone: {value:?}"))),
+    }
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_activity_type, resolve_name};
+    use super::{resolve_activity_type, resolve_name, resolve_timezone};
     use crate::models::ActivityType;
     use time::macros::datetime;
 
@@ -238,5 +301,38 @@ mod tests {
     #[test]
     fn resolve_activity_type_rejects_an_unrecognized_value() {
         assert!(resolve_activity_type(Some("unicycling".to_string())).is_err());
+    }
+
+    // US-4: the trip's timezone assumption for photo-timestamp interpolation.
+
+    #[test]
+    fn resolve_timezone_uses_the_guess_when_missing() {
+        assert_eq!(
+            resolve_timezone(None, "Europe/Oslo".to_string()).unwrap(),
+            "Europe/Oslo"
+        );
+    }
+
+    #[test]
+    fn resolve_timezone_uses_the_guess_when_blank() {
+        assert_eq!(
+            resolve_timezone(Some("   ".to_string()), "Europe/Oslo".to_string()).unwrap(),
+            "Europe/Oslo"
+        );
+    }
+
+    #[test]
+    fn resolve_timezone_accepts_a_recognized_override() {
+        assert_eq!(
+            resolve_timezone(Some("Europe/Paris".to_string()), "Europe/Oslo".to_string()).unwrap(),
+            "Europe/Paris"
+        );
+    }
+
+    #[test]
+    fn resolve_timezone_rejects_an_unrecognized_override() {
+        assert!(
+            resolve_timezone(Some("Not/A_Zone".to_string()), "Europe/Oslo".to_string()).is_err()
+        );
     }
 }

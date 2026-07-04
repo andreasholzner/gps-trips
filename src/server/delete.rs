@@ -60,8 +60,16 @@ mod tests {
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
     use crate::server::photos::{ingest_photos, UploadedPhoto};
+    use crate::server::placement::TripPhotoContext;
     use crate::server::repo::{get_trip, insert_trip, list_photos};
     use crate::server::storage::LocalDisk;
+
+    fn no_track_ctx() -> TripPhotoContext<'static> {
+        TripPhotoContext {
+            timed_points: &[],
+            tz_name: None,
+        }
+    }
 
     fn test_store() -> (Arc<dyn BlobStore>, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -82,9 +90,17 @@ mod tests {
             max_lat: 0.0,
             max_lon: 0.0,
         };
-        insert_trip(pool, "Trip", ActivityType::Hiking, &stats, "{}", b"x")
-            .await
-            .unwrap()
+        insert_trip(
+            pool,
+            "Trip",
+            ActivityType::Hiking,
+            "Europe/Oslo",
+            &stats,
+            "{}",
+            b"x",
+        )
+        .await
+        .unwrap()
     }
 
     fn photo(name: &str, bytes: &[u8]) -> UploadedPhoto {
@@ -106,6 +122,7 @@ mod tests {
             &mut tx,
             &store,
             trip_id,
+            &no_track_ctx(),
             vec![photo("a.jpg", b"AAA"), photo("b.jpg", b"BBB")],
         )
         .await
@@ -143,9 +160,15 @@ mod tests {
         let trip_id = a_trip(&db.pool).await;
 
         let mut tx = db.pool.begin().await.unwrap();
-        ingest_photos(&mut tx, &store, trip_id, vec![photo("a.jpg", b"AAA")])
-            .await
-            .unwrap();
+        ingest_photos(
+            &mut tx,
+            &store,
+            trip_id,
+            &no_track_ctx(),
+            vec![photo("a.jpg", b"AAA")],
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
 
         // Simulate a prior partial failure: the blob is already gone from disk.

@@ -297,6 +297,11 @@ const IMPORT_HTML: &str = r#"<!DOCTYPE html>
       </select>
     </p>
     <p>
+      <label for="timezone">Photo timezone override (optional)</label><br>
+      <input type="text" id="timezone" name="timezone"
+             placeholder="auto-detected from the track's start location if left blank, e.g. Europe/Oslo">
+    </p>
+    <p>
       <label for="gpx">GPX file</label><br>
       <input type="file" id="gpx" name="gpx" accept=".gpx,application/gpx+xml" required>
     </p>
@@ -343,6 +348,7 @@ fn render_detail(trip: &TripDetail) -> String {
       data-trip-id="{id}">
   <h1>{name}</h1>
   <p><strong>Activity:</strong> {activity}</p>
+  <p><strong>Photo timestamp timezone:</strong> {tz_name}</p>
   <p><strong>Start:</strong> {start}</p>
   <ul>
     <li>Distance: {distance:.2} km</li>
@@ -373,6 +379,7 @@ fn render_detail(trip: &TripDetail) -> String {
         id = trip.id,
         name = html_escape(&trip.name),
         activity = html_escape(trip.activity_type.as_str()),
+        tz_name = html_escape(trip.tz_name.as_deref().unwrap_or("unknown")),
         start = html_escape(&start),
         distance = distance_km,
         ascent = ascent,
