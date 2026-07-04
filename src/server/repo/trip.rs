@@ -443,6 +443,7 @@ mod tests {
                 content_type: Some("image/jpeg"),
                 byte_len: 10,
                 blob_key: "trips/1/0000-a.jpg",
+                thumbnail_key: None,
                 lat: None,
                 lon: None,
                 location_source: LocationSource::None,

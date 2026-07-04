@@ -69,8 +69,10 @@ fn ascii_bytes(s: &str) -> Vec<u8> {
 }
 
 const TYPE_ASCII: u16 = 2;
+const TYPE_SHORT: u16 = 3;
 const TYPE_LONG: u16 = 4;
 const TYPE_RATIONAL: u16 = 5;
+const TAG_ORIENTATION: u16 = 0x0112;
 const TAG_GPS_INFO_IFD_POINTER: u16 = 0x8825;
 const TAG_GPS_LATITUDE_REF: u16 = 1;
 const TAG_GPS_LATITUDE: u16 = 2;
@@ -260,4 +262,48 @@ pub fn geotagged_bytes_with_capture_time(lat: f64, lon: f64, datetime_original: 
         (TAG_GPS_INFO_IFD_POINTER, gps),
         (TAG_EXIF_IFD_POINTER, exif),
     ])
+}
+
+/// A minimal TIFF/EXIF byte stream carrying only an `Orientation` tag (IFD0,
+/// no GPS/Exif sub-IFD) — same isolation style as `capture_time_bytes`, since
+/// `read_orientation` only needs IFD0 to have the tag, nothing else.
+pub fn orientation_bytes(value: u16) -> Vec<u8> {
+    let mut ifd0 = Vec::new();
+    ifd0.extend_from_slice(&u16_le(1)); // 1 entry
+    ifd0.extend_from_slice(&ifd_entry(
+        TAG_ORIENTATION,
+        TYPE_SHORT,
+        1,
+        u32_le(value as u32),
+    ));
+    ifd0.extend_from_slice(&u32_le(0)); // no next IFD
+
+    let mut out = Vec::new();
+    out.extend_from_slice(b"II");
+    out.extend_from_slice(&u16_le(42));
+    out.extend_from_slice(&u32_le(TIFF_HEADER_LEN));
+    out.extend_from_slice(&ifd0);
+    out
+}
+
+/// A TIFF/EXIF byte stream whose `Orientation` tag is a non-numeric (ASCII)
+/// value — `read_orientation` must treat this as absent rather than
+/// misreading garbage as a value.
+pub fn malformed_orientation_bytes() -> Vec<u8> {
+    let mut ifd0 = Vec::new();
+    ifd0.extend_from_slice(&u16_le(1)); // 1 entry
+    ifd0.extend_from_slice(&ifd_entry(
+        TAG_ORIENTATION,
+        TYPE_ASCII,
+        2,
+        inline_ascii(b'X'),
+    ));
+    ifd0.extend_from_slice(&u32_le(0)); // no next IFD
+
+    let mut out = Vec::new();
+    out.extend_from_slice(b"II");
+    out.extend_from_slice(&u16_le(42));
+    out.extend_from_slice(&u32_le(TIFF_HEADER_LEN));
+    out.extend_from_slice(&ifd0);
+    out
 }

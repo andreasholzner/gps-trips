@@ -25,6 +25,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0017](./0017-kamadak-exif-for-gps-extraction.md) | Use `kamadak-exif` for EXIF GPS extraction | Accepted |
 | [0018](./0018-enums-for-closed-string-sets.md) | Prefer Rust enums over closed sets of string values | Accepted |
 | [0019](./0019-tzf-rs-time-tz-for-timezone-lookup.md) | Use `tzf-rs` + `time-tz` for timezone lookup | Accepted |
+| [0020](./0020-image-crate-for-thumbnails.md) | Use the `image` crate for thumbnail generation | Accepted |
 
 ## Conventions
 

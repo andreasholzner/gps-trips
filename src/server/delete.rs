@@ -1,8 +1,9 @@
 //! Trip deletion — coordinates the DB delete (which cascades to `track` and
-//! `photo` rows) with removing the trip's photo blobs from the `BlobStore`
-//! (US-9). Kept separate from `repo.rs` (DB-only) and `photos.rs` (ingestion),
-//! mirroring how `import.rs`/`photos.rs` sit alongside `repo.rs` rather than
-//! folding every concern into one file.
+//! `photo` rows) with removing the trip's photo blobs, and their generated
+//! thumbnails (US-5), from the `BlobStore` (US-9). Kept separate from
+//! `repo.rs` (DB-only) and `photos.rs` (ingestion), mirroring how
+//! `import.rs`/`photos.rs` sit alongside `repo.rs` rather than folding every
+//! concern into one file.
 
 use std::sync::Arc;
 
@@ -10,18 +11,19 @@ use sqlx::SqlitePool;
 
 use crate::server::{error::AppError, repo, storage::BlobStore};
 
-/// Delete a trip and its photo blobs (US-9). Returns `false` if no such trip
-/// existed (nothing was deleted, no blobs touched); `true` otherwise.
+/// Delete a trip and its photo blobs, including generated thumbnails (US-5).
+/// Returns `false` if no such trip existed (nothing was deleted, no blobs
+/// touched); `true` otherwise.
 ///
 /// Ordering: the trip row is deleted *first* (cascading to `track`/`photo`),
-/// then each former photo's blob is best-effort removed from the `BlobStore`.
-/// The DB delete is the atomicity boundary — once it commits, the DB has no
-/// dangling references, which is what the rest of the app depends on. Blob
-/// removal afterwards is filesystem I/O with no transactional relationship to
-/// the DB; if a blob delete fails it is logged and skipped rather than
-/// failing the whole request — a stray orphaned file is a better failure mode
-/// here than a response that looks like the delete didn't happen when the
-/// trip is, in fact, already gone.
+/// then each former photo's blob (and thumbnail blob, if it has one) is
+/// best-effort removed from the `BlobStore`. The DB delete is the atomicity
+/// boundary — once it commits, the DB has no dangling references, which is
+/// what the rest of the app depends on. Blob removal afterwards is filesystem
+/// I/O with no transactional relationship to the DB; if a blob delete fails
+/// it is logged and skipped rather than failing the whole request — a stray
+/// orphaned file is a better failure mode here than a response that looks
+/// like the delete didn't happen when the trip is, in fact, already gone.
 pub async fn delete_trip(
     pool: &SqlitePool,
     store: &Arc<dyn BlobStore>,
@@ -34,6 +36,9 @@ pub async fn delete_trip(
     }
     for photo in photos {
         delete_blob(store, photo.blob_key).await;
+        if let Some(thumbnail_key) = photo.thumbnail_key {
+            delete_blob(store, thumbnail_key).await;
+        }
     }
     Ok(true)
 }
@@ -63,6 +68,7 @@ mod tests {
     use crate::server::placement::TripPhotoContext;
     use crate::server::repo::{get_trip, insert_trip, list_photos};
     use crate::server::storage::LocalDisk;
+    use crate::server::thumbnail::fixtures::valid_jpeg_bytes;
 
     fn no_track_ctx() -> TripPhotoContext<'static> {
         TripPhotoContext {
@@ -151,6 +157,37 @@ mod tests {
         let db = TestDb::new().await;
         let (store, _dir) = test_store();
         assert!(!delete_trip(&db.pool, &store, 999).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn us5_delete_trip_also_removes_a_photos_thumbnail_blob() {
+        let db = TestDb::new().await;
+        let (store, _dir) = test_store();
+        let trip_id = a_trip(&db.pool).await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        ingest_photos(
+            &mut tx,
+            &store,
+            trip_id,
+            &no_track_ctx(),
+            vec![photo("a.jpg", &valid_jpeg_bytes(20, 10))],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        let thumbnail_key = list_photos(&db.pool, trip_id).await.unwrap()[0]
+            .thumbnail_key
+            .clone()
+            .expect("a valid image must yield a thumbnail");
+
+        let deleted = delete_trip(&db.pool, &store, trip_id).await.unwrap();
+
+        assert!(deleted);
+        assert!(
+            store.get(&thumbnail_key).is_err(),
+            "thumbnail blob {thumbnail_key} should be gone"
+        );
     }
 
     #[tokio::test]

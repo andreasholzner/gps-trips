@@ -26,7 +26,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-2** | ✅ | As the owner, I **attach photos** to a trip so they are stored alongside the track. | Photos uploaded with the import are stored and associated with the trip. Photos can be added to a trip both during the gpx import and at a later time. |
 | **US-3** | ✅ | As the owner, photos with **EXIF GPS** appear on the map where they were taken. | A geotagged photo shows a marker at its EXIF coordinates; `location_source = exif`. |
 | **US-4** | ✅ | As the owner, photos **without GPS** are placed by matching their timestamp to the track, so untagged shots still appear. | A non-geotagged photo whose time falls within the track range gets an interpolated position (`location_source = interpolated`). A photo outside the track time range is left unplaced (`location_source = none`) and not shown on the map. |
-| **US-5** | 📋 | As the owner, **thumbnails** are generated automatically on import so galleries and maps load fast. | Each photo has a generated thumbnail; originals are kept untouched; EXIF orientation is honored. |
+| **US-5** | ✅ | As the owner, **thumbnails** are generated automatically on import so galleries and maps load fast. | Each photo has a generated thumbnail; originals are kept untouched; EXIF orientation is honored. |
 | **US-6** | ✅ | As the owner, I **browse a list of all trips** with summary stats so I can scan my history. | List shows each trip's name, date, distance, ascent, and duration; loads without reading track geometry. |
 | **US-7** | ✅ | As the owner, a **trip detail page** lets me relive a trip. | Shows the track on an OSM map, an elevation profile, and a photo gallery with map markers. *(Map + elevation + gallery done; photo map markers land with US-3/US-4.)* |
 | **US-8** | ✅ | As the owner, trip **stats are computed automatically**, never entered by hand. | Distance, ascent, descent, duration, and bounding box are derived from the GPX at import. |
@@ -70,6 +70,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 - US-21 → ADR-0003 (original GPX stored in DB with the track), ADR-0008 (download endpoint)
 - US-2 → ADR-0004 (import + add-photos-later via the same pipeline)
 - US-3/US-4 → ADR-0009 (timezone normalization)
+- US-5 → ADR-0007 (BlobStore holds originals + thumbnails), ADR-0020 (image crate for thumbnail generation)
 - US-7 → ADR-0005 (Leaflet/OSM), ADR-0006 (uPlot elevation chart)
 - US-11/US-15 → ADR-0008 (write API: import metadata + edit endpoint)
 - US-13/US-14 → ADR-0011 (filtering, search & geographic queries on SQLite)

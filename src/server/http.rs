@@ -21,11 +21,15 @@ use crate::server::{
 
 /// The JSON shape returned by `GET /api/trips/:id/photos` (ADR-0008).
 ///
-/// Wraps the DB `Photo` record and adds the public `url` that the client uses to
-/// fetch the image bytes. Constructed at the HTTP boundary so the DB model stays
-/// a plain record with no HTTP concerns. `lat`/`lon`/`location_source` (US-3)
-/// are derived once at import and persisted, so — unlike `url` — they travel
-/// straight from `photo` with no extra constructor argument (ADR-0015).
+/// Wraps the DB `Photo` record and adds the public `url`/`thumbnail_url` the
+/// client uses to fetch the image bytes. Constructed at the HTTP boundary so
+/// the DB model stays a plain record with no HTTP concerns. `lat`/`lon`/
+/// `location_source` (US-3) are derived once at import and persisted, so —
+/// unlike `url` — they travel straight from `photo` with no extra constructor
+/// argument (ADR-0015). `thumbnail_url` (US-5) is always populated — it falls
+/// back to the full-size `url` when a photo has no thumbnail (generation
+/// failed, or the photo predates US-5) — so the client never has to branch on
+/// its absence.
 #[derive(Serialize)]
 struct PhotoResponse {
     id: i64,
@@ -35,13 +39,14 @@ struct PhotoResponse {
     byte_len: i64,
     created_at: String,
     url: String,
+    thumbnail_url: String,
     lat: Option<f64>,
     lon: Option<f64>,
     location_source: LocationSource,
 }
 
 impl PhotoResponse {
-    fn from_photo(photo: Photo, url: String) -> Self {
+    fn from_photo(photo: Photo, url: String, thumbnail_url: String) -> Self {
         Self {
             id: photo.id,
             trip_id: photo.trip_id,
@@ -50,6 +55,7 @@ impl PhotoResponse {
             byte_len: photo.byte_len,
             created_at: photo.created_at,
             url,
+            thumbnail_url,
             lat: photo.lat,
             lon: photo.lon,
             location_source: photo.location_source,
@@ -170,7 +176,12 @@ async fn list_trip_photos(
         .into_iter()
         .map(|p| {
             let url = state.store.url_for(&p.blob_key);
-            PhotoResponse::from_photo(p, url)
+            let thumbnail_url = p
+                .thumbnail_key
+                .as_deref()
+                .map(|k| state.store.url_for(k))
+                .unwrap_or_else(|| url.clone());
+            PhotoResponse::from_photo(p, url, thumbnail_url)
         })
         .collect();
     Ok(Json(photos))

@@ -105,14 +105,17 @@ function drawMap(track) {
 
 // Plot a marker for every photo that has a position: US-3's "exif" source
 // today, and US-4's future "interpolated" source with no changes needed here
-// — only "none" (lat/lon both null) is skipped.
+// — only "none" (lat/lon both null) is skipped. Uses `thumbnail_url` (US-5),
+// which the server always populates — falling back to the full-size `url`
+// itself when a photo has no generated thumbnail — so no null-check is needed
+// here.
 function drawPhotoMarkers(map, photos) {
   if (!map || !photos) return;
   photos
     .filter((p) => p.lat != null && p.lon != null)
     .forEach((p) => {
       const img = document.createElement("img");
-      img.src = p.url;
+      img.src = p.thumbnail_url;
       img.alt = p.original_name;
       img.style.maxWidth = "150px";
       L.marker([p.lat, p.lon]).addTo(map).bindPopup(img);
@@ -120,6 +123,7 @@ function drawPhotoMarkers(map, photos) {
 }
 
 // Render the photo gallery: one <img> per photo, or a "no photos" message.
+// Uses `thumbnail_url` (US-5) for the same reason `drawPhotoMarkers` does.
 function drawGallery(photos) {
   const container = document.getElementById("gallery");
   if (!container) return;
@@ -129,7 +133,7 @@ function drawGallery(photos) {
   }
   photos.forEach((photo) => {
     const img = document.createElement("img");
-    img.src = photo.url;
+    img.src = photo.thumbnail_url;
     img.alt = photo.original_name;
     img.style.maxHeight = "200px";
     img.style.marginRight = "0.5rem";

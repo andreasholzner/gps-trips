@@ -30,12 +30,17 @@ pub struct CaptureTime {
 }
 
 /// The EXIF metadata `ingest_photos` needs from one photo, read in a single
-/// container-parse pass (US-3's GPS and US-4's capture time are both ordinary
-/// EXIF fields, so there is no reason to open the container twice).
+/// container-parse pass (US-3's GPS, US-4's capture time, and US-5's
+/// orientation are all ordinary EXIF fields, so there is no reason to open
+/// the container more than once).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PhotoMetadata {
     pub gps: Option<GpsPosition>,
     pub capture_time: Option<CaptureTime>,
+    /// The raw EXIF `Orientation` tag value (1-8), if present and numeric.
+    /// Interpreting what each value means is `thumbnail.rs`'s job (US-5,
+    /// ADR-0020) — this module only reads the tag.
+    pub orientation: Option<u16>,
 }
 
 /// Read a photo's EXIF GPS position and capture time, if present and valid.
@@ -50,6 +55,7 @@ pub fn extract_photo_metadata(bytes: &[u8]) -> PhotoMetadata {
     PhotoMetadata {
         gps: read_gps(&exif),
         capture_time: read_capture_time(&exif),
+        orientation: read_orientation(&exif),
     }
 }
 
@@ -81,6 +87,17 @@ fn read_capture_time(exif: &exif::Exif) -> Option<CaptureTime> {
         naive: time::PrimitiveDateTime::new(date, time_of_day),
         embedded_offset_minutes: dt.offset.map(|m| m as i32),
     })
+}
+
+/// `None` if `Orientation` is absent or isn't a numeric value (e.g. a
+/// malformed tag). No range validation beyond that — an out-of-range numeric
+/// value (outside 1-8) is passed through and `thumbnail.rs` treats it as a
+/// no-op, the same "don't invalidate the rest" stance `read_capture_time`
+/// takes for a malformed `OffsetTimeOriginal`.
+fn read_orientation(exif: &exif::Exif) -> Option<u16> {
+    let field = exif.get_field(Tag::Orientation, In::PRIMARY)?;
+    let value = field.value.get_uint(0)?;
+    u16::try_from(value).ok()
 }
 
 /// The raw bytes of an EXIF ASCII field's first (and, for the fields this
@@ -172,7 +189,7 @@ pub mod fixtures;
 mod tests {
     use super::fixtures::{
         build_tiff, capture_time_bytes, geotagged_bytes_with_capture_time, gps_ifd,
-        gps_ifd_with_malformed_ref,
+        gps_ifd_with_malformed_ref, malformed_orientation_bytes, orientation_bytes,
     };
     use super::*;
     use time::macros::datetime;
@@ -344,5 +361,25 @@ mod tests {
             .capture_time
             .expect("capture time must still be read");
         assert_eq!(capture.naive, datetime!(2024-06-01 08:30:00));
+    }
+
+    // ── US-5: orientation extraction ─────────────────────────────────────
+
+    #[test]
+    fn us5_extract_photo_metadata_reads_a_present_orientation() {
+        let bytes = orientation_bytes(6);
+        assert_eq!(extract_photo_metadata(&bytes).orientation, Some(6));
+    }
+
+    #[test]
+    fn us5_extract_photo_metadata_orientation_is_none_when_absent() {
+        let bytes = build_tiff(None);
+        assert_eq!(extract_photo_metadata(&bytes).orientation, None);
+    }
+
+    #[test]
+    fn us5_extract_photo_metadata_orientation_is_none_for_a_non_numeric_tag() {
+        let bytes = malformed_orientation_bytes();
+        assert_eq!(extract_photo_metadata(&bytes).orientation, None);
     }
 }

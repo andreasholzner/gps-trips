@@ -114,6 +114,7 @@ mod tests {
                 lon: 10.26,
             }),
             capture_time: None,
+            orientation: None,
         };
         let (lat, lon, source) = resolve_placement(metadata, &no_track_ctx());
         assert_eq!(source, LocationSource::Exif);
@@ -142,6 +143,7 @@ mod tests {
                 naive: datetime!(2024-06-01 11:00:00),
                 embedded_offset_minutes: None,
             }),
+            orientation: None,
         };
         let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
         assert_eq!(source, LocationSource::Interpolated);
@@ -159,6 +161,7 @@ mod tests {
                 naive: datetime!(2024-06-01 23:00:00),
                 embedded_offset_minutes: None,
             }),
+            orientation: None,
         };
         let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
         assert_eq!(source, LocationSource::None);
@@ -174,6 +177,7 @@ mod tests {
                 naive: datetime!(2024-06-01 09:00:00),
                 embedded_offset_minutes: None,
             }),
+            orientation: None,
         };
         let (_, _, source) = resolve_placement(metadata, &no_track_ctx());
         assert_eq!(source, LocationSource::None);
@@ -191,6 +195,7 @@ mod tests {
                 naive: datetime!(2024-06-01 11:00:00), // in-range too
                 embedded_offset_minutes: None,
             }),
+            orientation: None,
         };
         let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
         assert_eq!(source, LocationSource::Exif);
@@ -237,6 +242,7 @@ mod tests {
                 naive: datetime!(2024-06-01 11:00:00),
                 embedded_offset_minutes: Some(99 * 60 + 99),
             }),
+            orientation: None,
         };
         let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
         assert_eq!(source, LocationSource::Interpolated);

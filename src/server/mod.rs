@@ -12,4 +12,5 @@ pub mod placement;
 pub mod repo;
 pub mod state;
 pub mod storage;
+pub mod thumbnail;
 pub mod timezone;

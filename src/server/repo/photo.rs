@@ -11,11 +11,14 @@ use super::to_rfc3339;
 /// Fields for a new `photo` row. The `created_at` timestamp is set on insert;
 /// the image bytes themselves are written to the `BlobStore` under `blob_key`.
 /// `lat`/`lon`/`location_source` place the photo on the map (US-3/US-4).
+/// `thumbnail_key` (US-5) is `None` when thumbnail generation failed for this
+/// photo — never blocks the insert.
 pub struct NewPhoto<'a> {
     pub original_name: &'a str,
     pub content_type: Option<&'a str>,
     pub byte_len: i64,
     pub blob_key: &'a str,
+    pub thumbnail_key: Option<&'a str>,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
     pub location_source: LocationSource,
@@ -32,15 +35,16 @@ pub async fn insert_photo(
     let created_at = to_rfc3339(OffsetDateTime::now_utc());
     let id = sqlx::query(
         r#"INSERT INTO photo
-               (trip_id, original_name, content_type, byte_len, blob_key, created_at,
-                lat, lon, location_source)
-           VALUES (?,?,?,?,?,?,?,?,?)"#,
+               (trip_id, original_name, content_type, byte_len, blob_key, thumbnail_key,
+                created_at, lat, lon, location_source)
+           VALUES (?,?,?,?,?,?,?,?,?,?)"#,
     )
     .bind(trip_id)
     .bind(photo.original_name)
     .bind(photo.content_type)
     .bind(photo.byte_len)
     .bind(photo.blob_key)
+    .bind(photo.thumbnail_key)
     .bind(&created_at)
     .bind(photo.lat)
     .bind(photo.lon)
@@ -66,8 +70,8 @@ pub async fn count_photos(
 /// List a trip's photos, oldest first (US-2). Reads only the `photo` table.
 pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, sqlx::Error> {
     sqlx::query(
-        r#"SELECT id, trip_id, original_name, content_type, byte_len, blob_key, created_at,
-                  lat, lon, location_source
+        r#"SELECT id, trip_id, original_name, content_type, byte_len, blob_key, thumbnail_key,
+                  created_at, lat, lon, location_source
            FROM photo WHERE trip_id = ? ORDER BY id"#,
     )
     .bind(trip_id)
@@ -78,6 +82,7 @@ pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, 
         content_type: row.get("content_type"),
         byte_len: row.get("byte_len"),
         blob_key: row.get("blob_key"),
+        thumbnail_key: row.get("thumbnail_key"),
         created_at: row.get("created_at"),
         lat: row.get("lat"),
         lon: row.get("lon"),
@@ -127,6 +132,7 @@ mod tests {
                 content_type: Some("image/jpeg"),
                 byte_len: len,
                 blob_key: key,
+                thumbnail_key: None,
                 lat: None,
                 lon: None,
                 location_source: LocationSource::None,
@@ -156,6 +162,7 @@ mod tests {
                 content_type: Some("image/jpeg"),
                 byte_len: len,
                 blob_key: key,
+                thumbnail_key: None,
                 lat: Some(lat),
                 lon: Some(lon),
                 location_source: LocationSource::Exif,
@@ -273,5 +280,48 @@ mod tests {
         assert_eq!(p.lat, None);
         assert_eq!(p.lon, None);
         assert_eq!(p.location_source, LocationSource::None);
+    }
+
+    // ── US-5: generated thumbnails ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn us5_insert_and_list_photo_round_trips_the_thumbnail_key() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        insert_photo(
+            &mut tx,
+            trip_id,
+            &NewPhoto {
+                original_name: "a.jpg",
+                content_type: Some("image/jpeg"),
+                byte_len: 10,
+                blob_key: "trips/1/0000-a.jpg",
+                thumbnail_key: Some("trips/1/thumbs/0000-a.jpg"),
+                lat: None,
+                lon: None,
+                location_source: LocationSource::None,
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+
+        let photos = list_photos(&db.pool, trip_id).await.unwrap();
+        assert_eq!(
+            photos[0].thumbnail_key.as_deref(),
+            Some("trips/1/thumbs/0000-a.jpg")
+        );
+    }
+
+    #[tokio::test]
+    async fn us5_list_photos_returns_none_thumbnail_key_when_generation_failed() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        add_photo(&db.pool, trip_id, "a.jpg", "trips/1/0000-a.jpg", 10).await;
+
+        let photos = list_photos(&db.pool, trip_id).await.unwrap();
+        assert_eq!(photos[0].thumbnail_key, None);
     }
 }
