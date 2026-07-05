@@ -36,6 +36,36 @@ impl ActivityType {
             Self::CrossCountrySkiing => "cross_country_skiing",
         }
     }
+
+    /// A human-readable label for UI pickers (e.g. "Ski touring"), distinct
+    /// from `as_str()`'s wire/storage value (e.g. `ski_touring`).
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Unknown => "— unspecified —",
+            Self::Hiking => "Hiking",
+            Self::Mountaineering => "Mountaineering",
+            Self::Cycling => "Cycling",
+            Self::Bikepacking => "Bikepacking",
+            Self::Kayaking => "Kayaking",
+            Self::SkiTouring => "Ski touring",
+            Self::CrossCountrySkiing => "Cross-country skiing",
+        }
+    }
+
+    /// Every variant a user can explicitly choose in the import/edit forms —
+    /// everything except `Unknown` (a picker's implicit "unspecified"). The
+    /// `selectable_lists_every_variant_except_unknown_exactly_once` test
+    /// below guards this against silently drifting from the enum's actual
+    /// variants (US-11/US-15's `<select>`s both iterate this single list).
+    pub const SELECTABLE: [ActivityType; 7] = [
+        Self::Hiking,
+        Self::Mountaineering,
+        Self::Cycling,
+        Self::Bikepacking,
+        Self::Kayaking,
+        Self::SkiTouring,
+        Self::CrossCountrySkiing,
+    ];
 }
 
 impl std::fmt::Display for ActivityType {
@@ -94,5 +124,25 @@ mod tests {
     #[test]
     fn from_str_rejects_an_unrecognized_value() {
         assert!("unicycling".parse::<ActivityType>().is_err());
+    }
+
+    #[test]
+    fn selectable_lists_every_variant_except_unknown_exactly_once() {
+        // Exhaustive match, no wildcard arm: adding a variant to the enum
+        // without updating this test fails to compile, so `SELECTABLE` can't
+        // silently drift from the enum's actual variants.
+        for activity in ActivityType::SELECTABLE {
+            match activity {
+                ActivityType::Unknown => panic!("Unknown must not be in SELECTABLE"),
+                ActivityType::Hiking
+                | ActivityType::Mountaineering
+                | ActivityType::Cycling
+                | ActivityType::Bikepacking
+                | ActivityType::Kayaking
+                | ActivityType::SkiTouring
+                | ActivityType::CrossCountrySkiing => {}
+            }
+        }
+        assert_eq!(ActivityType::SELECTABLE.len(), 7);
     }
 }

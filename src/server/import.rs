@@ -209,15 +209,25 @@ fn resolve_name(
     format!("{prefix} Imported Trip")
 }
 
-/// Resolve the `activity_type` form field into an `ActivityType` (ADR-0018): a
-/// blank or missing field (the "— unspecified —" option) is `Unknown`; any
-/// other value must be one of the known variants, or the request is rejected
-/// as a 400 — the form only ever submits a known value, so an unrecognized one
-/// means a malformed/hand-crafted request, not a case to silently paper over.
-fn resolve_activity_type(form_activity: Option<String>) -> Result<ActivityType, AppError> {
-    match form_activity.filter(|a| !a.trim().is_empty()) {
-        None => Ok(ActivityType::Unknown),
-        Some(value) => value.parse().map_err(AppError::BadRequest),
+/// Resolve an `activity_type` field into an `ActivityType` (ADR-0018): a
+/// blank or missing field is `Unknown`; any other value (trimmed) must be one
+/// of the known variants, or the request is rejected as a 400.
+///
+/// Shared by two callers with different meanings for "blank": import's
+/// multipart form (blank/missing = the owner didn't specify one at creation
+/// time) and `edit::handle_edit_trip`'s JSON `PATCH` body (an explicit blank
+/// string = the owner deliberately resetting it back to unspecified; a
+/// wholly-omitted JSON field is handled by the caller before this function
+/// ever sees it, and leaves the trip's activity type untouched). Both callers
+/// only ever submit a known value or blank through their respective UIs, so
+/// an unrecognized non-blank value means a malformed/hand-crafted request,
+/// not a case to silently paper over.
+pub(crate) fn resolve_activity_type(
+    form_activity: Option<String>,
+) -> Result<ActivityType, AppError> {
+    match form_activity.as_deref().map(str::trim) {
+        None | Some("") => Ok(ActivityType::Unknown),
+        Some(trimmed) => trimmed.parse().map_err(AppError::BadRequest),
     }
 }
 
@@ -295,6 +305,14 @@ mod tests {
         assert_eq!(
             resolve_activity_type(Some("mountaineering".to_string())).unwrap(),
             ActivityType::Mountaineering
+        );
+    }
+
+    #[test]
+    fn resolve_activity_type_trims_surrounding_whitespace_before_parsing() {
+        assert_eq!(
+            resolve_activity_type(Some("  cycling  ".to_string())).unwrap(),
+            ActivityType::Cycling
         );
     }
 

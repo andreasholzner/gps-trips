@@ -10,12 +10,15 @@ use axum::{
 use serde::Serialize;
 use tower_http::services::ServeDir;
 
-use crate::models::{LocationSource, Photo, TripDetail, TripSummary};
+use crate::models::{LocationSource, Photo};
 use crate::server::{
     delete,
+    edit::handle_edit_trip,
     error::AppError,
     import::{handle_add_photos, handle_import},
-    paths, repo,
+    paths,
+    render::{render_detail, render_import_form, render_trip_list},
+    repo,
     state::AppState,
 };
 
@@ -73,8 +76,11 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
-        // US-9: delete a trip and its photo blobs.
-        .route("/api/trips/:id", axum::routing::delete(handle_delete_trip))
+        // US-9: delete a trip and its photo blobs. US-15: edit its name/activity type.
+        .route(
+            "/api/trips/:id",
+            axum::routing::delete(handle_delete_trip).patch(handle_edit_trip),
+        )
         // US-2: attach photos later (POST) and list a trip's photos (GET).
         .route(
             "/api/trips/:id/photos",
@@ -97,8 +103,8 @@ async fn trip_list(State(state): State<AppState>) -> Result<Html<String>, AppErr
 }
 
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).
-async fn import_form() -> Html<&'static str> {
-    Html(IMPORT_HTML)
+async fn import_form() -> Html<String> {
+    Html(render_import_form())
 }
 
 /// GET `/trips/:id` — the trip detail page (the redirect target after import).
@@ -277,204 +283,6 @@ fn rfc5987_encode(s: &str) -> String {
         }
     }
     out
-}
-
-const IMPORT_HTML: &str = r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trip Archive — Import</title>
-</head>
-<body>
-  <h1>Import a Trip</h1>
-  <form method="post" action="/api/import" enctype="multipart/form-data">
-    <p>
-      <label for="name">Trip name (optional)</label><br>
-      <input type="text" id="name" name="name"
-             placeholder="leave blank to use the GPX track name">
-    </p>
-    <p>
-      <label for="activity_type">Activity (optional)</label><br>
-      <select id="activity_type" name="activity_type">
-        <option value="">— unspecified —</option>
-        <option value="hiking">Hiking</option>
-        <option value="mountaineering">Mountaineering</option>
-        <option value="cycling">Cycling</option>
-        <option value="bikepacking">Bikepacking</option>
-        <option value="kayaking">Kayaking</option>
-        <option value="ski_touring">Ski touring</option>
-        <option value="cross_country_skiing">Cross-country skiing</option>
-      </select>
-    </p>
-    <p>
-      <label for="timezone">Photo timezone override (optional)</label><br>
-      <input type="text" id="timezone" name="timezone"
-             placeholder="auto-detected from the track's start location if left blank, e.g. Europe/Oslo">
-    </p>
-    <p>
-      <label for="gpx">GPX file</label><br>
-      <input type="file" id="gpx" name="gpx" accept=".gpx,application/gpx+xml" required>
-    </p>
-    <p>
-      <label for="photos">Photos (optional)</label><br>
-      <input type="file" id="photos" name="photos" accept="image/*" multiple>
-    </p>
-    <button type="submit">Import</button>
-  </form>
-  <p><a href="/">← All trips</a></p>
-</body>
-</html>"#;
-
-/// Render the trip detail page — relive a trip (US-7): the track on an OSM map,
-/// an elevation profile, and a photo gallery.
-///
-/// The map and chart are driven from a single track-GeoJSON fetch (ADR-0005/0006);
-/// the gallery fetches the photos JSON (US-2) and renders `<img>` elements. The
-/// page only emits the containers and the vendored, self-hosted assets (US-10);
-/// data URLs are handed to the client via `data-*` attributes on `<body>`.
-fn render_detail(trip: &TripDetail) -> String {
-    let distance_km = trip.distance_m / 1000.0;
-    let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
-    let descent = trip.descent_m.map(fmt_metres).unwrap_or_else(dash);
-    let duration = trip.duration_secs.map(fmt_duration).unwrap_or_else(dash);
-    let start = trip.start_time.clone().unwrap_or_else(dash);
-
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{name}</title>
-  <link rel="stylesheet" href="/static/vendor/leaflet.css">
-  <link rel="stylesheet" href="/static/vendor/uPlot.min.css">
-  <style>
-    #map {{ height: 24rem; }}
-    #elevation {{ margin-top: 1rem; }}
-  </style>
-</head>
-<body data-track-url="/api/trips/{id}/track.geojson"
-      data-photos-url="/api/trips/{id}/photos"
-      data-trip-id="{id}">
-  <h1>{name}</h1>
-  <p><strong>Activity:</strong> {activity}</p>
-  <p><strong>Photo timestamp timezone:</strong> {tz_name}</p>
-  <p><strong>Start:</strong> {start}</p>
-  <ul>
-    <li>Distance: {distance:.2} km</li>
-    <li>Ascent: {ascent}</li>
-    <li>Descent: {descent}</li>
-    <li>Duration: {duration}</li>
-  </ul>
-
-  <div id="map"></div>
-  <div id="elevation"></div>
-
-  <h2>Photos</h2>
-  <div id="gallery"></div>
-  <form method="post" action="/api/trips/{id}/photos" enctype="multipart/form-data">
-    <input type="file" name="photos" accept="image/*" multiple>
-    <button type="submit">Add photos</button>
-  </form>
-
-  <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
-  <p><button id="delete-trip">Delete trip</button></p>
-  <p><a href="/">← All trips</a></p>
-
-  <script src="/static/vendor/leaflet.js"></script>
-  <script src="/static/vendor/uPlot.iife.min.js"></script>
-  <script src="/static/js/trip_detail.js"></script>
-</body>
-</html>"#,
-        id = trip.id,
-        name = html_escape(&trip.name),
-        activity = html_escape(trip.activity_type.as_str()),
-        tz_name = html_escape(trip.tz_name.as_deref().unwrap_or("unknown")),
-        start = html_escape(&start),
-        distance = distance_km,
-        ascent = ascent,
-        descent = descent,
-        duration = duration,
-    )
-}
-
-/// Render the trip list page (US-6). Shows each trip's name (linking to its
-/// detail), activity type (US-11), date, distance, ascent, and duration; an
-/// empty state otherwise.
-fn render_trip_list(trips: &[TripSummary]) -> String {
-    let body = if trips.is_empty() {
-        "<p>No trips yet. <a href=\"/import\">Import your first trip</a>.</p>".to_string()
-    } else {
-        let rows: String = trips.iter().map(render_trip_row).collect();
-        format!(
-            "<table>\n\
-             <thead><tr><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
-             <tbody>\n{rows}</tbody>\n\
-             </table>"
-        )
-    };
-
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trip Archive</title>
-</head>
-<body>
-  <h1>Trips</h1>
-  <p><a href="/import">Import a trip</a></p>
-  {body}
-</body>
-</html>"#
-    )
-}
-
-/// One row of the trip list table.
-fn render_trip_row(trip: &TripSummary) -> String {
-    // start_time is RFC-3339 (e.g. "2024-06-01T08:00:00+00:00"); show the date part.
-    let date = trip
-        .start_time
-        .as_deref()
-        .and_then(|s| s.split('T').next())
-        .unwrap_or("—");
-    let distance_km = trip.distance_m / 1000.0;
-    let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
-    let duration = trip.duration_secs.map(fmt_duration).unwrap_or_else(dash);
-
-    format!(
-        "<tr><td><a href=\"/trips/{id}\">{name}</a></td><td>{activity}</td>\
-         <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td></tr>\n",
-        id = trip.id,
-        name = html_escape(&trip.name),
-        activity = html_escape(trip.activity_type.as_str()),
-        date = html_escape(date),
-        distance = distance_km,
-        ascent = ascent,
-        duration = duration,
-    )
-}
-
-fn fmt_metres(m: f64) -> String {
-    format!("{m:.0} m")
-}
-
-fn fmt_duration(secs: i64) -> String {
-    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
-    format!("{h:02}:{m:02}:{s:02}")
-}
-
-fn dash() -> String {
-    "—".to_string()
-}
-
-/// Minimal HTML escaping for the small set of fields we interpolate.
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

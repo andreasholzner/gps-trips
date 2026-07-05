@@ -1,5 +1,6 @@
 pub mod db;
 pub mod delete;
+pub mod edit;
 pub mod error;
 pub mod geojson;
 pub mod gpx;
@@ -9,6 +10,7 @@ pub mod location;
 pub mod paths;
 pub mod photos;
 pub mod placement;
+pub mod render;
 pub mod repo;
 pub mod state;
 pub mod storage;

@@ -112,6 +112,16 @@ fn multipart_request(uri: &str, body: Vec<u8>) -> Request<Body> {
         .unwrap()
 }
 
+/// A JSON request with an arbitrary method (e.g. `PATCH /api/trips/:id`, US-15).
+pub fn json_request(method: Method, uri: &str, body: &str) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
 /// A `multipart/form-data` POST to `/api/import` carrying a single `gpx` file.
 pub fn import_request(gpx: &[u8]) -> Request<Body> {
     import_request_with_photos(gpx, &[])
@@ -189,4 +199,25 @@ pub async fn body_bytes(response: Response) -> Vec<u8> {
 
 pub async fn body_string(response: Response) -> String {
     String::from_utf8(body_bytes(response).await).unwrap()
+}
+
+/// The exact fragment `render_detail` (`src/server/render.rs`) emits for the
+/// trip name — scoped to the element US-15 introduced so a match can't be
+/// satisfied by some unrelated part of the page.
+pub fn detail_name_fragment(name: &str) -> String {
+    format!("<h1 id=\"trip-name\">{name}</h1>")
+}
+
+/// The exact fragment `render_detail` emits for the activity type — scoped so
+/// it can't be satisfied by `tz_name`'s own independent "unknown" fallback on
+/// the same page.
+pub fn detail_activity_fragment(activity: &str) -> String {
+    format!("<span id=\"trip-activity\">{activity}</span>")
+}
+
+/// The exact fragment `render_trip_row` emits for the activity column — the
+/// column right after the trip's name link, so this can't match some other
+/// coincidental appearance of the word elsewhere on the list page.
+pub fn list_activity_fragment(activity: &str) -> String {
+    format!("</td><td>{activity}</td>")
 }

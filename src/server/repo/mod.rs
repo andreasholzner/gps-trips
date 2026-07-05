@@ -10,7 +10,7 @@ mod trip;
 pub use photo::{count_photos, insert_photo, list_photos, NewPhoto};
 pub use trip::{
     delete_trip, get_original_gpx, get_track_geojson, get_trip, insert_trip, insert_trip_in_tx,
-    list_trips, set_trip_timezone, GpxDownload,
+    list_trips, set_trip_timezone, update_trip, GpxDownload,
 };
 
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};

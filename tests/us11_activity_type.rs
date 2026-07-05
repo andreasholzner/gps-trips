@@ -7,22 +7,9 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{
-    body_string, get, import_request_with_fields, send, test_app, trip_id_from_redirect, SAMPLE_GPX,
+    body_string, detail_activity_fragment, get, import_request_with_fields, list_activity_fragment,
+    send, test_app, trip_id_from_redirect, SAMPLE_GPX,
 };
-
-/// The exact fragment `render_detail` (`src/server/http.rs`) emits for the
-/// activity type — scoped so it can't be satisfied by `tz_name`'s own
-/// independent "unknown" fallback on the same page.
-fn detail_activity_fragment(activity: &str) -> String {
-    format!("<strong>Activity:</strong> {activity}")
-}
-
-/// The exact fragment `render_trip_row` emits for the activity column — the
-/// column right after the trip's name link, so this can't match some other
-/// coincidental appearance of the word elsewhere on the list page.
-fn list_activity_fragment(activity: &str) -> String {
-    format!("</td><td>{activity}</td>")
-}
 
 #[tokio::test]
 async fn us11_chosen_activity_type_appears_on_the_list_and_detail_page() {

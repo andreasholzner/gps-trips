@@ -48,6 +48,7 @@
   }
 
   wireDeleteButton(document.body.dataset.tripId);
+  wireEditForm(document.body.dataset.tripId);
 })();
 
 // US-9: wire the "Delete trip" button. Plain HTML forms cannot issue a DELETE
@@ -69,6 +70,59 @@ function wireDeleteButton(tripId) {
     } catch (err) {
       console.error("failed to delete trip:", err);
       alert("Failed to delete trip.");
+    }
+  });
+}
+
+// US-15: wire the "Edit name / activity" button and its form. Plain HTML
+// forms cannot issue a PATCH request, so — like the delete button — this
+// fetch-based handler is the only trigger for `PATCH /api/trips/:id`.
+// Acceptance criteria only require the new values to be persisted, so on
+// success this reloads the page rather than patching the DOM in place.
+//
+// Only fields the user actually changed in *this* form are sent — the API
+// treats an omitted field as "leave unchanged" specifically so that editing
+// just the name (say) can't clobber an activity-type change made elsewhere
+// (another tab/device) after this page loaded but before this save.
+function wireEditForm(tripId) {
+  const button = document.getElementById("edit-trip");
+  const form = document.getElementById("edit-trip-form");
+  const cancel = document.getElementById("edit-trip-cancel");
+  const nameInput = document.getElementById("edit-name");
+  const activitySelect = document.getElementById("edit-activity_type");
+  if (!button || !form || !cancel || !nameInput || !activitySelect || !tripId) return;
+
+  const initialName = nameInput.value;
+  const initialActivity = activitySelect.value;
+
+  button.addEventListener("click", () => {
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  });
+
+  cancel.addEventListener("click", () => {
+    form.reset();
+    form.style.display = "none";
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = {};
+    if (nameInput.value !== initialName) body.name = nameInput.value;
+    if (activitySelect.value !== initialActivity) body.activity_type = activitySelect.value;
+    try {
+      const response = await fetch(`/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (response.status === 204) {
+        window.location.reload();
+      } else {
+        alert(`Failed to save changes (status ${response.status}).`);
+      }
+    } catch (err) {
+      console.error("failed to save trip changes:", err);
+      alert("Failed to save changes.");
     }
   });
 }
