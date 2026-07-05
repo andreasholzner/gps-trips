@@ -34,7 +34,6 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-10** | ✅ | As the owner, I **self-host** the whole thing on my own machine. | Single deployable binary + static assets; all data under a configurable data directory (`TRIP_ARCHIVE_DATA_DIR`); no external services required. |
 | **US-11** | ✅ | As the owner, when importing a **GPX file** I choose an activity type for the trip (e.g. cycling, hiking, ...). | The activity type is stored in the database and shown on the list over all trips and on the trip detail page. |
 | **US-13** | 📋 | As the owner, I can filter the list of my trips by activity type, date interval, distance and free search of the name. | List shows only trips matching the selected filter criteria. |
-| **US-14** | 📋 | As the owner, I can filter the list of my trips by geographic region by selecting an area in a map. | List shows only trips matching the selected region. |
 | **US-15** | ✅ | As the owner, I can edit trip details (name and activity type) from the **trip details page** to correct mistakes. | The new values for name and activity type are saved to the database. |
 | **US-21** | ✅ | As the owner, I can **download the original GPX file** I imported, from the trip detail page, so I keep an untouched copy of the source. | The exact uploaded GPX bytes are stored on import; the detail page offers a download link; downloading returns the original file byte-for-byte with `Content-Type: application/gpx+xml` and a sensible filename. |
 
@@ -50,6 +49,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-20** | 📋 | As the owner, my changes of name and activity type can be synced to komoot. | Optional sync of name and activity type to my komoot account. |
 | **US-12** | 📋 | As the owner, when importing a **GPX file** I choose a name for the trip, with the name field pre-filled with a suggested `YYYY-mm-dd` date prefix once the GPX is uploaded. | Moved out of v1: a real "suggested prefix visible while I type" needs the GPX parsed before the name is entered, i.e. a two-step import flow (upload GPX first, then confirm name/activity type) instead of today's single-step form. Today's single-step form already falls back to a date-prefixed default name (`YYYY-MM-DD Imported Trip`) when no name is given at all — that's kept as-is; this story is the bigger UX redesign, not that fallback. |
 | **US-21** | 📋 | As the owner, I can manually place attached photos on a track location. | Photos can be placed by selecting a point on the map, the track is shown when selecting a new location. Automaticly determined locations (exif or interpolated) can be overwritten manually after a warning. | 
+| **US-14** | 📋 | As the owner, I can filter the list of my trips by geographic region by selecting an area in a map. | List shows only trips matching the selected region. |
 
 > **Deployment is intentionally deferred** — the app runs **laptop-local, on demand** for now.
 > The phone/cloud/ownCloud topology will be chosen later from real use; see
