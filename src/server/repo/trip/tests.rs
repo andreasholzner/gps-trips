@@ -25,8 +25,15 @@ async fn insert_sample_trip(pool: &SqlitePool) -> i64 {
 
 /// Minimal stats with a chosen start time, for ordering tests.
 fn stats_at(start: OffsetDateTime) -> TrackStats {
+    stats(1_000.0, start)
+}
+
+/// Minimal stats with a chosen distance and start time, for filter tests
+/// (US-13) that need trips with distinct `distance_m`/`start_time` values —
+/// not practical to get from a fixed GPX fixture.
+fn stats(distance_m: f64, start: OffsetDateTime) -> TrackStats {
     TrackStats {
-        distance_m: 1_000.0,
+        distance_m,
         ascent_m: 10.0,
         descent_m: 5.0,
         duration_secs: Some(600),
@@ -148,14 +155,17 @@ async fn us7_get_track_geojson_is_none_for_unknown_trip() {
 #[tokio::test]
 async fn us6_list_trips_is_empty_for_a_new_db() {
     let db = TestDb::new().await;
-    assert!(list_trips(&db.pool).await.unwrap().is_empty());
+    assert!(list_trips(&db.pool, &TripFilter::default())
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
 async fn us6_list_trips_returns_summary_fields() {
     let db = TestDb::new().await;
     insert_sample_trip(&db.pool).await;
-    let trips = list_trips(&db.pool).await.unwrap();
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
     assert_eq!(trips.len(), 1);
     let t = &trips[0];
     assert_eq!(t.name, "Oslo Hills Walk");
@@ -192,7 +202,7 @@ async fn us6_list_trips_orders_most_recent_first() {
     .await
     .unwrap();
 
-    let trips = list_trips(&db.pool).await.unwrap();
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
     assert_eq!(trips[0].name, "Newer");
     assert_eq!(trips[1].name, "Older");
 }
@@ -323,6 +333,10 @@ async fn us6_list_trips_does_not_require_track_geometry() {
         .execute(&db.pool)
         .await
         .unwrap();
-    let trips = list_trips(&db.pool).await.unwrap();
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
     assert_eq!(trips.len(), 1, "list must not depend on the track row");
 }
+
+// US-13 (filter the trip list) tests split into tests/filter.rs to keep this
+// file under the repo's 500-line cap.
+mod filter;

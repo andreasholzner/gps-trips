@@ -33,7 +33,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-9** | ✅ | As the owner, I can **delete a trip** (and its files) to fix mistakes. | Deleting a trip removes its DB rows (cascade) and its photo blobs; no orphaned files remain. |
 | **US-10** | ✅ | As the owner, I **self-host** the whole thing on my own machine. | Single deployable binary + static assets; all data under a configurable data directory (`TRIP_ARCHIVE_DATA_DIR`); no external services required. |
 | **US-11** | ✅ | As the owner, when importing a **GPX file** I choose an activity type for the trip (e.g. cycling, hiking, ...). | The activity type is stored in the database and shown on the list over all trips and on the trip detail page. |
-| **US-13** | 📋 | As the owner, I can filter the list of my trips by activity type, date interval, distance and free search of the name. | List shows only trips matching the selected filter criteria. |
+| **US-13** | ✅ | As the owner, I can filter the list of my trips by activity type, date interval, distance and free search of the name. | List shows only trips matching the selected filter criteria. |
 | **US-15** | ✅ | As the owner, I can edit trip details (name and activity type) from the **trip details page** to correct mistakes. | The new values for name and activity type are saved to the database. |
 | **US-21** | ✅ | As the owner, I can **download the original GPX file** I imported, from the trip detail page, so I keep an untouched copy of the source. | The exact uploaded GPX bytes are stored on import; the detail page offers a download link; downloading returns the original file byte-for-byte with `Content-Type: application/gpx+xml` and a sensible filename. |
 

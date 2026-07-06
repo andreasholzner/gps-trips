@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -10,11 +10,12 @@ use axum::{
 use serde::Serialize;
 use tower_http::services::ServeDir;
 
-use crate::models::{LocationSource, Photo};
+use crate::models::{LocationSource, Photo, TripSummary};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
     error::AppError,
+    filter::{parse_filter, TripFilterQuery},
     import::{handle_add_photos, handle_import},
     paths,
     render::{render_detail, render_import_form, render_trip_list},
@@ -73,6 +74,8 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(trip_list))
         .route("/import", get(import_form))
         .route("/api/import", post(handle_import))
+        // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
+        .route("/api/trips", get(list_trips_api))
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
@@ -96,10 +99,25 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// GET `/` — the trip list, the archive's home (US-6).
-async fn trip_list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let trips = repo::list_trips(&state.pool).await?;
-    Ok(Html(render_trip_list(&trips)))
+/// GET `/` — the trip list, the archive's home (US-6), optionally narrowed by
+/// the filter query parameters (US-13, ADR-0011).
+async fn trip_list(
+    State(state): State<AppState>,
+    Query(query): Query<TripFilterQuery>,
+) -> Result<Html<String>, AppError> {
+    let filter = parse_filter(&query)?;
+    let trips = repo::list_trips(&state.pool, &filter).await?;
+    Ok(Html(render_trip_list(&trips, &query)))
+}
+
+/// GET `/api/trips` — the same filtered trip list as JSON (US-13, ADR-0008/0011),
+/// for a future non-HTML client (US-16). Lightweight rows only, no track geometry.
+async fn list_trips_api(
+    State(state): State<AppState>,
+    Query(query): Query<TripFilterQuery>,
+) -> Result<Json<Vec<TripSummary>>, AppError> {
+    let filter = parse_filter(&query)?;
+    Ok(Json(repo::list_trips(&state.pool, &filter).await?))
 }
 
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).

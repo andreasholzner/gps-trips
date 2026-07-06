@@ -109,26 +109,114 @@ pub async fn get_original_gpx(
     .await
 }
 
-/// List all trips as lightweight summaries, most recent first (US-6).
-/// Reads only the `trip` table — never the track geometry — so it stays cheap.
-/// `start_time` may be NULL (GPX without times); SQLite sorts NULLs last under DESC.
-pub async fn list_trips(pool: &SqlitePool) -> Result<Vec<TripSummary>, sqlx::Error> {
-    sqlx::query(
-        r#"SELECT id, name, activity_type, start_time, distance_m, ascent_m, duration_secs
-           FROM trip
-           ORDER BY start_time DESC, id DESC"#,
-    )
-    .map(|row: SqliteRow| TripSummary {
-        id: row.get("id"),
-        name: row.get("name"),
-        activity_type: row.get("activity_type"),
-        start_time: row.get("start_time"),
-        distance_m: row.get("distance_m"),
-        ascent_m: row.get("ascent_m"),
-        duration_secs: row.get("duration_secs"),
+/// Filter criteria for `list_trips` (US-13, ADR-0011). Every field is
+/// independently optional — `None` means "don't filter on this dimension" —
+/// so the owner can combine any subset (e.g. activity type alone, a date
+/// range alone, or several dimensions at once as an AND).
+#[derive(Debug, Default)]
+pub struct TripFilter {
+    pub activity_type: Option<ActivityType>,
+    /// Inclusive, `"YYYY-MM-DD"`.
+    pub from: Option<String>,
+    /// Inclusive, `"YYYY-MM-DD"`.
+    pub to: Option<String>,
+    pub min_dist_m: Option<f64>,
+    pub max_dist_m: Option<f64>,
+    /// Case-insensitive (full Unicode case-fold, not just ASCII) substring
+    /// match on `name`, applied in Rust after the SQL-filtered fetch.
+    pub name_query: Option<String>,
+}
+
+/// `"[year]-[month]-[day]"` — must match `filter::parse_filter`'s format,
+/// which is what validates `TripFilter.from`/`to` before they ever reach here.
+const DATE_FORMAT: &[time::format_description::FormatItem<'_>] =
+    time::macros::format_description!("[year]-[month]-[day]");
+
+/// The calendar day after `date` (a `"YYYY-MM-DD"` string already validated by
+/// `filter::parse_filter`), for use as an *exclusive* upper bound on
+/// `start_time`. Comparing the raw column directly against `"{day}T00:00:00"`/
+/// `"{next_day}T00:00:00"` (rather than wrapping the column itself in SQL's
+/// `date(...)`) keeps the predicate index-friendly — SQLite can't use a plain
+/// index on `start_time` to service a comparison against `date(start_time)`.
+/// Returns `None` only if `date` is already the last representable calendar
+/// day, in which case the caller simply leaves the upper bound unapplied
+/// rather than panicking on an all-but-impossible edge input.
+fn next_day(date: &str) -> Option<String> {
+    time::Date::parse(date, DATE_FORMAT)
+        .ok()?
+        .next_day()?
+        .format(DATE_FORMAT)
+        .ok()
+}
+
+/// List trips as lightweight summaries, most recent first (US-6), optionally
+/// narrowed by `filter` (US-13, ADR-0011). Reads only the `trip` table — never
+/// the track geometry — so it stays cheap. `start_time` may be NULL (GPX
+/// without times); SQLite sorts NULLs last under DESC, and such a trip never
+/// matches a `from`/`to` filter (there's no date to compare against).
+///
+/// The query is built dynamically — only populated filters add a clause — so
+/// each is bound exactly once and, for `activity_type`/`distance_m`, stays a
+/// plain, index-usable predicate (unlike a static `(? IS NULL OR col op ?)`
+/// query, which SQLite's planner can't use an index to service). Name search
+/// is applied afterward in Rust via `str::to_lowercase`, a full Unicode
+/// case-fold — SQLite's own `LIKE` only case-folds ASCII, which would silently
+/// fail to match e.g. Norwegian "Tromsø" against a query of "TROMSØ".
+pub async fn list_trips(
+    pool: &SqlitePool,
+    filter: &TripFilter,
+) -> Result<Vec<TripSummary>, sqlx::Error> {
+    let mut query = sqlx::QueryBuilder::new(
+        "SELECT id, name, activity_type, start_time, distance_m, ascent_m, duration_secs \
+         FROM trip WHERE 1 = 1",
+    );
+    if let Some(activity_type) = filter.activity_type {
+        query.push(" AND activity_type = ").push_bind(activity_type);
+    }
+    if let Some(from) = &filter.from {
+        query
+            .push(" AND start_time >= ")
+            .push_bind(format!("{from}T00:00:00"));
+    }
+    if let Some(to) = &filter.to {
+        if let Some(next) = next_day(to) {
+            query
+                .push(" AND start_time < ")
+                .push_bind(format!("{next}T00:00:00"));
+        }
+    }
+    if let Some(min_dist_m) = filter.min_dist_m {
+        query.push(" AND distance_m >= ").push_bind(min_dist_m);
+    }
+    if let Some(max_dist_m) = filter.max_dist_m {
+        query.push(" AND distance_m <= ").push_bind(max_dist_m);
+    }
+    query.push(" ORDER BY start_time DESC, id DESC");
+
+    let trips: Vec<TripSummary> = query
+        .build()
+        .map(|row: SqliteRow| TripSummary {
+            id: row.get("id"),
+            name: row.get("name"),
+            activity_type: row.get("activity_type"),
+            start_time: row.get("start_time"),
+            distance_m: row.get("distance_m"),
+            ascent_m: row.get("ascent_m"),
+            duration_secs: row.get("duration_secs"),
+        })
+        .fetch_all(pool)
+        .await?;
+
+    Ok(match &filter.name_query {
+        Some(q) => {
+            let q = q.to_lowercase();
+            trips
+                .into_iter()
+                .filter(|t| t.name.to_lowercase().contains(&q))
+                .collect()
+        }
+        None => trips,
     })
-    .fetch_all(pool)
-    .await
 }
 
 /// Fetch a trip's track geometry as the stored GeoJSON string (US-7), or `None`
