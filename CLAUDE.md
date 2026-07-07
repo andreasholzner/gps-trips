@@ -14,6 +14,7 @@
 - Keep files under 500 lines
 - Validate input at system boundaries
 - The ADRs for this project are maintained at `/docs/adr`. Always follow them.
+- Follow TDD also for fixing issues found during code review.
 - NEVER update `docs/initial_plan.md` — it is a frozen historical snapshot. Record design, scope, schema, or API changes in the living docs instead: `docs/requirements.md` (user stories), `docs/adr/` (decisions), `docs/architecture.md` (C4 diagrams). See the banner atop the file.
 
 ## Code Review Focus
