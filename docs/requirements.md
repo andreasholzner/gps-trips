@@ -37,6 +37,33 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-15** | ✅ | As the owner, I can edit trip details (name and activity type) from the **trip details page** to correct mistakes. | The new values for name and activity type are saved to the database. |
 | **US-21** | ✅ | As the owner, I can **download the original GPX file** I imported, from the trip detail page, so I keep an untouched copy of the source. | The exact uploaded GPX bytes are stored on import; the detail page offers a download link; downloading returns the original file byte-for-byte with `Content-Type: application/gpx+xml` and a sensible filename. |
 
+## Determine import pipeline
+
+### Status quo
+
+- Main recording device: Garmin GPS unit
+  - unit is integrated with Garmin Connect
+  - Komoot integration with Garmin Connect
+  - Edit name and add photos in Komoot
+- Also: record directly via Komoot app on mobile
+  - (no Garmin Connect involvement)
+  - Edit name and add photos in Komoot app after recording
+- Most my recorded tracks exist in Komoot
+- Archive of old recorded tracks (pre-Komoot) in gpx format
+- Archive of trip suggestions (e.g. from guide books) in gpx format
+- A couple of planned trips in Komoot
+
+### Must have features
+
+- All future recorded trips (both via Garmin GPS unit and Komoot mobile app) are ingested.
+- Bulk-import of historical trips already in Komoot (incl. photos).
+- Edits of trips (name and activity_type) are synced back to Komoot.
+
+### Nice to have features
+
+- Attached photos are also uploaded to the corresponding trip in Komoot.
+- Batch-import of old recorded tracks in gpx format, single run
+- One-way sync for planned trips from Komoot
 
 ## Future User Stories (must not be precluded by v1)
 
