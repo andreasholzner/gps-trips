@@ -36,6 +36,13 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-13** | ✅ | As the owner, I can filter the list of my trips by activity type, date interval, distance and free search of the name. | List shows only trips matching the selected filter criteria. |
 | **US-15** | ✅ | As the owner, I can edit trip details (name and activity type) from the **trip details page** to correct mistakes. | The new values for name and activity type are saved to the database. |
 | **US-21** | ✅ | As the owner, I can **download the original GPX file** I imported, from the trip detail page, so I keep an untouched copy of the source. | The exact uploaded GPX bytes are stored on import; the detail page offers a download link; downloading returns the original file byte-for-byte with `Content-Type: application/gpx+xml` and a sensible filename. |
+| **US-20** | 📋 | As the owner, my edits to a trip's name and activity type are synced back to Komoot when the trip originated there, so the archive and Komoot don't diverge. | Editing a Komoot-sourced trip marks its link row `edit_pending` in the same transaction as the edit. The next "Sync now" push phase calls Komoot's update-tour API with the current name/activity_type and clears the flag on success. Trips not sourced from Komoot are unaffected. |
+| **US-22** | 📋 | As the owner, I trigger "Sync now" so newly recorded trips (via my Garmin GPS unit or the Komoot app) are ingested without a manual GPX export/upload step. | "Sync now" lists Komoot tours, imports any tour not yet in `trip_komoot_link` through the existing import pipeline (GPX + photos), and inserts the link row in the same transaction as the import. Already-linked tours are skipped (anti-join dedup). |
+| **US-23** | 📋 | As the owner, I run a one-off backfill so my historical trips already in Komoot (including photos) end up in the archive without hand-importing each one. | A separate CLI binary (`komoot_backfill`) imports every not-yet-linked Komoot tour, incl. photos, through the existing pipeline. Re-running after an interruption is safe (dedup via `komoot_tour_id`). No web UI interaction required. An `--interactive` flag asks for confirmation before each Komoot request (mainly for testing against the real API). A `--limit N` flag caps the number of tours synced in the run (mainly for testing and for bounding load on Komoot); omitting it syncs all not-yet-linked tours. |
+| **US-24** | 📋 | As the owner, deleting a Komoot-sourced trip in the archive also deletes it on Komoot, so I don't have to delete it twice. | Deleting a Komoot-linked trip removes it from the archive immediately and marks its link row `delete_pending`. The next "Sync now" push phase calls Komoot's delete-tour API and removes the link row only on success. |
+| **US-25** | 📋 | As the owner, a failed sync stops immediately and tells me what failed, so I don't hammer Komoot with a string of doomed requests or lose track of what still needs attention. | The first failed Komoot call in either the push or pull phase halts the sync without attempting further items; a visible error names the specific trip/tour that failed. |
+| **US-26** | 📋 | As the owner, editing or deleting a trip is blocked while a sync is running, so my change can't race the sync's read of pending state. | `PATCH`/delete requests made while a sync is in flight are rejected with `409`. Only one sync runs at a time (single in-process flag). |
+| **US-27** | 📋 | As the owner, I can run a lightweight check to confirm the Komoot integration still works, so I notice a break before it derails a real sync. | A separate CLI binary (`komoot_check`) logs in and makes one cheap Komoot call (e.g. list tours), reporting success or failure. No DB, `BlobStore`, or import pipeline involved. |
 
 ## Determine import pipeline
 
@@ -67,15 +74,16 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 
 ## Future User Stories (must not be precluded by v1)
 
-| ID | State | Story | Notes |
-|----|:-----:|-------|-------|
+| ID        | State | Story | Notes |
+|-----------|:-----:|-------|-------|
 | **US-16** | 📋 | As the owner, I access my archive from **Android**. | PWA first (cheapest; recording stays in komoot, so no native sensors needed); native app possible later against the JSON API. |
 | **US-17** | 📋 | As the owner, my photos live on my private **ownCloud** instance. | Photos move to an `OwnCloudWebDav` storage backend; the SQLite DB (incl. tracks) stays local. |
 | **US-18** | 📋 | As the owner, I import trips from **Garmin Connect**. | Plugs into the same import pipeline as an alternate ingestion source. |
 | **US-19** | 📋 | As the owner, I can put a **single shared password** in front of my instance. | Optional auth middleware; no multi-user accounts. |
-| **US-20** | 📋 | As the owner, my changes of name and activity type can be synced to komoot. | Optional sync of name and activity type to my komoot account. |
+| **US-28** | 📋 | As the owner, photos I attach to a trip in the archive are also uploaded to the matching Komoot tour, so the two stay visually in sync. | Deferred; additive `KomootClient` method, not built now (ADR-0021). |
+| **US-29** | 📋 | As the owner, my planned (not-yet-recorded) trips in Komoot show up in the archive too, so I can see upcoming plans alongside past ones. | Deferred; one-way read-only pull, not built now (ADR-0021). |
 | **US-12** | 📋 | As the owner, when importing a **GPX file** I choose a name for the trip, with the name field pre-filled with a suggested `YYYY-mm-dd` date prefix once the GPX is uploaded. | Moved out of v1: a real "suggested prefix visible while I type" needs the GPX parsed before the name is entered, i.e. a two-step import flow (upload GPX first, then confirm name/activity type) instead of today's single-step form. Today's single-step form already falls back to a date-prefixed default name (`YYYY-MM-DD Imported Trip`) when no name is given at all — that's kept as-is; this story is the bigger UX redesign, not that fallback. |
-| **US-21** | 📋 | As the owner, I can manually place attached photos on a track location. | Photos can be placed by selecting a point on the map, the track is shown when selecting a new location. Automaticly determined locations (exif or interpolated) can be overwritten manually after a warning. | 
+| **US-30** | 📋 | As the owner, I can manually place attached photos on a track location. | Photos can be placed by selecting a point on the map, the track is shown when selecting a new location. Automaticly determined locations (exif or interpolated) can be overwritten manually after a warning. | 
 | **US-14** | 📋 | As the owner, I can filter the list of my trips by geographic region by selecting an area in a map. | List shows only trips matching the selected region. |
 
 > **Deployment is intentionally deferred** — the app runs **laptop-local, on demand** for now.
@@ -105,6 +113,8 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 - US-16 → ADR-0008 (JSON-first API enables a future client)
 - US-17 → ADR-0007 (BlobStore enables ownCloud), ADR-0002 (DB stays local)
 - US-19 → ADR-0010 (optional shared-password auth)
+- US-20/22/23/24/25/26/27 → ADR-0021 (Komoot client, sync now, backfill, integration check)
+- US-24 → also ADR-0021's extension of US-9's delete flow (`delete_pending` / orphaned link row)
 
 See `adr/` folder for the full Architecture Decision Records and
 [`architecture.md`](./architecture.md) for the C4 diagrams. The original
