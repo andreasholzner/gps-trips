@@ -14,8 +14,9 @@ into Komoot via its own Garmin Connect integration, and app-recorded trips are n
 **Komoot is the single upstream source** that covers both ingestion paths — no separate Garmin
 Connect integration is needed for this (that stays deferred to US-18 as a possible alternate
 source). Komoot has no official API suited to this; the only option is an **unofficial/
-reverse-engineered API** (session-based auth), which is fragile and carries ToS risk the owner
-accepts for personal, single-user use.
+reverse-engineered API**, which is fragile and carries ToS risk the owner accepts for personal,
+single-user use. Endpoint and auth details are in [`docs/komoot-api.md`](../komoot-api.md), kept
+separately since they're protocol reference, not architecture.
 
 [ADR-0014](./0014-defer-deployment-topology.md) commits the app to on-demand/local-first, no
 background daemon — so ingestion must be a **pull triggered by an explicit action**, not a poller.
@@ -28,9 +29,13 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   GPX + metadata, fetch photos, update tour name/sport). Ship one real implementation; mock it in
   tests.
 - **Auth** via `KOMOOT_EMAIL` / `KOMOOT_PASSWORD` env vars, read at startup, consistent with the
-  existing `TRIP_ARCHIVE_DATA_DIR` config pattern. `KomootClient` logs in once per sync invocation
-  — a "Sync now" run or a `komoot_backfill` run — and reuses that session for every call made
-  during it; sessions are not persisted across separate invocations.
+  existing `TRIP_ARCHIVE_DATA_DIR` config pattern. v1 uses **HTTP Basic Auth per request** (see
+  `docs/komoot-api.md`) rather than a reused session — simpler, no session lifecycle to manage.
+  `KomootClient` still logs in once per sync invocation — a "Sync now" run or a `komoot_backfill`
+  run — to resolve the Komoot username and validate credentials up front, failing fast before any
+  sync work starts. All auth attachment is routed through one internal seam inside `KomootClient`
+  (not threaded through each call site), so switching to Komoot's cookie-based session auth later,
+  if Basic Auth ever stops working, doesn't require touching every method.
 - **Rate limiting** lives inside `KomootClient` itself (min delay / backoff between requests) so
   every call site — the small routine sync and the large historical backfill — gets it
   automatically.
