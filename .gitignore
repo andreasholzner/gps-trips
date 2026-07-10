@@ -30,6 +30,11 @@
 *.sqlite
 *.sqlite-journal
 # Keep: .claude-flow/config.yaml, .claude-flow/CAPABILITIES.md
+.claude-flow/daemon-state.json
+.claude-flow/daemon.pid
+.claude-flow/harness-active-policy.json
+.claude/.proven-config-version
+.claude/proven-config.json
 
 # ───────── Secrets / env ─────────
 .env
