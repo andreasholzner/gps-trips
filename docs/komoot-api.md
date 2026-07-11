@@ -249,12 +249,41 @@ Auth: Basic
 
 - `200` — success.
 
+### Get tour photos
+
+```
+GET /v007/tours/{tour_id}/cover_images/
+Auth: Basic
+```
+
+Not reverse-engineered from `kompy` (it doesn't cover photos); found by probing the tour's
+`_links.cover_images` href directly against a real tour (`3102359664`) on 2026-07-11. Despite the
+name, this returns **all** photos attached to the tour, not just a designated cover picture.
+
+Response is HAL-style JSON, same shape as list tours: items live at `_embedded.items`; pagination
+info at `page`.
+
+Each item has, among other fields:
+
+- `id` — photo id; `_links.self` is `/v007/tours/{tour_id}/images/{id}`
+- `location` — `{lat, lng, alt}`, geotagged position along the route
+- `src` — a **templated** CloudFront URL with `{width}`, `{height}`, `{crop}` placeholders
+- `width_px` / `height_px` — original image dimensions
+- `title` / `caption` / `attribution` — often `null`/empty, not reliably populated
+
+To get the actual image bytes, fill in the `src` template's placeholders, e.g.:
+
+```
+https://d2exd72xrrp1s7.cloudfront.net/www/.../{width}/{height}/{crop} → width=800&height=600&crop=true
+```
+
+- `crop` **must be the literal string `true` or `false`**, not `1`/`0` — otherwise CloudFront
+  responds `400 Bad Request: "crop must be true or false"`.
+- The resolved CloudFront URL needs **no auth** (unlike `api.komoot.de` endpoints) — it's a public,
+  unguessable-by-id-alone image URL.
+
 ## Known gaps
 
-- **No photo-fetch endpoint.** `kompy` only exposes `vector_map_image` (a small map thumbnail),
-  not user-uploaded trip photos. Needed for the bulk backfill and future ingestion (photos are
-  part of the "must have" scope) — has to be reverse-engineered separately before that work can
-  start.
 - **Session-cookie auth flow** is not reverse-engineered/documented here; only Basic Auth is
   covered. If Komoot ever locks down Basic Auth on this API, the session-cookie flow is the
   fallback to investigate.
