@@ -29,6 +29,15 @@ pub mod server {
     pub const BIND_ADDR: &str = "127.0.0.1:3000";
 }
 
+/// Komoot sync (US-27, ADR-0021). Auth details: `docs/komoot-api.md`.
+pub mod komoot {
+    /// Env var holding the Komoot account email, read by the `komoot_check`
+    /// (and later `komoot_backfill`) binaries.
+    pub const EMAIL_ENV_VAR: &str = "KOMOOT_EMAIL";
+    /// Env var holding the Komoot account password.
+    pub const PASSWORD_ENV_VAR: &str = "KOMOOT_PASSWORD";
+}
+
 /// Thumbnail generation (US-5, ADR-0020).
 pub mod thumbnail {
     /// Maximum long-edge dimension of a generated thumbnail, in pixels.

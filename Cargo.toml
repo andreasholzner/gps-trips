@@ -30,6 +30,10 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Komoot sync (ADR-0021); blocking client — see BlobStore's spawn_blocking convention.
+# rustls-tls avoids a system OpenSSL dependency, keeping the single-binary story (US-10) intact.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+
 # Errors & logging
 anyhow             = "1"
 thiserror          = "2"
