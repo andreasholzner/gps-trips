@@ -66,6 +66,139 @@ Query params (all optional): `limit`, `page`, `status`, `type`, `only_unlocked`,
 Response is HAL-style JSON: tours live at `_embedded.tours`; pagination info at `page.totalPages`
 / `page.number`.
 
+Example response:
+
+```json
+{
+  "_embedded": {
+    "tours": [
+      {
+        "id": 3095053844,
+        "type": "tour_recorded",
+        "name": "2026-07-08 Ersfjordbotn - Tromsø",
+        "description": "",
+        "source": "{\"api\":\"de.komoot.main-api/tour/recorded\",\"type\":\"tour_recorded\",\"id\":3095053844}",
+        "status": "private",
+        "date": "2026-07-08T22:38:25.974+02:00",
+        "kcal_active": 0,
+        "kcal_resting": 0,
+        "start_point": {
+          "lat": 69.70014,
+          "lng": 18.607383,
+          "alt": -6.3
+        },
+        "distance": 18725.361787141002,
+        "duration": 3608,
+        "elevation_up": 203.85601863047714,
+        "elevation_down": 148.33176551674566,
+        "sport": "touringbicycle",
+        "time_in_motion": 3608,
+        "changed_at": "2026-07-08T21:49:26.886Z",
+        "map_image": {
+          "src": "https://tourpic-vector.maps.komoot.net/r/big/qipi@sljJJ%7BE%5CEReAt@Zk@yFN%7BDbDkBt@aDBgCY_G%5CuH%3FqGl@wF%3FsLZaCz@a@d@sA%5C_DQqC%7BBmIk@_Gc@s%5DyEcWp@cFjB_Gx@EnBvCfCkCPs@@%7DCh@aA%5BgAD_BfBe@/?width={width}&height={height}&crop={crop}",
+          "templated": true,
+          "type": "image/*",
+          "attribution": "Map data © OpenStreetMap contributors"
+        },
+        "map_image_preview": {
+          "src": "https://tourpic-vector.maps.komoot.net/r/small/qipi@sljJJ%7BE%5CEReAt@Zk@yFN%7BDbDkBt@aDBgCY_G%5CuH%3FqGl@wF%3FsLZaCz@a@d@sA%5C_DQqC%7BBmIk@_Gc@s%5DyEcWp@cFjB_Gx@EnBvCfCkCPs@@%7DCh@aA%5BgAD_BfBe@/?width={width}&height={height}&crop={crop}",
+          "templated": true,
+          "type": "image/*",
+          "attribution": "Map data © OpenStreetMap contributors"
+        },
+        "vector_map_image": {
+          "src": "https://tourpic-vector.maps.komoot.net/r/big/qipi@sljJJ%7BE%5CEReAt@Zk@yFN%7BDbDkBt@aDBgCY_G%5CuH%3FqGl@wF%3FsLZaCz@a@d@sA%5C_DQqC%7BBmIk@_Gc@s%5DyEcWp@cFjB_Gx@EnBvCfCkCPs@@%7DCh@aA%5BgAD_BfBe@/",
+          "templated": false,
+          "type": "image/*",
+          "attribution": "Map data © OpenStreetMap contributors"
+        },
+        "vector_map_image_preview": {
+          "src": "https://tourpic-vector.maps.komoot.net/r/small/qipi@sljJJ%7BE%5CEReAt@Zk@yFN%7BDbDkBt@aDBgCY_G%5CuH%3FqGl@wF%3FsLZaCz@a@d@sA%5C_DQqC%7BBmIk@_Gc@s%5DyEcWp@cFjB_Gx@EnBvCfCkCPs@@%7DCh@aA%5BgAD_BfBe@/",
+          "templated": false,
+          "type": "image/*",
+          "attribution": "Map data © OpenStreetMap contributors"
+        },
+        "potential_route_update": false,
+        "_embedded": {
+          "creator": {
+            "username": "756260555496",
+            "avatar": {
+              "src": "https://d2exd72xrrp1s7.cloudfront.net/www/13/13xjgzfplm50c1hyk12bs9ua2937rn0kkj-u756260555496-full/16f43022b70?width={width}&height={height}&crop={crop}",
+              "templated": true,
+              "type": "image/*"
+            },
+            "status": "public",
+            "_links": {
+              "self": {
+                "href": "https://api.komoot.de/v007/users/756260555496/profile_embedded"
+              },
+              "relation": {
+                "href": "https://api.komoot.de/v007/users/{username}/relations/756260555496",
+                "templated": true
+              }
+            },
+            "display_name": "Andreas Holzner",
+            "is_premium": false
+          }
+        },
+        "_links": {
+          "creator": {
+            "href": "https://api.komoot.de/v007/users/756260555496/profile_embedded"
+          },
+          "self": {
+            "href": "https://api.komoot.de/v007/tours/3095053844"
+          },
+          "coordinates": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/coordinates"
+          },
+          "peaks": {
+            "href": "${server.peak-bagging.baseUrl}/v4/peaks-bagged-by/3095053844"
+          },
+          "tour_line": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/tour_line"
+          },
+          "participants": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/participants/"
+          },
+          "timeline": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/timeline/"
+          },
+          "translations": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/translations"
+          },
+          "faqs": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/faqs"
+          },
+          "details": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/details"
+          },
+          "cover_images": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/cover_images/"
+          },
+          "tour_rating": {
+            "href": "https://api.komoot.de/v007/tours/3095053844/ratings/756260555496"
+          }
+        }
+      }
+    ]
+  },
+  "_links": {
+    "self": {
+      "href": "https://api.komoot.de/v007/users/756260555496/tours/?limit=1"
+    },
+    "next": {
+      "href": "https://api.komoot.de/v007/users/756260555496/tours/?page=1&limit=1"
+    }
+  },
+  "page": {
+    "size": 1,
+    "totalElements": 979,
+    "totalPages": 979,
+    "number": 0
+  }
+}
+```
+
 ### Get tour (metadata / GPX / FIT)
 
 ```
