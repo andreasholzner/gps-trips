@@ -4,6 +4,7 @@
 //! Re-exported flat here so existing call sites (`repo::insert_trip`,
 //! `repo::list_photos`, ...) are unaffected by the split.
 
+pub mod komoot;
 mod photo;
 mod trip;
 

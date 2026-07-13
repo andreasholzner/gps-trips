@@ -42,6 +42,23 @@ pub fn generate_thumbnail(bytes: &[u8], orientation: Option<u16>) -> Option<Vec<
     Some(out)
 }
 
+/// Guess an image's real format from its magic bytes, returning
+/// `(extension, content_type)`. Used wherever a photo's bytes arrive without
+/// a trustworthy filename/`Content-Type` of their own (US-22: Komoot's photo
+/// CDN response carries neither) — storing the blob under the wrong
+/// extension makes `http.rs`'s `content_type_from_path` serve it with the
+/// wrong `Content-Type` later (see `thumbnail_key`'s doc comment for the
+/// same trap). Falls back to `("jpg", "image/jpeg")` when the format can't
+/// be determined, matching this module's best-effort stance elsewhere.
+pub fn guess_image_format(bytes: &[u8]) -> (&'static str, &'static str) {
+    match image::guess_format(bytes) {
+        Ok(image::ImageFormat::Png) => ("png", "image/png"),
+        Ok(image::ImageFormat::Gif) => ("gif", "image/gif"),
+        Ok(image::ImageFormat::WebP) => ("webp", "image/webp"),
+        _ => ("jpg", "image/jpeg"),
+    }
+}
+
 /// Standard EXIF orientation values 1-8 -> the rotate/flip that makes the
 /// pixel buffer display right-side-up. Absent or unrecognized (including 1)
 /// is a no-op.
@@ -65,7 +82,7 @@ fn apply_orientation(img: DynamicImage, orientation: u16) -> DynamicImage {
 /// Gated the same way `location::fixtures` is (ADR-0012's precedent).
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures {
-    use image::{codecs::jpeg::JpegEncoder, Rgb, RgbImage};
+    use image::{codecs::jpeg::JpegEncoder, codecs::png::PngEncoder, ImageEncoder, Rgb, RgbImage};
 
     /// A solid-color JPEG at the given dimensions. Big enough (e.g.
     /// 800x600) that `.thumbnail()` always shrinks it (never upscales), if
@@ -78,6 +95,17 @@ pub mod fixtures {
             .unwrap();
         out
     }
+
+    /// A solid-color PNG at the given dimensions — a non-JPEG fixture for
+    /// exercising format detection (`guess_image_format`).
+    pub fn valid_png_bytes(width: u32, height: u32) -> Vec<u8> {
+        let img = RgbImage::from_pixel(width, height, Rgb([10, 20, 30]));
+        let mut out = Vec::new();
+        PngEncoder::new(&mut out)
+            .write_image(&img, width, height, image::ExtendedColorType::Rgb8)
+            .unwrap();
+        out
+    }
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -85,8 +113,32 @@ pub mod fixtures {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fixtures::valid_jpeg_bytes;
+    use fixtures::{valid_jpeg_bytes, valid_png_bytes};
     use image::{GenericImageView, Pixel, Rgb, RgbImage};
+
+    // US-22: `guess_image_format` — a photo's real extension/content-type
+    // from its bytes, since Komoot's photo CDN response carries neither.
+
+    #[test]
+    fn guess_image_format_detects_jpeg() {
+        assert_eq!(
+            guess_image_format(&valid_jpeg_bytes(20, 10)),
+            ("jpg", "image/jpeg")
+        );
+    }
+
+    #[test]
+    fn guess_image_format_detects_png() {
+        assert_eq!(
+            guess_image_format(&valid_png_bytes(20, 10)),
+            ("png", "image/png")
+        );
+    }
+
+    #[test]
+    fn guess_image_format_falls_back_to_jpeg_for_undecodable_bytes() {
+        assert_eq!(guess_image_format(b"not an image"), ("jpg", "image/jpeg"));
+    }
 
     fn decode(bytes: &[u8]) -> DynamicImage {
         image::load_from_memory(bytes).expect("thumbnail must be a valid, decodable image")

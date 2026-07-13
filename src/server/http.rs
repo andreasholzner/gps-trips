@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tower_http::services::ServeDir;
 
 use crate::models::{LocationSource, Photo, TripSummary};
@@ -17,8 +17,10 @@ use crate::server::{
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
     import::{handle_add_photos, handle_import},
+    komoot::KomootClient,
+    komoot_sync::{self, SyncResultQuery},
     paths,
-    render::{render_detail, render_import_form, render_trip_list},
+    render::{render_detail, render_import_form, render_sync_candidates, render_trip_list},
     repo,
     state::AppState,
 };
@@ -89,6 +91,9 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/:id/photos",
             post(handle_add_photos).get(list_trip_photos),
         )
+        // US-22: review + trigger a Komoot "Sync now" pull.
+        .route("/komoot/sync", get(sync_candidates_page))
+        .route("/api/komoot/sync", post(handle_sync))
         // US-7: serve photo blobs stored by the BlobStore (ADR-0007).
         // The wildcard captures the blob key so any backend's url_for works here.
         .route("/media/*path", get(serve_media))
@@ -123,6 +128,61 @@ async fn list_trips_api(
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).
 async fn import_form() -> Html<String> {
     Html(render_import_form())
+}
+
+/// The `POST /api/komoot/sync` request body (ADR-0008): the tour ids the
+/// owner checked on the review page, in submission order.
+#[derive(Deserialize)]
+struct SyncRequest {
+    tour_ids: Vec<String>,
+}
+
+/// The `POST /api/komoot/sync` response: how many tours were imported, and
+/// which tour (if any) halted the run — the client redirects to the review
+/// page with these as query params (US-22, no session/flash mechanism here).
+#[derive(Serialize)]
+struct SyncResponse {
+    imported: usize,
+    failed_tour: Option<String>,
+    failed_msg: Option<String>,
+}
+
+/// `state.komoot`, or a clear 400 if the app booted without
+/// `KOMOOT_EMAIL`/`KOMOOT_PASSWORD` set (`main.rs`: an optional integration,
+/// not a hard startup requirement).
+fn require_komoot(state: &AppState) -> Result<Arc<dyn KomootClient>, AppError> {
+    state.komoot.clone().ok_or_else(|| {
+        AppError::BadRequest(
+            "Komoot sync is not configured (set KOMOOT_EMAIL/KOMOOT_PASSWORD)".to_string(),
+        )
+    })
+}
+
+/// GET `/komoot/sync` — the "Sync now" review page (US-22): lists every
+/// Komoot tour not yet imported, for the owner to select from.
+async fn sync_candidates_page(
+    State(state): State<AppState>,
+    Query(result): Query<SyncResultQuery>,
+) -> Result<Html<String>, AppError> {
+    let client = require_komoot(&state)?;
+    let candidates = komoot_sync::list_sync_candidates(&state.pool, client).await?;
+    Ok(Html(render_sync_candidates(&candidates, &result)))
+}
+
+/// POST `/api/komoot/sync` — import the owner's selected tours (US-22),
+/// halting on the first failure (ADR-0021).
+async fn handle_sync(
+    State(state): State<AppState>,
+    Json(body): Json<SyncRequest>,
+) -> Result<Json<SyncResponse>, AppError> {
+    let client = require_komoot(&state)?;
+    let summary =
+        komoot_sync::sync_selected_tours(&state.pool, &state.store, client, &body.tour_ids).await?;
+    Ok(Json(SyncResponse {
+        imported: summary.imported.len(),
+        failed_tour: summary.failed.as_ref().map(|(tour_id, _)| tour_id.clone()),
+        failed_msg: summary.failed.map(|(_, msg)| msg),
+    }))
 }
 
 /// GET `/trips/:id` — the trip detail page (the redirect target after import).

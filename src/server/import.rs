@@ -6,9 +6,9 @@ use time::OffsetDateTime;
 
 use crate::models::{ActivityType, TripDetail};
 use crate::server::{
-    error::AppError,
+    error::{AppError, ImportError},
     geojson::{self, build_track_geojson},
-    gpx::{self, compute_stats, parse_gpx, TimedPoint},
+    gpx::{self, compute_stats, parse_gpx, TimedPoint, TrackStats},
     photos::{ingest_photos, UploadedPhoto},
     placement::TripPhotoContext,
     repo::{self, insert_trip_in_tx},
@@ -16,6 +16,38 @@ use crate::server::{
     timezone,
 };
 use sqlx::SqlitePool;
+
+/// Everything derivable from a GPX byte string that both import entry
+/// points need: `handle_import` (this module) and Komoot sync
+/// (`komoot_sync::sync_one_tour`, US-22). Kept as one function so the two
+/// pipelines can't drift on how GPX bytes become a trip's stats/GeoJSON/
+/// timezone guess/photo-placement timeline (ADR-0021: Komoot sync reuses
+/// "the exact same pipeline" `handle_import` uses).
+pub(crate) struct DerivedTrack {
+    /// The GPX track's own `<name>`, if any — only meaningful to
+    /// `handle_import`'s name-resolution precedence (US-12); Komoot sync
+    /// always uses the tour's Komoot name instead.
+    pub name: Option<String>,
+    pub stats: TrackStats,
+    pub geojson: String,
+    pub guessed_tz: String,
+    pub timed_points: Vec<TimedPoint>,
+}
+
+pub(crate) fn derive_track(raw: &[u8]) -> Result<DerivedTrack, ImportError> {
+    let parsed = parse_gpx(raw)?;
+    let stats = compute_stats(&parsed.points);
+    let geojson = build_track_geojson(&parsed.points);
+    let guessed_tz = timezone::guess_timezone_from_track(&parsed.points);
+    let timed_points = gpx::timed_points(&parsed.points);
+    Ok(DerivedTrack {
+        name: parsed.name,
+        stats,
+        geojson,
+        guessed_tz,
+        timed_points,
+    })
+}
 
 /// `POST /api/import` — accepts a `multipart/form-data` body with a required
 /// `gpx` file field, optional `name` and `activity_type` text fields, and any
@@ -64,23 +96,27 @@ pub async fn handle_import(
 
     let raw = gpx_bytes.ok_or_else(|| AppError::BadRequest("Missing 'gpx' field".to_string()))?;
 
-    let parsed = parse_gpx(&raw)?;
-    let stats = compute_stats(&parsed.points);
-    let geojson = build_track_geojson(&parsed.points);
+    let derived = derive_track(&raw)?;
 
-    let name = resolve_name(form_name, parsed.name, stats.start_time);
+    let name = resolve_name(form_name, derived.name, derived.stats.start_time);
     let activity = resolve_activity_type(form_activity)?;
-    let guessed_tz = timezone::guess_timezone_from_track(&parsed.points);
-    let tz_name = resolve_timezone(form_timezone, guessed_tz)?;
-    let timed_points = gpx::timed_points(&parsed.points);
+    let tz_name = resolve_timezone(form_timezone, derived.guessed_tz)?;
 
     // Trip, track and photos commit in one transaction, so a failed import
     // leaves no trip behind (reliability NFR; ADR-0004).
     let mut tx = state.pool.begin().await?;
-    let trip_id =
-        insert_trip_in_tx(&mut tx, &name, activity, &tz_name, &stats, &geojson, &raw).await?;
+    let trip_id = insert_trip_in_tx(
+        &mut tx,
+        &name,
+        activity,
+        &tz_name,
+        &derived.stats,
+        &derived.geojson,
+        &raw,
+    )
+    .await?;
     let ctx = TripPhotoContext {
-        timed_points: &timed_points,
+        timed_points: &derived.timed_points,
         tz_name: Some(&tz_name),
     };
     ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
@@ -183,6 +219,7 @@ async fn read_photo_field(field: Field<'_>) -> Result<Option<UploadedPhoto>, App
         original_name: original_name.unwrap_or_else(|| "photo".to_string()),
         content_type,
         bytes: bytes.to_vec(),
+        known_location: None,
     }))
 }
 

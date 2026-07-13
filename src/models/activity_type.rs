@@ -21,6 +21,7 @@ pub enum ActivityType {
     /// Multi-day backcountry ski touring, often hauling a pulk.
     SkiTouring,
     CrossCountrySkiing,
+    SnowShoe,
 }
 
 impl ActivityType {
@@ -34,6 +35,7 @@ impl ActivityType {
             Self::Kayaking => "kayaking",
             Self::SkiTouring => "ski_touring",
             Self::CrossCountrySkiing => "cross_country_skiing",
+            Self::SnowShoe => "snow_shoe",
         }
     }
 
@@ -49,6 +51,7 @@ impl ActivityType {
             Self::Kayaking => "Kayaking",
             Self::SkiTouring => "Ski touring",
             Self::CrossCountrySkiing => "Cross-country skiing",
+            Self::SnowShoe => "Snowshoeing",
         }
     }
 
@@ -57,7 +60,7 @@ impl ActivityType {
     /// `selectable_lists_every_variant_except_unknown_exactly_once` test
     /// below guards this against silently drifting from the enum's actual
     /// variants (US-11/US-15's `<select>`s both iterate this single list).
-    pub const SELECTABLE: [ActivityType; 7] = [
+    pub const SELECTABLE: [ActivityType; 8] = [
         Self::Hiking,
         Self::Mountaineering,
         Self::Cycling,
@@ -65,6 +68,7 @@ impl ActivityType {
         Self::Kayaking,
         Self::SkiTouring,
         Self::CrossCountrySkiing,
+        Self::SnowShoe,
     ];
 }
 
@@ -87,6 +91,7 @@ impl std::str::FromStr for ActivityType {
             "kayaking" => Ok(Self::Kayaking),
             "ski_touring" => Ok(Self::SkiTouring),
             "cross_country_skiing" => Ok(Self::CrossCountrySkiing),
+            "snow_shoe" => Ok(Self::SnowShoe),
             other => Err(format!("unknown activity type: {other:?}")),
         }
     }
@@ -114,6 +119,7 @@ mod tests {
             ActivityType::Kayaking,
             ActivityType::SkiTouring,
             ActivityType::CrossCountrySkiing,
+            ActivityType::SnowShoe,
         ];
         for variant in variants {
             let rendered = variant.to_string();
@@ -140,9 +146,10 @@ mod tests {
                 | ActivityType::Bikepacking
                 | ActivityType::Kayaking
                 | ActivityType::SkiTouring
-                | ActivityType::CrossCountrySkiing => {}
+                | ActivityType::CrossCountrySkiing
+                | ActivityType::SnowShoe => {}
             }
         }
-        assert_eq!(ActivityType::SELECTABLE.len(), 7);
+        assert_eq!(ActivityType::SELECTABLE.len(), 8);
     }
 }

@@ -5,6 +5,7 @@
 
 use crate::models::{ActivityType, TripDetail, TripSummary};
 use crate::server::filter::TripFilterQuery;
+use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
 
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).
 /// The `{options}` placeholder is filled via `format!`, not a runtime
@@ -214,7 +215,7 @@ pub fn render_trip_list(trips: &[TripSummary], query: &TripFilterQuery) -> Strin
 </head>
 <body>
   <h1>Trips</h1>
-  <p><a href="/import">Import a trip</a></p>
+  <p><a href="/import">Import a trip</a> · <a href="/komoot/sync">Sync with Komoot</a></p>
   {filter_form}
   {body}
 </body>
@@ -334,6 +335,88 @@ fn fmt_duration(secs: i64) -> String {
 
 fn dash() -> String {
     "—".to_string()
+}
+
+/// GET `/komoot/sync` — the "Sync now" review page (US-22): every Komoot
+/// tour not yet in `trip_komoot_link`, each unchecked by default so the
+/// owner opts in per tour rather than a plain submit pulling in everything
+/// new at once (full historical backfill is a separate story, US-23).
+/// `result` carries the previous run's outcome back from the POST redirect
+/// (no session/flash mechanism here, consistent with every other page in
+/// this server-rendered app).
+pub fn render_sync_candidates(candidates: &[SyncCandidate], result: &SyncResultQuery) -> String {
+    let banner = render_sync_result_banner(result);
+    let body = if candidates.is_empty() {
+        "<p>No new tours to sync — everything on Komoot is already in the archive.</p>".to_string()
+    } else {
+        let rows: String = candidates.iter().map(render_sync_candidate_row).collect();
+        format!(
+            "<form id=\"sync-form\">\n\
+             <table>\n\
+             <thead><tr><th></th><th>Tour</th><th>Activity</th><th>Date</th><th>Distance</th></tr></thead>\n\
+             <tbody>\n{rows}</tbody>\n\
+             </table>\n\
+             <button type=\"submit\">Sync selected</button>\n\
+             </form>"
+        )
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trip Archive — Sync with Komoot</title>
+</head>
+<body>
+  <h1>Sync with Komoot</h1>
+  {banner}
+  {body}
+  <p><a href="/">← All trips</a></p>
+  <script src="/static/js/komoot_sync.js"></script>
+</body>
+</html>"#,
+    )
+}
+
+/// One row of the sync candidates table: an unchecked `tour_id` checkbox
+/// plus the tour's own metadata, read straight off Komoot's `list_tours`
+/// response (no extra per-tour call needed — see `docs/komoot-api.md`).
+fn render_sync_candidate_row(c: &SyncCandidate) -> String {
+    format!(
+        "<tr><td><input type=\"checkbox\" name=\"tour_id\" value=\"{id}\"></td>\
+         <td>{name}</td><td>{sport}</td><td>{date}</td><td>{distance:.2} km</td></tr>\n",
+        id = html_escape(&c.tour_id),
+        name = html_escape(&c.name),
+        sport = html_escape(&c.sport),
+        date = html_escape(&c.date),
+        distance = c.distance_m / 1000.0,
+    )
+}
+
+/// The one-line result banner shown after a sync run redirects back here;
+/// empty (no banner) on a fresh, un-redirected visit to the page.
+fn render_sync_result_banner(result: &SyncResultQuery) -> String {
+    if result.synced.is_none() && result.failed_tour.is_none() {
+        return String::new();
+    }
+    let synced_msg = result
+        .synced
+        .map(|n| format!("Synced {n} tour(s). "))
+        .unwrap_or_default();
+    let failed_msg = result
+        .failed_tour
+        .as_deref()
+        .map(|tour_id| {
+            format!(
+                "Failed on tour {}: {}",
+                html_escape(tour_id),
+                html_escape(result.failed_msg.as_deref().unwrap_or("unknown error"))
+            )
+        })
+        .unwrap_or_default();
+    format!("<p><strong>{synced_msg}{failed_msg}</strong></p>")
 }
 
 /// Minimal HTML escaping for the small set of fields we interpolate — safe in

@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let tours = match client.list_tours(&username, Some(1)) {
+    let tours = match client.list_tours(&username, Some(1), None) {
         Ok(tours) => tours,
         Err(e) => {
             eprintln!("FAILED at list_tours: {e}");

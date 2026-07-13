@@ -32,7 +32,14 @@ pub async fn test_app() -> (Router, tempfile::TempDir) {
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    (http::router(AppState { pool, store }), dir)
+    (
+        http::router(AppState {
+            pool,
+            store,
+            komoot: None,
+        }),
+        dir,
+    )
 }
 
 /// Drive a single request through the router.

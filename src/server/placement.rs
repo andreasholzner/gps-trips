@@ -22,14 +22,20 @@ pub struct TripPhotoContext<'a> {
 }
 
 /// Decide a photo's map position from its EXIF metadata and the trip's
-/// context. EXIF GPS wins when present (US-3); otherwise a capture time
+/// context. `known_location` (US-22: a location an external source, e.g.
+/// Komoot, already supplied for this photo) wins over everything when
+/// present; otherwise EXIF GPS wins (US-3); otherwise a capture time
 /// resolved to a UTC instant within the track's range gives an interpolated
 /// position (US-4); anything else is `location_source = none`. Pure — no I/O;
 /// callers decide what (if anything) to log about a `none` outcome.
 pub fn resolve_placement(
     metadata: location::PhotoMetadata,
     ctx: &TripPhotoContext<'_>,
+    known_location: Option<(f64, f64)>,
 ) -> (Option<f64>, Option<f64>, LocationSource) {
+    if let Some((lat, lon)) = known_location {
+        return (Some(lat), Some(lon), LocationSource::Provided);
+    }
     if let Some(pos) = metadata.gps {
         return (Some(pos.lat), Some(pos.lon), LocationSource::Exif);
     }
@@ -116,7 +122,7 @@ mod tests {
             capture_time: None,
             orientation: None,
         };
-        let (lat, lon, source) = resolve_placement(metadata, &no_track_ctx());
+        let (lat, lon, source) = resolve_placement(metadata, &no_track_ctx(), None);
         assert_eq!(source, LocationSource::Exif);
         assert_eq!(lat, Some(45.5));
         assert_eq!(lon, Some(10.26));
@@ -124,10 +130,44 @@ mod tests {
 
     #[test]
     fn resolve_placement_is_none_with_no_gps_and_no_capture_time() {
-        let (lat, lon, source) = resolve_placement(PhotoMetadata::default(), &no_track_ctx());
+        let (lat, lon, source) = resolve_placement(PhotoMetadata::default(), &no_track_ctx(), None);
         assert_eq!(source, LocationSource::None);
         assert_eq!(lat, None);
         assert_eq!(lon, None);
+    }
+
+    // ── US-22: a known location supplied by an external source (Komoot) ───
+
+    #[test]
+    fn resolve_placement_uses_known_location_when_present() {
+        let metadata = PhotoMetadata {
+            gps: Some(GpsPosition {
+                lat: 45.5,
+                lon: 10.26,
+            }),
+            capture_time: None,
+            orientation: None,
+        };
+        let (lat, lon, source) = resolve_placement(metadata, &no_track_ctx(), Some((69.7, 18.9)));
+        assert_eq!(source, LocationSource::Provided);
+        assert_eq!(lat, Some(69.7));
+        assert_eq!(lon, Some(18.9));
+    }
+
+    #[test]
+    fn resolve_placement_falls_back_to_exif_when_known_location_is_none() {
+        let metadata = PhotoMetadata {
+            gps: Some(GpsPosition {
+                lat: 45.5,
+                lon: 10.26,
+            }),
+            capture_time: None,
+            orientation: None,
+        };
+        let (lat, lon, source) = resolve_placement(metadata, &no_track_ctx(), None);
+        assert_eq!(source, LocationSource::Exif);
+        assert_eq!(lat, Some(45.5));
+        assert_eq!(lon, Some(10.26));
     }
 
     // ── US-4: timestamp interpolation ─────────────────────────────────────
@@ -145,7 +185,7 @@ mod tests {
             }),
             orientation: None,
         };
-        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
+        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed), None);
         assert_eq!(source, LocationSource::Interpolated);
         assert!((lat.unwrap() - 5.0).abs() < 1e-9);
         assert!((lon.unwrap() - 10.0).abs() < 1e-9);
@@ -163,7 +203,7 @@ mod tests {
             }),
             orientation: None,
         };
-        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
+        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed), None);
         assert_eq!(source, LocationSource::None);
         assert_eq!(lat, None);
         assert_eq!(lon, None);
@@ -179,7 +219,7 @@ mod tests {
             }),
             orientation: None,
         };
-        let (_, _, source) = resolve_placement(metadata, &no_track_ctx());
+        let (_, _, source) = resolve_placement(metadata, &no_track_ctx(), None);
         assert_eq!(source, LocationSource::None);
     }
 
@@ -197,7 +237,7 @@ mod tests {
             }),
             orientation: None,
         };
-        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
+        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed), None);
         assert_eq!(source, LocationSource::Exif);
         assert_eq!(lat, Some(45.5));
         assert_eq!(lon, Some(10.26));
@@ -244,7 +284,7 @@ mod tests {
             }),
             orientation: None,
         };
-        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed));
+        let (lat, lon, source) = resolve_placement(metadata, &track_ctx(&timed), None);
         assert_eq!(source, LocationSource::Interpolated);
         assert!((lat.unwrap() - 5.0).abs() < 1e-9);
         assert!((lon.unwrap() - 10.0).abs() < 1e-9);

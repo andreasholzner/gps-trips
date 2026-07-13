@@ -11,8 +11,8 @@ see [ADR-0002](./adr/0002-sqlite-local-disk.md), [ADR-0014](./adr/0014-defer-dep
 cargo build --release
 ```
 
-This produces `target/release/trip-archive`. Migrations are embedded into the binary at
-compile time (`sqlx::migrate!`), so they don't need to ship separately.
+This produces `target/release/trip-archive` and `target/release/komoot_check`. Migrations are embedded into the
+`trip-archive` binary at compile time (`sqlx::migrate!`), so they don't need to ship separately.
 
 ## What to copy to the target machine
 
@@ -35,6 +35,19 @@ directory, so this pair can be copied anywhere and started from any directory
 | `TRIP_ARCHIVE_DATA_DIR` | `./data` | Where the SQLite DB and photo blobs are stored. Set this to a persistent, backed-up location. |
 | `TRIP_ARCHIVE_ASSETS_DIR` | `public/` next to the binary | Override the static assets location (e.g. if packaging into `/usr/share/trip-archive` while the binary lives in `/usr/bin`). |
 | `RUST_LOG` | `trip_archive=info` | Standard `tracing-subscriber` env filter. |
+| `KOMOOT_EMAIL` | unset | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below. |
+| `KOMOOT_PASSWORD` | unset | Komoot account password. Optional — see below. |
+
+### Komoot sync (optional)
+
+`KOMOOT_EMAIL`/`KOMOOT_PASSWORD` are only needed for the Komoot integration (`/komoot/sync`, and
+the `komoot_check` CLI binary). Leaving either unset does not stop the server
+from starting — every other page and API works normally; `/komoot/sync` itself returns a `400`
+explaining the sync isn't configured. Set both to enable it:
+
+```sh
+KOMOOT_EMAIL=you@example.com KOMOOT_PASSWORD='...' TRIP_ARCHIVE_DATA_DIR=/path/to/data ./trip-archive
+```
 
 ## Running
 

@@ -8,6 +8,8 @@ pub mod gpx;
 pub mod http;
 pub mod import;
 pub mod komoot;
+pub mod komoot_sport;
+pub mod komoot_sync;
 pub mod location;
 pub mod paths;
 pub mod photos;

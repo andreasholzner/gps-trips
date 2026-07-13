@@ -63,6 +63,11 @@ Auth: Basic
 Query params (all optional): `limit`, `page`, `status`, `type`, `only_unlocked`, `center`,
 `max_distance`, `sport_types`, `start_date`, `end_date`, `name`, `sort_direction`, `sort_field`.
 
+`type` filters by tour kind — confirmed against a real account (2026-07-12): `tour_recorded`
+(an actually-recorded trip) vs. `tour_planned` (a planned/future route, never recorded). US-22's
+sync only ever wants `tour_recorded` — `KomootHttpClient::list_tours` always sends
+`type=tour_recorded` rather than exposing it as a caller-chosen parameter.
+
 Response is HAL-style JSON: tours live at `_embedded.tours`; pagination info at `page.totalPages`
 / `page.number`.
 

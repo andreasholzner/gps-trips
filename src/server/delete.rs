@@ -114,6 +114,7 @@ mod tests {
             original_name: name.to_string(),
             content_type: Some("image/jpeg".to_string()),
             bytes: bytes.to_vec(),
+            known_location: None,
         }
     }
 

@@ -15,4 +15,8 @@ pub enum LocationSource {
     Exif,
     /// Estimated from nearby track points by timestamp (US-4).
     Interpolated,
+    /// Supplied directly by an external source (e.g. Komoot's own photo GPS
+    /// record, US-22) rather than derived from this app's own EXIF/
+    /// interpolation pipeline.
+    Provided,
 }
