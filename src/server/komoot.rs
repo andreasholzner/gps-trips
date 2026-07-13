@@ -183,6 +183,21 @@ pub trait KomootClient: Send + Sync {
     /// CloudFront host would leak them well beyond `api.komoot.de`, and the
     /// resolved URL needs none (confirmed against the real API).
     fn fetch_photo_bytes(&self, resolved_url: &str) -> Result<Vec<u8>, KomootError>;
+
+    /// Fetches a single tour's current metadata (`GET /v007/tours/{tour_id}`,
+    /// a plain JSON object — unlike [`list_tours`](Self::list_tours), there's
+    /// no HAL `_embedded` envelope for a single resource). US-20's push
+    /// phase uses this to read the tour's *current* live `sport` before
+    /// deciding what to push, so an edit that didn't touch `activity_type`
+    /// doesn't downgrade a more specific Komoot sport (e.g. `mtb`) to the
+    /// generic string `komoot_sport::activity_to_sport` would otherwise
+    /// send for `Cycling`.
+    fn get_tour(&self, tour_id: &str) -> Result<KomootTourSummary, KomootError>;
+
+    /// Updates a tour's name and sport (`PATCH /v007/tours/{tour_id}`, US-20)
+    /// — the push half of ADR-0021's edit sync. Komoot's `status` field
+    /// (privacy) is left untouched; this app doesn't manage it.
+    fn update_tour(&self, tour_id: &str, name: &str, sport: &str) -> Result<(), KomootError>;
 }
 
 /// Real [`KomootClient`], talking to the live Komoot API over HTTP Basic
@@ -279,6 +294,27 @@ impl KomootHttpClient {
         Self::map_status(status, || String::from_utf8_lossy(&bytes).into_owned())?;
         Ok(bytes.to_vec())
     }
+
+    /// Send an authenticated `PATCH` with a JSON body (US-20's `update_tour`)
+    /// — the write counterpart to `authed_get`, sharing its auth/debug/status
+    /// handling.
+    fn authed_patch(&self, url: &str, body: &impl serde::Serialize) -> Result<String, KomootError> {
+        let response = self
+            .http
+            .patch(url)
+            .basic_auth(&self.email, Some(&self.password))
+            .json(body)
+            .send()?;
+        let status = response.status();
+        let body = response.text()?;
+
+        if self.debug {
+            eprintln!("[komoot debug] PATCH {url} -> {status}\n{body}");
+        }
+
+        Self::map_status(status, || body.clone())?;
+        Ok(body)
+    }
 }
 
 impl KomootClient for KomootHttpClient {
@@ -343,6 +379,28 @@ impl KomootClient for KomootHttpClient {
         Self::map_status(status, || String::from_utf8_lossy(&bytes).into_owned())?;
         Ok(bytes.to_vec())
     }
+
+    fn get_tour(&self, tour_id: &str) -> Result<KomootTourSummary, KomootError> {
+        let url = format!("{BASE_URL}/v007/tours/{tour_id}");
+        let body = self.authed_get(&url, &[])?;
+        Ok(serde_json::from_str(&body)?)
+    }
+
+    fn update_tour(&self, tour_id: &str, name: &str, sport: &str) -> Result<(), KomootError> {
+        let url = format!("{BASE_URL}/v007/tours/{tour_id}");
+        let body = UpdateTourRequest { sport, name };
+        self.authed_patch(&url, &body)?;
+        Ok(())
+    }
+}
+
+/// The `PATCH /v007/tours/{tour_id}` request body (US-20). `status`
+/// (privacy) is omitted entirely rather than sent as `None` — this app never
+/// touches it, and the field is optional on Komoot's side (`docs/komoot-api.md`).
+#[derive(serde::Serialize)]
+struct UpdateTourRequest<'a> {
+    sport: &'a str,
+    name: &'a str,
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

@@ -25,10 +25,14 @@
         return;
       }
       const result = await response.json();
-      const params = new URLSearchParams({ synced: result.imported });
+      const params = new URLSearchParams({
+        pushed: result.pushed,
+        synced: result.imported,
+      });
       if (result.failed_tour) {
         params.set("failed_tour", result.failed_tour);
         params.set("failed_msg", result.failed_msg || "unknown error");
+        params.set("failed_phase", result.failed_phase || "pull");
       }
       window.location.href = `/komoot/sync?${params.toString()}`;
     } catch (err) {

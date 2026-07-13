@@ -137,14 +137,17 @@ struct SyncRequest {
     tour_ids: Vec<String>,
 }
 
-/// The `POST /api/komoot/sync` response: how many tours were imported, and
-/// which tour (if any) halted the run — the client redirects to the review
-/// page with these as query params (US-22, no session/flash mechanism here).
+/// The `POST /api/komoot/sync` response: how many pending edits were pushed
+/// and tours were pulled/imported, and which trip/tour (if any) halted the
+/// run and in which phase — the client redirects to the review page with
+/// these as query params (US-20/US-22, no session/flash mechanism here).
 #[derive(Serialize)]
 struct SyncResponse {
+    pushed: usize,
     imported: usize,
     failed_tour: Option<String>,
     failed_msg: Option<String>,
+    failed_phase: Option<&'static str>,
 }
 
 /// `state.komoot`, or a clear 400 if the app booted without
@@ -158,30 +161,53 @@ fn require_komoot(state: &AppState) -> Result<Arc<dyn KomootClient>, AppError> {
     })
 }
 
-/// GET `/komoot/sync` — the "Sync now" review page (US-22): lists every
-/// Komoot tour not yet imported, for the owner to select from.
+/// GET `/komoot/sync` — the "Sync now" review page (US-20/US-22): lists every
+/// Komoot tour not yet imported, for the owner to select from, plus how many
+/// trips have an edit pending to push.
 async fn sync_candidates_page(
     State(state): State<AppState>,
     Query(result): Query<SyncResultQuery>,
 ) -> Result<Html<String>, AppError> {
     let client = require_komoot(&state)?;
     let candidates = komoot_sync::list_sync_candidates(&state.pool, client).await?;
-    Ok(Html(render_sync_candidates(&candidates, &result)))
+    let pending_edit_count = repo::komoot::count_edit_pending(&state.pool).await?;
+    Ok(Html(render_sync_candidates(
+        &candidates,
+        pending_edit_count,
+        &result,
+    )))
 }
 
-/// POST `/api/komoot/sync` — import the owner's selected tours (US-22),
-/// halting on the first failure (ADR-0021).
+/// POST `/api/komoot/sync` — push pending edits, then import the owner's
+/// selected tours (US-20/US-22), in that order (ADR-0021: push, then pull).
+/// A push failure halts before the pull is even attempted; either phase
+/// halts on its own first failure.
 async fn handle_sync(
     State(state): State<AppState>,
     Json(body): Json<SyncRequest>,
 ) -> Result<Json<SyncResponse>, AppError> {
     let client = require_komoot(&state)?;
+
+    let push_summary = komoot_sync::push_pending_edits(&state.pool, Arc::clone(&client)).await?;
+    if let Some((tour_id, msg)) = push_summary.failed {
+        return Ok(Json(SyncResponse {
+            pushed: push_summary.pushed.len(),
+            imported: 0,
+            failed_tour: Some(tour_id),
+            failed_msg: Some(msg),
+            failed_phase: Some("push"),
+        }));
+    }
+
     let summary =
         komoot_sync::sync_selected_tours(&state.pool, &state.store, client, &body.tour_ids).await?;
+    let failed_phase = summary.failed.is_some().then_some("pull");
     Ok(Json(SyncResponse {
+        pushed: push_summary.pushed.len(),
         imported: summary.imported.len(),
         failed_tour: summary.failed.as_ref().map(|(tour_id, _)| tour_id.clone()),
         failed_msg: summary.failed.map(|(_, msg)| msg),
+        failed_phase,
     }))
 }
 

@@ -337,29 +337,46 @@ fn dash() -> String {
     "—".to_string()
 }
 
-/// GET `/komoot/sync` — the "Sync now" review page (US-22): every Komoot
-/// tour not yet in `trip_komoot_link`, each unchecked by default so the
-/// owner opts in per tour rather than a plain submit pulling in everything
-/// new at once (full historical backfill is a separate story, US-23).
-/// `result` carries the previous run's outcome back from the POST redirect
-/// (no session/flash mechanism here, consistent with every other page in
-/// this server-rendered app).
-pub fn render_sync_candidates(candidates: &[SyncCandidate], result: &SyncResultQuery) -> String {
+/// GET `/komoot/sync` — the "Sync now" review page (US-20/US-22): every
+/// Komoot tour not yet in `trip_komoot_link`, each unchecked by default so
+/// the owner opts in per tour rather than a plain submit pulling in
+/// everything new at once (full historical backfill is a separate story,
+/// US-23). `pending_edit_count` (US-20) is how many trips have an edit
+/// queued to push back to Komoot. `result` carries the previous run's
+/// outcome back from the POST redirect (no session/flash mechanism here,
+/// consistent with every other page in this server-rendered app).
+///
+/// The form (and its submit button) is always rendered, even with zero pull
+/// candidates — a sync with nothing new to pull can still have pending edits
+/// to push, and the owner needs a way to trigger that.
+pub fn render_sync_candidates(
+    candidates: &[SyncCandidate],
+    pending_edit_count: i64,
+    result: &SyncResultQuery,
+) -> String {
     let banner = render_sync_result_banner(result);
-    let body = if candidates.is_empty() {
+    let pending_edits_note = if pending_edit_count > 0 {
+        format!("<p>{pending_edit_count} pending edit(s) to push to Komoot.</p>",)
+    } else {
+        String::new()
+    };
+    let table = if candidates.is_empty() {
         "<p>No new tours to sync — everything on Komoot is already in the archive.</p>".to_string()
     } else {
         let rows: String = candidates.iter().map(render_sync_candidate_row).collect();
         format!(
-            "<form id=\"sync-form\">\n\
-             <table>\n\
+            "<table>\n\
              <thead><tr><th></th><th>Tour</th><th>Activity</th><th>Date</th><th>Distance</th></tr></thead>\n\
              <tbody>\n{rows}</tbody>\n\
-             </table>\n\
-             <button type=\"submit\">Sync selected</button>\n\
-             </form>"
+             </table>\n"
         )
     };
+    let body = format!(
+        "<form id=\"sync-form\">\n\
+         {table}\
+         <button type=\"submit\">Sync now</button>\n\
+         </form>"
+    );
 
     format!(
         r#"<!DOCTYPE html>
@@ -372,6 +389,7 @@ pub fn render_sync_candidates(candidates: &[SyncCandidate], result: &SyncResultQ
 <body>
   <h1>Sync with Komoot</h1>
   {banner}
+  {pending_edits_note}
   {body}
   <p><a href="/">← All trips</a></p>
   <script src="/static/js/komoot_sync.js"></script>
@@ -396,11 +414,18 @@ fn render_sync_candidate_row(c: &SyncCandidate) -> String {
 }
 
 /// The one-line result banner shown after a sync run redirects back here;
-/// empty (no banner) on a fresh, un-redirected visit to the page.
+/// empty (no banner) on a fresh, un-redirected visit to the page. Reports
+/// both phases (US-20's push, US-22's pull) and, on a halt, which phase
+/// (`failed_phase`) the failing trip/tour belongs to.
 fn render_sync_result_banner(result: &SyncResultQuery) -> String {
-    if result.synced.is_none() && result.failed_tour.is_none() {
+    if result.pushed.is_none() && result.synced.is_none() && result.failed_tour.is_none() {
         return String::new();
     }
+    let pushed_msg = result
+        .pushed
+        .filter(|&n| n > 0)
+        .map(|n| format!("Pushed {n} edit(s). "))
+        .unwrap_or_default();
     let synced_msg = result
         .synced
         .map(|n| format!("Synced {n} tour(s). "))
@@ -409,14 +434,16 @@ fn render_sync_result_banner(result: &SyncResultQuery) -> String {
         .failed_tour
         .as_deref()
         .map(|tour_id| {
+            let phase = result.failed_phase.as_deref().unwrap_or("pull");
             format!(
-                "Failed on tour {}: {}",
+                "Failed to {} tour {}: {}",
+                if phase == "push" { "push" } else { "pull" },
                 html_escape(tour_id),
                 html_escape(result.failed_msg.as_deref().unwrap_or("unknown error"))
             )
         })
         .unwrap_or_default();
-    format!("<p><strong>{synced_msg}{failed_msg}</strong></p>")
+    format!("<p><strong>{pushed_msg}{synced_msg}{failed_msg}</strong></p>")
 }
 
 /// Minimal HTML escaping for the small set of fields we interpolate — safe in

@@ -279,21 +279,40 @@ pub async fn set_trip_timezone(
 /// the trip currently has" and "write the merged result" for a concurrent
 /// edit (or delete) of the same trip to race against. Returns `false` if no
 /// trip with this id exists (nothing to update).
+///
+/// Also marks the trip's `trip_komoot_link` row `edit_pending` (US-20,
+/// ADR-0021), in the same transaction as the `trip` update, if a link row
+/// exists — a no-op `UPDATE` otherwise, so trips never sourced from Komoot
+/// are unaffected. Deciding *whether the edit actually changed anything
+/// Komoot needs to know about* is deferred to the push phase
+/// (`komoot_sync::push_pending_edits`), which diffs against Komoot's live
+/// state rather than this call trying to detect a "real" change itself.
 pub async fn update_trip(
     pool: &SqlitePool,
     id: i64,
     name: Option<&str>,
     activity_type: Option<ActivityType>,
 ) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     let result = sqlx::query(
         "UPDATE trip SET name = COALESCE(?, name), activity_type = COALESCE(?, activity_type) WHERE id = ?",
     )
     .bind(name)
     .bind(activity_type)
     .bind(id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(result.rows_affected() > 0)
+    let updated = result.rows_affected() > 0;
+
+    if updated {
+        sqlx::query("UPDATE trip_komoot_link SET edit_pending = 1 WHERE trip_id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
+    Ok(updated)
 }
 
 fn row_to_detail(row: SqliteRow) -> TripDetail {

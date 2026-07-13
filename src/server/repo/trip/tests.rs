@@ -323,6 +323,45 @@ async fn us15_update_trip_on_an_unknown_id_returns_false() {
     assert!(!updated);
 }
 
+// ── US-20: editing a Komoot-sourced trip marks its link row edit_pending ──
+
+async fn edit_pending_flag(pool: &SqlitePool, trip_id: i64) -> Option<bool> {
+    sqlx::query_scalar::<_, bool>("SELECT edit_pending FROM trip_komoot_link WHERE trip_id = ?")
+        .bind(trip_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn us20_update_trip_sets_edit_pending_on_a_linked_trip() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+    let mut tx = db.pool.begin().await.unwrap();
+    crate::server::repo::komoot::insert_link_in_tx(&mut tx, id, "123456")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    update_trip(&db.pool, id, Some("Renamed Trip"), None)
+        .await
+        .unwrap();
+
+    assert_eq!(edit_pending_flag(&db.pool, id).await, Some(true));
+}
+
+#[tokio::test]
+async fn us20_update_trip_leaves_an_unlinked_trip_without_a_link_row() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+
+    update_trip(&db.pool, id, Some("Renamed Trip"), None)
+        .await
+        .unwrap();
+
+    assert_eq!(edit_pending_flag(&db.pool, id).await, None);
+}
+
 #[tokio::test]
 async fn us6_list_trips_does_not_require_track_geometry() {
     let db = TestDb::new().await;

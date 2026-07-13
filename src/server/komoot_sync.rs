@@ -1,9 +1,11 @@
-//! "Sync now" pull-and-import orchestration (US-22, ADR-0021).
+//! "Sync now" push-and-pull orchestration (US-20/US-22, ADR-0021).
 //!
-//! Two entry points: [`list_sync_candidates`] (drives the review page — every
-//! Komoot tour not yet in `trip_komoot_link`) and [`sync_selected_tours`]
-//! (imports the owner's chosen subset). Each tour's GPX + photos land in the
-//! **same** transaction as its `trip_komoot_link` row (ADR-0021) — reusing
+//! Three entry points: [`push_pending_edits`] (US-20 — pushes every
+//! Komoot-sourced trip's pending name/activity_type edit back to Komoot),
+//! [`list_sync_candidates`] (drives the review page — every Komoot tour not
+//! yet in `trip_komoot_link`), and [`sync_selected_tours`] (imports the
+//! owner's chosen subset). Each tour's GPX + photos land in the **same**
+//! transaction as its `trip_komoot_link` row (ADR-0021) — reusing
 //! `repo::insert_trip_in_tx`, `photos::ingest_photos`, and
 //! `import::derive_track`, the exact same pipeline `import.rs`'s
 //! `handle_import` uses to turn GPX bytes into a trip's stats/GeoJSON/
@@ -49,16 +51,29 @@ pub struct SyncSummary {
     pub failed: Option<(String, String)>,
 }
 
+/// The result of a `push_pending_edits` run (US-20): every trip whose edit
+/// was successfully pushed to Komoot, plus the first failure (if any) that
+/// halted the run before later pending edits were attempted — mirrors
+/// `SyncSummary`'s halt-on-first-failure (ADR-0021).
+#[derive(Default)]
+pub struct PushSummary {
+    pub pushed: Vec<(String, i64)>,
+    pub failed: Option<(String, String)>,
+}
+
 /// Query params on the "Sync now" review page's redirect after a run: how
-/// many tours were imported, and which tour (if any) halted the run —
-/// echoed back into the page as a one-line result banner (no session/flash
-/// mechanism in this app; matches how every other server-rendered page here
-/// carries its own state via the query string).
+/// many pending edits were pushed and tours imported, and which trip/tour
+/// (if any) halted the run and in which phase — echoed back into the page
+/// as a one-line result banner (no session/flash mechanism in this app;
+/// matches how every other server-rendered page here carries its own state
+/// via the query string).
 #[derive(Debug, Default, Deserialize)]
 pub struct SyncResultQuery {
+    pub pushed: Option<usize>,
     pub synced: Option<usize>,
     pub failed_tour: Option<String>,
     pub failed_msg: Option<String>,
+    pub failed_phase: Option<String>,
 }
 
 const PAGE_SIZE: u32 = 200;
@@ -283,6 +298,69 @@ async fn sync_one_tour(
     tx.commit().await?;
 
     Ok(trip_id)
+}
+
+/// Push every pending edit (US-20, ADR-0021) to Komoot: for each trip whose
+/// `trip_komoot_link` row is `edit_pending`, call Komoot's update-tour API
+/// with the trip's current name/activity_type, then clear the flag. Halts on
+/// the first failure, leaving later pending edits untouched — mirrors
+/// `sync_selected_tours`'s pull-phase halt-on-first-failure.
+pub async fn push_pending_edits(
+    pool: &SqlitePool,
+    client: Arc<dyn KomootClient>,
+) -> Result<PushSummary, AppError> {
+    let pending = repo::komoot::list_edit_pending(pool).await?;
+    let mut summary = PushSummary::default();
+
+    for edit in pending {
+        match push_one_edit(&client, &edit).await {
+            Ok(()) => {
+                repo::komoot::clear_edit_pending(pool, edit.trip_id).await?;
+                summary.pushed.push((edit.komoot_tour_id, edit.trip_id));
+            }
+            Err(e) => {
+                summary.failed = Some((edit.komoot_tour_id, e.to_string()));
+                break;
+            }
+        }
+    }
+
+    Ok(summary)
+}
+
+/// Push one trip's pending edit to Komoot. Reads the tour's *live* current
+/// sport first and only sends a remapped sport (via
+/// `komoot_sport::activity_to_sport`) when it actually disagrees with the
+/// trip's local `activity_type` — otherwise resends the live sport
+/// unchanged, so an edit that only touched the name doesn't downgrade a
+/// trip pulled from Komoot with a specific sport (e.g. `mtb`) to the generic
+/// string `activity_to_sport` returns for `Cycling`.
+async fn push_one_edit(
+    client: &Arc<dyn KomootClient>,
+    edit: &repo::komoot::EditPending,
+) -> Result<(), AppError> {
+    let live = blocking_call({
+        let client = Arc::clone(client);
+        let tour_id = edit.komoot_tour_id.clone();
+        move || client.get_tour(&tour_id)
+    })
+    .await?;
+
+    let outgoing_sport = if komoot_sport::map_sport(&live.sport) == edit.activity_type {
+        live.sport
+    } else {
+        komoot_sport::activity_to_sport(edit.activity_type).to_string()
+    };
+
+    blocking_call({
+        let client = Arc::clone(client);
+        let tour_id = edit.komoot_tour_id.clone();
+        let name = edit.name.clone();
+        move || client.update_tour(&tour_id, &name, &outgoing_sport)
+    })
+    .await?;
+
+    Ok(())
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
