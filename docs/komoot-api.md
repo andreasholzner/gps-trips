@@ -220,6 +220,116 @@ Optional query param `share_token` grants access to a specific tour regardless o
 - `404` — invalid tour id.
 - `500` — transient, more common for `.fit`; retry or fall back to another format.
 
+Example response for `GET /v007/tours/2996317340`
+
+```json
+{
+  "id": "2996317340",
+  "type": "tour_recorded",
+  "name": "2026-05-29 Hochbergrunde",
+  "source": "{\"api\":\"de.komoot.garmin-integration\",\"type\":\"tour_recorded\",\"id\":2996317340}",
+  "status": "private",
+  "date": "2026-05-29T14:27:22.000Z",
+  "kcal_active": 0,
+  "kcal_resting": 0,
+  "start_point": {
+    "lat": 47.864306,
+    "lng": 12.638893,
+    "alt": 597
+  },
+  "distance": 22310.23046875,
+  "duration": 7927,
+  "elevation_up": 183.0,
+  "elevation_down": 178.0,
+  "sport": "touringbicycle",
+  "time_in_motion": 6073,
+  "changed_at": "2026-05-29T16:46:23.635Z",
+  "map_image": {
+    "src": "https://tourpic-vector.maps.komoot.net/r/big/eze%5CizuFd@Iv@fAXHn@m@%7CAPlAI%60Bm@x@IjCwB%60BMd@h@b@HHKFs@e@IWW_@%3FMa@r@cDAwDb@U@%5Bh@kAYkAE%7B@_A%7BDWuCMe@FsDMmD@_E%5DJI%7C@q@Xa@EeAP%5DQc@h@aAjE@%7CASjA_ArA%5DfAGt@i@l@k@tAi@l@y@%60BOfAY%60@Il@c@jA_Ar@Qf@WzBFnA%5DTK%5C%60@%60AK%7CAj@h@%60AHPK/?width={width}&height={height}&crop={crop}",
+    "templated": true,
+    "type": "image/*",
+    "attribution": "Map data © OpenStreetMap contributors"
+  },
+  "map_image_preview": {
+    "src": "https://tourpic-vector.maps.komoot.net/r/small/eze%5CizuFd@Iv@fAXHn@m@%7CAPlAI%60Bm@x@IjCwB%60BMd@h@b@HHKFs@e@IWW_@%3FMa@r@cDAwDb@U@%5Bh@kAYkAE%7B@_A%7BDWuCMe@FsDMmD@_E%5DJI%7C@q@Xa@EeAP%5DQc@h@aAjE@%7CASjA_ArA%5DfAGt@i@l@k@tAi@l@y@%60BOfAY%60@Il@c@jA_Ar@Qf@WzBFnA%5DTK%5C%60@%60AK%7CAj@h@%60AHPK/?width={width}&height={height}&crop={crop}",
+    "templated": true,
+    "type": "image/*",
+    "attribution": "Map data © OpenStreetMap contributors"
+  },
+  "vector_map_image": {
+    "src": "https://tourpic-vector.maps.komoot.net/r/big/eze%5CizuFd@Iv@fAXHn@m@%7CAPlAI%60Bm@x@IjCwB%60BMd@h@b@HHKFs@e@IWW_@%3FMa@r@cDAwDb@U@%5Bh@kAYkAE%7B@_A%7BDWuCMe@FsDMmD@_E%5DJI%7C@q@Xa@EeAP%5DQc@h@aAjE@%7CASjA_ArA%5DfAGt@i@l@k@tAi@l@y@%60BOfAY%60@Il@c@jA_Ar@Qf@WzBFnA%5DTK%5C%60@%60AK%7CAj@h@%60AHPK/",
+    "templated": false,
+    "type": "image/*",
+    "attribution": "Map data © OpenStreetMap contributors"
+  },
+  "vector_map_image_preview": {
+    "src": "https://tourpic-vector.maps.komoot.net/r/small/eze%5CizuFd@Iv@fAXHn@m@%7CAPlAI%60Bm@x@IjCwB%60BMd@h@b@HHKFs@e@IWW_@%3FMa@r@cDAwDb@U@%5Bh@kAYkAE%7B@_A%7BDWuCMe@FsDMmD@_E%5DJI%7C@q@Xa@EeAP%5DQc@h@aAjE@%7CASjA_ArA%5DfAGt@i@l@k@tAi@l@y@%60BOfAY%60@Il@c@jA_Ar@Qf@WzBFnA%5DTK%5C%60@%60AK%7CAj@h@%60AHPK/",
+    "templated": false,
+    "type": "image/*",
+    "attribution": "Map data © OpenStreetMap contributors"
+  },
+  "potential_route_update": false,
+  "device_name": "Garmin Edge 1030",
+  "_embedded": {
+    "creator": {
+      "username": "756260555496",
+      "avatar": {
+        "src": "https://d2exd72xrrp1s7.cloudfront.net/www/13/13xjgzfplm50c1hyk12bs9ua2937rn0kkj-u756260555496-full/16f43022b70?width={width}&height={height}&crop={crop}",
+        "templated": true,
+        "type": "image/*"
+      },
+      "status": "public",
+      "_links": {
+        "self": {
+          "href": "https://api.komoot.de/v007/users/756260555496/profile_embedded"
+        },
+        "relation": {
+          "href": "https://api.komoot.de/v007/users/{username}/relations/756260555496",
+          "templated": true
+        }
+      },
+      "display_name": "Andreas Holzner",
+      "is_premium": false
+    }
+  },
+  "_links": {
+    "self": {
+      "href": "https://api.komoot.de/v007/tours/2996317340"
+    },
+    "coordinates": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/coordinates"
+    },
+    "peaks": {
+      "href": "${server.peak-bagging.baseUrl}/v4/peaks-bagged-by/2996317340"
+    },
+    "tour_line": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/tour_line"
+    },
+    "participants": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/participants/"
+    },
+    "timeline": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/timeline/"
+    },
+    "translations": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/translations"
+    },
+    "faqs": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/faqs"
+    },
+    "details": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/details"
+    },
+    "cover_images": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/cover_images/"
+    },
+    "tour_rating": {
+      "href": "https://api.komoot.de/v007/tours/2996317340/ratings/756260555496"
+    }
+  }
+}
+```
+
 ### Upload tour
 
 ```
