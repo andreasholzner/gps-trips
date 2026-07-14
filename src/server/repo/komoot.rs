@@ -1,4 +1,4 @@
-//! `trip_komoot_link` rows (US-22/US-20, ADR-0021): dedup + sync-state for
+//! `trip_komoot_link` rows (US-22/US-20/US-24, ADR-0021): dedup + sync-state for
 //! Komoot-sourced trips. Trip/track and photo CRUD live in the sibling
 //! `trip`/`photo` modules.
 
@@ -81,6 +81,30 @@ pub async fn count_edit_pending(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
 pub async fn clear_edit_pending(pool: &SqlitePool, trip_id: i64) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE trip_komoot_link SET edit_pending = 0 WHERE trip_id = ?")
         .bind(trip_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Every Komoot tour id still waiting to be deleted on Komoot (US-24): a
+/// link row's `trip_id` is already `NULL` by the time it's `delete_pending`
+/// (the FK's `ON DELETE SET NULL` fired when the trip was deleted), so
+/// there's no `trip` to join — unlike [`list_edit_pending`], this returns
+/// just the tour id `push_pending_deletes` needs to call Komoot's
+/// delete-tour API.
+pub async fn list_delete_pending(pool: &SqlitePool) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT komoot_tour_id FROM trip_komoot_link WHERE delete_pending = 1")
+        .fetch_all(pool)
+        .await
+}
+
+/// Remove a `trip_komoot_link` row after `push_pending_deletes` has
+/// successfully called Komoot's delete-tour API for it (US-24) — the tour is
+/// now gone from both sides, so nothing is left to dedup a future pull
+/// against.
+pub async fn delete_link(pool: &SqlitePool, komoot_tour_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM trip_komoot_link WHERE komoot_tour_id = ?")
+        .bind(komoot_tour_id)
         .execute(pool)
         .await?;
     Ok(())
@@ -232,5 +256,66 @@ mod tests {
 
         assert!(list_edit_pending(&db.pool).await.unwrap().is_empty());
         assert_eq!(count_edit_pending(&db.pool).await.unwrap(), 0);
+    }
+
+    // ── US-24: pending-delete push-phase queries ─────────────────────────
+
+    /// Simulates what `repo::delete_trip` does (US-24): mark the link row
+    /// `delete_pending` and null its `trip_id`, without going through the
+    /// full trip-delete flow — these tests only care about the
+    /// `trip_komoot_link` queries in isolation.
+    async fn mark_delete_pending(pool: &SqlitePool, trip_id: i64) {
+        sqlx::query(
+            "UPDATE trip_komoot_link SET delete_pending = 1, trip_id = NULL WHERE trip_id = ?",
+        )
+        .bind(trip_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_delete_pending_is_empty_with_no_pending_deletes() {
+        let db = TestDb::new().await;
+        a_linked_trip(&db.pool, "123456").await;
+        assert!(list_delete_pending(&db.pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_delete_pending_returns_the_orphaned_tour_id() {
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        mark_delete_pending(&db.pool, trip_id).await;
+
+        assert_eq!(
+            list_delete_pending(&db.pool).await.unwrap(),
+            vec!["123456".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_link_removes_the_row_from_the_pending_list() {
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        mark_delete_pending(&db.pool, trip_id).await;
+
+        delete_link(&db.pool, "123456").await.unwrap();
+
+        assert!(list_delete_pending(&db.pool).await.unwrap().is_empty());
+        assert!(list_linked_tour_ids(&db.pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_link_on_an_unknown_tour_id_is_a_no_op() {
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        mark_delete_pending(&db.pool, trip_id).await;
+
+        delete_link(&db.pool, "does-not-exist").await.unwrap();
+
+        assert_eq!(
+            list_delete_pending(&db.pool).await.unwrap(),
+            vec!["123456".to_string()]
+        );
     }
 }

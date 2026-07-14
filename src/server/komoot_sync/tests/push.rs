@@ -133,23 +133,33 @@ async fn push_pending_edits_halts_after_the_first_failure_leaving_later_edits_pe
     let first = a_pending_edit(&db.pool, "111", "First", ActivityType::Hiking).await;
     let second = a_pending_edit(&db.pool, "222", "Second", ActivityType::Hiking).await;
 
+    // Both tours are configured to fail, not just one: `list_edit_pending`
+    // has no `ORDER BY`, so which of the two is attempted first is not
+    // guaranteed. Failing both makes the assertions below true regardless
+    // of attempt order, instead of relying on "111" being processed before
+    // "222".
     let client: Arc<dyn KomootClient> = Arc::new(MockKomootClient {
         tour_details: HashMap::from([
             ("111".to_string(), a_tour("111", "irrelevant", "hike")),
             ("222".to_string(), a_tour("222", "irrelevant", "hike")),
         ]),
-        fail_update_tour_for: HashSet::from(["111".to_string()]),
+        fail_update_tour_for: HashSet::from(["111".to_string(), "222".to_string()]),
         ..Default::default()
     });
 
     let summary = push_pending_edits(&db.pool, client).await.unwrap();
 
     assert!(summary.pushed.is_empty());
-    let (failed_tour, _msg) = summary.failed.expect("first pending edit must fail");
-    assert_eq!(failed_tour, "111");
+    let (failed_tour, _msg) = summary
+        .failed
+        .expect("the first attempted pending edit must fail");
+    assert!(
+        failed_tour == "111" || failed_tour == "222",
+        "unexpected failed tour: {failed_tour}"
+    );
 
     // Both trips must still show as pending — the run halted before even
-    // attempting the second one.
+    // attempting the second one (whichever was attempted first).
     let pending = repo::komoot::list_edit_pending(&db.pool).await.unwrap();
     let pending_trip_ids: HashSet<i64> = pending.iter().map(|p| p.trip_id).collect();
     assert_eq!(pending_trip_ids, HashSet::from([first, second]));

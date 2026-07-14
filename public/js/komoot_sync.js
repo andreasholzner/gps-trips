@@ -27,6 +27,7 @@
       const result = await response.json();
       const params = new URLSearchParams({
         pushed: result.pushed,
+        deleted: result.deleted,
         synced: result.imported,
       });
       if (result.failed_tour) {

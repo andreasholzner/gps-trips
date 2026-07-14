@@ -231,16 +231,36 @@ pub async fn get_track_geojson(pool: &SqlitePool, id: i64) -> Result<Option<Stri
 
 /// Delete a trip by id (US-9). `track`/`photo` are declared `ON DELETE CASCADE`
 /// (migrations 0001/0003) and `foreign_keys(true)` is enabled on every
-/// connection (`db::create_pool`), so this one statement also removes the
+/// connection (`db::create_pool`), so the `DELETE FROM trip` also removes the
 /// trip's track row and all its photo rows via SQLite itself.
 /// Returns `true` if a trip with this id existed and was deleted, `false` if
 /// there was no such trip.
+///
+/// Also marks the trip's `trip_komoot_link` row `delete_pending` (US-24,
+/// ADR-0021), in the same transaction as the trip delete, if a link row
+/// exists — a no-op `UPDATE` otherwise, so trips never sourced from Komoot
+/// are unaffected. This must run *before* the `DELETE FROM trip`: the link
+/// row's FK is `ON DELETE SET NULL`, so once the trip row is gone there is no
+/// `trip_id` left to match on. The link row itself is deliberately not
+/// dropped here — it's the record of "still needs deleting on Komoot" until
+/// the next "Sync now" push phase (`komoot_sync::push_pending_deletes`)
+/// successfully calls Komoot's delete-tour API and removes it.
 pub async fn delete_trip(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("UPDATE trip_komoot_link SET delete_pending = 1 WHERE trip_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
     let result = sqlx::query("DELETE FROM trip WHERE id = ?")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
-    Ok(result.rows_affected() > 0)
+    let deleted = result.rows_affected() > 0;
+
+    tx.commit().await?;
+    Ok(deleted)
 }
 
 /// Fetch full trip detail by id, or `None` if no such trip exists.

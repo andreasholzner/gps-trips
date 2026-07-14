@@ -362,6 +362,57 @@ async fn us20_update_trip_leaves_an_unlinked_trip_without_a_link_row() {
     assert_eq!(edit_pending_flag(&db.pool, id).await, None);
 }
 
+// ── US-24: deleting a Komoot-sourced trip marks its link row delete_pending ──
+
+async fn delete_pending_link_row(
+    pool: &SqlitePool,
+    komoot_tour_id: &str,
+) -> Option<(Option<i64>, bool)> {
+    sqlx::query_as::<_, (Option<i64>, bool)>(
+        "SELECT trip_id, delete_pending FROM trip_komoot_link WHERE komoot_tour_id = ?",
+    )
+    .bind(komoot_tour_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn us24_delete_trip_marks_a_linked_trips_row_delete_pending_and_orphans_it() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+    let mut tx = db.pool.begin().await.unwrap();
+    crate::server::repo::komoot::insert_link_in_tx(&mut tx, id, "123456")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let deleted = delete_trip(&db.pool, id).await.unwrap();
+
+    assert!(deleted);
+    assert!(get_trip(&db.pool, id).await.unwrap().is_none());
+    let (trip_id, delete_pending) = delete_pending_link_row(&db.pool, "123456")
+        .await
+        .expect("link row must survive the trip delete");
+    assert_eq!(trip_id, None, "FK's ON DELETE SET NULL must have fired");
+    assert!(delete_pending);
+}
+
+#[tokio::test]
+async fn us24_delete_trip_leaves_no_link_row_for_an_unlinked_trip() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+
+    let deleted = delete_trip(&db.pool, id).await.unwrap();
+
+    assert!(deleted);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trip_komoot_link")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
 #[tokio::test]
 async fn us6_list_trips_does_not_require_track_geometry() {
     let db = TestDb::new().await;

@@ -380,3 +380,8 @@ async fn list_all_tour_photos_pages_through_more_than_one_page() {
 // Split out into tests/push.rs to keep this file under the repo's 500-line cap.
 
 mod push;
+
+// ── push_pending_deletes (US-24) ──────────────────────────────────────────
+// Split out into tests/delete.rs to keep this file under the repo's 500-line cap.
+
+mod delete;

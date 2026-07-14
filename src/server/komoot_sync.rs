@@ -61,15 +61,29 @@ pub struct PushSummary {
     pub failed: Option<(String, String)>,
 }
 
+/// The result of a `push_pending_deletes` run (US-24): every tour
+/// successfully deleted on Komoot, plus the first failure (if any) that
+/// halted the run before later pending deletes were attempted — mirrors
+/// `PushSummary`'s halt-on-first-failure (ADR-0021). There's no trip id to
+/// pair each tour id with here (the trip is already gone by the time a link
+/// row is `delete_pending`), unlike `PushSummary::pushed`.
+#[derive(Default)]
+pub struct PushDeleteSummary {
+    pub deleted: Vec<String>,
+    pub failed: Option<(String, String)>,
+}
+
 /// Query params on the "Sync now" review page's redirect after a run: how
-/// many pending edits were pushed and tours imported, and which trip/tour
-/// (if any) halted the run and in which phase — echoed back into the page
-/// as a one-line result banner (no session/flash mechanism in this app;
-/// matches how every other server-rendered page here carries its own state
-/// via the query string).
+/// many pending edits/deletes were pushed and tours imported, and which
+/// trip/tour (if any) halted the run and in which phase — echoed back into
+/// the page as a one-line result banner (no session/flash mechanism in this
+/// app; matches how every other server-rendered page here carries its own
+/// state via the query string).
 #[derive(Debug, Default, Deserialize)]
 pub struct SyncResultQuery {
     pub pushed: Option<usize>,
+    /// US-24: tours deleted on Komoot this run.
+    pub deleted: Option<usize>,
     pub synced: Option<usize>,
     pub failed_tour: Option<String>,
     pub failed_msg: Option<String>,
@@ -361,6 +375,44 @@ async fn push_one_edit(
     .await?;
 
     Ok(())
+}
+
+/// Push every pending delete (US-24, ADR-0021) to Komoot: for each
+/// `trip_komoot_link` row that's `delete_pending`, call Komoot's
+/// delete-tour API, then remove the link row. Halts on the first failure,
+/// leaving later pending deletes untouched — mirrors `push_pending_edits`'s
+/// halt-on-first-failure. A failed call's message is prefixed with
+/// `"delete tour: "` so it stays traceable to a delete failure even though
+/// the "Sync now" page's result banner reuses generic "push phase" wording
+/// for both edit and delete failures.
+pub async fn push_pending_deletes(
+    pool: &SqlitePool,
+    client: Arc<dyn KomootClient>,
+) -> Result<PushDeleteSummary, AppError> {
+    let pending = repo::komoot::list_delete_pending(pool).await?;
+    let mut summary = PushDeleteSummary::default();
+
+    for tour_id in pending {
+        let result = blocking_call({
+            let client = Arc::clone(&client);
+            let tour_id = tour_id.clone();
+            move || client.delete_tour(&tour_id)
+        })
+        .await;
+
+        match result {
+            Ok(()) => {
+                repo::komoot::delete_link(pool, &tour_id).await?;
+                summary.deleted.push(tour_id);
+            }
+            Err(e) => {
+                summary.failed = Some((tour_id, format!("delete tour: {e}")));
+                break;
+            }
+        }
+    }
+
+    Ok(summary)
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

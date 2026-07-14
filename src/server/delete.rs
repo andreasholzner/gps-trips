@@ -1,6 +1,9 @@
 //! Trip deletion — coordinates the DB delete (which cascades to `track` and
 //! `photo` rows) with removing the trip's photo blobs, and their generated
-//! thumbnails (US-5), from the `BlobStore` (US-9). Kept separate from
+//! thumbnails (US-5), from the `BlobStore` (US-9). The DB delete itself
+//! (`repo::delete_trip`) also marks a Komoot-sourced trip's link row
+//! `delete_pending` (US-24, ADR-0021) rather than dropping it, so a later
+//! "Sync now" push phase can delete it on Komoot too. Kept separate from
 //! `repo.rs` (DB-only) and `photos.rs` (ingestion), mirroring how
 //! `import.rs`/`photos.rs` sit alongside `repo.rs` rather than folding every
 //! concern into one file.

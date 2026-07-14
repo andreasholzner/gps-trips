@@ -81,7 +81,7 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
-        // US-9: delete a trip and its photo blobs. US-15: edit its name/activity type.
+        // US-9/US-24: delete a trip and its photo blobs. US-15: edit its name/activity type.
         .route(
             "/api/trips/:id",
             axum::routing::delete(handle_delete_trip).patch(handle_edit_trip),
@@ -137,13 +137,16 @@ struct SyncRequest {
     tour_ids: Vec<String>,
 }
 
-/// The `POST /api/komoot/sync` response: how many pending edits were pushed
-/// and tours were pulled/imported, and which trip/tour (if any) halted the
-/// run and in which phase — the client redirects to the review page with
-/// these as query params (US-20/US-22, no session/flash mechanism here).
+/// The `POST /api/komoot/sync` response: how many pending edits/deletes were
+/// pushed and tours were pulled/imported, and which trip/tour (if any)
+/// halted the run and in which phase — the client redirects to the review
+/// page with these as query params (US-20/US-22/US-24, no session/flash
+/// mechanism here).
 #[derive(Serialize)]
 struct SyncResponse {
     pushed: usize,
+    /// US-24: tours deleted on Komoot this run.
+    deleted: usize,
     imported: usize,
     failed_tour: Option<String>,
     failed_msg: Option<String>,
@@ -178,10 +181,11 @@ async fn sync_candidates_page(
     )))
 }
 
-/// POST `/api/komoot/sync` — push pending edits, then import the owner's
-/// selected tours (US-20/US-22), in that order (ADR-0021: push, then pull).
-/// A push failure halts before the pull is even attempted; either phase
-/// halts on its own first failure.
+/// POST `/api/komoot/sync` — push pending edits, then push pending deletes,
+/// then import the owner's selected tours (US-20/US-22/US-24), in that
+/// order (ADR-0021: push, then pull). A failure in either push step halts
+/// before anything later is even attempted; every phase halts on its own
+/// first failure.
 async fn handle_sync(
     State(state): State<AppState>,
     Json(body): Json<SyncRequest>,
@@ -192,6 +196,20 @@ async fn handle_sync(
     if let Some((tour_id, msg)) = push_summary.failed {
         return Ok(Json(SyncResponse {
             pushed: push_summary.pushed.len(),
+            deleted: 0,
+            imported: 0,
+            failed_tour: Some(tour_id),
+            failed_msg: Some(msg),
+            failed_phase: Some("push"),
+        }));
+    }
+
+    let delete_summary =
+        komoot_sync::push_pending_deletes(&state.pool, Arc::clone(&client)).await?;
+    if let Some((tour_id, msg)) = delete_summary.failed {
+        return Ok(Json(SyncResponse {
+            pushed: push_summary.pushed.len(),
+            deleted: delete_summary.deleted.len(),
             imported: 0,
             failed_tour: Some(tour_id),
             failed_msg: Some(msg),
@@ -204,6 +222,7 @@ async fn handle_sync(
     let failed_phase = summary.failed.is_some().then_some("pull");
     Ok(Json(SyncResponse {
         pushed: push_summary.pushed.len(),
+        deleted: delete_summary.deleted.len(),
         imported: summary.imported.len(),
         failed_tour: summary.failed.as_ref().map(|(tour_id, _)| tour_id.clone()),
         failed_msg: summary.failed.map(|(_, msg)| msg),
@@ -258,8 +277,11 @@ async fn track_geojson(
 
 /// DELETE `/api/trips/:id` — delete a trip and its photo blobs (US-9, the v1
 /// API surface fixed by ADR-0008). Removes the trip row (cascading to
-/// `track`/`photo`) and best-effort removes each photo's blob. 404 if no such
-/// trip exists; 204 with an empty body on success.
+/// `track`/`photo`) and best-effort removes each photo's blob. If the trip
+/// is Komoot-sourced, its link row is marked `delete_pending` in the same
+/// transaction (US-24) rather than dropped — the next "Sync now" push phase
+/// deletes it on Komoot too. 404 if no such trip exists; 204 with an empty
+/// body on success.
 async fn handle_delete_trip(
     State(state): State<AppState>,
     Path(id): Path<i64>,

@@ -415,16 +415,29 @@ fn render_sync_candidate_row(c: &SyncCandidate) -> String {
 
 /// The one-line result banner shown after a sync run redirects back here;
 /// empty (no banner) on a fresh, un-redirected visit to the page. Reports
-/// both phases (US-20's push, US-22's pull) and, on a halt, which phase
-/// (`failed_phase`) the failing trip/tour belongs to.
+/// all phases (US-20's edit-push, US-24's delete-push, US-22's pull) and, on
+/// a halt, which phase (`failed_phase`) the failing trip/tour belongs to.
+/// A delete-push failure's `failed_msg` is prefixed `"delete tour: "` by
+/// `push_pending_deletes` — the banner wording itself stays generic ("push"),
+/// but that prefix keeps the underlying error traceable to which push step
+/// actually failed.
 fn render_sync_result_banner(result: &SyncResultQuery) -> String {
-    if result.pushed.is_none() && result.synced.is_none() && result.failed_tour.is_none() {
+    if result.pushed.is_none()
+        && result.deleted.is_none()
+        && result.synced.is_none()
+        && result.failed_tour.is_none()
+    {
         return String::new();
     }
     let pushed_msg = result
         .pushed
         .filter(|&n| n > 0)
         .map(|n| format!("Pushed {n} edit(s). "))
+        .unwrap_or_default();
+    let deleted_msg = result
+        .deleted
+        .filter(|&n| n > 0)
+        .map(|n| format!("Deleted {n} tour(s) on Komoot. "))
         .unwrap_or_default();
     let synced_msg = result
         .synced
@@ -443,7 +456,7 @@ fn render_sync_result_banner(result: &SyncResultQuery) -> String {
             )
         })
         .unwrap_or_default();
-    format!("<p><strong>{pushed_msg}{synced_msg}{failed_msg}</strong></p>")
+    format!("<p><strong>{pushed_msg}{deleted_msg}{synced_msg}{failed_msg}</strong></p>")
 }
 
 /// Minimal HTML escaping for the small set of fields we interpolate — safe in

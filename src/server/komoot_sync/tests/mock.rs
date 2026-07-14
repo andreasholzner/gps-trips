@@ -26,6 +26,11 @@ pub(super) struct MockKomootClient {
     /// Every `update_tour` call, in order — asserted on to check exactly
     /// what name/sport a push actually sent.
     pub(super) update_tour_calls: Mutex<Vec<(String, String, String)>>,
+    /// US-24: tour ids `delete_tour` should fail for.
+    pub(super) fail_delete_tour_for: HashSet<String>,
+    /// Every `delete_tour` call, in order — asserted on to check exactly
+    /// which tours a push-phase delete actually called Komoot for.
+    pub(super) delete_tour_calls: Mutex<Vec<String>>,
 }
 
 impl KomootClient for MockKomootClient {
@@ -107,6 +112,20 @@ impl KomootClient for MockKomootClient {
             sport.to_string(),
         ));
         if self.fail_update_tour_for.contains(tour_id) {
+            return Err(KomootError::UnexpectedStatus {
+                status: 500,
+                body: "boom".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn delete_tour(&self, tour_id: &str) -> Result<(), KomootError> {
+        self.delete_tour_calls
+            .lock()
+            .unwrap()
+            .push(tour_id.to_string());
+        if self.fail_delete_tour_for.contains(tour_id) {
             return Err(KomootError::UnexpectedStatus {
                 status: 500,
                 body: "boom".to_string(),
