@@ -431,6 +431,9 @@ struct UpdateTourRequest<'a> {
     name: &'a str,
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 // Split into komoot/tests.rs to keep this file under the repo's 500-line cap.
 

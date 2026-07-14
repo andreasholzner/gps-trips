@@ -42,6 +42,26 @@ pub async fn test_app() -> (Router, tempfile::TempDir) {
     )
 }
 
+/// As [`test_app`], but with `state.komoot` set — for the Komoot sync
+/// routes (US-20/22/24/25), which 400 without it.
+pub async fn test_app_with_komoot(
+    client: Arc<dyn trip_archive::server::komoot::KomootClient>,
+) -> (Router, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let pool = db::create_pool(&dir.path().join("test.db"))
+        .await
+        .expect("create pool");
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    (
+        http::router(AppState {
+            pool,
+            store,
+            komoot: Some(client),
+        }),
+        dir,
+    )
+}
+
 /// Drive a single request through the router.
 pub async fn send(app: &Router, request: Request<Body>) -> Response {
     app.clone().oneshot(request).await.unwrap()
