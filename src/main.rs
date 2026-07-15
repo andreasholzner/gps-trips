@@ -22,11 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();
-    let app = server::http::router(server::state::AppState {
-        pool,
-        store,
-        komoot,
-    });
+    let app = server::http::router(server::state::AppState::new(pool, store, komoot));
 
     let addr = config::server::BIND_ADDR;
     let listener = TcpListener::bind(addr).await?;

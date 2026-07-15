@@ -22,7 +22,7 @@ use crate::server::{
     paths,
     render::{render_detail, render_import_form, render_sync_candidates, render_trip_list},
     repo,
-    state::AppState,
+    state::{self, AppState},
 };
 
 /// The JSON shape returned by `GET /api/trips/:id/photos` (ADR-0008).
@@ -186,11 +186,22 @@ async fn sync_candidates_page(
 /// order (ADR-0021: push, then pull). A failure in either push step halts
 /// before anything later is even attempted; every phase halts on its own
 /// first failure.
+///
+/// Claims `state`'s sync flag for the duration of the run (US-26): a second
+/// concurrent sync request is rejected with 409 rather than racing this
+/// one's push phase, and `PATCH`/`DELETE /api/trips/:id` are rejected the
+/// same way while this run is in flight. The claimed `SyncGuard` releases
+/// the flag when it drops — on every return path below, success or an
+/// early `?` error — so a halted sync (US-25) never leaves the app
+/// permanently locked out of edits/deletes.
 async fn handle_sync(
     State(state): State<AppState>,
     Json(body): Json<SyncRequest>,
 ) -> Result<Json<SyncResponse>, AppError> {
     let client = require_komoot(&state)?;
+    let _sync_guard = state
+        .try_start_sync()
+        .ok_or_else(|| AppError::Conflict(state::SYNC_IN_PROGRESS_MSG.to_string()))?;
 
     let push_summary = komoot_sync::push_pending_edits(&state.pool, Arc::clone(&client)).await?;
     if let Some((tour_id, msg)) = push_summary.failed {
@@ -281,11 +292,15 @@ async fn track_geojson(
 /// is Komoot-sourced, its link row is marked `delete_pending` in the same
 /// transaction (US-24) rather than dropped — the next "Sync now" push phase
 /// deletes it on Komoot too. 404 if no such trip exists; 204 with an empty
-/// body on success.
+/// body on success. 409 if a "Sync now" run is in flight (US-26) — it would
+/// otherwise race the push phase's read of `delete_pending`.
 async fn handle_delete_trip(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, AppError> {
+    if state.sync_in_progress() {
+        return Err(AppError::Conflict(state::SYNC_IN_PROGRESS_MSG.to_string()));
+    }
     let deleted = delete::delete_trip(&state.pool, &state.store, id).await?;
     if !deleted {
         return Err(AppError::NotFound);

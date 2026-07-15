@@ -9,7 +9,12 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::server::{error::AppError, import::resolve_activity_type, repo, state::AppState};
+use crate::server::{
+    error::AppError,
+    import::resolve_activity_type,
+    repo,
+    state::{AppState, SYNC_IN_PROGRESS_MSG},
+};
 
 /// The `PATCH /api/trips/:id` request body (ADR-0008). Both fields are
 /// optional: an omitted field leaves that column unchanged, so the owner can
@@ -27,7 +32,9 @@ pub struct EditTripRequest {
 /// otherwise) — unlike import's `resolve_name`, there is no GPX/date fallback
 /// to fall back to when editing an existing trip. A given `activity_type` is
 /// validated by the same `resolve_activity_type` import already uses (blank
-/// resets to `Unknown`; an unrecognized value is a 400).
+/// resets to `Unknown`; an unrecognized value is a 400). 409 if a "Sync now"
+/// run is in flight (US-26) — it would otherwise race the push phase's read
+/// of `edit_pending`.
 ///
 /// Validates the request body first, then writes both fields in one atomic
 /// `repo::update_trip` call (each field `None` if omitted) instead of
@@ -40,6 +47,9 @@ pub async fn handle_edit_trip(
     Path(id): Path<i64>,
     Json(body): Json<EditTripRequest>,
 ) -> Result<StatusCode, AppError> {
+    if state.sync_in_progress() {
+        return Err(AppError::Conflict(SYNC_IN_PROGRESS_MSG.to_string()));
+    }
     let name = match body.name {
         Some(name) if !name.trim().is_empty() => Some(name),
         Some(_) => return Err(AppError::BadRequest("name cannot be empty".to_string())),

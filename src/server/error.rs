@@ -13,6 +13,11 @@ pub enum AppError {
     #[error("Not found")]
     NotFound,
 
+    /// US-26: a `PATCH`/`DELETE`/sync request that lost the race against an
+    /// in-flight "Sync now" run (ADR-0021's concurrency guard).
+    #[error("{0}")]
+    Conflict(String),
+
     #[error("{0}")]
     Import(#[from] ImportError),
 
@@ -31,6 +36,7 @@ impl IntoResponse for AppError {
         let (status, body) = match &self {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Import(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             AppError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),

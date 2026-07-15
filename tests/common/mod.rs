@@ -32,14 +32,7 @@ pub async fn test_app() -> (Router, tempfile::TempDir) {
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    (
-        http::router(AppState {
-            pool,
-            store,
-            komoot: None,
-        }),
-        dir,
-    )
+    (http::router(AppState::new(pool, store, None)), dir)
 }
 
 /// As [`test_app`], but with `state.komoot` set — for the Komoot sync
@@ -52,14 +45,24 @@ pub async fn test_app_with_komoot(
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    (
-        http::router(AppState {
-            pool,
-            store,
-            komoot: Some(client),
-        }),
-        dir,
-    )
+    (http::router(AppState::new(pool, store, Some(client))), dir)
+}
+
+/// As [`test_app`]/[`test_app_with_komoot`], but also returns the
+/// `AppState` so a test can call `state.set_sync_in_progress_for_test`
+/// (US-26) to simulate an in-flight "Sync now" run without a real
+/// concurrent request. `komoot` is `None` unless the test also needs the
+/// sync routes (which 400 without it).
+pub async fn test_app_with_state(
+    komoot: Option<Arc<dyn trip_archive::server::komoot::KomootClient>>,
+) -> (Router, AppState, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let pool = db::create_pool(&dir.path().join("test.db"))
+        .await
+        .expect("create pool");
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let state = AppState::new(pool, store, komoot);
+    (http::router(state.clone()), state, dir)
 }
 
 /// Drive a single request through the router.
