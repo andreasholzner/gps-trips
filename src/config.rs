@@ -36,6 +36,18 @@ pub mod komoot {
     pub const EMAIL_ENV_VAR: &str = "KOMOOT_EMAIL";
     /// Env var holding the Komoot account password.
     pub const PASSWORD_ENV_VAR: &str = "KOMOOT_PASSWORD";
+
+    /// Minimum spacing between consecutive *authenticated* Komoot API
+    /// requests (`KomootHttpClient`'s throttle, `server::komoot::rate_limit`,
+    /// US-23/ADR-0021) — applied inside `KomootClient` itself so every call
+    /// site (the small "Sync now" and the large historical
+    /// `komoot_backfill`) gets it automatically. Does not apply to
+    /// `fetch_photo_bytes`, which hits a public, unauthenticated CloudFront
+    /// URL, not Komoot's own API.
+    pub const MIN_REQUEST_INTERVAL: std::time::Duration = std::time::Duration::from_millis(350);
+    /// Backoff applied after a `429` response with no (or unparseable)
+    /// `Retry-After` header.
+    pub const DEFAULT_RATE_LIMIT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(5);
 }
 
 /// Thumbnail generation (US-5, ADR-0020).

@@ -385,3 +385,8 @@ mod push;
 // Split out into tests/delete.rs to keep this file under the repo's 500-line cap.
 
 mod delete;
+
+// ── backfill (US-23) ────────────────────────────────────────────────────
+// Split out into tests/backfill.rs to keep this file under the repo's 500-line cap.
+
+mod backfill;

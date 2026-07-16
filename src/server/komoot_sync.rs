@@ -184,7 +184,11 @@ pub async fn list_sync_candidates(
 /// Import the owner's selected tours, in the given order, halting on the
 /// first failure. A selected tour that's already linked (e.g. synced by a
 /// concurrent run since the review page was rendered) is silently skipped,
-/// not treated as a failure — the anti-join dedup applies here too.
+/// not treated as a failure — the anti-join dedup applies here too. Logs in
+/// and re-lists Komoot's tours itself (ADR-0021: "logs in once per sync
+/// invocation") — deliberately fresh, since the owner's selection came from
+/// an earlier, separate review-page fetch (`list_sync_candidates`) and
+/// Komoot's state may have moved on since.
 pub async fn sync_selected_tours(
     pool: &SqlitePool,
     store: &Arc<dyn BlobStore>,
@@ -197,16 +201,65 @@ pub async fn sync_selected_tours(
     })
     .await?;
     let all_tours = list_all_tours(&client, &username).await?;
+    import_selected_tours(pool, store, &client, all_tours, tour_ids).await
+}
+
+/// Historical bulk import (US-23, ADR-0021): every not-yet-linked Komoot
+/// tour, capped to `limit` if given (`None` syncs all of them). Unlike
+/// `list_sync_candidates` + `sync_selected_tours` ("Sync now"'s two,
+/// separately-triggered steps), a backfill run has no review step in
+/// between — it logs in and lists Komoot's tours exactly once (ADR-0021:
+/// "logs in once per sync invocation") and reuses that same listing to both
+/// pick candidates and import them, then delegates to the same
+/// transactional per-tour import (and halt-on-first-failure) as "Sync now".
+/// Safe to rerun after an interruption since the anti-join dedup below is
+/// the same one `list_sync_candidates` uses.
+pub async fn backfill(
+    pool: &SqlitePool,
+    store: &Arc<dyn BlobStore>,
+    client: Arc<dyn KomootClient>,
+    limit: Option<usize>,
+) -> Result<SyncSummary, AppError> {
+    let username = blocking_call({
+        let client = Arc::clone(&client);
+        move || client.login()
+    })
+    .await?;
+    let all_tours = list_all_tours(&client, &username).await?;
+    let linked = repo::komoot::list_linked_tour_ids(pool).await?;
+    let tour_ids: Vec<String> = all_tours
+        .iter()
+        .map(|t| t.id.clone())
+        .filter(|id| !linked.contains(id))
+        .take(limit.unwrap_or(usize::MAX))
+        .collect();
+
+    import_selected_tours(pool, store, &client, all_tours, &tour_ids).await
+}
+
+/// Shared by [`sync_selected_tours`] and [`backfill`]: given an
+/// already-fetched tour listing and the ids to import (in order), imports
+/// each through [`sync_one_tour`], halting on the first failure. A
+/// `tour_id` not present in `already_linked` but no longer found in
+/// `all_tours` fails the run (Komoot's own dedup moved out from under the
+/// caller); one already linked is silently skipped.
+async fn import_selected_tours(
+    pool: &SqlitePool,
+    store: &Arc<dyn BlobStore>,
+    client: &Arc<dyn KomootClient>,
+    all_tours: Vec<KomootTourSummary>,
+    tour_ids: &[String],
+) -> Result<SyncSummary, AppError> {
     let mut by_id: HashMap<String, KomootTourSummary> =
         all_tours.into_iter().map(|t| (t.id.clone(), t)).collect();
     let already_linked: HashSet<String> = repo::komoot::list_linked_tour_ids(pool).await?;
 
     let mut summary = SyncSummary::default();
-    // `tour_ids` comes straight from the request body (`POST
-    // /api/komoot/sync`) with no dedup applied at that boundary — a repeat
-    // id would otherwise look like "already imported by an earlier entry
-    // in this same run" on its second occurrence and spuriously halt the
-    // run. Track what's already been *attempted this run* to skip repeats
+    // `tour_ids` may contain repeats (`sync_selected_tours`' caller is an
+    // HTTP request body with no dedup applied at that boundary) — a repeat
+    // id would otherwise look like "already imported by an earlier entry in
+    // this same run" on its second occurrence and spuriously halt the run.
+    // Track what's already been *attempted this run* to skip repeats
     // instead.
     let mut attempted = HashSet::new();
 
@@ -225,7 +278,7 @@ pub async fn sync_selected_tours(
             break;
         };
 
-        match sync_one_tour(pool, store, &client, &tour).await {
+        match sync_one_tour(pool, store, client, &tour).await {
             Ok(trip_id) => summary.imported.push((tour_id.clone(), trip_id)),
             Err(e) => {
                 summary.failed = Some((tour_id.clone(), e.to_string()));

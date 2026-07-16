@@ -16,6 +16,9 @@
 use serde::Deserialize;
 use thiserror::Error;
 
+mod rate_limit;
+use rate_limit::Throttle;
+
 const BASE_URL: &str = "https://api.komoot.de";
 
 /// Errors from talking to the Komoot API.
@@ -32,6 +35,12 @@ pub enum KomootError {
 
     #[error("Could not decode Komoot's response: {0}")]
     Decode(#[from] serde_json::Error),
+
+    /// `komoot_backfill --interactive` (US-23): the owner declined a
+    /// confirmation prompt before a request was ever sent. Distinct from
+    /// [`Self::UnexpectedStatus`] — Komoot never saw this call.
+    #[error("declined in --interactive mode: {0}")]
+    Declined(String),
 }
 
 /// A Komoot tour as listed by `list_tours` — enough to decide whether to
@@ -212,6 +221,7 @@ pub struct KomootHttpClient {
     password: String,
     debug: bool,
     http: reqwest::blocking::Client,
+    throttle: Throttle,
 }
 
 impl KomootHttpClient {
@@ -225,7 +235,21 @@ impl KomootHttpClient {
             password,
             debug,
             http,
+            throttle: Throttle::new(),
         }
+    }
+
+    /// Feeds a just-received response's status/`Retry-After` back into the
+    /// throttle (US-23, ADR-0021) — shared by every authenticated call site
+    /// so a `429` backs off the *next* request regardless of which method
+    /// triggered it.
+    fn record_rate_limit(&self, response: &reqwest::blocking::Response) {
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok());
+        self.throttle
+            .record_response(response.status(), retry_after);
     }
 
     /// Send an authenticated `GET`, before the response body is read —
@@ -237,12 +261,15 @@ impl KomootHttpClient {
         url: &str,
         query: &[(&str, &str)],
     ) -> Result<reqwest::blocking::Response, KomootError> {
-        Ok(self
+        self.throttle.wait_before_request();
+        let response = self
             .http
             .get(url)
             .basic_auth(&self.email, Some(&self.password))
             .query(query)
-            .send()?)
+            .send()?;
+        self.record_rate_limit(&response);
+        Ok(response)
     }
 
     /// Turn a response's status into a [`KomootError`]: `FORBIDDEN` means
@@ -304,12 +331,14 @@ impl KomootHttpClient {
     /// — the write counterpart to `authed_get`, sharing its auth/debug/status
     /// handling.
     fn authed_patch(&self, url: &str, body: &impl serde::Serialize) -> Result<String, KomootError> {
+        self.throttle.wait_before_request();
         let response = self
             .http
             .patch(url)
             .basic_auth(&self.email, Some(&self.password))
             .json(body)
             .send()?;
+        self.record_rate_limit(&response);
         let status = response.status();
         let body = response.text()?;
 
@@ -324,11 +353,13 @@ impl KomootHttpClient {
     /// Send an authenticated `DELETE` with no body (US-24's `delete_tour`) —
     /// shares `authed_get`/`authed_patch`'s auth/debug/status handling.
     fn authed_delete(&self, url: &str) -> Result<(), KomootError> {
+        self.throttle.wait_before_request();
         let response = self
             .http
             .delete(url)
             .basic_auth(&self.email, Some(&self.password))
             .send()?;
+        self.record_rate_limit(&response);
         let status = response.status();
         let body = response.text()?;
 

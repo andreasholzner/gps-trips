@@ -16,6 +16,14 @@ pub(super) struct MockKomootClient {
     pub(super) photo_bytes: HashMap<String, Vec<u8>>,
     pub(super) fail_gpx_for: HashSet<String>,
     pub(super) gpx_calls: Mutex<Vec<String>>,
+    /// Every `login` call — asserted on by `backfill` tests (US-23) to
+    /// prove a single backfill run logs in exactly once, not once per
+    /// internal listing pass.
+    pub(super) login_calls: Mutex<u32>,
+    /// Every `list_tours` call's requested page — asserted on by
+    /// `backfill` tests (US-23) to prove a single backfill run lists
+    /// Komoot's tours only once, not once per internal pass.
+    pub(super) list_tours_calls: Mutex<Vec<u32>>,
     /// US-20: `get_tour`'s response per tour id — the tour's *live* current
     /// sport, as `push_one_edit` diffs against before deciding what sport to
     /// push. Independent of `tours` (the `list_tours` fixture) since a push
@@ -35,6 +43,7 @@ pub(super) struct MockKomootClient {
 
 impl KomootClient for MockKomootClient {
     fn login(&self) -> Result<String, KomootError> {
+        *self.login_calls.lock().unwrap() += 1;
         Ok("testuser".to_string())
     }
 
@@ -44,6 +53,10 @@ impl KomootClient for MockKomootClient {
         _limit: Option<u32>,
         page: Option<u32>,
     ) -> Result<Vec<KomootTourSummary>, KomootError> {
+        self.list_tours_calls
+            .lock()
+            .unwrap()
+            .push(page.unwrap_or(0));
         // A single page holds every configured tour; any later page is
         // empty, matching the real API's "short page = last page".
         Ok(if page.unwrap_or(0) == 0 {
