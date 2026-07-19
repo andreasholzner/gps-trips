@@ -16,23 +16,23 @@
 
 # ───────── claude-flow / ruflo runtime ─────────
 # Generated state, metrics, vector stores, neural data, logs
-.claude-flow/data/
-.claude-flow/metrics/
-.claude-flow/neural/
-.claude-flow/cache/
-.claude-flow/logs/
-.claude-flow/*.db
-.claude-flow/*.log
-.claude-flow/memory/
+**/.claude-flow/data/
+**/.claude-flow/metrics/
+**/.claude-flow/neural/
+**/.claude-flow/cache/
+**/.claude-flow/logs/
+**/.claude-flow/*.db
+**/.claude-flow/*.log
+**/.claude-flow/memory/
 .swarm/
 .hive-mind/
 /memory/
 *.sqlite
 *.sqlite-journal
 # Keep: .claude-flow/config.yaml, .claude-flow/CAPABILITIES.md
-.claude-flow/daemon-state.json
-.claude-flow/daemon.pid
-.claude-flow/harness-active-policy.json
+**/.claude-flow/daemon-state.json
+**/.claude-flow/daemon.pid
+**/.claude-flow/harness-active-policy.json
 .claude/.proven-config-version
 .claude/proven-config.json
 
@@ -60,3 +60,7 @@ Thumbs.db
 /target/
 # Application runtime data (SQLite DB, photos)
 /data/
+
+# ───────── Reference clones (not project source) ─────────
+docs/qmapshack_analysis/qmapshack-src/
+docs/qmapshack_analysis/Touren.db

@@ -96,6 +96,21 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 > The phone/cloud/ownCloud topology will be chosen later from real use; see
 > [ADR-0014](./adr/0014-defer-deployment-topology.md) for the decision and its revisit triggers.
 
+## QMapShack export
+
+The owner also wants to browse and visually compare their whole trip history, and reuse
+existing track segments when planning new routes, in the desktop tool **QMapShack**.
+QMapShack is a **side-tool only**: read access to the archive's data, no round-trip back in — a
+route planned in QMapShack is still imported into Komoot the established way. See
+[`docs/qmapshack.md`](./qmapshack.md) for the full discussion and feasibility spike,
+[`docs/qmapshack-format.md`](./qmapshack-format.md) for the reverse-engineered database format,
+and [ADR-0022](./adr/0022-qmapshack-export.md) for the resulting design.
+
+| ID        | State | Story                                                                                                                                                                | Acceptance criteria                                                                                                                                                                                                                                                                                        |
+|-----------|:-----:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **US-36** |  📋   | As the owner, I can export my whole trip archive to a QMapShack-compatible database, organized into folders per a configuration I control, so I can browse and compare all my trips in QMapShack without importing hundreds of files by hand. | Running the export CLI binary against a configured QMapShack database path writes every trip in the archive as a QMapShack track item, placed into folders per the owner's folder-mapping configuration (at minimum activity type and year). The export checks the target database's version and fails clearly, without writing anything, if it doesn't match what the exporter was built for. |
+| **US-37** |  📋   | As the owner, I can re-run the export at any time and have only the trip-archive-derived items in the QMapShack database added, updated, or removed to match the archive's current state, so the QMapShack copy stays in sync without me resetting it or ending up with duplicates. | A trip added since the last run appears as a new item on the next export. A trip edited (US-15) or deleted (US-9) since the last run has its QMapShack item updated or removed (moved to QMapShack's trash) accordingly. Items and folders not created by a previous export run — e.g. the owner's own waypoints, routes, or reorganization done directly in QMapShack — are left untouched. The sync is one-way only: nothing in the QMapShack database is ever read back into trip-archive. |
+
 ## Non-functional requirements
 
 - **Self-contained:** no external API keys (OSM raster tiles, no key); single binary + assets.
@@ -121,6 +136,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 - US-19 → ADR-0010 (optional shared-password auth)
 - US-20/22/23/24/25/26/27 → ADR-0021 (Komoot client, sync now, backfill, integration check)
 - US-24 → also ADR-0021's extension of US-9's delete flow (`delete_pending` / orphaned link row)
+- US-36/37 → ADR-0022 (QMapShack export)
 
 See `adr/` folder for the full Architecture Decision Records and
 [`architecture.md`](./architecture.md) for the C4 diagrams. The original
