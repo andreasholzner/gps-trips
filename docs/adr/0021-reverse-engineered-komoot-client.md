@@ -12,7 +12,7 @@ export/upload step, edits (name/activity_type) must sync back to Komoot, and his
 already in Komoot must be bulk-importable (incl. photos). Since Garmin-recorded trips already flow
 into Komoot via its own Garmin Connect integration, and app-recorded trips are native to Komoot,
 **Komoot is the single upstream source** that covers both ingestion paths — no separate Garmin
-Connect integration is needed for this (that stays deferred to US-18 as a possible alternate
+Connect integration is needed for this (that stays deferred as a possible alternate
 source). Komoot has no official API suited to this; the only option is an **unofficial/
 reverse-engineered API**, which is fragile and carries ToS risk the owner accepts for personal,
 single-user use. Endpoint and auth details are in [`docs/komoot-api.md`](../komoot-api.md), kept
@@ -57,7 +57,7 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   - Edit: `repo::update_trip` also sets `edit_pending = true` on the trip's link row, if one
     exists, in the same statement/transaction as the name/activity_type update — so an edit to a
     Komoot-sourced trip is never silently lost.
-  - Delete (US-9): deleting a Komoot-linked trip does **not** drop its link row. The link row's
+  - Delete: deleting a Komoot-linked trip does **not** drop its link row. The link row's
     `delete_pending` is set `true` (in the same transaction as the trip delete); the FK's
     `ON DELETE SET NULL` then nulls `trip_id` when the `trip` row disappears, leaving an orphaned,
     delete-pending link row behind as the record of "still needs deleting on Komoot". Only once a
@@ -68,7 +68,7 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
     `delete_pending` rows call Komoot's delete-tour API, then delete the link row on success.
     `edit_pending` rows (joined to `trip` for current name/activity_type) call Komoot's
     update-tour API, then clear the flag on success.
-  - Also gives future alternate sources (e.g. a direct Garmin Connect import, US-18) the same
+  - Also gives future alternate sources (e.g. a direct Garmin Connect import) the same
     pattern — their own link table — without ever touching `trip`.
 - **"Sync now"** — a new action, invoked explicitly by the owner (no auto-run on startup). When
   triggered: (1) *push* — for every `trip_komoot_link` row with `delete_pending` or
@@ -97,8 +97,24 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   logs in and makes one cheap call (e.g. list tours) to confirm the reverse-engineered API still
   works, independently of the full app or a real sync — a fast way to notice Komoot has changed
   something before it surfaces as a confusing failure mid-sync.
-- Nice-to-haves (photo upload to Komoot, one-way planned-trip sync) are **not built now** — they're
-  additive `KomootClient` methods / a separate read-only pull, left for later.
+- **Planned-trip pull** — Komoot distinguishes recorded tours (`tour_recorded`, actually ridden)
+  from planned ones (`tour_planned`, a future/unrecorded route) via the `type` list-tours filter
+  (`docs/komoot-api.md`). The recorded sync hard-codes `type=tour_recorded`; a sibling
+  `KomootClient::list_planned_tours` sends `type=tour_planned`, sharing one private
+  `list_tours_of_type` helper so the two can't drift. Planned tours are pulled through the same
+  import pipeline and dedup as recorded ones — their tour IDs are disjoint from recorded IDs, so the
+  existing `trip_komoot_link` anti-join is unchanged — and stored as ordinary linked trips,
+  distinguished only by `trip.trip_kind = planned` (the `TripKind` enum
+  ([ADR-0018](./0018-enums-for-closed-string-sets.md)) and its list-page tabs already exist). No new
+  table, no schema change. An edit or delete of a planned trip in the archive therefore syncs back
+  to Komoot through the same push machinery as a recorded one.
+  - **`sport` is never pushed for planned trips.** A tour's `sport` drives Komoot's route planning
+    for a planned route, so pushing a remapped sport could silently re-route a plan; the push phase
+    always resends a planned trip's live Komoot `sport` unchanged. Name edits and deletes push
+    normally.
+  - **Triggers:** planned tours appear as selectable candidates on the "Sync now" review page
+    alongside recorded ones, labeled by kind, and `komoot_backfill --planned` pulls them in bulk
+    from the terminal.
 
 ## Consequences
 
@@ -116,7 +132,12 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   local-only deployment ([ADR-0014](./0014-defer-deployment-topology.md),
   [ADR-0010](./0010-single-user-optional-auth.md)) — not a new class of exposure.
 - Bulk historical import requires terminal access; acceptable since the owner is the sole,
-  technical user (US-10).
+  technical user.
 - One extra table + join for sync-state queries (negligible at personal scale,
   [ADR-0011](./0011-filtering-search-geo-queries.md)'s territory), in exchange for zero
   Komoot-specific surface on the core `trip` model.
+- Planned Komoot routes land in the archive as `planned` trips; their name edits and deletes sync
+  back to Komoot like any recorded trip, while their `sport`/`activity_type` is deliberately never
+  pushed, to avoid disturbing Komoot's route planning. Whether a planned tour's `.gpx` export
+  carries a usable track is confirmed only against the live API; a failed fetch halts the sync with
+  a visible error rather than corrupting trip state.
