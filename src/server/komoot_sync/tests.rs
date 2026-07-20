@@ -17,6 +17,27 @@ const SAMPLE_GPX: &[u8] = include_bytes!("../../../tests/fixtures/sample.gpx");
 mod mock;
 use mock::{a_tour, test_store, MockKomootClient};
 
+/// A recorded selection for `sync_selected_tours` — the review page tags each
+/// ticked tour with its kind (US-29); most tests sync recorded tours.
+fn recorded_sel(ids: &[&str]) -> Vec<SelectedTour> {
+    ids.iter()
+        .map(|id| SelectedTour {
+            tour_id: id.to_string(),
+            kind: TripKind::Recorded,
+        })
+        .collect()
+}
+
+/// A planned selection for `sync_selected_tours` (US-29).
+fn planned_sel(ids: &[&str]) -> Vec<SelectedTour> {
+    ids.iter()
+        .map(|id| SelectedTour {
+            tour_id: id.to_string(),
+            kind: TripKind::Planned,
+        })
+        .collect()
+}
+
 // ── list_sync_candidates: anti-join dedup ──────────────────────────────
 
 #[tokio::test]
@@ -103,7 +124,7 @@ async fn sync_selected_tours_imports_gpx_and_photos_in_one_transaction_with_the_
         ..Default::default()
     });
 
-    let summary = sync_selected_tours(&db.pool, &store, client, &["999".to_string()])
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["999"]))
         .await
         .unwrap();
 
@@ -165,7 +186,7 @@ async fn sync_selected_tours_skips_a_selected_tour_that_is_already_linked() {
         ..Default::default()
     });
 
-    let summary = sync_selected_tours(&db.pool, &store, client, &["111".to_string()])
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["111"]))
         .await
         .unwrap();
 
@@ -198,7 +219,7 @@ async fn sync_selected_tours_halts_after_the_first_failed_tour() {
         &db.pool,
         &store,
         Arc::clone(&client),
-        &["111".to_string(), "222".to_string()],
+        &recorded_sel(&["111", "222"]),
     )
     .await
     .unwrap();
@@ -232,14 +253,9 @@ async fn sync_selected_tours_dedupes_a_repeated_tour_id_in_the_request() {
         ..Default::default()
     });
 
-    let summary = sync_selected_tours(
-        &db.pool,
-        &store,
-        client,
-        &["999".to_string(), "999".to_string()],
-    )
-    .await
-    .unwrap();
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["999", "999"]))
+        .await
+        .unwrap();
 
     assert!(summary.failed.is_none());
     assert_eq!(summary.imported.len(), 1);
@@ -276,7 +292,7 @@ async fn sync_one_tour_names_a_photo_by_its_sniffed_format_not_a_hardcoded_jpg()
         ..Default::default()
     });
 
-    let summary = sync_selected_tours(&db.pool, &store, client, &["999".to_string()])
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["999"]))
         .await
         .unwrap();
 
@@ -330,7 +346,7 @@ async fn sync_one_tour_rolls_back_the_trip_when_a_later_photo_fails_mid_transact
         ..Default::default()
     });
 
-    let summary = sync_selected_tours(&db.pool, &store, client, &["999".to_string()])
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["999"]))
         .await
         .unwrap();
 
@@ -376,6 +392,153 @@ async fn list_all_tour_photos_pages_through_more_than_one_page() {
 
     let all = list_all_tour_photos(&client, "999").await.unwrap();
     assert_eq!(all.len(), total as usize);
+}
+
+// ── US-29: planned-route pull ──────────────────────────────────────────
+
+/// A trip's stored `trip_kind`, read straight from the DB — `TripDetail`
+/// (what `get_trip` returns) doesn't carry it, but the pull tests need to
+/// prove a planned route landed as a `Planned` trip.
+async fn trip_kind_of(pool: &SqlitePool, trip_id: i64) -> TripKind {
+    sqlx::query_scalar("SELECT trip_kind FROM trip WHERE id = ?")
+        .bind(trip_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn list_sync_candidates_tags_recorded_and_planned_and_dedupes_both() {
+    let db = TestDb::new().await;
+
+    // One recorded tour ("111") already linked, so it must be filtered out;
+    // "222" (recorded) and "333" (planned) are new.
+    let trip_id = crate::server::repo::insert_trip(
+        &db.pool,
+        "Existing",
+        ActivityType::Hiking,
+        "UTC",
+        &gpx::compute_stats(&[]),
+        "{}",
+        b"x",
+        TripKind::Recorded,
+    )
+    .await
+    .unwrap();
+    let mut tx = db.pool.begin().await.unwrap();
+    repo::komoot::insert_link_in_tx(&mut tx, trip_id, "111")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let client: Arc<dyn KomootClient> = Arc::new(MockKomootClient {
+        tours: vec![
+            a_tour("111", "Already synced", "hike"),
+            a_tour("222", "New recorded", "mtb"),
+        ],
+        planned_tours: vec![a_tour("333", "New planned", "hike")],
+        ..Default::default()
+    });
+
+    let candidates = list_sync_candidates(&db.pool, client).await.unwrap();
+
+    let by_id: HashMap<&str, TripKind> = candidates
+        .iter()
+        .map(|c| (c.tour_id.as_str(), c.kind))
+        .collect();
+    assert_eq!(by_id.len(), 2);
+    assert_eq!(by_id.get("222"), Some(&TripKind::Recorded));
+    assert_eq!(by_id.get("333"), Some(&TripKind::Planned));
+    assert!(!by_id.contains_key("111"), "linked tour must be excluded");
+}
+
+#[tokio::test]
+async fn sync_selected_tours_imports_a_planned_route_as_a_planned_trip() {
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+
+    let mut gpx = HashMap::new();
+    gpx.insert("777".to_string(), SAMPLE_GPX.to_vec());
+
+    let client: Arc<dyn KomootClient> = Arc::new(MockKomootClient {
+        planned_tours: vec![a_tour("777", "Planned Loop", "hike")],
+        gpx,
+        ..Default::default()
+    });
+
+    let summary = sync_selected_tours(&db.pool, &store, client, &planned_sel(&["777"]))
+        .await
+        .unwrap();
+
+    assert!(summary.failed.is_none());
+    let (tour_id, trip_id) = summary.imported.first().expect("planned route imports");
+    assert_eq!(tour_id, "777");
+    assert_eq!(trip_kind_of(&db.pool, *trip_id).await, TripKind::Planned);
+    assert!(repo::komoot::list_linked_tour_ids(&db.pool)
+        .await
+        .unwrap()
+        .contains("777"));
+}
+
+#[tokio::test]
+async fn sync_selected_tours_recorded_selection_never_queries_the_planned_endpoint() {
+    // US-29 / review finding #2: to minimize Komoot calls, a purely-recorded
+    // selection must list the recorded endpoint only, not both.
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+
+    let mut gpx = HashMap::new();
+    gpx.insert("999".to_string(), SAMPLE_GPX.to_vec());
+    let mock = Arc::new(MockKomootClient {
+        tours: vec![a_tour("999", "Recorded", "mtb")],
+        gpx,
+        ..Default::default()
+    });
+    let client: Arc<dyn KomootClient> = Arc::clone(&mock) as Arc<dyn KomootClient>;
+
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["999"]))
+        .await
+        .unwrap();
+
+    assert!(summary.failed.is_none());
+    assert_eq!(summary.imported.len(), 1);
+    assert_eq!(mock.list_tours_calls.lock().unwrap().as_slice(), &[0u32]);
+    assert!(
+        mock.list_planned_tours_calls.lock().unwrap().is_empty(),
+        "a recorded-only selection must not query the planned endpoint"
+    );
+}
+
+#[tokio::test]
+async fn sync_selected_tours_planned_selection_never_queries_the_recorded_endpoint() {
+    // The mirror of the above: a purely-planned selection lists the planned
+    // endpoint only — no wasted recorded listing (which is the larger call).
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+
+    let mut gpx = HashMap::new();
+    gpx.insert("777".to_string(), SAMPLE_GPX.to_vec());
+    let mock = Arc::new(MockKomootClient {
+        planned_tours: vec![a_tour("777", "Planned", "hike")],
+        gpx,
+        ..Default::default()
+    });
+    let client: Arc<dyn KomootClient> = Arc::clone(&mock) as Arc<dyn KomootClient>;
+
+    let summary = sync_selected_tours(&db.pool, &store, client, &planned_sel(&["777"]))
+        .await
+        .unwrap();
+
+    assert!(summary.failed.is_none());
+    assert_eq!(summary.imported.len(), 1);
+    assert_eq!(
+        mock.list_planned_tours_calls.lock().unwrap().as_slice(),
+        &[0u32]
+    );
+    assert!(
+        mock.list_tours_calls.lock().unwrap().is_empty(),
+        "a planned-only selection must not query the recorded endpoint"
+    );
 }
 
 // ── push_pending_edits (US-20) ────────────────────────────────────────────

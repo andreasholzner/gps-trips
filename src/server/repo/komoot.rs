@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 
-use crate::models::ActivityType;
+use crate::models::{ActivityType, TripKind};
 
 /// Every `komoot_tour_id` already linked to a trip (or pending Komoot-side
 /// deletion) — the anti-join dedup set US-22's "Sync now" filters Komoot's
@@ -43,6 +43,9 @@ pub struct EditPending {
     pub komoot_tour_id: String,
     pub name: String,
     pub activity_type: ActivityType,
+    /// Recorded or planned (US-29): the push phase never changes a *planned*
+    /// tour's Komoot `sport`, since that drives Komoot's route planning.
+    pub trip_kind: TripKind,
 }
 
 /// Every trip with a pending edit to push to Komoot (US-20): an inner join
@@ -52,7 +55,7 @@ pub struct EditPending {
 pub async fn list_edit_pending(pool: &SqlitePool) -> Result<Vec<EditPending>, sqlx::Error> {
     sqlx::query(
         r#"SELECT l.trip_id AS trip_id, l.komoot_tour_id AS komoot_tour_id,
-                  t.name AS name, t.activity_type AS activity_type
+                  t.name AS name, t.activity_type AS activity_type, t.trip_kind AS trip_kind
            FROM trip_komoot_link l
            JOIN trip t ON t.id = l.trip_id
            WHERE l.edit_pending = 1"#,
@@ -62,6 +65,7 @@ pub async fn list_edit_pending(pool: &SqlitePool) -> Result<Vec<EditPending>, sq
         komoot_tour_id: row.get("komoot_tour_id"),
         name: row.get("name"),
         activity_type: row.get("activity_type"),
+        trip_kind: row.get("trip_kind"),
     })
     .fetch_all(pool)
     .await
@@ -236,6 +240,47 @@ mod tests {
             .unwrap();
 
         assert!(list_edit_pending(&db.pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_edit_pending_reports_the_trips_kind() {
+        // US-29: the push phase reads `trip_kind` to decide whether to rewrite
+        // a tour's sport, so `list_edit_pending` must surface it. A default
+        // `a_trip` is Recorded; here we link a Planned trip and check it comes
+        // back as such.
+        let db = TestDb::new().await;
+        let stats = TrackStats {
+            distance_m: 1.0,
+            ascent_m: 0.0,
+            descent_m: 0.0,
+            duration_secs: None,
+            start_time: None,
+            end_time: None,
+            min_lat: 0.0,
+            min_lon: 0.0,
+            max_lat: 0.0,
+            max_lon: 0.0,
+        };
+        let trip_id = insert_trip(
+            &db.pool,
+            "Planned Trip",
+            ActivityType::Hiking,
+            "Europe/Oslo",
+            &stats,
+            "{}",
+            b"x",
+            TripKind::Planned,
+        )
+        .await
+        .unwrap();
+        let mut tx = db.pool.begin().await.unwrap();
+        insert_link_in_tx(&mut tx, trip_id, "999").await.unwrap();
+        tx.commit().await.unwrap();
+        mark_edit_pending(&db.pool, trip_id).await;
+
+        let pending = list_edit_pending(&db.pool).await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].trip_kind, TripKind::Planned);
     }
 
     #[tokio::test]

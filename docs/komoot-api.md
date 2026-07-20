@@ -64,9 +64,16 @@ Query params (all optional): `limit`, `page`, `status`, `type`, `only_unlocked`,
 `max_distance`, `sport_types`, `start_date`, `end_date`, `name`, `sort_direction`, `sort_field`.
 
 `type` filters by tour kind — confirmed against a real account (2026-07-12): `tour_recorded`
-(an actually-recorded trip) vs. `tour_planned` (a planned/future route, never recorded). US-22's
-sync only ever wants `tour_recorded` — `KomootHttpClient::list_tours` always sends
-`type=tour_recorded` rather than exposing it as a caller-chosen parameter.
+(an actually-recorded trip) vs. `tour_planned` (a planned/future route, never recorded). Both are
+pulled, by separate methods that each pin the filter rather than exposing it as a caller-chosen
+parameter: `KomootHttpClient::list_tours` sends `type=tour_recorded`, and `list_planned_tours`
+(US-29) sends `type=tour_planned`. The two share one private `list_tours_of_type` helper, so only
+the filter string differs.
+
+A `tour_planned` list entry carries the **same shape** as a recorded one — verified against a real
+account (2026-07-20): every planned tour returned includes `id`, `name`, `sport`, `date`, and
+`distance` (plus `type: "tour_planned"`), so `KomootTourSummary` deserializes a planned listing with
+no special-casing. `date` on a planned route is its creation/plan timestamp, not a ride time.
 
 Response is HAL-style JSON: tours live at `_embedded.tours`; pagination info at `page.totalPages`
 / `page.number`.
@@ -219,6 +226,13 @@ Optional query param `share_token` grants access to a specific tour regardless o
 - `.gpx` / `.fit` suffix — raw file bytes in that format.
 - `404` — invalid tour id.
 - `500` — transient, more common for `.fit`; retry or fall back to another format.
+
+The `.gpx` endpoint works for **planned** tours too, not just recorded ones — verified against a
+real account (2026-07-20): a planned route's `.gpx` is a valid GPX 1.1 document with a full
+`<trk>`/`<trkpt>` track (not `<rte>`/`<rtept>`), and Komoot bakes **synthetic `<time>` and `<ele>`
+on every point** (estimated pace + terrain elevation for the planned line). So a planned tour flows
+through the same `parse_gpx`/`compute_stats` import pipeline as a recorded one, and its computed
+`duration` is Komoot's estimate rather than `None` (US-29).
 
 Example response for `GET /v007/tours/2996317340`
 

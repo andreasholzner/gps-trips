@@ -114,7 +114,15 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
     normally.
   - **Triggers:** planned tours appear as selectable candidates on the "Sync now" review page
     alongside recorded ones, labeled by kind, and `komoot_backfill --planned` pulls them in bulk
-    from the terminal.
+    from the terminal. Each review-page selection carries its kind back to the server, so an import
+    lists only the endpoint(s) the selection actually spans (a purely-recorded pick never fetches
+    the planned listing, and vice versa) — one fewer Komoot call than always paging both.
+  - **Disjoint tour IDs are assumed, not enforced.** A tour is either `tour_recorded` or
+    `tour_planned`, never both, so a Komoot tour id identifies one tour of one kind; the pull, the
+    `trip_komoot_link` dedup, and the per-id import all rely on this. Should Komoot ever surface the
+    same id under both listings, the candidate list would show it twice and the import would resolve
+    it to `planned` (the planned listing is merged last). This is accepted as intrinsic to how Komoot
+    models tours; the code does not defend against a shared id.
 
 ## Consequences
 
@@ -138,6 +146,13 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   Komoot-specific surface on the core `trip` model.
 - Planned Komoot routes land in the archive as `planned` trips; their name edits and deletes sync
   back to Komoot like any recorded trip, while their `sport`/`activity_type` is deliberately never
-  pushed, to avoid disturbing Komoot's route planning. Whether a planned tour's `.gpx` export
-  carries a usable track is confirmed only against the live API; a failed fetch halts the sync with
-  a visible error rather than corrupting trip state.
+  pushed, to avoid disturbing Komoot's route planning. A planned tour's `.gpx` export is verified
+  against the live API to carry a full `<trk>`/`<trkpt>` track — with synthetic `<time>`/`<ele>` on
+  every point — so it flows through the existing import pipeline unchanged (`compute_stats` derives a
+  non-`None` duration from those synthetic times, i.e. Komoot's estimated moving time). A failed
+  fetch halts the sync with a visible error rather than corrupting trip state.
+- The pull fetches the planned listing in the same path as the recorded one, so a failure listing
+  `tour_planned` halts a "Sync now" pull (or fails the review page) even when only recorded tours
+  were wanted. This coupling is accepted: the endpoint and its response shape are verified against
+  the live API, and halting-and-surfacing on a failed Komoot call is this ADR's deliberate stance
+  everywhere else too — degrading silently would contradict it.

@@ -10,15 +10,15 @@
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const tourIds = Array.from(
+    const tours = Array.from(
       form.querySelectorAll('input[name="tour_id"]:checked')
-    ).map((input) => input.value);
+    ).map((input) => ({ tour_id: input.value, kind: input.dataset.kind }));
 
     try {
       const response = await fetch("/api/komoot/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tour_ids: tourIds }),
+        body: JSON.stringify({ tours }),
       });
       if (!response.ok) {
         alert(`Sync failed (status ${response.status}).`);

@@ -47,7 +47,9 @@ async fn backfill_without_a_limit_imports_every_not_yet_linked_tour() {
         ..Default::default()
     });
 
-    let summary = backfill(&db.pool, &store, client, None).await.unwrap();
+    let summary = backfill(&db.pool, &store, client, None, TripKind::Recorded)
+        .await
+        .unwrap();
 
     assert!(summary.failed.is_none());
     assert_eq!(summary.imported.len(), 3);
@@ -68,7 +70,9 @@ async fn backfill_with_a_limit_imports_only_that_many_tours() {
         ..Default::default()
     });
 
-    let summary = backfill(&db.pool, &store, client, Some(2)).await.unwrap();
+    let summary = backfill(&db.pool, &store, client, Some(2), TripKind::Recorded)
+        .await
+        .unwrap();
 
     assert!(summary.failed.is_none());
     assert_eq!(summary.imported.len(), 2);
@@ -90,7 +94,9 @@ async fn backfill_never_re_imports_an_already_linked_tour() {
         ..Default::default()
     });
 
-    let summary = backfill(&db.pool, &store, client, None).await.unwrap();
+    let summary = backfill(&db.pool, &store, client, None, TripKind::Recorded)
+        .await
+        .unwrap();
 
     assert!(summary.failed.is_none());
     assert_eq!(summary.imported.len(), 1);
@@ -112,7 +118,9 @@ async fn backfill_halts_on_the_first_failure_and_never_attempts_the_next_tour() 
         ..Default::default()
     });
 
-    let summary = backfill(&db.pool, &store, client, None).await.unwrap();
+    let summary = backfill(&db.pool, &store, client, None, TripKind::Recorded)
+        .await
+        .unwrap();
 
     assert!(summary.imported.is_empty());
     let (failed_tour, _msg) = summary.failed.expect("first tour must fail");
@@ -139,7 +147,9 @@ async fn backfill_logs_in_and_lists_tours_only_once_per_run() {
     });
     let client: Arc<dyn KomootClient> = Arc::clone(&mock) as Arc<dyn KomootClient>;
 
-    let summary = backfill(&db.pool, &store, client, None).await.unwrap();
+    let summary = backfill(&db.pool, &store, client, None, TripKind::Recorded)
+        .await
+        .unwrap();
     assert!(summary.failed.is_none());
     assert_eq!(summary.imported.len(), 2);
 
@@ -157,12 +167,56 @@ async fn backfill_logs_in_and_lists_tours_only_once_per_run() {
 }
 
 #[tokio::test]
+async fn backfill_planned_imports_planned_routes_and_never_touches_recorded() {
+    // US-29: `--planned` pulls the planned endpoint only — a recorded tour
+    // configured on the same mock must be neither imported nor even listed.
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+
+    let mock = Arc::new(MockKomootClient {
+        tours: vec![a_tour("111", "Recorded", "hike")],
+        planned_tours: vec![a_tour("777", "Planned", "hike")],
+        gpx: gpx_for(&["111", "777"]),
+        ..Default::default()
+    });
+    let client: Arc<dyn KomootClient> = Arc::clone(&mock) as Arc<dyn KomootClient>;
+
+    let summary = backfill(&db.pool, &store, client, None, TripKind::Planned)
+        .await
+        .unwrap();
+
+    assert!(summary.failed.is_none());
+    assert_eq!(summary.imported.len(), 1);
+    let (tour_id, trip_id) = &summary.imported[0];
+    assert_eq!(tour_id, "777");
+
+    let kind: TripKind = sqlx::query_scalar("SELECT trip_kind FROM trip WHERE id = ?")
+        .bind(*trip_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(kind, TripKind::Planned);
+
+    assert!(
+        mock.list_tours_calls.lock().unwrap().is_empty(),
+        "a planned backfill must not list the recorded endpoint"
+    );
+    assert_eq!(
+        mock.list_planned_tours_calls.lock().unwrap().as_slice(),
+        &[0u32],
+        "a planned backfill lists the planned endpoint once"
+    );
+}
+
+#[tokio::test]
 async fn backfill_with_no_candidates_reports_nothing_imported_and_no_failure() {
     let db = TestDb::new().await;
     let (store, _dir) = test_store();
     let client: Arc<dyn KomootClient> = Arc::new(MockKomootClient::default());
 
-    let summary = backfill(&db.pool, &store, client, None).await.unwrap();
+    let summary = backfill(&db.pool, &store, client, None, TripKind::Recorded)
+        .await
+        .unwrap();
 
     assert!(summary.imported.is_empty());
     assert!(summary.failed.is_none());

@@ -34,6 +34,9 @@ pub enum RecordedCall {
 #[derive(Default)]
 pub struct MockKomootClient {
     pub tours: Vec<KomootTourSummary>,
+    /// Planned routes returned by `list_planned_tours` (US-29), kept separate
+    /// from `tours` (recorded) so a test can configure each independently.
+    pub planned_tours: Vec<KomootTourSummary>,
     pub calls: Mutex<Vec<RecordedCall>>,
     pub fail_update_tour_for: std::collections::HashSet<String>,
     pub fail_delete_tour_for: std::collections::HashSet<String>,
@@ -60,6 +63,19 @@ impl KomootClient for MockKomootClient {
     ) -> Result<Vec<KomootTourSummary>, KomootError> {
         Ok(if page.unwrap_or(0) == 0 {
             self.tours.clone()
+        } else {
+            Vec::new()
+        })
+    }
+
+    fn list_planned_tours(
+        &self,
+        _username: &str,
+        _limit: Option<u32>,
+        page: Option<u32>,
+    ) -> Result<Vec<KomootTourSummary>, KomootError> {
+        Ok(if page.unwrap_or(0) == 0 {
+            self.planned_tours.clone()
         } else {
             Vec::new()
         })

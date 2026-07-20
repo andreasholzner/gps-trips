@@ -167,6 +167,19 @@ pub trait KomootClient: Send + Sync {
         page: Option<u32>,
     ) -> Result<Vec<KomootTourSummary>, KomootError>;
 
+    /// Lists **planned** routes (`type=tour_planned` — future/unrecorded
+    /// routes the owner has mapped but not yet ridden), same pagination
+    /// contract as [`list_tours`](Self::list_tours). The sibling to
+    /// `list_tours`: identical wire shape, only the `type` filter differs, so
+    /// both share one private request helper on the real client and can't
+    /// drift.
+    fn list_planned_tours(
+        &self,
+        username: &str,
+        limit: Option<u32>,
+        page: Option<u32>,
+    ) -> Result<Vec<KomootTourSummary>, KomootError>;
+
     /// Fetches a tour's track as raw GPX bytes
     /// (`GET /v007/tours/{tour_id}.gpx`).
     fn get_tour_gpx(&self, tour_id: &str) -> Result<Vec<u8>, KomootError>;
@@ -369,6 +382,32 @@ impl KomootHttpClient {
 
         Self::map_status(status, || body)
     }
+
+    /// List one page of a user's tours filtered to a single `type_filter`
+    /// (`tour_recorded` or `tour_planned`) — the shared body of `list_tours`
+    /// and `list_planned_tours`, so the two can't drift on URL, pagination,
+    /// or parsing.
+    fn list_tours_of_type(
+        &self,
+        username: &str,
+        type_filter: &str,
+        limit: Option<u32>,
+        page: Option<u32>,
+    ) -> Result<Vec<KomootTourSummary>, KomootError> {
+        let url = format!("{BASE_URL}/v007/users/{username}/tours/");
+        let limit_str = limit.map(|l| l.to_string());
+        let page_str = page.map(|p| p.to_string());
+        let mut query = vec![("type", type_filter)];
+        if let Some(l) = &limit_str {
+            query.push(("limit", l.as_str()));
+        }
+        if let Some(p) = &page_str {
+            query.push(("page", p.as_str()));
+        }
+        let body = self.authed_get(&url, &query)?;
+        let parsed: ToursResponse = serde_json::from_str(&body)?;
+        Ok(parsed.embedded.tours)
+    }
 }
 
 impl KomootClient for KomootHttpClient {
@@ -385,19 +424,16 @@ impl KomootClient for KomootHttpClient {
         limit: Option<u32>,
         page: Option<u32>,
     ) -> Result<Vec<KomootTourSummary>, KomootError> {
-        let url = format!("{BASE_URL}/v007/users/{username}/tours/");
-        let limit_str = limit.map(|l| l.to_string());
-        let page_str = page.map(|p| p.to_string());
-        let mut query = vec![("type", "tour_recorded")];
-        if let Some(l) = &limit_str {
-            query.push(("limit", l.as_str()));
-        }
-        if let Some(p) = &page_str {
-            query.push(("page", p.as_str()));
-        }
-        let body = self.authed_get(&url, &query)?;
-        let parsed: ToursResponse = serde_json::from_str(&body)?;
-        Ok(parsed.embedded.tours)
+        self.list_tours_of_type(username, "tour_recorded", limit, page)
+    }
+
+    fn list_planned_tours(
+        &self,
+        username: &str,
+        limit: Option<u32>,
+        page: Option<u32>,
+    ) -> Result<Vec<KomootTourSummary>, KomootError> {
+        self.list_tours_of_type(username, "tour_planned", limit, page)
     }
 
     fn get_tour_gpx(&self, tour_id: &str) -> Result<Vec<u8>, KomootError> {

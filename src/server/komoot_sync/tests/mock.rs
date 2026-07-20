@@ -7,6 +7,12 @@ use super::*;
 #[derive(Default)]
 pub(super) struct MockKomootClient {
     pub(super) tours: Vec<KomootTourSummary>,
+    /// Planned routes returned by `list_planned_tours` (US-29), separate from
+    /// `tours` (recorded) so a test configures each independently.
+    pub(super) planned_tours: Vec<KomootTourSummary>,
+    /// Every `list_planned_tours` call's requested page — mirrors
+    /// `list_tours_calls`, so a planned backfill can assert it lists once.
+    pub(super) list_planned_tours_calls: Mutex<Vec<u32>>,
     pub(super) gpx: HashMap<String, Vec<u8>>,
     /// Every photo attached to a tour, across all pages — `get_tour_photos`
     /// slices this by `limit`/`page` so a large enough list here genuinely
@@ -61,6 +67,23 @@ impl KomootClient for MockKomootClient {
         // empty, matching the real API's "short page = last page".
         Ok(if page.unwrap_or(0) == 0 {
             self.tours.clone()
+        } else {
+            Vec::new()
+        })
+    }
+
+    fn list_planned_tours(
+        &self,
+        _username: &str,
+        _limit: Option<u32>,
+        page: Option<u32>,
+    ) -> Result<Vec<KomootTourSummary>, KomootError> {
+        self.list_planned_tours_calls
+            .lock()
+            .unwrap()
+            .push(page.unwrap_or(0));
+        Ok(if page.unwrap_or(0) == 0 {
+            self.planned_tours.clone()
         } else {
             Vec::new()
         })

@@ -41,6 +41,10 @@ pub struct SyncCandidate {
     pub sport: String,
     pub date: String,
     pub distance_m: f64,
+    /// Recorded or planned (US-29) — decides which list tab the imported
+    /// trip lands on and is shown on the review page so the owner knows
+    /// which kind they're pulling.
+    pub kind: TripKind,
 }
 
 /// The result of a `sync_selected_tours` run: every tour successfully
@@ -105,10 +109,14 @@ where
         .expect("komoot client task panicked")
 }
 
-/// Every tour on the account, paginating until a short (or empty) page.
-async fn list_all_tours(
+/// Every tour of one `kind` on the account, paginating until a short (or
+/// empty) page. Recorded and planned (US-29) share this one loop — only the
+/// per-page `KomootClient` call differs — so pagination logic can't drift
+/// between them.
+async fn list_all_tours_of_kind(
     client: &Arc<dyn KomootClient>,
     username: &str,
+    kind: TripKind,
 ) -> Result<Vec<KomootTourSummary>, KomootError> {
     let mut all = Vec::new();
     let mut page = 0u32;
@@ -116,7 +124,12 @@ async fn list_all_tours(
         let batch = blocking_call({
             let client = Arc::clone(client);
             let username = username.to_string();
-            move || client.list_tours(&username, Some(PAGE_SIZE), Some(page))
+            move || match kind {
+                TripKind::Recorded => client.list_tours(&username, Some(PAGE_SIZE), Some(page)),
+                TripKind::Planned => {
+                    client.list_planned_tours(&username, Some(PAGE_SIZE), Some(page))
+                }
+            }
         })
         .await?;
         let len = batch.len() as u32;
@@ -156,7 +169,9 @@ async fn list_all_tour_photos(
 }
 
 /// Every Komoot tour not yet linked to a trip (anti-join dedup, ADR-0021),
-/// for the "Sync now" review page.
+/// for the "Sync now" review page — both recorded tours and planned routes
+/// (US-29), each tagged with its `TripKind` so the review page can label it
+/// and the import can land it on the right tab.
 pub async fn list_sync_candidates(
     pool: &SqlitePool,
     client: Arc<dyn KomootClient>,
@@ -166,20 +181,46 @@ pub async fn list_sync_candidates(
         move || client.login()
     })
     .await?;
-    let all_tours = list_all_tours(&client, &username).await?;
+    let recorded = list_all_tours_of_kind(&client, &username, TripKind::Recorded).await?;
+    let planned = list_all_tours_of_kind(&client, &username, TripKind::Planned).await?;
     let linked = repo::komoot::list_linked_tour_ids(pool).await?;
 
-    Ok(all_tours
-        .into_iter()
-        .filter(|t| !linked.contains(&t.id))
-        .map(|t| SyncCandidate {
+    Ok(tag_by_kind(recorded, planned)
+        .filter(|(t, _)| !linked.contains(&t.id))
+        .map(|(t, kind)| SyncCandidate {
             tour_id: t.id,
             name: t.name,
             sport: t.sport,
             date: t.date,
             distance_m: t.distance,
+            kind,
         })
         .collect())
+}
+
+/// Tag each recorded tour `Recorded` and each planned route `Planned`, as one
+/// iterator — the single place the recorded/planned listings are stitched
+/// together with their kinds, shared by `list_sync_candidates` and
+/// `sync_selected_tours` (US-29).
+fn tag_by_kind(
+    recorded: Vec<KomootTourSummary>,
+    planned: Vec<KomootTourSummary>,
+) -> impl Iterator<Item = (KomootTourSummary, TripKind)> {
+    recorded
+        .into_iter()
+        .map(|t| (t, TripKind::Recorded))
+        .chain(planned.into_iter().map(|t| (t, TripKind::Planned)))
+}
+
+/// One tour the owner ticked on the review page: its id plus the `kind` the
+/// page already knew it was (US-29). Carrying the kind in the request lets
+/// [`sync_selected_tours`] list only the endpoint(s) the selection actually
+/// spans, instead of always paging both — the review page's flat id list used
+/// to drop this, forcing a redundant fetch of the other endpoint every sync.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SelectedTour {
+    pub tour_id: String,
+    pub kind: TripKind,
 }
 
 /// Import the owner's selected tours, in the given order, halting on the
@@ -189,20 +230,34 @@ pub async fn list_sync_candidates(
 /// and re-lists Komoot's tours itself (ADR-0021: "logs in once per sync
 /// invocation") — deliberately fresh, since the owner's selection came from
 /// an earlier, separate review-page fetch (`list_sync_candidates`) and
-/// Komoot's state may have moved on since.
+/// Komoot's state may have moved on since. Only the endpoint(s) the selection
+/// actually spans are listed: a purely-recorded selection never fetches the
+/// planned listing, and vice versa — minimizing Komoot calls.
 pub async fn sync_selected_tours(
     pool: &SqlitePool,
     store: &Arc<dyn BlobStore>,
     client: Arc<dyn KomootClient>,
-    tour_ids: &[String],
+    selected: &[SelectedTour],
 ) -> Result<SyncSummary, AppError> {
     let username = blocking_call({
         let client = Arc::clone(&client);
         move || client.login()
     })
     .await?;
-    let all_tours = list_all_tours(&client, &username).await?;
-    import_selected_tours(pool, store, &client, all_tours, tour_ids).await
+    let want = |k: TripKind| selected.iter().any(|s| s.kind == k);
+    let recorded = if want(TripKind::Recorded) {
+        list_all_tours_of_kind(&client, &username, TripKind::Recorded).await?
+    } else {
+        Vec::new()
+    };
+    let planned = if want(TripKind::Planned) {
+        list_all_tours_of_kind(&client, &username, TripKind::Planned).await?
+    } else {
+        Vec::new()
+    };
+    let all_tours: Vec<(KomootTourSummary, TripKind)> = tag_by_kind(recorded, planned).collect();
+    let tour_ids: Vec<String> = selected.iter().map(|s| s.tour_id.clone()).collect();
+    import_selected_tours(pool, store, &client, all_tours, &tour_ids).await
 }
 
 /// Historical bulk import (US-23, ADR-0021): every not-yet-linked Komoot
@@ -220,13 +275,16 @@ pub async fn backfill(
     store: &Arc<dyn BlobStore>,
     client: Arc<dyn KomootClient>,
     limit: Option<usize>,
+    kind: TripKind,
 ) -> Result<SyncSummary, AppError> {
     let username = blocking_call({
         let client = Arc::clone(&client);
         move || client.login()
     })
     .await?;
-    let all_tours = list_all_tours(&client, &username).await?;
+    // A backfill run pulls one kind at a time (`--planned` selects planned,
+    // US-29; otherwise recorded), so it lists only that kind's endpoint.
+    let all_tours = list_all_tours_of_kind(&client, &username, kind).await?;
     let linked = repo::komoot::list_linked_tour_ids(pool).await?;
     let tour_ids: Vec<String> = all_tours
         .iter()
@@ -234,6 +292,8 @@ pub async fn backfill(
         .filter(|id| !linked.contains(id))
         .take(limit.unwrap_or(usize::MAX))
         .collect();
+    let all_tours: Vec<(KomootTourSummary, TripKind)> =
+        all_tours.into_iter().map(|t| (t, kind)).collect();
 
     import_selected_tours(pool, store, &client, all_tours, &tour_ids).await
 }
@@ -248,11 +308,13 @@ async fn import_selected_tours(
     pool: &SqlitePool,
     store: &Arc<dyn BlobStore>,
     client: &Arc<dyn KomootClient>,
-    all_tours: Vec<KomootTourSummary>,
+    all_tours: Vec<(KomootTourSummary, TripKind)>,
     tour_ids: &[String],
 ) -> Result<SyncSummary, AppError> {
-    let mut by_id: HashMap<String, KomootTourSummary> =
-        all_tours.into_iter().map(|t| (t.id.clone(), t)).collect();
+    let mut by_id: HashMap<String, (KomootTourSummary, TripKind)> = all_tours
+        .into_iter()
+        .map(|(t, kind)| (t.id.clone(), (t, kind)))
+        .collect();
     let already_linked: HashSet<String> = repo::komoot::list_linked_tour_ids(pool).await?;
 
     let mut summary = SyncSummary::default();
@@ -271,7 +333,7 @@ async fn import_selected_tours(
         if already_linked.contains(tour_id) {
             continue;
         }
-        let Some(tour) = by_id.remove(tour_id) else {
+        let Some((tour, kind)) = by_id.remove(tour_id) else {
             summary.failed = Some((
                 tour_id.clone(),
                 "tour is no longer listed by Komoot".to_string(),
@@ -279,7 +341,7 @@ async fn import_selected_tours(
             break;
         };
 
-        match sync_one_tour(pool, store, client, &tour).await {
+        match sync_one_tour(pool, store, client, &tour, kind).await {
             Ok(trip_id) => summary.imported.push((tour_id.clone(), trip_id)),
             Err(e) => {
                 summary.failed = Some((tour_id.clone(), e.to_string()));
@@ -298,6 +360,7 @@ async fn sync_one_tour(
     store: &Arc<dyn BlobStore>,
     client: &Arc<dyn KomootClient>,
     tour: &KomootTourSummary,
+    kind: TripKind,
 ) -> Result<i64, AppError> {
     let gpx_bytes = blocking_call({
         let client = Arc::clone(client);
@@ -354,10 +417,10 @@ async fn sync_one_tour(
         &derived.stats,
         &derived.geojson,
         &gpx_bytes,
-        // Komoot sync/backfill always land on the Recorded tab (US-31); only
-        // manual GPX import lets the owner pick Planned (US-29 will let
-        // Komoot-sourced planned trips in later, per ADR-0021).
-        TripKind::Recorded,
+        // Recorded tours land on the Recorded tab, planned routes on the
+        // Planned tab (US-29) — `kind` was decided by which Komoot listing
+        // (`tour_recorded` vs `tour_planned`) the tour came from.
+        kind,
     )
     .await?;
     // The link row is inserted (and can fail on its `komoot_tour_id`
@@ -418,7 +481,12 @@ async fn push_one_edit(
     })
     .await?;
 
-    let outgoing_sport = if komoot_sport::map_sport(&live.sport) == edit.activity_type {
+    let outgoing_sport = if edit.trip_kind == TripKind::Planned {
+        // Never change a planned route's sport (US-29) — it drives Komoot's
+        // route planning, so resend whatever Komoot currently has regardless
+        // of any in-archive activity_type edit.
+        live.sport
+    } else if komoot_sport::map_sport(&live.sport) == edit.activity_type {
         live.sport
     } else {
         komoot_sport::activity_to_sport(edit.activity_type).to_string()

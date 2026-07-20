@@ -135,11 +135,13 @@ async fn import_form() -> Html<String> {
     Html(render_import_form())
 }
 
-/// The `POST /api/komoot/sync` request body (ADR-0008): the tour ids the
-/// owner checked on the review page, in submission order.
+/// The `POST /api/komoot/sync` request body (ADR-0008): the tours the owner
+/// checked on the review page, in submission order — each carrying the `kind`
+/// the page knew it was (US-29), so the pull lists only the endpoint(s) the
+/// selection spans.
 #[derive(Deserialize)]
 struct SyncRequest {
-    tour_ids: Vec<String>,
+    tours: Vec<komoot_sync::SelectedTour>,
 }
 
 /// The `POST /api/komoot/sync` response: how many pending edits/deletes were
@@ -234,7 +236,7 @@ async fn handle_sync(
     }
 
     let summary =
-        komoot_sync::sync_selected_tours(&state.pool, &state.store, client, &body.tour_ids).await?;
+        komoot_sync::sync_selected_tours(&state.pool, &state.store, client, &body.tours).await?;
     let failed_phase = summary.failed.is_some().then_some("pull");
     Ok(Json(SyncResponse {
         pushed: push_summary.pushed.len(),

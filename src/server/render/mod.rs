@@ -255,7 +255,7 @@ pub fn render_sync_candidates(
         let rows: String = candidates.iter().map(render_sync_candidate_row).collect();
         format!(
             "<table>\n\
-             <thead><tr><th></th><th>Tour</th><th>Activity</th><th>Date</th><th>Distance</th></tr></thead>\n\
+             <thead><tr><th></th><th>Tour</th><th>Kind</th><th>Activity</th><th>Date</th><th>Distance</th></tr></thead>\n\
              <tbody>\n{rows}</tbody>\n\
              </table>\n"
         )
@@ -288,14 +288,17 @@ pub fn render_sync_candidates(
 }
 
 /// One row of the sync candidates table: an unchecked `tour_id` checkbox
-/// plus the tour's own metadata, read straight off Komoot's `list_tours`
-/// response (no extra per-tour call needed — see `docs/komoot-api.md`).
+/// plus the tour's own metadata, read straight off Komoot's tour listing (no
+/// extra per-tour call needed — see `docs/komoot-api.md`), and its kind
+/// (Recorded/Planned, US-29) so the owner sees which tab it will land on.
 fn render_sync_candidate_row(c: &SyncCandidate) -> String {
     format!(
-        "<tr><td><input type=\"checkbox\" name=\"tour_id\" value=\"{id}\"></td>\
-         <td>{name}</td><td>{sport}</td><td>{date}</td><td>{distance:.2} km</td></tr>\n",
+        "<tr><td><input type=\"checkbox\" name=\"tour_id\" value=\"{id}\" data-kind=\"{kind_value}\"></td>\
+         <td>{name}</td><td>{kind}</td><td>{sport}</td><td>{date}</td><td>{distance:.2} km</td></tr>\n",
         id = html_escape(&c.tour_id),
         name = html_escape(&c.name),
+        kind_value = c.kind.as_str(),
+        kind = c.kind.label(),
         sport = html_escape(&c.sport),
         date = html_escape(&c.date),
         distance = c.distance_m / 1000.0,
@@ -356,4 +359,37 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn a_candidate(tour_id: &str, name: &str, kind: TripKind) -> SyncCandidate {
+        SyncCandidate {
+            tour_id: tour_id.to_string(),
+            name: name.to_string(),
+            sport: "hike".to_string(),
+            date: "2026-07-11".to_string(),
+            distance_m: 1000.0,
+            kind,
+        }
+    }
+
+    #[test]
+    fn sync_candidates_label_each_row_by_its_kind() {
+        // US-29: the review page must let the owner tell a planned route from a
+        // recorded tour before importing it.
+        let candidates = vec![
+            a_candidate("1", "Recorded ride", TripKind::Recorded),
+            a_candidate("2", "Planned route", TripKind::Planned),
+        ];
+        let html = render_sync_candidates(&candidates, 0, &SyncResultQuery::default());
+
+        assert!(html.contains("<th>Kind</th>"));
+        assert!(html.contains("<td>Recorded</td>"));
+        assert!(html.contains("<td>Planned</td>"));
+    }
 }

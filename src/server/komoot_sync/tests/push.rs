@@ -38,6 +38,65 @@ async fn a_pending_edit(
     trip_id
 }
 
+/// Like `a_pending_edit`, but the trip is stored as `Planned` (US-29) — used
+/// to prove the push never rewrites a planned route's sport.
+async fn a_pending_planned_edit(
+    pool: &SqlitePool,
+    tour_id: &str,
+    name: &str,
+    activity: ActivityType,
+) -> i64 {
+    let trip_id = crate::server::repo::insert_trip(
+        pool,
+        "Original Name",
+        ActivityType::Hiking,
+        "UTC",
+        &gpx::compute_stats(&[]),
+        "{}",
+        b"x",
+        TripKind::Planned,
+    )
+    .await
+    .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    repo::komoot::insert_link_in_tx(&mut tx, trip_id, tour_id)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    repo::update_trip(pool, trip_id, Some(name), Some(activity))
+        .await
+        .unwrap();
+    trip_id
+}
+
+#[tokio::test]
+async fn push_pending_edits_never_changes_a_planned_routes_sport_even_when_activity_type_changed() {
+    let db = TestDb::new().await;
+    // A planned route whose live Komoot sport is `mtb`; the owner changed its
+    // in-archive activity_type to Hiking. For a *recorded* trip the push would
+    // remap to `hike`, but a planned route's sport drives Komoot's routing, so
+    // it must be resent unchanged (`mtb`) — only the name goes across.
+    let trip_id = a_pending_planned_edit(&db.pool, "555", "New Name", ActivityType::Hiking).await;
+
+    let mock = Arc::new(MockKomootClient {
+        tour_details: HashMap::from([("555".to_string(), a_tour("555", "irrelevant", "mtb"))]),
+        ..Default::default()
+    });
+    let client: Arc<dyn KomootClient> = mock.clone();
+
+    let summary = push_pending_edits(&db.pool, client).await.unwrap();
+
+    assert!(summary.failed.is_none());
+    assert_eq!(summary.pushed, vec![("555".to_string(), trip_id)]);
+    let calls = mock.update_tour_calls.lock().unwrap();
+    assert_eq!(
+        *calls,
+        vec![("555".to_string(), "New Name".to_string(), "mtb".to_string())],
+        "planned route's sport must be resent unchanged, name updated"
+    );
+}
+
 #[tokio::test]
 async fn push_pending_edits_reuses_the_live_sport_when_activity_type_is_unchanged() {
     let db = TestDb::new().await;

@@ -25,11 +25,16 @@ use trip_archive::server::komoot::{
 };
 
 fn sync_request(tour_ids: &[&str]) -> axum::http::Request<axum::body::Body> {
-    let ids: Vec<String> = tour_ids.iter().map(|s| s.to_string()).collect();
+    // These tests sync recorded tours; the review page tags each selection
+    // with its kind (US-29).
+    let tours: Vec<_> = tour_ids
+        .iter()
+        .map(|s| serde_json::json!({ "tour_id": s, "kind": "recorded" }))
+        .collect();
     json_request(
         Method::POST,
         "/api/komoot/sync",
-        &serde_json::json!({ "tour_ids": ids }).to_string(),
+        &serde_json::json!({ "tours": tours }).to_string(),
     )
 }
 

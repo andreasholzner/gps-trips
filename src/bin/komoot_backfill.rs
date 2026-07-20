@@ -9,13 +9,18 @@
 //! tests, not this file.
 //!
 //! Usage: `KOMOOT_EMAIL=... KOMOOT_PASSWORD=... cargo run --bin komoot_backfill \
-//!         [--interactive] [--limit N] [--debug|-d]`
+//!         [--interactive] [--planned] [--limit N] [--debug|-d]`
+//!
+//! `--planned` bulk-imports Komoot's *planned* routes (US-29) instead of
+//! recorded tours; one run pulls one kind. Without it, recorded tours are
+//! imported (the original behaviour).
 
 use std::io::{self, Write};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use trip_archive::config;
+use trip_archive::models::TripKind;
 use trip_archive::server::komoot::{
     KomootClient, KomootError, KomootHttpClient, KomootPhoto, KomootTourSummary,
 };
@@ -26,18 +31,21 @@ struct Args {
     interactive: bool,
     debug: bool,
     limit: Option<usize>,
+    kind: TripKind,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut interactive = false;
     let mut debug = false;
     let mut limit = None;
+    let mut kind = TripKind::Recorded;
 
     let mut raw = std::env::args().skip(1);
     while let Some(arg) = raw.next() {
         match arg.as_str() {
             "--interactive" => interactive = true,
             "--debug" | "-d" => debug = true,
+            "--planned" => kind = TripKind::Planned,
             "--limit" => {
                 let value = raw.next().ok_or("--limit requires a number")?;
                 limit = Some(value.parse::<usize>().map_err(|_| {
@@ -52,6 +60,7 @@ fn parse_args() -> Result<Args, String> {
         interactive,
         debug,
         limit,
+        kind,
     })
 }
 
@@ -102,13 +111,17 @@ async fn main() -> ExitCode {
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
 
+    let noun = match args.kind {
+        TripKind::Recorded => "tour",
+        TripKind::Planned => "planned route",
+    };
     if let Some(limit) = args.limit {
-        println!("Backfilling up to {limit} not-yet-linked Komoot tour(s)...");
+        println!("Backfilling up to {limit} not-yet-linked Komoot {noun}(s)...");
     } else {
-        println!("Backfilling every not-yet-linked Komoot tour...");
+        println!("Backfilling every not-yet-linked Komoot {noun}...");
     }
 
-    let summary = match komoot_sync::backfill(&pool, &store, client, args.limit).await {
+    let summary = match komoot_sync::backfill(&pool, &store, client, args.limit, args.kind).await {
         Ok(summary) => summary,
         Err(e) => {
             eprintln!("FAILED: {e}");
@@ -171,6 +184,16 @@ impl KomootClient for InteractiveKomootClient {
     ) -> Result<Vec<KomootTourSummary>, KomootError> {
         self.confirm(&format!("list tours (page {})", page.unwrap_or(0)))?;
         self.inner.list_tours(username, limit, page)
+    }
+
+    fn list_planned_tours(
+        &self,
+        username: &str,
+        limit: Option<u32>,
+        page: Option<u32>,
+    ) -> Result<Vec<KomootTourSummary>, KomootError> {
+        self.confirm(&format!("list planned tours (page {})", page.unwrap_or(0)))?;
+        self.inner.list_planned_tours(username, limit, page)
     }
 
     fn get_tour_gpx(&self, tour_id: &str) -> Result<Vec<u8>, KomootError> {
