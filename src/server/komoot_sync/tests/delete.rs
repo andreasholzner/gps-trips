@@ -18,6 +18,7 @@ async fn a_pending_delete(pool: &SqlitePool, tour_id: &str) {
         &gpx::compute_stats(&[]),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();

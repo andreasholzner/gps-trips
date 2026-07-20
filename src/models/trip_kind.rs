@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 /// (`#[derive(sqlx::Type)]` maps each variant to/from its snake_case name) and
 /// serialized the same way in JSON responses.
 ///
-/// Every trip-creating path today (manual GPX import, Komoot sync/backfill)
-/// writes `Recorded` — nothing can produce `Planned` yet. That lands with
-/// US-31, which gives the owner an explicit choice at import time.
+/// Manual GPX import (US-31) lets the owner choose either variant; Komoot
+/// sync/backfill still always write `Recorded` (US-29 will let Komoot-sourced
+/// planned trips in later, per ADR-0021).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]

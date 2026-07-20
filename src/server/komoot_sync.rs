@@ -20,6 +20,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
+use crate::models::TripKind;
 use crate::server::{
     error::AppError,
     import::derive_track,
@@ -353,6 +354,10 @@ async fn sync_one_tour(
         &derived.stats,
         &derived.geojson,
         &gpx_bytes,
+        // Komoot sync/backfill always land on the Recorded tab (US-31); only
+        // manual GPX import lets the owner pick Planned (US-29 will let
+        // Komoot-sourced planned trips in later, per ADR-0021).
+        TripKind::Recorded,
     )
     .await?;
     // The link row is inserted (and can fail on its `komoot_tour_id`

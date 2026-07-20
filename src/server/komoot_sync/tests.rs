@@ -3,7 +3,7 @@
 // 500-line cap (mirrors repo/trip.rs -> repo/trip/tests.rs).
 
 use super::*;
-use crate::models::{ActivityType, LocationSource};
+use crate::models::{ActivityType, LocationSource, TripKind};
 use crate::server::db::testing::TestDb;
 use crate::server::gpx;
 use crate::server::komoot::{KomootLocation, KomootPhoto};
@@ -32,6 +32,7 @@ async fn list_sync_candidates_excludes_already_linked_tours() {
         &gpx::compute_stats(&[]),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();
@@ -149,6 +150,7 @@ async fn sync_selected_tours_skips_a_selected_tour_that_is_already_linked() {
         &gpx::compute_stats(&[]),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();

@@ -64,7 +64,7 @@ async fn delete_blob(store: &Arc<dyn BlobStore>, key: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ActivityType;
+    use crate::models::{ActivityType, TripKind};
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
     use crate::server::photos::{ingest_photos, UploadedPhoto};
@@ -107,6 +107,7 @@ mod tests {
             &stats,
             "{}",
             b"x",
+            TripKind::Recorded,
         )
         .await
         .unwrap()

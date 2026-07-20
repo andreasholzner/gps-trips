@@ -11,6 +11,7 @@ use super::to_rfc3339;
 
 /// Insert a new trip together with its derived geometry and the original GPX
 /// file, in a single transaction (ADR-0003). Returns the new trip id.
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_trip(
     pool: &SqlitePool,
     name: &str,
@@ -19,10 +20,20 @@ pub async fn insert_trip(
     stats: &TrackStats,
     geojson: &str,
     gpx: &[u8],
+    trip_kind: TripKind,
 ) -> Result<i64, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let trip_id =
-        insert_trip_in_tx(&mut tx, name, activity_type, tz_name, stats, geojson, gpx).await?;
+    let trip_id = insert_trip_in_tx(
+        &mut tx,
+        name,
+        activity_type,
+        tz_name,
+        stats,
+        geojson,
+        gpx,
+        trip_kind,
+    )
+    .await?;
     tx.commit().await?;
     Ok(trip_id)
 }
@@ -34,6 +45,10 @@ pub async fn insert_trip(
 /// `tz_name` (US-4, ADR-0009/0019) is always a concrete IANA timezone at this
 /// point — import always resolves either an explicit owner override or an
 /// auto-guess from the track's start coordinate before calling this.
+///
+/// `trip_kind` (US-31/US-32): manual GPX import lets the owner choose either
+/// variant; Komoot sync/backfill always pass `TripKind::Recorded`.
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_trip_in_tx(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
@@ -42,6 +57,7 @@ pub async fn insert_trip_in_tx(
     stats: &TrackStats,
     geojson: &str,
     gpx: &[u8],
+    trip_kind: TripKind,
 ) -> Result<i64, sqlx::Error> {
     let created_at = to_rfc3339(OffsetDateTime::now_utc());
     let start_time = stats.start_time.map(to_rfc3339);
@@ -69,9 +85,7 @@ pub async fn insert_trip_in_tx(
     .bind(stats.max_lat)
     .bind(stats.max_lon)
     .bind(&created_at)
-    // US-31 isn't built yet — every trip-creating path (import, Komoot
-    // sync/backfill) writes `Recorded` until it gives the owner a choice.
-    .bind(TripKind::default())
+    .bind(trip_kind)
     .execute(&mut **tx)
     .await?
     .last_insert_rowid();

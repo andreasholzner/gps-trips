@@ -20,6 +20,7 @@ async fn insert_trip_with(
         &stats(distance_m, start),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap()

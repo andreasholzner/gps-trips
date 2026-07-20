@@ -4,7 +4,7 @@ use axum::{
 };
 use time::OffsetDateTime;
 
-use crate::models::{ActivityType, TripDetail};
+use crate::models::{ActivityType, TripDetail, TripKind};
 use crate::server::{
     error::{AppError, ImportError},
     geojson::{self, build_track_geojson},
@@ -50,8 +50,9 @@ pub(crate) fn derive_track(raw: &[u8]) -> Result<DerivedTrack, ImportError> {
 }
 
 /// `POST /api/import` — accepts a `multipart/form-data` body with a required
-/// `gpx` file field, optional `name` and `activity_type` text fields, and any
-/// number of `photos` file fields (US-2: photos uploaded with the import).
+/// `gpx` file field, optional `name`, `activity_type` and `kind` text fields,
+/// and any number of `photos` file fields (US-2: photos uploaded with the
+/// import).
 ///
 /// On success: stores the trip, its track and its photos in one transaction and
 /// redirects to `/trips/{id}` (303 See Other). On failure: a 4xx with a
@@ -66,6 +67,7 @@ pub async fn handle_import(
     let mut gpx_bytes: Option<Vec<u8>> = None;
     let mut form_name: Option<String> = None;
     let mut form_activity: Option<String> = None;
+    let mut form_kind: Option<String> = None;
     let mut form_timezone: Option<String> = None;
     let mut photos: Vec<UploadedPhoto> = Vec::new();
 
@@ -84,6 +86,7 @@ pub async fn handle_import(
             }
             Some("name") => form_name = Some(read_text(field).await?),
             Some("activity_type") => form_activity = Some(read_text(field).await?),
+            Some("kind") => form_kind = Some(read_text(field).await?),
             Some("timezone") => form_timezone = Some(read_text(field).await?),
             Some("photos") | Some("photo") => {
                 if let Some(photo) = read_photo_field(field).await? {
@@ -100,6 +103,7 @@ pub async fn handle_import(
 
     let name = resolve_name(form_name, derived.name, derived.stats.start_time);
     let activity = resolve_activity_type(form_activity)?;
+    let kind = resolve_trip_kind(form_kind)?;
     let tz_name = resolve_timezone(form_timezone, derived.guessed_tz)?;
 
     // Trip, track and photos commit in one transaction, so a failed import
@@ -113,6 +117,7 @@ pub async fn handle_import(
         &derived.stats,
         &derived.geojson,
         &raw,
+        kind,
     )
     .await?;
     let ctx = TripPhotoContext {
@@ -268,6 +273,17 @@ pub(crate) fn resolve_activity_type(
     }
 }
 
+/// Resolve a `kind` field into a `TripKind` (US-31): a blank or missing field
+/// defaults to `Recorded` (matches every existing trip-creating path, and the
+/// list page's own Recorded default, US-32); any other value must be one of
+/// the known variants, or the request is rejected as a 400.
+fn resolve_trip_kind(form_kind: Option<String>) -> Result<TripKind, AppError> {
+    match form_kind.as_deref().map(str::trim) {
+        None | Some("") => Ok(TripKind::Recorded),
+        Some(trimmed) => trimmed.parse().map_err(AppError::BadRequest),
+    }
+}
+
 /// Resolve the `timezone` form field into a concrete IANA timezone (US-4,
 /// ADR-0009/0019): a blank or missing field uses `guessed` (auto-detected
 /// from the track's start coordinate); an explicit value must be a
@@ -284,8 +300,8 @@ fn resolve_timezone(form_timezone: Option<String>, guessed: String) -> Result<St
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_activity_type, resolve_name, resolve_timezone};
-    use crate::models::ActivityType;
+    use super::{resolve_activity_type, resolve_name, resolve_timezone, resolve_trip_kind};
+    use crate::models::{ActivityType, TripKind};
     use time::macros::datetime;
 
     // US-12: trip naming precedence and the date-prefixed default.
@@ -356,6 +372,42 @@ mod tests {
     #[test]
     fn resolve_activity_type_rejects_an_unrecognized_value() {
         assert!(resolve_activity_type(Some("unicycling".to_string())).is_err());
+    }
+
+    // US-31: recorded vs. planned at import time.
+
+    #[test]
+    fn resolve_trip_kind_defaults_to_recorded_when_missing() {
+        assert_eq!(resolve_trip_kind(None).unwrap(), TripKind::Recorded);
+    }
+
+    #[test]
+    fn resolve_trip_kind_defaults_to_recorded_when_blank() {
+        assert_eq!(
+            resolve_trip_kind(Some("   ".to_string())).unwrap(),
+            TripKind::Recorded
+        );
+    }
+
+    #[test]
+    fn resolve_trip_kind_parses_planned() {
+        assert_eq!(
+            resolve_trip_kind(Some("planned".to_string())).unwrap(),
+            TripKind::Planned
+        );
+    }
+
+    #[test]
+    fn resolve_trip_kind_trims_surrounding_whitespace_before_parsing() {
+        assert_eq!(
+            resolve_trip_kind(Some("  planned  ".to_string())).unwrap(),
+            TripKind::Planned
+        );
+    }
+
+    #[test]
+    fn resolve_trip_kind_rejects_an_unrecognized_value() {
+        assert!(resolve_trip_kind(Some("scheduled".to_string())).is_err());
     }
 
     // US-4: the trip's timezone assumption for photo-timestamp interpolation.

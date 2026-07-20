@@ -11,7 +11,7 @@
 // output through correctly.
 
 use super::*;
-use crate::models::ActivityType;
+use crate::models::{ActivityType, TripKind};
 use crate::server::db::testing::TestDb;
 use crate::server::gpx::TrackStats;
 use crate::server::repo::{insert_trip, list_photos};
@@ -61,6 +61,7 @@ async fn a_trip(pool: &sqlx::SqlitePool) -> i64 {
         &stats,
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap()

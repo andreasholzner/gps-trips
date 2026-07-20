@@ -19,6 +19,7 @@ async fn insert_sample_trip(pool: &SqlitePool) -> i64 {
         &stats,
         &geojson,
         SAMPLE_GPX,
+        TripKind::Recorded,
     )
     .await
     .expect("insert_trip")
@@ -188,6 +189,7 @@ async fn us6_list_trips_orders_most_recent_first() {
         &stats_at(datetime!(2024-01-01 08:00 UTC)),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();
@@ -199,6 +201,7 @@ async fn us6_list_trips_orders_most_recent_first() {
         &stats_at(datetime!(2024-06-01 08:00 UTC)),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();
@@ -499,4 +502,29 @@ async fn us32_list_trips_filters_by_kind() {
 
     let all = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
     assert_eq!(all.len(), 2, "no kind filter must return both");
+}
+
+// ── US-31: the owner chooses recorded vs. planned at import time ─────────
+
+#[tokio::test]
+async fn us31_insert_trip_persists_the_chosen_planned_kind() {
+    let db = TestDb::new().await;
+    let track = parse_gpx(SAMPLE_GPX).unwrap();
+    let stats = compute_stats(&track.points);
+    let geojson = build_track_geojson(&track.points);
+    insert_trip(
+        &db.pool,
+        "Future Trip",
+        ActivityType::Hiking,
+        "Europe/Oslo",
+        &stats,
+        &geojson,
+        SAMPLE_GPX,
+        TripKind::Planned,
+    )
+    .await
+    .expect("insert_trip");
+
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+    assert_eq!(trips[0].trip_kind, TripKind::Planned);
 }

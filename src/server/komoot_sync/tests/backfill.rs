@@ -14,6 +14,7 @@ async fn a_linked_trip(pool: &SqlitePool, tour_id: &str) {
         &gpx::compute_stats(&[]),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();

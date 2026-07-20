@@ -97,7 +97,7 @@ pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ActivityType;
+    use crate::models::{ActivityType, TripKind};
     use crate::server::db::testing::TestDb;
     use crate::server::geojson::build_track_geojson;
     use crate::server::gpx::{compute_stats, parse_gpx};
@@ -117,6 +117,7 @@ mod tests {
             &stats,
             &geojson,
             SAMPLE_GPX,
+            TripKind::Recorded,
         )
         .await
         .expect("insert_trip")

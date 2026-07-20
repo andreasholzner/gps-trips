@@ -115,6 +115,7 @@ pub async fn delete_link(pool: &SqlitePool, komoot_tour_id: &str) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::TripKind;
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
     use crate::server::repo::insert_trip;
@@ -140,6 +141,7 @@ mod tests {
             &stats,
             "{}",
             b"x",
+            TripKind::Recorded,
         )
         .await
         .unwrap()

@@ -8,7 +8,7 @@
 
 mod trip_list;
 
-use crate::models::{ActivityType, TripDetail};
+use crate::models::{ActivityType, TripDetail, TripKind};
 use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
 
 pub use trip_list::render_trip_list;
@@ -43,6 +43,10 @@ pub fn render_import_form() -> String {
       </select>
     </p>
     <p>
+      <label>Trip kind</label><br>
+      {kind_radios}
+    </p>
+    <p>
       <label for="timezone">Photo timezone override (optional)</label><br>
       <input type="text" id="timezone" name="timezone"
              placeholder="auto-detected from the track's start location if left blank, e.g. Europe/Oslo">
@@ -60,8 +64,29 @@ pub fn render_import_form() -> String {
   <p><a href="/">← All trips</a></p>
 </body>
 </html>"#,
-        options = activity_type_options("")
+        options = activity_type_options(""),
+        kind_radios = trip_kind_radios(TripKind::Recorded)
     )
+}
+
+/// The Recorded/Planned radio pair for the import form (US-31), `selected`
+/// pre-checked. Iterates `TripKind::ALL`/`.label()` — the single canonical
+/// variant list in `models::trip_kind` — the same pattern
+/// `activity_type_options` uses for `ActivityType`, so the form can't drift
+/// out of sync with `TripKind`'s actual variants.
+fn trip_kind_radios(selected: TripKind) -> String {
+    TripKind::ALL
+        .iter()
+        .map(|&kind| {
+            format!(
+                "<label><input type=\"radio\" name=\"kind\" value=\"{value}\"{checked}> {label}</label>",
+                value = kind.as_str(),
+                checked = if kind == selected { " checked" } else { "" },
+                label = kind.label(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n      ")
 }
 
 /// Build the `<option>` list for an activity-type `<select>`, marking

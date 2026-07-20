@@ -22,6 +22,7 @@ async fn a_pending_edit(
         &gpx::compute_stats(&[]),
         "{}",
         b"x",
+        TripKind::Recorded,
     )
     .await
     .unwrap();
