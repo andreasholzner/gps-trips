@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::TripKind;
 use crate::server::db::testing::TestDb;
 use crate::server::geojson::build_track_geojson;
 use crate::server::gpx::{compute_stats, parse_gpx};
@@ -430,3 +431,72 @@ async fn us6_list_trips_does_not_require_track_geometry() {
 // US-13 (filter the trip list) tests split into tests/filter.rs to keep this
 // file under the repo's 500-line cap.
 mod filter;
+
+// ── US-32: distinguish recorded from planned trips ───────────────────────
+
+#[tokio::test]
+async fn us32_inserted_trip_defaults_to_recorded_kind() {
+    let db = TestDb::new().await;
+    insert_sample_trip(&db.pool).await;
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+    assert_eq!(trips[0].trip_kind, TripKind::Recorded);
+}
+
+#[tokio::test]
+async fn us32_a_pre_existing_row_without_an_explicit_trip_kind_reads_back_as_recorded() {
+    // Simulates a trip inserted before this migration existed: bypass
+    // `insert_trip` and rely purely on the column's DB-level DEFAULT, the
+    // same mechanism that backfills every row already in the database when
+    // migration 0009 runs.
+    let db = TestDb::new().await;
+    sqlx::query(
+        r#"INSERT INTO trip (name, activity_type, tz_name, distance_m, created_at)
+           VALUES ('Legacy Trip', 'hiking', 'Europe/Oslo', 1000.0, '2024-01-01T00:00:00Z')"#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+    assert_eq!(trips[0].trip_kind, TripKind::Recorded);
+}
+
+#[tokio::test]
+async fn us32_list_trips_filters_by_kind() {
+    let db = TestDb::new().await;
+    insert_sample_trip(&db.pool).await;
+    sqlx::query(
+        r#"INSERT INTO trip (name, activity_type, tz_name, distance_m, created_at, trip_kind)
+           VALUES ('Planned Trip', 'hiking', 'Europe/Oslo', 1000.0, '2024-01-01T00:00:00Z', 'planned')"#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let recorded = list_trips(
+        &db.pool,
+        &TripFilter {
+            trip_kind: Some(TripKind::Recorded),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].name, "Oslo Hills Walk");
+
+    let planned = list_trips(
+        &db.pool,
+        &TripFilter {
+            trip_kind: Some(TripKind::Planned),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(planned.len(), 1);
+    assert_eq!(planned[0].name, "Planned Trip");
+
+    let all = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+    assert_eq!(all.len(), 2, "no kind filter must return both");
+}

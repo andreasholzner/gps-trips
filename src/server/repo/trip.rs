@@ -4,7 +4,7 @@
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
-use crate::models::{ActivityType, TripDetail, TripSummary};
+use crate::models::{ActivityType, TripDetail, TripKind, TripSummary};
 use crate::server::gpx::TrackStats;
 
 use super::to_rfc3339;
@@ -52,8 +52,8 @@ pub async fn insert_trip_in_tx(
                (name, activity_type, tz_name, start_time, end_time, duration_secs,
                 distance_m, ascent_m, descent_m,
                 min_lat, min_lon, max_lat, max_lon,
-                created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
+                created_at, trip_kind)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
     )
     .bind(name)
     .bind(activity_type)
@@ -69,6 +69,9 @@ pub async fn insert_trip_in_tx(
     .bind(stats.max_lat)
     .bind(stats.max_lon)
     .bind(&created_at)
+    // US-31 isn't built yet — every trip-creating path (import, Komoot
+    // sync/backfill) writes `Recorded` until it gives the owner a choice.
+    .bind(TripKind::default())
     .execute(&mut **tx)
     .await?
     .last_insert_rowid();
@@ -125,6 +128,11 @@ pub struct TripFilter {
     /// Case-insensitive (full Unicode case-fold, not just ASCII) substring
     /// match on `name`, applied in Rust after the SQL-filtered fetch.
     pub name_query: Option<String>,
+    /// Recorded vs. planned (US-32). `None` returns both — the trip-list page
+    /// (`http::trip_list`) always resolves this to `Some` before querying, so
+    /// each tab shows exactly one kind; the JSON API (`GET /api/trips`)
+    /// leaves it optional like every other filter dimension.
+    pub trip_kind: Option<TripKind>,
 }
 
 /// `"[year]-[month]-[day]"` — must match `filter::parse_filter`'s format,
@@ -167,11 +175,14 @@ pub async fn list_trips(
     filter: &TripFilter,
 ) -> Result<Vec<TripSummary>, sqlx::Error> {
     let mut query = sqlx::QueryBuilder::new(
-        "SELECT id, name, activity_type, start_time, distance_m, ascent_m, duration_secs \
+        "SELECT id, name, activity_type, start_time, distance_m, ascent_m, duration_secs, trip_kind \
          FROM trip WHERE 1 = 1",
     );
     if let Some(activity_type) = filter.activity_type {
         query.push(" AND activity_type = ").push_bind(activity_type);
+    }
+    if let Some(trip_kind) = filter.trip_kind {
+        query.push(" AND trip_kind = ").push_bind(trip_kind);
     }
     if let Some(from) = &filter.from {
         query
@@ -203,6 +214,7 @@ pub async fn list_trips(
             distance_m: row.get("distance_m"),
             ascent_m: row.get("ascent_m"),
             duration_secs: row.get("duration_secs"),
+            trip_kind: row.get("trip_kind"),
         })
         .fetch_all(pool)
         .await?;

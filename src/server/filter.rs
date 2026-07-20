@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use time::Date;
 
-use crate::models::ActivityType;
+use crate::models::{ActivityType, TripKind};
 use crate::server::{error::AppError, repo::TripFilter};
 
 /// `"[year]-[month]-[day]"`, built once at compile time (rather than
@@ -33,6 +33,11 @@ pub struct TripFilterQuery {
     pub min_dist: Option<String>,
     pub max_dist: Option<String>,
     pub q: Option<String>,
+    /// Recorded vs. planned (US-32). Blank/absent means "don't filter on
+    /// this dimension" here, same as every other field — the trip-list page
+    /// (`http::trip_list`) is what turns an absent value into "default to
+    /// the Recorded tab", not this shared parser.
+    pub kind: Option<String>,
 }
 
 /// Parse a raw query into a `TripFilter`, validating each field at this HTTP
@@ -78,6 +83,11 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         .filter(|s| !s.is_empty())
         .map(str::to_string);
 
+    let trip_kind = match query.kind.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(value) => Some(value.parse::<TripKind>().map_err(AppError::BadRequest)?),
+    };
+
     Ok(TripFilter {
         activity_type,
         from,
@@ -85,6 +95,7 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         min_dist_m: min_dist_km.map(|km| km * 1000.0),
         max_dist_m: max_dist_km.map(|km| km * 1000.0),
         name_query,
+        trip_kind,
     })
 }
 
@@ -147,6 +158,28 @@ mod tests {
         assert!(filter.min_dist_m.is_none());
         assert!(filter.max_dist_m.is_none());
         assert!(filter.name_query.is_none());
+        assert!(filter.trip_kind.is_none());
+    }
+
+    #[test]
+    fn blank_kind_means_no_filter() {
+        let q = query(|q| q.kind = Some(String::new()));
+        assert!(parse_filter(&q).unwrap().trip_kind.is_none());
+    }
+
+    #[test]
+    fn a_valid_kind_is_parsed() {
+        let q = query(|q| q.kind = Some("planned".to_string()));
+        assert_eq!(
+            parse_filter(&q).unwrap().trip_kind,
+            Some(crate::models::TripKind::Planned)
+        );
+    }
+
+    #[test]
+    fn unrecognized_kind_is_rejected_with_bad_request() {
+        let q = query(|q| q.kind = Some("hypothetical".to_string()));
+        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
     }
 
     #[test]

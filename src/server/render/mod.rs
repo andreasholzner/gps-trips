@@ -2,10 +2,16 @@
 //! from `http.rs`'s routing/handlers, mirroring how `delete.rs`/`edit.rs`/
 //! `import.rs` already isolate their own concerns rather than folding
 //! everything into one file.
+//!
+//! The trip-list page (US-6/US-13/US-32) lives in its own `trip_list`
+//! submodule to keep this file under the repo's 500-line cap.
 
-use crate::models::{ActivityType, TripDetail, TripSummary};
-use crate::server::filter::TripFilterQuery;
+mod trip_list;
+
+use crate::models::{ActivityType, TripDetail};
 use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
+
+pub use trip_list::render_trip_list;
 
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).
 /// The `{options}` placeholder is filled via `format!`, not a runtime
@@ -178,148 +184,6 @@ pub fn render_detail(trip: &TripDetail) -> String {
         distance = distance_km,
         ascent = ascent,
         descent = descent,
-        duration = duration,
-    )
-}
-
-/// Render the trip list page (US-6). Shows each trip's name (linking to its
-/// detail), activity type (US-11), date, distance, ascent, and duration; an
-/// empty state otherwise. `query` is the filter form's current values (US-13)
-/// — echoed back into the form so a follow-up edit doesn't reset what the
-/// owner already typed, and used to tell "no trips at all" apart from "no
-/// trips match this filter".
-pub fn render_trip_list(trips: &[TripSummary], query: &TripFilterQuery) -> String {
-    let body = if trips.is_empty() {
-        if any_filter_set(query) {
-            "<p>No trips match your filters. <a href=\"/\">Clear filters</a>.</p>".to_string()
-        } else {
-            "<p>No trips yet. <a href=\"/import\">Import your first trip</a>.</p>".to_string()
-        }
-    } else {
-        let rows: String = trips.iter().map(render_trip_row).collect();
-        format!(
-            "<table>\n\
-             <thead><tr><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
-             <tbody>\n{rows}</tbody>\n\
-             </table>"
-        )
-    };
-
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trip Archive</title>
-</head>
-<body>
-  <h1>Trips</h1>
-  <p><a href="/import">Import a trip</a> · <a href="/komoot/sync">Sync with Komoot</a></p>
-  {filter_form}
-  {body}
-</body>
-</html>"#,
-        filter_form = render_filter_form(query),
-    )
-}
-
-/// Whether any filter field in `query` is set — distinguishes "no trips at
-/// all" from "no trips match this filter" in `render_trip_list`'s empty
-/// state. A blank value means "not set", matching `filter::parse_filter`'s
-/// own blank-handling for every field.
-fn any_filter_set(query: &TripFilterQuery) -> bool {
-    is_non_blank(query.activity.as_deref())
-        || is_non_blank(query.from.as_deref())
-        || is_non_blank(query.to.as_deref())
-        || is_non_blank(query.min_dist.as_deref())
-        || is_non_blank(query.max_dist.as_deref())
-        || is_non_blank(query.q.as_deref())
-}
-
-fn is_non_blank(s: Option<&str>) -> bool {
-    s.is_some_and(|s| !s.trim().is_empty())
-}
-
-/// The trip-list filter form (US-13): free-text name search, activity type,
-/// date range, distance range (shown/submitted in km, matching how distance
-/// is displayed everywhere else — `repo::TripFilter` converts to metres). A
-/// plain GET form: unlike the edit/delete actions, filtering is a read, so a
-/// native query-string submission needs no JS.
-fn render_filter_form(query: &TripFilterQuery) -> String {
-    let q = html_escape(query.q.as_deref().unwrap_or(""));
-    let from = html_escape(query.from.as_deref().unwrap_or(""));
-    let to = html_escape(query.to.as_deref().unwrap_or(""));
-    let min_dist = html_escape(query.min_dist.as_deref().unwrap_or(""));
-    let max_dist = html_escape(query.max_dist.as_deref().unwrap_or(""));
-    let activity_options = activity_filter_options(query.activity.as_deref().unwrap_or(""));
-
-    format!(
-        r#"<form method="get" action="/">
-  <input type="text" name="q" value="{q}" placeholder="Search by name">
-  <select name="activity">
-    {activity_options}
-  </select>
-  <label>From <input type="date" name="from" value="{from}"></label>
-  <label>To <input type="date" name="to" value="{to}"></label>
-  <label>Min <input type="number" step="0.1" name="min_dist" value="{min_dist}" placeholder="min km"></label>
-  <label>Max <input type="number" step="0.1" name="max_dist" value="{max_dist}" placeholder="max km"></label>
-  <button type="submit">Filter</button>
-  <a href="/">Clear</a>
-</form>"#
-    )
-}
-
-/// Build the `<option>` list for the filter form's activity `<select>`
-/// (US-13). Distinct from `activity_type_options`: here the blank option means
-/// "don't filter on activity at all", not "unspecified" — so `Unknown` gets
-/// its own explicit, filterable option rather than sharing the blank one.
-fn activity_filter_options(selected: &str) -> String {
-    let mut options = format!(
-        "<option value=\"\"{sel}>All activities</option>\n",
-        sel = if selected.is_empty() { " selected" } else { "" },
-    );
-    options.push_str(&format!(
-        "<option value=\"unknown\"{sel}>{label}</option>\n",
-        sel = if selected == "unknown" {
-            " selected"
-        } else {
-            ""
-        },
-        label = ActivityType::Unknown.label(),
-    ));
-    for activity in ActivityType::SELECTABLE {
-        let value = activity.as_str();
-        let sel = if value == selected { " selected" } else { "" };
-        options.push_str(&format!(
-            "<option value=\"{value}\"{sel}>{label}</option>\n",
-            label = activity.label()
-        ));
-    }
-    options
-}
-
-/// One row of the trip list table.
-fn render_trip_row(trip: &TripSummary) -> String {
-    // start_time is RFC-3339 (e.g. "2024-06-01T08:00:00+00:00"); show the date part.
-    let date = trip
-        .start_time
-        .as_deref()
-        .and_then(|s| s.split('T').next())
-        .unwrap_or("—");
-    let distance_km = trip.distance_m / 1000.0;
-    let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
-    let duration = trip.duration_secs.map(fmt_duration).unwrap_or_else(dash);
-
-    format!(
-        "<tr><td><a href=\"/trips/{id}\">{name}</a></td><td>{activity}</td>\
-         <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td></tr>\n",
-        id = trip.id,
-        name = html_escape(&trip.name),
-        activity = html_escape(trip.activity_type.as_str()),
-        date = html_escape(date),
-        distance = distance_km,
-        ascent = ascent,
         duration = duration,
     )
 }

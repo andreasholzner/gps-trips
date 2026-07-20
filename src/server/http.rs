@@ -10,7 +10,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tower_http::services::ServeDir;
 
-use crate::models::{LocationSource, Photo, TripSummary};
+use crate::models::{LocationSource, Photo, TripKind, TripSummary};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
@@ -105,14 +105,19 @@ pub fn router(state: AppState) -> Router {
 }
 
 /// GET `/` — the trip list, the archive's home (US-6), optionally narrowed by
-/// the filter query parameters (US-13, ADR-0011).
+/// the filter query parameters (US-13, ADR-0011) and split into a Recorded/
+/// Planned tab (US-32). Unlike every other filter dimension, `kind` always
+/// resolves to a concrete value here — the page shows exactly one tab's worth
+/// of trips, defaulting to Recorded when `?kind=` is absent.
 async fn trip_list(
     State(state): State<AppState>,
     Query(query): Query<TripFilterQuery>,
 ) -> Result<Html<String>, AppError> {
-    let filter = parse_filter(&query)?;
+    let mut filter = parse_filter(&query)?;
+    let active_kind = filter.trip_kind.unwrap_or(TripKind::Recorded);
+    filter.trip_kind = Some(active_kind);
     let trips = repo::list_trips(&state.pool, &filter).await?;
-    Ok(Html(render_trip_list(&trips, &query)))
+    Ok(Html(render_trip_list(&trips, &query, active_kind)))
 }
 
 /// GET `/api/trips` — the same filtered trip list as JSON (US-13, ADR-0008/0011),

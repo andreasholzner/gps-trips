@@ -5,10 +5,12 @@ mod activity_type;
 mod location_source;
 mod photo;
 mod trip_detail;
+mod trip_kind;
 mod trip_summary;
 
 pub use activity_type::ActivityType;
 pub use location_source::LocationSource;
 pub use photo::Photo;
 pub use trip_detail::TripDetail;
+pub use trip_kind::TripKind;
 pub use trip_summary::TripSummary;
