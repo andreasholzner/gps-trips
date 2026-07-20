@@ -48,6 +48,10 @@ pub mod komoot {
     /// Backoff applied after a `429` response with no (or unparseable)
     /// `Retry-After` header.
     pub const DEFAULT_RATE_LIMIT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// Page size used when paginating Komoot's tours and tour-photos
+    /// endpoints (`server::komoot_sync`).
+    pub const PAGE_SIZE: u32 = 200;
 }
 
 /// Thumbnail generation (US-5, ADR-0020).

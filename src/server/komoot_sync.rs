@@ -20,6 +20,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
+use crate::config::komoot::PAGE_SIZE;
 use crate::models::TripKind;
 use crate::server::{
     error::AppError,
@@ -94,8 +95,6 @@ pub struct SyncResultQuery {
     pub failed_msg: Option<String>,
     pub failed_phase: Option<String>,
 }
-
-const PAGE_SIZE: u32 = 200;
 
 /// Run `f` on the blocking pool — every `KomootClient` call goes through
 /// this, matching `photos.rs`'s `put_blob`/`extract_photo_metadata`.
