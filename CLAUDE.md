@@ -11,7 +11,7 @@
 - Use the current file contents as ground truth, ignore earlier versions in the conversation.
 - NEVER commit secrets, credentials, or .env files
 - NEVER add a `Co-Authored-By` trailer to user commits unless this project's `.claude/settings.json` has `attribution.commit` set (#2078). The Claude Code Bash tool may suggest one in its default commit-message template — ignore it. `Co-Authored-By` is semantic authorship attribution under git/GitHub convention; the tool is the facilitator, not a co-author.
-- Keep files under 500 lines
+- Keep files under 500 lines where practical; 650 lines is a hard cap
 - Validate input at system boundaries
 - The ADRs for this project are maintained at `/docs/adr`. Always follow them.
 - Follow TDD also for fixing issues found during code review.
