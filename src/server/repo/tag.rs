@@ -78,6 +78,72 @@ fn row_to_tag(row: SqliteRow) -> Tag {
     }
 }
 
+/// Whether every id in `trip_ids` is an existing trip's id (US-34's
+/// all-or-nothing precondition for a bulk tag apply, checked by the caller
+/// before `bulk_add_trip_tags` — the same "check trip existence first"
+/// ordering `require_trip` already uses for the single-trip tag handlers).
+pub async fn trips_exist(pool: &SqlitePool, trip_ids: &[i64]) -> Result<bool, sqlx::Error> {
+    for &trip_id in trip_ids {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM trip WHERE id = ?")
+            .bind(trip_id)
+            .fetch_optional(pool)
+            .await?;
+        if exists.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Apply every tag named in `tag_names` (already normalized by the caller) to
+/// every trip in `trip_ids` (US-34), in one transaction: each tag is created
+/// on demand — the same upsert `get_or_create_tag` uses, inlined here because
+/// it needs to run on this call's transaction, not a fresh pool connection —
+/// and linked to every trip via `INSERT OR IGNORE`, making re-application
+/// idempotent just like `add_trip_tag`. A name repeated in `tag_names` is only
+/// applied once — otherwise the DB writes stay idempotent but the returned
+/// `Tag` list would contain the same tag twice. Returns the applied tags.
+pub async fn bulk_add_trip_tags(
+    pool: &SqlitePool,
+    trip_ids: &[i64],
+    tag_names: &[String],
+) -> Result<Vec<Tag>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut tags = Vec::with_capacity(tag_names.len());
+    let mut seen = std::collections::HashSet::with_capacity(tag_names.len());
+
+    for name in tag_names {
+        if !seen.insert(name.as_str()) {
+            continue;
+        }
+
+        let tag_id: i64 = sqlx::query_scalar(
+            r#"INSERT INTO tag (name) VALUES (?)
+               ON CONFLICT(name) DO UPDATE SET name = excluded.name
+               RETURNING id"#,
+        )
+        .bind(name)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        for &trip_id in trip_ids {
+            sqlx::query("INSERT OR IGNORE INTO trip_tag (trip_id, tag_id) VALUES (?, ?)")
+                .bind(trip_id)
+                .bind(tag_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tags.push(Tag {
+            id: tag_id,
+            name: name.clone(),
+        });
+    }
+
+    tx.commit().await?;
+    Ok(tags)
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
@@ -225,5 +291,97 @@ mod tests {
             .unwrap();
 
         assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn trips_exist_is_true_when_every_id_is_a_real_trip() {
+        let db = TestDb::new().await;
+        let a = insert_sample_trip(&db.pool).await;
+        let b = insert_sample_trip(&db.pool).await;
+
+        assert!(trips_exist(&db.pool, &[a, b]).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn trips_exist_is_false_when_any_id_is_unknown() {
+        let db = TestDb::new().await;
+        let a = insert_sample_trip(&db.pool).await;
+
+        assert!(!trips_exist(&db.pool, &[a, 999]).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn bulk_add_trip_tags_applies_every_tag_to_every_trip() {
+        let db = TestDb::new().await;
+        let a = insert_sample_trip(&db.pool).await;
+        let b = insert_sample_trip(&db.pool).await;
+
+        let names = vec!["alps".to_string(), "hiking".to_string()];
+        let applied = bulk_add_trip_tags(&db.pool, &[a, b], &names).await.unwrap();
+        assert_eq!(applied.len(), 2);
+
+        for trip_id in [a, b] {
+            let tags = list_trip_tags(&db.pool, trip_id).await.unwrap();
+            assert_eq!(
+                tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+                vec!["alps", "hiking"]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn bulk_add_trip_tags_creates_new_tags_on_demand() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+
+        bulk_add_trip_tags(&db.pool, &[trip_id], &["brand-new".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn bulk_add_trip_tags_reuses_an_existing_tag_rather_than_duplicating_it() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        get_or_create_tag(&db.pool, "hiking").await.unwrap();
+
+        bulk_add_trip_tags(&db.pool, &[trip_id], &["hiking".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn bulk_add_trip_tags_is_idempotent() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+
+        let names = vec!["hiking".to_string()];
+        bulk_add_trip_tags(&db.pool, &[trip_id], &names).await.unwrap();
+        bulk_add_trip_tags(&db.pool, &[trip_id], &names).await.unwrap();
+
+        assert_eq!(list_trip_tags(&db.pool, trip_id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn bulk_add_trip_tags_deduplicates_a_repeated_name_in_one_call() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+
+        let names = vec!["hiking".to_string(), "hiking".to_string()];
+        let applied = bulk_add_trip_tags(&db.pool, &[trip_id], &names)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            applied,
+            vec![Tag {
+                id: applied[0].id,
+                name: "hiking".to_string()
+            }]
+        );
     }
 }

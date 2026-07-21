@@ -31,7 +31,7 @@ pub fn render_trip_list(
         let rows: String = trips.iter().map(render_trip_row).collect();
         format!(
             "<table>\n\
-             <thead><tr><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
+             <thead><tr><th><input type=\"checkbox\" id=\"select-all\"></th><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
              <tbody>\n{rows}</tbody>\n\
              </table>"
         )
@@ -51,11 +51,33 @@ pub fn render_trip_list(
   <nav>{tabs}</nav>
   {filter_form}
   {body}
+  {bulk_tag_panel}
+  <script src="/static/js/trip_list.js"></script>
 </body>
 </html>"#,
         tabs = render_kind_tabs(query, active_kind),
         filter_form = render_filter_form(query),
+        bulk_tag_panel = render_bulk_tag_panel(),
     )
+}
+
+/// The bulk-tag panel (US-34): hidden by default, `trip_list.js` shows it once
+/// at least one row checkbox is checked. `#bulk-tag-input`/`#bulk-tag-suggestions`
+/// mirror the detail page's `#tag-input`/`#tag-suggestions` (US-33) — same
+/// `<datalist>` autocomplete, populated from the same `/api/tags` endpoint.
+/// Typed names are staged as removable chips in `#bulk-tag-pending` before
+/// `#bulk-tag-apply` submits all of them, for every checked trip, in one
+/// `POST /api/trips/tags` request.
+fn render_bulk_tag_panel() -> String {
+    r#"<div id="bulk-tag-panel" style="display:none">
+  <h2>Tag selected trips</h2>
+  <div id="bulk-tag-pending"></div>
+  <datalist id="bulk-tag-suggestions"></datalist>
+  <input type="text" id="bulk-tag-input" list="bulk-tag-suggestions" placeholder="add a tag">
+  <button type="button" id="bulk-tag-add">Add</button>
+  <button type="button" id="bulk-tag-apply">Apply to 0 selected</button>
+</div>"#
+        .to_string()
 }
 
 /// The Recorded/Planned tab nav (US-32). The active tab is plain text (not a
@@ -202,7 +224,8 @@ fn render_trip_row(trip: &TripSummary) -> String {
     let duration = trip.duration_secs.map(fmt_duration).unwrap_or_else(dash);
 
     format!(
-        "<tr><td><a href=\"/trips/{id}\">{name}</a></td><td>{activity}</td>\
+        "<tr><td><input type=\"checkbox\" class=\"trip-select\" value=\"{id}\"></td>\
+         <td><a href=\"/trips/{id}\">{name}</a></td><td>{activity}</td>\
          <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td></tr>\n",
         id = trip.id,
         name = html_escape(&trip.name),

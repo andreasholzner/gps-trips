@@ -79,3 +79,40 @@ pub async fn handle_list_all_tags(
 ) -> Result<Json<Vec<Tag>>, AppError> {
     Ok(Json(repo::list_all_tags(&state.pool).await?))
 }
+
+/// The `POST /api/trips/tags` request body (US-34, ADR-0008).
+#[derive(Deserialize)]
+pub struct BulkAddTagsRequest {
+    trip_ids: Vec<i64>,
+    names: Vec<String>,
+}
+
+/// POST `/api/trips/tags` — from the list page's multi-select, tag every trip
+/// in `trip_ids` with every name in `names` in one request (US-34). 400 if
+/// either list is empty. Trip existence is checked before names are
+/// validated, mirroring `handle_add_trip_tag`'s single-trip ordering: if any
+/// `trip_ids` entry doesn't exist, the whole request 404s and nothing is
+/// created or linked. Every name is normalized (trimmed, lowercased); the
+/// first invalid one 400s the whole request, same as the single-tag handler.
+pub async fn handle_bulk_add_trip_tags(
+    State(state): State<AppState>,
+    Json(body): Json<BulkAddTagsRequest>,
+) -> Result<Json<Vec<Tag>>, AppError> {
+    if body.trip_ids.is_empty() {
+        return Err(AppError::BadRequest("no trips selected".to_string()));
+    }
+    if body.names.is_empty() {
+        return Err(AppError::BadRequest("no tags provided".to_string()));
+    }
+    if !repo::trips_exist(&state.pool, &body.trip_ids).await? {
+        return Err(AppError::NotFound);
+    }
+    let names = body
+        .names
+        .iter()
+        .map(|name| normalize_tag_name(name).map_err(AppError::BadRequest))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(
+        repo::bulk_add_trip_tags(&state.pool, &body.trip_ids, &names).await?,
+    ))
+}

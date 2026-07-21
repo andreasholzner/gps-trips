@@ -10,7 +10,10 @@ mod tag;
 mod trip;
 
 pub use photo::{count_photos, insert_photo, list_photos, NewPhoto};
-pub use tag::{add_trip_tag, get_or_create_tag, list_all_tags, list_trip_tags, remove_trip_tag};
+pub use tag::{
+    add_trip_tag, bulk_add_trip_tags, get_or_create_tag, list_all_tags, list_trip_tags,
+    remove_trip_tag, trips_exist,
+};
 pub use trip::{
     delete_trip, get_original_gpx, get_track_geojson, get_trip, insert_trip, insert_trip_in_tx,
     list_trips, set_trip_timezone, update_trip, GpxDownload, NewTrip, TripFilter,

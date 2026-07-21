@@ -24,7 +24,8 @@ use crate::server::{
     repo,
     state::{self, AppState},
     tags::{
-        handle_add_trip_tag, handle_list_all_tags, handle_list_trip_tags, handle_remove_trip_tag,
+        handle_add_trip_tag, handle_bulk_add_trip_tags, handle_list_all_tags,
+        handle_list_trip_tags, handle_remove_trip_tag,
     },
 };
 
@@ -103,6 +104,8 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/:id/tags/:tag_id",
             axum::routing::delete(handle_remove_trip_tag),
         )
+        // US-34: bulk-tag trips selected on the list page, in one request.
+        .route("/api/trips/tags", post(handle_bulk_add_trip_tags))
         .route("/api/tags", get(handle_list_all_tags))
         // US-22: review + trigger a Komoot "Sync now" pull.
         .route("/komoot/sync", get(sync_candidates_page))
