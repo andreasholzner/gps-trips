@@ -101,7 +101,7 @@ mod tests {
     use crate::server::db::testing::TestDb;
     use crate::server::geojson::build_track_geojson;
     use crate::server::gpx::{compute_stats, parse_gpx};
-    use crate::server::repo::insert_trip;
+    use crate::server::repo::{insert_trip, NewTrip};
 
     const SAMPLE_GPX: &[u8] = include_bytes!("../../../tests/fixtures/sample.gpx");
 
@@ -111,13 +111,15 @@ mod tests {
         let geojson = build_track_geojson(&track.points);
         insert_trip(
             pool,
-            "Oslo Hills Walk",
-            ActivityType::Hiking,
-            "Europe/Oslo",
-            &stats,
-            &geojson,
-            SAMPLE_GPX,
-            TripKind::Recorded,
+            &NewTrip {
+                name: "Oslo Hills Walk",
+                activity_type: ActivityType::Hiking,
+                tz_name: "Europe/Oslo",
+                stats: &stats,
+                geojson: &geojson,
+                gpx: SAMPLE_GPX,
+                trip_kind: TripKind::Recorded,
+            },
         )
         .await
         .expect("insert_trip")

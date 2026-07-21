@@ -142,8 +142,8 @@ async fn list_all_tours_of_kind(
 }
 
 /// Every photo attached to a tour, paginating until a short (or empty) page
-/// — mirrors `list_all_tours` above. A tour with more photos than one page
-/// would otherwise silently lose the rest.
+/// — mirrors `list_all_tours_of_kind` above. A tour with more photos than one
+/// page would otherwise silently lose the rest.
 async fn list_all_tour_photos(
     client: &Arc<dyn KomootClient>,
     tour_id: &str,
@@ -410,16 +410,18 @@ async fn sync_one_tour(
     let mut tx = pool.begin().await?;
     let trip_id = repo::insert_trip_in_tx(
         &mut tx,
-        &tour.name,
-        activity,
-        &derived.guessed_tz,
-        &derived.stats,
-        &derived.geojson,
-        &gpx_bytes,
-        // Recorded tours land on the Recorded tab, planned routes on the
-        // Planned tab (US-29) — `kind` was decided by which Komoot listing
-        // (`tour_recorded` vs `tour_planned`) the tour came from.
-        kind,
+        &repo::NewTrip {
+            name: &tour.name,
+            activity_type: activity,
+            tz_name: &derived.guessed_tz,
+            stats: &derived.stats,
+            geojson: &derived.geojson,
+            gpx: &gpx_bytes,
+            // Recorded tours land on the Recorded tab, planned routes on the
+            // Planned tab (US-29) — `kind` was decided by which Komoot listing
+            // (`tour_recorded` vs `tour_planned`) the tour came from.
+            trip_kind: kind,
+        },
     )
     .await?;
     // The link row is inserted (and can fail on its `komoot_tour_id`

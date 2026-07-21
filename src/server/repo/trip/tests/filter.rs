@@ -14,13 +14,15 @@ async fn insert_trip_with(
 ) -> i64 {
     insert_trip(
         pool,
-        name,
-        activity_type,
-        "Europe/Oslo",
-        &stats(distance_m, start),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &NewTrip {
+            name,
+            activity_type,
+            tz_name: "Europe/Oslo",
+            stats: &stats(distance_m, start),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap()

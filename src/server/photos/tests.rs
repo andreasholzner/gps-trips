@@ -14,7 +14,7 @@ use super::*;
 use crate::models::{ActivityType, TripKind};
 use crate::server::db::testing::TestDb;
 use crate::server::gpx::TrackStats;
-use crate::server::repo::{insert_trip, list_photos};
+use crate::server::repo::{insert_trip, list_photos, NewTrip};
 use crate::server::storage::LocalDisk;
 use crate::server::thumbnail::fixtures::valid_jpeg_bytes;
 
@@ -55,13 +55,15 @@ async fn a_trip(pool: &sqlx::SqlitePool) -> i64 {
     };
     insert_trip(
         pool,
-        "Trip",
-        ActivityType::Hiking,
-        "Europe/Oslo",
-        &stats,
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &NewTrip {
+            name: "Trip",
+            activity_type: ActivityType::Hiking,
+            tz_name: "Europe/Oslo",
+            stats: &stats,
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap()

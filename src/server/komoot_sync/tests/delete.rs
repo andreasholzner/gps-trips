@@ -12,13 +12,15 @@ use super::*;
 async fn a_pending_delete(pool: &SqlitePool, tour_id: &str) {
     let trip_id = crate::server::repo::insert_trip(
         pool,
-        "Original Name",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &crate::server::repo::NewTrip {
+            name: "Original Name",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();

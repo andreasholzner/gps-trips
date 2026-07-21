@@ -47,13 +47,15 @@ async fn list_sync_candidates_excludes_already_linked_tours() {
     // A real trip to link against (the FK requires an existing trip).
     let trip_id = crate::server::repo::insert_trip(
         &db.pool,
-        "Existing",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &crate::server::repo::NewTrip {
+            name: "Existing",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();
@@ -165,13 +167,15 @@ async fn sync_selected_tours_skips_a_selected_tour_that_is_already_linked() {
 
     let trip_id = crate::server::repo::insert_trip(
         &db.pool,
-        "Existing",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &crate::server::repo::NewTrip {
+            name: "Existing",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();
@@ -415,13 +419,15 @@ async fn list_sync_candidates_tags_recorded_and_planned_and_dedupes_both() {
     // "222" (recorded) and "333" (planned) are new.
     let trip_id = crate::server::repo::insert_trip(
         &db.pool,
-        "Existing",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &crate::server::repo::NewTrip {
+            name: "Existing",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();

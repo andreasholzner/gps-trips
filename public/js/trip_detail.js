@@ -49,6 +49,7 @@
 
   wireDeleteButton(document.body.dataset.tripId);
   wireEditForm(document.body.dataset.tripId);
+  wireTags(document.body.dataset.tripId);
 })();
 
 // US-9: wire the "Delete trip" button. Plain HTML forms cannot issue a DELETE
@@ -124,6 +125,118 @@ function wireEditForm(tripId) {
       console.error("failed to save trip changes:", err);
       alert("Failed to save changes.");
     }
+  });
+}
+
+// US-33: wire the tags section — loads the trip's current tags plus every
+// tag that exists (for the `#tag-suggestions` <datalist> autocomplete), then
+// wires the add-tag form and each chip's remove button. Creating a tag the
+// owner hasn't used before is confirmed first ("using a new tag creates the
+// tag on-demand after confirmation") by checking the typed name against the
+// already-fetched all-tags list; an existing tag is applied straight away.
+async function wireTags(tripId) {
+  const container = document.getElementById("tags");
+  const form = document.getElementById("tag-form");
+  const input = document.getElementById("tag-input");
+  const suggestions = document.getElementById("tag-suggestions");
+  if (!container || !form || !input || !suggestions || !tripId) return;
+
+  let allTagNames = new Set();
+
+  async function loadAllTags() {
+    try {
+      const response = await fetch("/api/tags");
+      if (!response.ok) return;
+      const tags = await response.json();
+      allTagNames = new Set(tags.map((t) => t.name));
+      suggestions.innerHTML = "";
+      tags.forEach((tag) => {
+        const option = document.createElement("option");
+        option.value = tag.name;
+        suggestions.appendChild(option);
+      });
+    } catch (err) {
+      console.error("failed to load tags:", err);
+    }
+  }
+
+  async function loadTripTags() {
+    try {
+      const response = await fetch(`/api/trips/${tripId}/tags`);
+      if (!response.ok) {
+        console.error("failed to load trip tags:", response.status);
+        return;
+      }
+      renderTagChips(container, await response.json(), tripId, loadTripTags);
+    } catch (err) {
+      console.error("failed to load trip tags:", err);
+    }
+  }
+
+  await Promise.all([loadAllTags(), loadTripTags()]);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const raw = input.value.trim();
+    if (!raw) return;
+
+    if (!allTagNames.has(raw.toLowerCase()) && !confirm(`Tag "${raw}" doesn't exist yet — create it?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/trips/${tripId}/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: raw }),
+      });
+      if (response.status === 201) {
+        input.value = "";
+        await Promise.all([loadAllTags(), loadTripTags()]);
+      } else {
+        alert(`Failed to add tag (status ${response.status}).`);
+      }
+    } catch (err) {
+      console.error("failed to add tag:", err);
+      alert("Failed to add tag.");
+    }
+  });
+}
+
+// Render one removable chip per tag; wires each chip's remove button to
+// `DELETE /api/trips/:id/tags/:tag_id` and reloads on success.
+function renderTagChips(container, tags, tripId, reload) {
+  container.innerHTML = "";
+  if (!tags || tags.length === 0) {
+    container.textContent = "No tags yet.";
+    return;
+  }
+  tags.forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.className = "tag-chip";
+    chip.textContent = `${tag.name} `;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.addEventListener("click", async () => {
+      try {
+        const response = await fetch(`/api/trips/${tripId}/tags/${tag.id}`, {
+          method: "DELETE",
+        });
+        if (response.status === 204) {
+          await reload();
+        } else {
+          alert(`Failed to remove tag (status ${response.status}).`);
+        }
+      } catch (err) {
+        console.error("failed to remove tag:", err);
+        alert("Failed to remove tag.");
+      }
+    });
+
+    chip.appendChild(remove);
+    container.appendChild(chip);
   });
 }
 

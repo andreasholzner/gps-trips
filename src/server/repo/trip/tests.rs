@@ -13,13 +13,15 @@ async fn insert_sample_trip(pool: &SqlitePool) -> i64 {
     let geojson = build_track_geojson(&track.points);
     insert_trip(
         pool,
-        "Oslo Hills Walk",
-        ActivityType::Hiking,
-        "Europe/Oslo",
-        &stats,
-        &geojson,
-        SAMPLE_GPX,
-        TripKind::Recorded,
+        &NewTrip {
+            name: "Oslo Hills Walk",
+            activity_type: ActivityType::Hiking,
+            tz_name: "Europe/Oslo",
+            stats: &stats,
+            geojson: &geojson,
+            gpx: SAMPLE_GPX,
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .expect("insert_trip")
@@ -183,25 +185,29 @@ async fn us6_list_trips_orders_most_recent_first() {
     let db = TestDb::new().await;
     insert_trip(
         &db.pool,
-        "Older",
-        ActivityType::Hiking,
-        "Europe/Oslo",
-        &stats_at(datetime!(2024-01-01 08:00 UTC)),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &NewTrip {
+            name: "Older",
+            activity_type: ActivityType::Hiking,
+            tz_name: "Europe/Oslo",
+            stats: &stats_at(datetime!(2024-01-01 08:00 UTC)),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();
     insert_trip(
         &db.pool,
-        "Newer",
-        ActivityType::Hiking,
-        "Europe/Oslo",
-        &stats_at(datetime!(2024-06-01 08:00 UTC)),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &NewTrip {
+            name: "Newer",
+            activity_type: ActivityType::Hiking,
+            tz_name: "Europe/Oslo",
+            stats: &stats_at(datetime!(2024-06-01 08:00 UTC)),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();
@@ -514,13 +520,15 @@ async fn us31_insert_trip_persists_the_chosen_planned_kind() {
     let geojson = build_track_geojson(&track.points);
     insert_trip(
         &db.pool,
-        "Future Trip",
-        ActivityType::Hiking,
-        "Europe/Oslo",
-        &stats,
-        &geojson,
-        SAMPLE_GPX,
-        TripKind::Planned,
+        &NewTrip {
+            name: "Future Trip",
+            activity_type: ActivityType::Hiking,
+            tz_name: "Europe/Oslo",
+            stats: &stats,
+            geojson: &geojson,
+            gpx: SAMPLE_GPX,
+            trip_kind: TripKind::Planned,
+        },
     )
     .await
     .expect("insert_trip");

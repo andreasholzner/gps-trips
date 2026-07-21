@@ -23,6 +23,9 @@ use crate::server::{
     render::{render_detail, render_import_form, render_sync_candidates, render_trip_list},
     repo,
     state::{self, AppState},
+    tags::{
+        handle_add_trip_tag, handle_list_all_tags, handle_list_trip_tags, handle_remove_trip_tag,
+    },
 };
 
 /// The JSON shape returned by `GET /api/trips/:id/photos` (ADR-0008).
@@ -91,6 +94,16 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/:id/photos",
             post(handle_add_photos).get(list_trip_photos),
         )
+        // US-33: tag a trip (POST/GET) and untag it (DELETE).
+        .route(
+            "/api/trips/:id/tags",
+            post(handle_add_trip_tag).get(handle_list_trip_tags),
+        )
+        .route(
+            "/api/trips/:id/tags/:tag_id",
+            axum::routing::delete(handle_remove_trip_tag),
+        )
+        .route("/api/tags", get(handle_list_all_tags))
         // US-22: review + trigger a Komoot "Sync now" pull.
         .route("/komoot/sync", get(sync_candidates_page))
         .route("/api/komoot/sync", post(handle_sync))

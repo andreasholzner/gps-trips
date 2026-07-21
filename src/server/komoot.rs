@@ -158,8 +158,9 @@ pub trait KomootClient: Send + Sync {
     /// (including empty) is the last page — callers that need every tour
     /// (US-22) loop until then. Komoot's planned routes (`type=tour_planned`
     /// — future/unrecorded routes, not something the owner has actually
-    /// done) are filtered out server-side; this app archives recorded trips
-    /// only (confirmed against the real API: `docs/komoot-api.md`).
+    /// done) are filtered out server-side by this `type` param (confirmed
+    /// against the real API: `docs/komoot-api.md`); [`list_planned_tours`](Self::list_planned_tours)
+    /// is the sibling call that pulls those in (US-29).
     fn list_tours(
         &self,
         username: &str,
@@ -190,7 +191,7 @@ pub trait KomootClient: Send + Sync {
     /// pagination contract as [`list_tours`](Self::list_tours): `limit`
     /// caps the page size, `page` selects which page, and a short
     /// (including empty) page is the last one — callers that need every
-    /// photo loop until then, the same way `list_all_tours` does for
+    /// photo loop until then, the same way `list_all_tours_of_kind` does for
     /// tours.
     fn get_tour_photos(
         &self,

@@ -9,31 +9,29 @@ use crate::server::gpx::TrackStats;
 
 use super::to_rfc3339;
 
+/// Fields for a new trip + its derived geometry and original GPX file
+/// (mirrors `NewPhoto` in the sibling `photo` module). `trip_kind`
+/// (US-31/US-32): manual GPX import lets the owner choose either variant;
+/// Komoot sync/backfill (US-29) passes whichever kind the source tour was
+/// listed under (`Recorded` or `Planned`).
+pub struct NewTrip<'a> {
+    pub name: &'a str,
+    pub activity_type: ActivityType,
+    /// (US-4, ADR-0009/0019) always a concrete IANA timezone by the time this
+    /// reaches the repo layer — the caller resolves either an explicit owner
+    /// override or an auto-guess from the track's start coordinate first.
+    pub tz_name: &'a str,
+    pub stats: &'a TrackStats,
+    pub geojson: &'a str,
+    pub gpx: &'a [u8],
+    pub trip_kind: TripKind,
+}
+
 /// Insert a new trip together with its derived geometry and the original GPX
 /// file, in a single transaction (ADR-0003). Returns the new trip id.
-#[allow(clippy::too_many_arguments)]
-pub async fn insert_trip(
-    pool: &SqlitePool,
-    name: &str,
-    activity_type: ActivityType,
-    tz_name: &str,
-    stats: &TrackStats,
-    geojson: &str,
-    gpx: &[u8],
-    trip_kind: TripKind,
-) -> Result<i64, sqlx::Error> {
+pub async fn insert_trip(pool: &SqlitePool, trip: &NewTrip<'_>) -> Result<i64, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let trip_id = insert_trip_in_tx(
-        &mut tx,
-        name,
-        activity_type,
-        tz_name,
-        stats,
-        geojson,
-        gpx,
-        trip_kind,
-    )
-    .await?;
+    let trip_id = insert_trip_in_tx(&mut tx, trip).await?;
     tx.commit().await?;
     Ok(trip_id)
 }
@@ -41,27 +39,13 @@ pub async fn insert_trip(
 /// Insert the trip + track rows on an existing transaction, without committing.
 /// Import drives this directly so the trip, its track and its photos all land in
 /// one transaction — a failed import leaves no partial trip (ADR-0004).
-///
-/// `tz_name` (US-4, ADR-0009/0019) is always a concrete IANA timezone at this
-/// point — import always resolves either an explicit owner override or an
-/// auto-guess from the track's start coordinate before calling this.
-///
-/// `trip_kind` (US-31/US-32): manual GPX import lets the owner choose either
-/// variant; Komoot sync/backfill always pass `TripKind::Recorded`.
-#[allow(clippy::too_many_arguments)]
 pub async fn insert_trip_in_tx(
     tx: &mut Transaction<'_, Sqlite>,
-    name: &str,
-    activity_type: ActivityType,
-    tz_name: &str,
-    stats: &TrackStats,
-    geojson: &str,
-    gpx: &[u8],
-    trip_kind: TripKind,
+    trip: &NewTrip<'_>,
 ) -> Result<i64, sqlx::Error> {
     let created_at = to_rfc3339(OffsetDateTime::now_utc());
-    let start_time = stats.start_time.map(to_rfc3339);
-    let end_time = stats.end_time.map(to_rfc3339);
+    let start_time = trip.stats.start_time.map(to_rfc3339);
+    let end_time = trip.stats.end_time.map(to_rfc3339);
 
     let trip_id = sqlx::query(
         r#"INSERT INTO trip
@@ -71,29 +55,29 @@ pub async fn insert_trip_in_tx(
                 created_at, trip_kind)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
     )
-    .bind(name)
-    .bind(activity_type)
-    .bind(tz_name)
+    .bind(trip.name)
+    .bind(trip.activity_type)
+    .bind(trip.tz_name)
     .bind(&start_time)
     .bind(&end_time)
-    .bind(stats.duration_secs)
-    .bind(stats.distance_m)
-    .bind(stats.ascent_m)
-    .bind(stats.descent_m)
-    .bind(stats.min_lat)
-    .bind(stats.min_lon)
-    .bind(stats.max_lat)
-    .bind(stats.max_lon)
+    .bind(trip.stats.duration_secs)
+    .bind(trip.stats.distance_m)
+    .bind(trip.stats.ascent_m)
+    .bind(trip.stats.descent_m)
+    .bind(trip.stats.min_lat)
+    .bind(trip.stats.min_lon)
+    .bind(trip.stats.max_lat)
+    .bind(trip.stats.max_lon)
     .bind(&created_at)
-    .bind(trip_kind)
+    .bind(trip.trip_kind)
     .execute(&mut **tx)
     .await?
     .last_insert_rowid();
 
     sqlx::query("INSERT INTO track (trip_id, geojson, gpx) VALUES (?,?,?)")
         .bind(trip_id)
-        .bind(geojson)
-        .bind(gpx)
+        .bind(trip.geojson)
+        .bind(trip.gpx)
         .execute(&mut **tx)
         .await?;
 

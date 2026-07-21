@@ -18,5 +18,6 @@ pub mod render;
 pub mod repo;
 pub mod state;
 pub mod storage;
+pub mod tags;
 pub mod thumbnail;
 pub mod timezone;

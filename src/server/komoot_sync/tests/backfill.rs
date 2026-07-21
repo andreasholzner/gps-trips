@@ -8,13 +8,15 @@ use super::*;
 async fn a_linked_trip(pool: &SqlitePool, tour_id: &str) {
     let trip_id = crate::server::repo::insert_trip(
         pool,
-        "Existing",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &crate::server::repo::NewTrip {
+            name: "Existing",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();

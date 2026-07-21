@@ -69,7 +69,7 @@ mod tests {
     use crate::server::gpx::TrackStats;
     use crate::server::photos::{ingest_photos, UploadedPhoto};
     use crate::server::placement::TripPhotoContext;
-    use crate::server::repo::{get_trip, insert_trip, list_photos};
+    use crate::server::repo::{get_trip, insert_trip, list_photos, NewTrip};
     use crate::server::storage::LocalDisk;
     use crate::server::thumbnail::fixtures::valid_jpeg_bytes;
 
@@ -101,13 +101,15 @@ mod tests {
         };
         insert_trip(
             pool,
-            "Trip",
-            ActivityType::Hiking,
-            "Europe/Oslo",
-            &stats,
-            "{}",
-            b"x",
-            TripKind::Recorded,
+            &NewTrip {
+                name: "Trip",
+                activity_type: ActivityType::Hiking,
+                tz_name: "Europe/Oslo",
+                stats: &stats,
+                geojson: "{}",
+                gpx: b"x",
+                trip_kind: TripKind::Recorded,
+            },
         )
         .await
         .unwrap()

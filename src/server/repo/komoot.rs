@@ -122,7 +122,7 @@ mod tests {
     use crate::models::TripKind;
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
-    use crate::server::repo::insert_trip;
+    use crate::server::repo::{insert_trip, NewTrip};
 
     async fn a_trip(pool: &SqlitePool) -> i64 {
         let stats = TrackStats {
@@ -139,13 +139,15 @@ mod tests {
         };
         insert_trip(
             pool,
-            "Trip",
-            ActivityType::Hiking,
-            "Europe/Oslo",
-            &stats,
-            "{}",
-            b"x",
-            TripKind::Recorded,
+            &NewTrip {
+                name: "Trip",
+                activity_type: ActivityType::Hiking,
+                tz_name: "Europe/Oslo",
+                stats: &stats,
+                geojson: "{}",
+                gpx: b"x",
+                trip_kind: TripKind::Recorded,
+            },
         )
         .await
         .unwrap()
@@ -263,13 +265,15 @@ mod tests {
         };
         let trip_id = insert_trip(
             &db.pool,
-            "Planned Trip",
-            ActivityType::Hiking,
-            "Europe/Oslo",
-            &stats,
-            "{}",
-            b"x",
-            TripKind::Planned,
+            &NewTrip {
+                name: "Planned Trip",
+                activity_type: ActivityType::Hiking,
+                tz_name: "Europe/Oslo",
+                stats: &stats,
+                geojson: "{}",
+                gpx: b"x",
+                trip_kind: TripKind::Planned,
+            },
         )
         .await
         .unwrap();

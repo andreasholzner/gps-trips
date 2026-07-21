@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 /// serialized the same way in JSON responses.
 ///
 /// Manual GPX import (US-31) lets the owner choose either variant; Komoot
-/// sync/backfill still always write `Recorded` (US-29 will let Komoot-sourced
-/// planned trips in later, per ADR-0021).
+/// sync/backfill (US-29) writes whichever kind the source tour was listed
+/// under (`Recorded` or `Planned`, per ADR-0021).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]

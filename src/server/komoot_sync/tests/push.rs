@@ -16,13 +16,15 @@ async fn a_pending_edit(
 ) -> i64 {
     let trip_id = crate::server::repo::insert_trip(
         pool,
-        "Original Name",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Recorded,
+        &crate::server::repo::NewTrip {
+            name: "Original Name",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
     .await
     .unwrap();
@@ -48,13 +50,15 @@ async fn a_pending_planned_edit(
 ) -> i64 {
     let trip_id = crate::server::repo::insert_trip(
         pool,
-        "Original Name",
-        ActivityType::Hiking,
-        "UTC",
-        &gpx::compute_stats(&[]),
-        "{}",
-        b"x",
-        TripKind::Planned,
+        &crate::server::repo::NewTrip {
+            name: "Original Name",
+            activity_type: ActivityType::Hiking,
+            tz_name: "UTC",
+            stats: &gpx::compute_stats(&[]),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Planned,
+        },
     )
     .await
     .unwrap();

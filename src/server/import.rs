@@ -11,7 +11,7 @@ use crate::server::{
     gpx::{self, compute_stats, parse_gpx, TimedPoint, TrackStats},
     photos::{ingest_photos, UploadedPhoto},
     placement::TripPhotoContext,
-    repo::{self, insert_trip_in_tx},
+    repo::{self, insert_trip_in_tx, NewTrip},
     state::AppState,
     timezone,
 };
@@ -111,13 +111,15 @@ pub async fn handle_import(
     let mut tx = state.pool.begin().await?;
     let trip_id = insert_trip_in_tx(
         &mut tx,
-        &name,
-        activity,
-        &tz_name,
-        &derived.stats,
-        &derived.geojson,
-        &raw,
-        kind,
+        &NewTrip {
+            name: &name,
+            activity_type: activity,
+            tz_name: &tz_name,
+            stats: &derived.stats,
+            geojson: &derived.geojson,
+            gpx: &raw,
+            trip_kind: kind,
+        },
     )
     .await?;
     let ctx = TripPhotoContext {

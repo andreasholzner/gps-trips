@@ -125,12 +125,15 @@ fn activity_type_select_value(activity: ActivityType) -> &'static str {
 }
 
 /// Render the trip detail page — relive a trip (US-7): the track on an OSM map,
-/// an elevation profile, and a photo gallery.
+/// an elevation profile, a photo gallery, and the trip's tags (US-33).
 ///
 /// The map and chart are driven from a single track-GeoJSON fetch (ADR-0005/0006);
-/// the gallery fetches the photos JSON (US-2) and renders `<img>` elements. The
-/// page only emits the containers and the vendored, self-hosted assets (US-10);
-/// data URLs are handed to the client via `data-*` attributes on `<body>`.
+/// the gallery fetches the photos JSON (US-2) and renders `<img>` elements. Tags
+/// are fetched separately (`/api/trips/:id/tags`) and rendered as removable chips;
+/// `#tag-suggestions` is populated from `/api/tags` for the `#tag-input`
+/// `<datalist>` autocomplete. The page only emits the containers and the
+/// vendored, self-hosted assets (US-10); data URLs are handed to the client via
+/// `data-*` attributes on `<body>`.
 pub fn render_detail(trip: &TripDetail) -> String {
     let distance_km = trip.distance_m / 1000.0;
     let ascent = trip.ascent_m.map(fmt_metres).unwrap_or_else(dash);
@@ -172,6 +175,14 @@ pub fn render_detail(trip: &TripDetail) -> String {
     <button type="submit" id="edit-trip-save">Save</button>
     <button type="button" id="edit-trip-cancel">Cancel</button>
   </form>
+  <h2>Tags</h2>
+  <div id="tags"></div>
+  <datalist id="tag-suggestions"></datalist>
+  <form id="tag-form">
+    <input type="text" id="tag-input" name="tag" list="tag-suggestions" placeholder="add a tag">
+    <button type="submit">Add tag</button>
+  </form>
+
   <p><strong>Photo timestamp timezone:</strong> {tz_name}</p>
   <p><strong>Start:</strong> {start}</p>
   <ul>
