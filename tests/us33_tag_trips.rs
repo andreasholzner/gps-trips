@@ -64,6 +64,21 @@ async fn us33_a_tag_name_containing_a_space_is_rejected_with_400() {
 }
 
 #[tokio::test]
+async fn us33_a_tag_name_containing_a_comma_is_rejected_with_400() {
+    // US-38: tag names can never contain a comma, so the trip-list filter's
+    // comma-separated `?tags=` query param can unambiguously encode several
+    // selected tags.
+    let (app, _dir) = test_app().await;
+    let id = import_sample(&app).await;
+
+    let response = send(&app, add_tag_request(id, r#"{"name":"day,trip"}"#)).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let tags = body_string(get(&app, &format!("/api/trips/{id}/tags")).await).await;
+    assert_eq!(tags, "[]");
+}
+
+#[tokio::test]
 async fn us33_tagging_an_unknown_trip_returns_404() {
     let (app, _dir) = test_app().await;
     let response = send(&app, add_tag_request(999, r#"{"name":"hiking"}"#)).await;

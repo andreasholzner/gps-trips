@@ -6,11 +6,30 @@
 // sends them all, for every checked trip, in one `POST /api/trips/tags`
 // request — mirroring the confirm-before-creating-a-new-tag flow the detail
 // page already uses for a single trip (US-33).
+//
+// US-38: the filter form's tag `<select multiple id="tags-select">` has no
+// `name` of its own — a plain multi-select submission would produce repeated
+// `tags=`/`tags=` query keys, which axum's `Query` extractor can't parse into
+// a `Vec`. Instead, on submit its selected options are joined into the
+// actual submitted field, the comma-separated hidden `#tags-input`.
 "use strict";
 
 (async function () {
   wireBulkTag();
+  wireTagFilter();
 })();
+
+function wireTagFilter() {
+  const form = document.getElementById("filter-form");
+  const select = document.getElementById("tags-select");
+  const hiddenInput = document.getElementById("tags-input");
+  if (!form || !select || !hiddenInput) return;
+
+  form.addEventListener("submit", () => {
+    const names = Array.from(select.selectedOptions).map((o) => o.value);
+    hiddenInput.value = names.join(",");
+  });
+}
 
 async function wireBulkTag() {
   const panel = document.getElementById("bulk-tag-panel");

@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use time::Date;
 
-use crate::models::{ActivityType, TripKind};
+use crate::models::{normalize_tag_name, ActivityType, TripKind};
 use crate::server::{error::AppError, repo::TripFilter};
 
 /// `"[year]-[month]-[day]"`, built once at compile time (rather than
@@ -38,6 +38,12 @@ pub struct TripFilterQuery {
     /// (`http::trip_list`) is what turns an absent value into "default to
     /// the Recorded tab", not this shared parser.
     pub kind: Option<String>,
+    /// Comma-separated tag names (US-38) — a trip must carry all of them to
+    /// match. Comma-joined rather than repeated `tags=`/`tags=` keys because
+    /// axum's `Query` extractor (via `serde_urlencoded`) cannot deserialize
+    /// repeated query keys into a `Vec` field; kept as a raw string, like
+    /// every other field here, and split/validated in `parse_filter`.
+    pub tags: Option<String>,
 }
 
 /// Parse a raw query into a `TripFilter`, validating each field at this HTTP
@@ -88,6 +94,8 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         Some(value) => Some(value.parse::<TripKind>().map_err(AppError::BadRequest)?),
     };
 
+    let tags = parse_tags(query.tags.as_deref())?;
+
     Ok(TripFilter {
         activity_type,
         from,
@@ -96,7 +104,38 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         max_dist_m: max_dist_km.map(|km| km * 1000.0),
         name_query,
         trip_kind,
+        tags,
     })
+}
+
+/// Blank → no filter (empty `Vec`); otherwise split on `,`, normalize each
+/// name the same way US-33/US-34 normalize a tag on write (so `Alps` in the
+/// URL matches a stored `alps`), and dedupe. Splitting on `,` is unambiguous
+/// because `normalize_tag_name` rejects a comma in a tag name at creation
+/// time — no stored tag can ever contain one, so a segment here can never be
+/// a fragment of some other, comma-containing tag. A segment that isn't a
+/// well-formed tag name (whitespace, a comma, or empty) is rejected with 400
+/// — same as an unrecognized `activity`/`kind` value — since that can never
+/// be a real stored tag; a well-formed but *nonexistent* tag name is not an
+/// error, it simply matches no trips.
+fn parse_tags(s: Option<&str>) -> Result<Vec<String>, AppError> {
+    let raw = match s.map(str::trim) {
+        None | Some("") => return Ok(Vec::new()),
+        Some(value) => value,
+    };
+
+    let mut tags = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let name = normalize_tag_name(part).map_err(AppError::BadRequest)?;
+        if !tags.contains(&name) {
+            tags.push(name);
+        }
+    }
+    Ok(tags)
 }
 
 /// Blank (absent, empty, or whitespace-only) → `None` ("no filter"); anything
@@ -159,6 +198,55 @@ mod tests {
         assert!(filter.max_dist_m.is_none());
         assert!(filter.name_query.is_none());
         assert!(filter.trip_kind.is_none());
+        assert!(filter.tags.is_empty());
+    }
+
+    #[test]
+    fn blank_tags_means_no_filter() {
+        let q = query(|q| q.tags = Some("   ".to_string()));
+        assert!(parse_filter(&q).unwrap().tags.is_empty());
+    }
+
+    #[test]
+    fn a_single_tag_is_parsed() {
+        let q = query(|q| q.tags = Some("alps".to_string()));
+        assert_eq!(parse_filter(&q).unwrap().tags, vec!["alps".to_string()]);
+    }
+
+    #[test]
+    fn comma_separated_tags_are_split_and_trimmed() {
+        let q = query(|q| q.tags = Some(" alps , hiking ".to_string()));
+        assert_eq!(
+            parse_filter(&q).unwrap().tags,
+            vec!["alps".to_string(), "hiking".to_string()]
+        );
+    }
+
+    #[test]
+    fn tags_are_normalized_like_us33s_write_path() {
+        let q = query(|q| q.tags = Some("Alps".to_string()));
+        assert_eq!(parse_filter(&q).unwrap().tags, vec!["alps".to_string()]);
+    }
+
+    #[test]
+    fn duplicate_tags_are_deduplicated() {
+        let q = query(|q| q.tags = Some("alps,alps".to_string()));
+        assert_eq!(parse_filter(&q).unwrap().tags, vec!["alps".to_string()]);
+    }
+
+    #[test]
+    fn a_tag_containing_whitespace_is_rejected_with_bad_request() {
+        let q = query(|q| q.tags = Some("day trip".to_string()));
+        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
+    }
+
+    #[test]
+    fn a_stray_comma_is_tolerated() {
+        let q = query(|q| q.tags = Some("alps,,hiking,".to_string()));
+        assert_eq!(
+            parse_filter(&q).unwrap().tags,
+            vec!["alps".to_string(), "hiking".to_string()]
+        );
     }
 
     #[test]

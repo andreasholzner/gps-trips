@@ -72,6 +72,22 @@ async fn us34_a_tag_name_with_a_space_is_rejected_with_400() {
 }
 
 #[tokio::test]
+async fn us34_a_tag_name_with_a_comma_is_rejected_with_400() {
+    let (app, _dir) = test_app().await;
+    let a = import_sample(&app).await;
+
+    let response = send(
+        &app,
+        bulk_tag_request(&format!(r#"{{"trip_ids":[{a}],"names":["day,trip"]}}"#)),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let tags = body_string(get(&app, &format!("/api/trips/{a}/tags")).await).await;
+    assert_eq!(tags, "[]");
+}
+
+#[tokio::test]
 async fn us34_an_empty_trip_selection_is_rejected_with_400() {
     let (app, _dir) = test_app().await;
 

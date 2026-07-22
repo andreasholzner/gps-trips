@@ -133,7 +133,13 @@ async fn trip_list(
     let active_kind = filter.trip_kind.unwrap_or(TripKind::Recorded);
     filter.trip_kind = Some(active_kind);
     let trips = repo::list_trips(&state.pool, &filter).await?;
-    Ok(Html(render_trip_list(&trips, &query, active_kind)))
+    let all_tags = repo::list_all_tags(&state.pool).await?;
+    Ok(Html(render_trip_list(
+        &trips,
+        &query,
+        active_kind,
+        &all_tags,
+    )))
 }
 
 /// GET `/api/trips` — the same filtered trip list as JSON (US-13, ADR-0008/0011),

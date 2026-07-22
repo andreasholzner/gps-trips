@@ -1,7 +1,7 @@
 //! The trip list page (US-6/US-13), split into a Recorded/Planned tab
 //! (US-32).
 
-use crate::models::{ActivityType, TripKind, TripSummary};
+use crate::models::{normalize_tag_name, ActivityType, Tag, TripKind, TripSummary};
 use crate::server::filter::TripFilterQuery;
 
 use super::{dash, fmt_duration, fmt_metres, html_escape};
@@ -13,11 +13,15 @@ use super::{dash, fmt_duration, fmt_metres, html_escape};
 /// owner already typed, and used to tell "no trips at all" apart from "no
 /// trips match this filter". `active_kind` (US-32) is which of the two tabs
 /// `trips` belongs to — the caller (`http::trip_list`) has already resolved
-/// it and filtered `trips` down to that single kind.
+/// it and filtered `trips` down to that single kind. `all_tags` (US-38) is
+/// every tag that exists, alphabetical — populates the filter form's tag
+/// multi-select, the same source `/api/tags` already serves the US-33/US-34
+/// autocompletes from.
 pub fn render_trip_list(
     trips: &[TripSummary],
     query: &TripFilterQuery,
     active_kind: TripKind,
+    all_tags: &[Tag],
 ) -> String {
     let body = if trips.is_empty() {
         if any_filter_set(query) {
@@ -56,7 +60,7 @@ pub fn render_trip_list(
 </body>
 </html>"#,
         tabs = render_kind_tabs(query, active_kind),
-        filter_form = render_filter_form(query),
+        filter_form = render_filter_form(query, all_tags),
         bulk_tag_panel = render_bulk_tag_panel(),
     )
 }
@@ -121,6 +125,7 @@ fn hidden_filter_inputs(query: &TripFilterQuery) -> String {
         ("to", query.to.as_deref()),
         ("min_dist", query.min_dist.as_deref()),
         ("max_dist", query.max_dist.as_deref()),
+        ("tags", query.tags.as_deref()),
     ]
     .into_iter()
     .filter_map(|(name, value)| {
@@ -147,6 +152,7 @@ fn any_filter_set(query: &TripFilterQuery) -> bool {
         || is_non_blank(query.min_dist.as_deref())
         || is_non_blank(query.max_dist.as_deref())
         || is_non_blank(query.q.as_deref())
+        || is_non_blank(query.tags.as_deref())
 }
 
 fn is_non_blank(s: Option<&str>) -> bool {
@@ -155,19 +161,27 @@ fn is_non_blank(s: Option<&str>) -> bool {
 
 /// The trip-list filter form (US-13): free-text name search, activity type,
 /// date range, distance range (shown/submitted in km, matching how distance
-/// is displayed everywhere else — `repo::TripFilter` converts to metres). A
-/// plain GET form: unlike the edit/delete actions, filtering is a read, so a
-/// native query-string submission needs no JS.
-fn render_filter_form(query: &TripFilterQuery) -> String {
+/// is displayed everywhere else — `repo::TripFilter` converts to metres), and
+/// a tag multi-select (US-38). Every field but the tag select is a plain GET
+/// form field: unlike the edit/delete actions, filtering is a read, so a
+/// native query-string submission needs no JS. The tag select is the one
+/// exception — `#tags-select` deliberately has no `name` (so a plain
+/// multi-select submission can't produce the repeated `tags=`/`tags=` query
+/// keys axum's `Query` extractor can't parse into a `Vec`); `trip_list.js`
+/// joins its selected `<option>`s into the actual submitted field, the
+/// comma-separated hidden `<input name="tags">`, on form submit.
+fn render_filter_form(query: &TripFilterQuery, all_tags: &[Tag]) -> String {
     let q = html_escape(query.q.as_deref().unwrap_or(""));
     let from = html_escape(query.from.as_deref().unwrap_or(""));
     let to = html_escape(query.to.as_deref().unwrap_or(""));
     let min_dist = html_escape(query.min_dist.as_deref().unwrap_or(""));
     let max_dist = html_escape(query.max_dist.as_deref().unwrap_or(""));
+    let tags_value = html_escape(query.tags.as_deref().unwrap_or(""));
     let activity_options = activity_filter_options(query.activity.as_deref().unwrap_or(""));
+    let tags_options = tag_filter_options(query.tags.as_deref().unwrap_or(""), all_tags);
 
     format!(
-        r#"<form method="get" action="/">
+        r#"<form method="get" action="/" id="filter-form">
   <input type="text" name="q" value="{q}" placeholder="Search by name">
   <select name="activity">
     {activity_options}
@@ -176,10 +190,47 @@ fn render_filter_form(query: &TripFilterQuery) -> String {
   <label>To <input type="date" name="to" value="{to}"></label>
   <label>Min <input type="number" step="0.1" name="min_dist" value="{min_dist}" placeholder="min km"></label>
   <label>Max <input type="number" step="0.1" name="max_dist" value="{max_dist}" placeholder="max km"></label>
+  <label>Tags
+    <select id="tags-select" multiple>
+      {tags_options}
+    </select>
+  </label>
+  <input type="hidden" id="tags-input" name="tags" value="{tags_value}">
   <button type="submit">Filter</button>
   <a href="/">Clear</a>
 </form>"#
     )
+}
+
+/// Build the `<option>` list for the filter form's tag `<select multiple>`
+/// (US-38): every tag that exists, `selected` if its name is one of the
+/// comma-separated names in `selected_csv` — the same value the hidden
+/// `tags` input carries and `filter::parse_filter` parses. Each segment is
+/// normalized the same way `parse_filter` normalizes it before matching
+/// against `tag.name` (always stored normalized) — so a hand-edited or
+/// shared URL like `?tags=Alps` still shows `alps` as selected, matching
+/// what the query actually filtered by, not just an exact-casing echo of the
+/// raw query string. A segment that fails normalization (only possible if
+/// `render_trip_list` is ever called with a query that didn't go through
+/// `parse_filter` first) is simply not selectable, rather than panicking.
+fn tag_filter_options(selected_csv: &str, all_tags: &[Tag]) -> String {
+    let selected: std::collections::HashSet<String> = selected_csv
+        .split(',')
+        .filter_map(|s| normalize_tag_name(s.trim()).ok())
+        .collect();
+
+    all_tags
+        .iter()
+        .map(|tag| {
+            let name = html_escape(&tag.name);
+            let sel = if selected.contains(&tag.name) {
+                " selected"
+            } else {
+                ""
+            };
+            format!("<option value=\"{name}\"{sel}>{name}</option>\n")
+        })
+        .collect()
 }
 
 /// Build the `<option>` list for the filter form's activity `<select>`

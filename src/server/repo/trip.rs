@@ -131,6 +131,14 @@ pub struct TripFilter {
     /// each tab shows exactly one kind; the JSON API (`GET /api/trips`)
     /// leaves it optional like every other filter dimension.
     pub trip_kind: Option<TripKind>,
+    /// Tag names a trip must carry *all* of (US-38), already normalized by
+    /// `filter::parse_filter`. Empty means "don't filter on tags" — unlike
+    /// the other fields there's no natural single-value "unset" to express
+    /// with `Option`, so an empty `Vec` plays that role instead. Need not be
+    /// deduplicated by the caller — `list_trips` dedupes it itself, since its
+    /// `HAVING COUNT(DISTINCT ...)` AND-semantics query would otherwise
+    /// silently match nothing for a filter containing a repeated name.
+    pub tags: Vec<String>,
 }
 
 /// `"[year]-[month]-[day]"` — must match `filter::parse_filter`'s format,
@@ -199,6 +207,36 @@ pub async fn list_trips(
     }
     if let Some(max_dist_m) = filter.max_dist_m {
         query.push(" AND distance_m <= ").push_bind(max_dist_m);
+    }
+    if !filter.tags.is_empty() {
+        // A trip matches only if it carries *every* selected tag (US-38, not
+        // an OR): join to the trips carrying at least one of the selected
+        // tags, then keep only those whose count of distinct matches equals
+        // the number of tags asked for. Deduplicated here rather than trusted
+        // from the caller: `filter::parse_filter` already dedupes, but
+        // `COUNT(DISTINCT tag.name) = filter.tags.len()` would otherwise
+        // silently match zero trips for any filter built with a repeated
+        // name, since a distinct count can never reach an inflated length.
+        let mut unique_tags: Vec<&str> = Vec::with_capacity(filter.tags.len());
+        for name in &filter.tags {
+            if !unique_tags.contains(&name.as_str()) {
+                unique_tags.push(name.as_str());
+            }
+        }
+
+        query.push(
+            " AND id IN (SELECT trip_tag.trip_id FROM trip_tag \
+               JOIN tag ON tag.id = trip_tag.tag_id WHERE tag.name IN (",
+        );
+        let mut separated = query.separated(", ");
+        for name in &unique_tags {
+            separated.push_bind(*name);
+        }
+        separated.push_unseparated(")");
+        query
+            .push(" GROUP BY trip_tag.trip_id HAVING COUNT(DISTINCT tag.name) = ")
+            .push_bind(unique_tags.len() as i64)
+            .push(")");
     }
     query.push(" ORDER BY start_time DESC, id DESC");
 
