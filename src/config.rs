@@ -27,6 +27,12 @@ pub mod storage {
 pub mod server {
     /// Address the HTTP server binds to.
     pub const BIND_ADDR: &str = "127.0.0.1:3000";
+
+    /// Request-body cap for the multipart upload routes (`/api/import` and
+    /// `/api/trips/:id/photos`, ADR-0004). Axum's 2 MB default is far too
+    /// small for a GPX plus a batch of camera photos; every other route
+    /// keeps the default.
+    pub const PHOTO_IMPORT_BODY_LIMIT: usize = 256 * 1024 * 1024;
 }
 
 /// Komoot sync (US-27, ADR-0021). Auth details: `docs/komoot-api.md`.

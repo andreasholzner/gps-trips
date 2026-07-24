@@ -92,6 +92,26 @@ async fn us2_photos_added_later_accumulate_with_imported_ones() {
     assert_eq!(photos_json(&app, id).await.len(), 2);
 }
 
+#[tokio::test]
+async fn us2_photo_larger_than_two_megabytes_is_accepted() {
+    let (app, _dir) = test_app().await;
+    let id = import_sample(&app).await;
+
+    // Real photos routinely exceed axum's 2 MB default request-body limit,
+    // so the photos route must raise it. JPEG magic + padding: undecodable
+    // (no thumbnail), which the pipeline already tolerates.
+    let mut big_photo = PHOTO_A.to_vec();
+    big_photo.resize(3 * 1024 * 1024, 0);
+
+    let response = send(&app, add_photos_request(id, &[("big.jpg", &big_photo)])).await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "a large photo must not be rejected by the request-body limit"
+    );
+}
+
 // ── Edge cases ───────────────────────────────────────────────────────────────
 
 #[tokio::test]

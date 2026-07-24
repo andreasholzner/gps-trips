@@ -92,3 +92,52 @@ async fn us1_invalid_xml_is_rejected_with_422() {
     let response = import(&app, b"not xml at all").await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+// ── Uploads larger than axum's 2 MB default body limit ───────────────────────
+
+/// A valid GPX of at least `min_len` bytes: the sample track's first and last
+/// timed points, padded with untimed intermediate points until the document
+/// is big enough. GPX exports of long trips routinely exceed axum's 2 MB
+/// default request-body limit, so the import route must raise it.
+fn oversized_gpx(min_len: usize) -> Vec<u8> {
+    let mut gpx = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <gpx version=\"1.1\" creator=\"trip-archive-test\"\n\
+         \x20    xmlns=\"http://www.topografix.com/GPX/1/1\">\n\
+         \x20 <trk>\n\
+         \x20   <name>Long Walk</name>\n\
+         \x20   <trkseg>\n\
+         \x20     <trkpt lat=\"59.9139\" lon=\"10.7522\">\n\
+         \x20       <ele>10.0</ele>\n\
+         \x20       <time>2024-06-01T08:00:00Z</time>\n\
+         \x20     </trkpt>\n",
+    );
+    while gpx.len() < min_len {
+        gpx.push_str(
+            "      <trkpt lat=\"59.9200\" lon=\"10.7600\"><ele>50.0</ele></trkpt>\n",
+        );
+    }
+    gpx.push_str(
+        "      <trkpt lat=\"59.9250\" lon=\"10.7650\">\n\
+         \x20       <ele>30.0</ele>\n\
+         \x20       <time>2024-06-01T09:00:00Z</time>\n\
+         \x20     </trkpt>\n\
+         \x20   </trkseg>\n\
+         \x20 </trk>\n\
+         </gpx>\n",
+    );
+    gpx.into_bytes()
+}
+
+#[tokio::test]
+async fn us1_gpx_larger_than_two_megabytes_imports_successfully() {
+    let (app, _dir) = test_app().await;
+
+    let response = import(&app, &oversized_gpx(3 * 1024 * 1024)).await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "a large but valid GPX must not be rejected by the request-body limit"
+    );
+}

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -10,6 +10,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tower_http::services::ServeDir;
 
+use crate::config;
 use crate::models::{LocationSource, Photo, TripKind, TripSummary};
 use crate::server::{
     delete,
@@ -79,7 +80,13 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(trip_list))
         .route("/import", get(import_form))
-        .route("/api/import", post(handle_import))
+        // Multipart uploads carry a GPX plus whole photo batches, so this
+        // route (and the add-photos one below) raises axum's 2 MB default
+        // body limit; every other route keeps the default.
+        .route(
+            "/api/import",
+            post(handle_import).layer(DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT)),
+        )
         // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
         .route("/api/trips", get(list_trips_api))
         .route("/trips/:id", get(trip_detail))
@@ -93,7 +100,9 @@ pub fn router(state: AppState) -> Router {
         // US-2: attach photos later (POST) and list a trip's photos (GET).
         .route(
             "/api/trips/:id/photos",
-            post(handle_add_photos).get(list_trip_photos),
+            post(handle_add_photos)
+                .layer(DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT))
+                .get(list_trip_photos),
         )
         // US-33: tag a trip (POST/GET) and untag it (DELETE).
         .route(

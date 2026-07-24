@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — amended 2026-07-24 (clock seam realised as value-passing, not an injectable trait; see [Amendment](#amendment-2026-07-24--the-clock-seam-is-value-passing-not-a-trait)).
 
 ## Context
 
@@ -28,8 +28,10 @@ plan.
    has at least one test asserting its acceptance criteria; tests reference the US id so coverage
    is traceable. These are behaviour/acceptance tests, not implementation snapshots.
 2. **Mocks are used only for external dependencies** — things outside this process or
-   non-deterministic: the network (future ownCloud WebDAV, komoot, Garmin Connect) and the system
-   **clock** (injected so time-matching/date logic is deterministic). Internal collaborators are
+   non-deterministic: the network (komoot, mocked behind the `KomootClient` trait from
+   [ADR-0021](./0021-reverse-engineered-komoot-client.md); future ownCloud WebDAV, Garmin
+   Connect) and the system **clock** (kept out of the tested logic so time-matching/date
+   logic is deterministic — see the amendment for the mechanism). Internal collaborators are
    exercised for real:
    - the **database** via a real temporary SQLite file with migrations applied (one per test);
    - the **`BlobStore`** via its `LocalDisk` impl pointed at a `tempdir` (the trait from
@@ -59,7 +61,21 @@ Testing uses the built-in `cargo test` harness; CI runs `cargo test`, `cargo cli
 - Requirement → test traceability complements the requirement → ADR traceability table.
 - A small **fixtures** corpus (GPX tracks of varying size/timezone; geotagged and non-geotagged
   photos; an out-of-range-timestamp photo) must be maintained as the canonical test inputs.
-- The clock and network seams must be injectable from the start, which slightly shapes the API of
-  the import/time-match and (future) sync code.
+- The network seam must be injectable from the start, which slightly shapes the API of the
+  sync code (realised as the `KomootClient` trait, [ADR-0021](./0021-reverse-engineered-komoot-client.md)).
+  The clock turned out to need no injectable seam — see the amendment.
 - Per-test SQLite uses a temporary file (not shared `:memory:`) so WAL/connection semantics match
   production ([ADR-0002](./0002-sqlite-local-disk.md)).
+
+## Amendment (2026-07-24) — the clock seam is value-passing, not a trait
+
+The original decision anticipated an *injected* clock. In practice no clock trait was ever
+needed: photo↔track time-matching and all date logic operate only on timestamps that arrive
+as data (EXIF fields, GPX track times), and the few places that need "now" (row `created_at`,
+export backup naming) read `OffsetDateTime::now_utc()` once at a boundary and pass it into
+pure functions as a plain argument. Tests supply fixed values through the same parameters, so
+determinism is preserved without any mock.
+
+The principle of decision point 2 stands unchanged — non-determinism never lives inside the
+tested logic; only the anticipated mechanism (trait injection) was replaced by the simpler
+one (pass time as a value). `architecture.md`'s component notes describe the as-built pattern.
