@@ -1,4 +1,4 @@
-//! Access to the *target* QMapShack database (US-36). This is a foreign,
+//! Access to the *target* QMapShack database (US-36/US-37). This is a foreign,
 //! reverse-engineered schema — never touched by `db::create_pool` (no
 //! trip-archive migrations, no WAL: QMapShack files use the rollback
 //! journal, and converting the owner's file would be a destructive
@@ -288,13 +288,41 @@ pub async fn ensure_folder_path(
     Ok(parent)
 }
 
-/// Is there already an item with this `keyqms` (trash included)?
-pub async fn item_exists(conn: &mut SqliteConnection, keyqms: &str) -> Result<bool, sqlx::Error> {
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM items WHERE keyqms = ?")
+/// A previously-exported item's state, as far as US-37 change detection
+/// cares (ADR-0022 as amended): the cheap columns plus folder placement.
+#[derive(Debug)]
+pub struct ItemState {
+    pub id: i64,
+    pub name: String,
+    pub comment: Option<String>,
+    /// Parent folder ids, ascending; empty means trashed (no links left).
+    pub folder_ids: Vec<i64>,
+}
+
+/// Look up the item with this `keyqms` (trash included), or `None`.
+pub async fn get_item_state(
+    conn: &mut SqliteConnection,
+    keyqms: &str,
+) -> Result<Option<ItemState>, sqlx::Error> {
+    let Some(row) = sqlx::query("SELECT id, name, comment FROM items WHERE keyqms = ?")
         .bind(keyqms)
-        .fetch_one(conn)
-        .await?;
-    Ok(count > 0)
+        .fetch_optional(&mut *conn)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let id: i64 = row.get("id");
+    let folder_ids =
+        sqlx::query_scalar("SELECT parent FROM folder2item WHERE child = ? ORDER BY parent")
+            .bind(id)
+            .fetch_all(&mut *conn)
+            .await?;
+    Ok(Some(ItemState {
+        id,
+        name: row.get("name"),
+        comment: row.get("comment"),
+        folder_ids,
+    }))
 }
 
 /// Everything an `items` row needs (type is always 2 = track).
@@ -342,246 +370,120 @@ pub async fn insert_item(
     Ok(())
 }
 
+/// Rewrite an existing item in place (US-37): same full-blob-rewrite
+/// semantics as an insert (ADR-0022), touching every column an insert sets.
+/// The `items_update_last_change` and `searchindex_update` triggers keep
+/// `last_change` and the FTS row in step.
+pub async fn update_item(
+    conn: &mut SqliteConnection,
+    id: i64,
+    item: &NewItem<'_>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE items SET icon = ?, name = ?, date = ?, comment = ?, \
+         data = ?, hash = ?, last_user = ? WHERE id = ?",
+    )
+    .bind(item.icon)
+    .bind(item.name)
+    .bind(item.date)
+    .bind(item.comment)
+    .bind(item.data)
+    .bind(item.hash)
+    .bind(super::blob::WHO)
+    .bind(id)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Reconcile an item's placement to exactly `folder_id` (US-37): the
+/// exporter's mapping is authoritative, so extra links the owner added go
+/// away and a trashed item comes back. The desired link is inserted *first*
+/// (clearing `trash` via `folder2item_insert`), then every other link is
+/// dropped — insert-first so `folder2item_delete` never sees the item fully
+/// unlinked and stamps a spurious trash timestamp.
+pub async fn set_item_folder(
+    conn: &mut SqliteConnection,
+    id: i64,
+    folder_id: i64,
+) -> Result<(), sqlx::Error> {
+    let mut tx = conn.begin().await?;
+    let already: Option<i64> =
+        sqlx::query_scalar("SELECT MIN(id) FROM folder2item WHERE child = ? AND parent = ?")
+            .bind(id)
+            .bind(folder_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let keep = match already {
+        Some(link_id) => link_id,
+        None => sqlx::query("INSERT INTO folder2item (parent, child) VALUES (?, ?)")
+            .bind(folder_id)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?
+            .last_insert_rowid(),
+    };
+    // Deleting by link id (not by parent) also collapses duplicate links to
+    // the desired folder, which would otherwise never reconcile.
+    sqlx::query("DELETE FROM folder2item WHERE child = ? AND id != ?")
+        .bind(id)
+        .bind(keep)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Drop every folder link of an item, letting QMapShack's own
+/// `folder2item_delete` trigger move it to the trash — the US-37 removal
+/// path for trips deleted from the archive (US-9).
+pub async fn unlink_item(conn: &mut SqliteConnection, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM folder2item WHERE child = ?")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// One row of the US-37 removal scan.
+#[derive(Debug)]
+pub struct ExporterItem {
+    pub id: i64,
+    pub keyqms: String,
+    /// Still linked under at least one folder (false = already in trash).
+    pub linked: bool,
+}
+
+/// Every item whose `keyqms` carries the exporter's namespace prefix —
+/// the only rows reconciliation may ever touch (ADR-0022 scoping). Fetches
+/// all rows and filters in Rust: an exact prefix match, no SQL `LIKE`
+/// pattern semantics to worry about.
+pub async fn list_exporter_items(
+    conn: &mut SqliteConnection,
+    prefix: &str,
+) -> Result<Vec<ExporterItem>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT i.id, i.keyqms, \
+         EXISTS(SELECT 1 FROM folder2item f2i WHERE f2i.child = i.id) AS linked \
+         FROM items i",
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let keyqms: String = row.get("keyqms");
+            keyqms.starts_with(prefix).then(|| ExporterItem {
+                id: row.get("id"),
+                linked: row.get("linked"),
+                keyqms,
+            })
+        })
+        .collect())
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+// Split into target/tests.rs to keep this file under the 650-line hard cap.
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    async fn bootstrapped() -> (tempfile::TempDir, SqliteConnection) {
-        let dir = tempfile::tempdir().unwrap();
-        let conn = create_and_bootstrap(&dir.path().join("target.db"), "target")
-            .await
-            .expect("bootstrap");
-        (dir, conn)
-    }
-
-    async fn insert_dummy_item(conn: &mut SqliteConnection, keyqms: &str, folder: i64) {
-        insert_item(
-            conn,
-            &NewItem {
-                keyqms,
-                name: "A track",
-                icon: b"\x89PNGfake",
-                date: "2024-06-01T08:00:00Z",
-                comment: "a comment for the search index",
-                data: b"blobbytes",
-                hash: "00000000000000000000000000000000",
-            },
-            folder,
-        )
-        .await
-        .expect("insert item");
-    }
-
-    #[tokio::test]
-    async fn bootstrap_creates_the_full_qmapshack_schema() {
-        let (_dir, mut conn) = bootstrapped().await;
-
-        let names: Vec<String> =
-            sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type IN ('table', 'trigger')")
-                .fetch_all(&mut conn)
-                .await
-                .unwrap();
-        for expected in [
-            "versioninfo",
-            "folders",
-            "items",
-            "folder2folder",
-            "folder2item",
-            "searchindex",
-            "items_update_last_change",
-            "folder2item_insert",
-            "folder2item_delete",
-            "searchindex_update",
-            "searchindex_insert",
-        ] {
-            assert!(names.iter().any(|n| n == expected), "missing {expected}");
-        }
-
-        let (version, db_type): (String, String) =
-            sqlx::query_as("SELECT version, type FROM versioninfo")
-                .fetch_one(&mut conn)
-                .await
-                .unwrap();
-        assert_eq!((version.as_str(), db_type.as_str()), ("6", "QMapShack"));
-
-        let (root_type, root_name): (i64, String) =
-            sqlx::query_as("SELECT type, name FROM folders")
-                .fetch_one(&mut conn)
-                .await
-                .unwrap();
-        assert_eq!(root_type, 2);
-        assert_eq!(root_name, "target");
-        assert!(root_folder_id(&mut conn).await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn version_gate_accepts_only_the_targeted_version() {
-        let (_dir, mut conn) = bootstrapped().await;
-        check_version(&mut conn)
-            .await
-            .expect("bootstrapped DB passes");
-
-        sqlx::query("UPDATE versioninfo SET version = '7'")
-            .execute(&mut conn)
-            .await
-            .unwrap();
-        let err = check_version(&mut conn).await.expect_err("newer version");
-        assert!(matches!(
-            err,
-            TargetError::VersionMismatch { ref found } if found == "7"
-        ));
-        assert!(err.to_string().contains('7'), "names the found version");
-        assert!(err.to_string().contains('6'), "names the expected version");
-    }
-
-    #[tokio::test]
-    async fn version_gate_propagates_a_locked_database_as_a_sql_error() {
-        // The owner still has the file open in QMapShack (write lock held):
-        // that must surface as a real SQL error, not as the misleading
-        // "not a QMapShack database".
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("target.db");
-        drop(create_and_bootstrap(&path, "target").await.unwrap());
-
-        // Reader with no busy grace so the test doesn't sit out a timeout.
-        let mut reader = connect_options(&path, false)
-            .busy_timeout(Duration::ZERO)
-            .connect()
-            .await
-            .unwrap();
-        let mut writer = open_existing(&path).await.unwrap();
-        sqlx::query("BEGIN EXCLUSIVE")
-            .execute(&mut writer)
-            .await
-            .expect("take the write lock");
-
-        let err = check_version(&mut reader).await.expect_err("locked file");
-        assert!(
-            matches!(err, TargetError::Sql(_)),
-            "a locked database is a SQL error, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn version_gate_rejects_a_non_qmapshack_database() {
-        let dir = tempfile::tempdir().unwrap();
-        // A plain SQLite file with no versioninfo table.
-        let mut conn = connect_options(&dir.path().join("random.db"), true)
-            .connect()
-            .await
-            .unwrap();
-        sqlx::query("CREATE TABLE unrelated (x)")
-            .execute(&mut conn)
-            .await
-            .unwrap();
-        let err = check_version(&mut conn).await.expect_err("not QMapShack");
-        assert!(matches!(err, TargetError::NotAQmapShackDb));
-    }
-
-    #[tokio::test]
-    async fn open_existing_fails_for_a_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = open_existing(&dir.path().join("nope.db"))
-            .await
-            .expect_err("missing file");
-        assert!(matches!(err, TargetError::Open { .. }));
-    }
-
-    #[tokio::test]
-    async fn triggers_maintain_search_index_and_trash() {
-        let (_dir, mut conn) = bootstrapped().await;
-        let root = root_folder_id(&mut conn).await.unwrap();
-        let folder = ensure_folder_path(&mut conn, root, &["Trips".to_string()])
-            .await
-            .unwrap();
-        insert_dummy_item(&mut conn, "trip-archive:trip:1", folder).await;
-
-        // searchindex_insert fired — this is also the runtime proof that
-        // sqlx's bundled SQLite has FTS4 compiled in.
-        let indexed: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM searchindex WHERE comment MATCH 'search'")
-                .fetch_one(&mut conn)
-                .await
-                .unwrap();
-        assert_eq!(indexed, 1);
-
-        // Unlinking the item from its last folder moves it to the trash.
-        let trash_before: Option<String> = sqlx::query_scalar("SELECT trash FROM items")
-            .fetch_one(&mut conn)
-            .await
-            .unwrap();
-        assert_eq!(trash_before, None);
-        sqlx::query("DELETE FROM folder2item")
-            .execute(&mut conn)
-            .await
-            .unwrap();
-        let trash_after: Option<String> = sqlx::query_scalar("SELECT trash FROM items")
-            .fetch_one(&mut conn)
-            .await
-            .unwrap();
-        assert!(trash_after.is_some(), "folder2item_delete sets trash");
-    }
-
-    #[tokio::test]
-    async fn ensure_folder_path_creates_groups_then_a_project_leaf() {
-        let (_dir, mut conn) = bootstrapped().await;
-        let root = root_folder_id(&mut conn).await.unwrap();
-        let segments: Vec<String> = ["Trips", "2024", "Hiking"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let leaf = ensure_folder_path(&mut conn, root, &segments)
-            .await
-            .unwrap();
-
-        let types: Vec<(String, i64)> =
-            sqlx::query_as("SELECT name, type FROM folders WHERE type != 2 ORDER BY id")
-                .fetch_all(&mut conn)
-                .await
-                .unwrap();
-        assert_eq!(
-            types,
-            [
-                ("Trips".to_string(), FOLDER_GROUP),
-                ("2024".to_string(), FOLDER_GROUP),
-                ("Hiking".to_string(), FOLDER_PROJECT),
-            ]
-        );
-
-        // Idempotent: a second walk resolves to the same leaf, creating nothing.
-        let again = ensure_folder_path(&mut conn, root, &segments)
-            .await
-            .unwrap();
-        assert_eq!(again, leaf);
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM folders")
-            .fetch_one(&mut conn)
-            .await
-            .unwrap();
-        assert_eq!(count, 4, "root + the three created folders");
-
-        // A sibling path shares the existing prefix.
-        let sibling: Vec<String> = ["Trips", "2024", "Cycling"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-        ensure_folder_path(&mut conn, root, &sibling).await.unwrap();
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM folders")
-            .fetch_one(&mut conn)
-            .await
-            .unwrap();
-        assert_eq!(count, 5, "only the new leaf was created");
-    }
-
-    #[tokio::test]
-    async fn item_exists_sees_inserted_items() {
-        let (_dir, mut conn) = bootstrapped().await;
-        let root = root_folder_id(&mut conn).await.unwrap();
-        assert!(!item_exists(&mut conn, "trip-archive:trip:1").await.unwrap());
-        insert_dummy_item(&mut conn, "trip-archive:trip:1", root).await;
-        assert!(item_exists(&mut conn, "trip-archive:trip:1").await.unwrap());
-        assert!(!item_exists(&mut conn, "trip-archive:trip:2").await.unwrap());
-    }
-}
+mod tests;

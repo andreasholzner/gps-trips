@@ -60,13 +60,15 @@ under for Komoot sync.
   reconciles the target database to the archive's current state:
   - A trip not yet present is **inserted** as a new `items` row (type = track).
   - A previously-exported trip is only written if it actually **changed**: for each trip matched
-    by `keyqms`, the exporter compares the trip's current name and all fields feeding the folder
-    mapping (currently name and activity_type — see below; automatically covers any field added
-    to the mapping later) against the target database's existing state for that item (`items.name`
-    and its current `folder2item` placement), and only issues an `items` **update** — full blob
-    rewrite (`items.data`'s hash/last_change follow from that), not a patch — and/or a
-    `folder2item` re-link when something actually differs. An unchanged trip is skipped entirely,
-    so repeated runs don't churn history events or folder links for no reason.
+    by `keyqms`, the exporter compares the trip's desired export state — `items.name`, the
+    plain-text `items.comment` summary (which encodes every best-effort field: activity, kind,
+    tags, stats, timezone), and the config-resolved folder placement — against the target
+    database's current columns and `folder2item` links for that item. Only on a difference does
+    it rebuild and rewrite the item (full blob rewrite, not a patch — `items.data`'s
+    hash/last_change follow from that) and/or re-link it to exactly the resolved folder; this
+    also restores an item the owner trashed or re-filed inside QMapShack, per the Consequences
+    section. An unchanged trip is skipped entirely — its geometry is not even read — so repeated
+    runs don't churn history events or folder links for no reason.
   - A previously-exported trip that no longer exists (deleted per US-9) is **removed** by
     deleting its `folder2item` link(s), letting QMapShack's own `folder2item_delete` trigger
     move it to trash (`items.trash` timestamp) rather than issuing a hard `DELETE FROM items` —
@@ -151,12 +153,13 @@ under for Komoot sync.
 
 - No new HTTP API surface; the exporter is a thin binary over existing repos, matching how
   `komoot_backfill` avoids duplicating the import pipeline.
-- The export is **authoritative for trip-archive-owned items** — any manual edit the owner makes
-  *inside QMapShack* to a trip-archive-exported item (recolor, rename, move to a different
-  folder, add a history note) is silently overwritten on the next export run. This is an
-  accepted trade-off of one-way sync with no round-trip, consistent with QMapShack being a
-  side-tool only (per `docs/qmapshack.md`); the owner's own independently-created items are
-  unaffected since reconciliation is scoped to the exporter's `keyqms` namespace.
+- The export is **authoritative for trip-archive-owned items** — a rename or move the owner
+  makes *inside QMapShack* to a trip-archive-exported item is reverted on the next run;
+  blob-only edits (recolor, history note) survive until an archive-side change to that trip
+  forces a full rewrite, at which point they are silently lost. This is an accepted trade-off
+  of one-way sync with no round-trip, consistent with QMapShack being a side-tool only (per
+  `docs/qmapshack.md`); the owner's own independently-created items are unaffected since
+  reconciliation is scoped to the exporter's `keyqms` namespace.
 - **Concurrent access risk**: QMapShack's sample databases use SQLite's default rollback-journal
   mode with `locking_mode=NORMAL` (no WAL) — running the export while the owner has the same
   database open in QMapShack can hit `SQLITE_BUSY`/"database is locked". Not mitigated in v1;

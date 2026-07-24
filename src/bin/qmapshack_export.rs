@@ -1,8 +1,9 @@
-//! US-36: one-off CLI exporting the whole trip archive into a QMapShack
-//! database (ADR-0022), run manually or from the owner's own scheduler
-//! (cron), never from inside the app (ADR-0014). All logic lives in
-//! `qmapshack::run_export` and is covered by `tests/us36_qmapshack_export.rs`
-//! — this file is a thin shell and is not unit-tested, the same policy as
+//! US-36/US-37: one-off CLI reconciling the whole trip archive into a
+//! QMapShack database (ADR-0022), run manually or from the owner's own
+//! scheduler (cron), never from inside the app (ADR-0014). All logic lives
+//! in `qmapshack::run_export` and is covered by
+//! `tests/us36_qmapshack_export.rs` and `tests/us37_qmapshack_resync.rs` —
+//! this file is a thin shell and is not unit-tested, the same policy as
 //! `komoot_backfill.rs`.
 //!
 //! Usage: `cargo run --bin qmapshack_export -- <config.toml> [--debug|-d]`
@@ -109,8 +110,8 @@ async fn main() -> ExitCode {
     };
 
     println!(
-        "Done: {} inserted, {} skipped, {} failed.",
-        outcome.inserted, outcome.skipped, outcome.failed
+        "Done: {} inserted, {} updated, {} removed, {} skipped, {} failed.",
+        outcome.inserted, outcome.updated, outcome.removed, outcome.skipped, outcome.failed
     );
     if outcome.failed > 0 {
         eprintln!(
