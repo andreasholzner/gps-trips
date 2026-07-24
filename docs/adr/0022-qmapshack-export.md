@@ -91,6 +91,14 @@ under for Komoot sync.
   `Trips/{year}/{activity_type}`, exact shape TBD during implementation). The exporter creates
   whatever folder path the config resolves to for each trip if it doesn't already exist
   (`folder2folder` chain) and places the trip's item under it (`folder2item`).
+- **Mandatory, exhaustive name mapping**: per
+  [`requirements.md`](../requirements.md) US-39, `activity_type_names`/`trip_type_names` are not
+  optional — every `ActivityType` variant (including `Unknown`) and every
+  `TripKind` variant must have an explicit entry. `ExportConfig::from_toml_str` validates this at
+  load time (same "validate at the boundary" policy as the rest of config parsing) and fails to
+  load an incomplete config, listing every missing entry across both tables in one error. This
+  guarantees the owner is warned about gaps in their folder scheme before any trip is exported,
+  instead of trips quietly landing under a UI-label-derived folder they never intended.
 - **Rolling backup before write**: before making any change, the exporter copies the target
   database file to a timestamped backup (same directory, e.g.
   `<name>.backup-<timestamp>.db`), so a bad write — corruption, or a format assumption that
@@ -111,7 +119,7 @@ under for Komoot sync.
   `versioninfo.version` against the `DB_VERSION`/`VER_TRK` pair it was built for and refuses to
   proceed on a mismatch, with a clear error — never attempts to "migrate" the target database
   itself (that's QMapShack's own job, triggered by opening the file in QMapShack).
-- **Consistency without a lock** *(amended during US-36 implementation)*: the exporter does
+- **Consistency without a lock**: the exporter does
   **not** take the US-26 sync lock — that lock is an in-process `AtomicBool` inside the running
   server (`server::state`), unreachable from a separate CLI process, and it stays that way.
   Instead, each run opens **one read transaction on the archive database and holds it for the

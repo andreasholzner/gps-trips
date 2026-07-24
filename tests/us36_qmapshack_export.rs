@@ -97,8 +97,23 @@ fn points_undated() -> Vec<TrackPoint> {
 
 fn config_for(dir: &tempfile::TempDir, target_name: &str) -> ExportConfig {
     let target = dir.path().join(target_name);
+    // US-39: every ActivityType (incl. unknown) and TripKind must have an
+    // explicit mapping, or ExportConfig::from_toml_str rejects the config.
     let toml = format!(
-        "target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n",
+        "target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n\
+         [activity_type_names]\n\
+         unknown = \"Unspecified\"\n\
+         hiking = \"Hiking\"\n\
+         mountaineering = \"Mountaineering\"\n\
+         cycling = \"Cycling\"\n\
+         bikepacking = \"Bikepacking\"\n\
+         kayaking = \"Kayaking\"\n\
+         ski_touring = \"Ski touring\"\n\
+         cross_country_skiing = \"Cross-country skiing\"\n\
+         snow_shoe = \"Snowshoeing\"\n\
+         [trip_type_names]\n\
+         recorded = \"Recorded\"\n\
+         planned = \"Planned\"\n",
         target.to_str().expect("utf-8 temp path")
     );
     ExportConfig::from_toml_str(&toml).expect("valid config parses")

@@ -1,4 +1,4 @@
-//! Owner-facing export configuration (US-36, ADR-0022): one TOML file
+//! Owner-facing export configuration (US-36/US-39, ADR-0022): one TOML file
 //! holding the target database path and the folder-mapping template.
 //!
 //! ```toml
@@ -6,14 +6,26 @@
 //! folder_template = "Trips/{year}/{activity_type}"
 //! undated = "undated"                  # optional {year} fallback
 //!
-//! [activity_type_names]                # optional, keys = wire names
+//! [activity_type_names]                # required: every ActivityType, incl. "unknown"
+//! unknown = "Unspecified"
+//! hiking = "Hiking"
+//! mountaineering = "Mountaineering"
+//! cycling = "Cycling"
+//! bikepacking = "Bikepacking"
+//! kayaking = "Kayaking"
 //! ski_touring = "Skitour"
-//! [trip_type_names]
+//! cross_country_skiing = "Cross-country skiing"
+//! snow_shoe = "Snowshoeing"
+//! [trip_type_names]                    # required: every TripKind
+//! recorded = "Recorded"
 //! planned = "Geplant"
 //! ```
 //!
 //! Everything is validated up front (validate at the boundary): after
-//! `from_toml_str` succeeds, folder resolution is infallible.
+//! `from_toml_str` succeeds, folder resolution is infallible. Per US-39, the
+//! name tables above are mandatory and exhaustive — a config missing an
+//! entry for any `ActivityType`/`TripKind` variant fails to load, listing
+//! every missing entry.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -56,6 +68,8 @@ pub enum ConfigError {
     },
     #[error("{what} {value:?} must be non-empty and must not contain '/'")]
     BadName { what: String, value: String },
+    #[error("config is missing required folder-name mappings: {0}")]
+    IncompleteMapping(String),
 }
 
 /// The raw TOML shape. `deny_unknown_fields` makes a typo'd key a loud
@@ -115,6 +129,36 @@ impl ExportConfig {
             &TripKind::ALL.map(|k| k.as_str().to_string()),
         )?;
 
+        // US-39: every ActivityType/TripKind variant must be mapped, not
+        // just the ones the owner chose to override. Collect every gap
+        // across both tables into one error rather than failing on the
+        // first, per the story's "all missing entries are listed" criteria.
+        let missing_activity: Vec<&'static str> = all_activity_types()
+            .filter(|a| !activity_names.contains_key(a))
+            .map(|a| a.as_str())
+            .collect();
+        let missing_trip_kind: Vec<&'static str> = TripKind::ALL
+            .into_iter()
+            .filter(|k| !trip_kind_names.contains_key(k))
+            .map(|k| k.as_str())
+            .collect();
+        if !missing_activity.is_empty() || !missing_trip_kind.is_empty() {
+            let mut parts = Vec::new();
+            if !missing_activity.is_empty() {
+                parts.push(format!(
+                    "[activity_type_names] missing: {}",
+                    missing_activity.join(", ")
+                ));
+            }
+            if !missing_trip_kind.is_empty() {
+                parts.push(format!(
+                    "[trip_type_names] missing: {}",
+                    missing_trip_kind.join(", ")
+                ));
+            }
+            return Err(ConfigError::IncompleteMapping(parts.join("; ")));
+        }
+
         Ok(Self {
             target_db: raw.target_db,
             template,
@@ -164,33 +208,31 @@ impl ExportConfig {
     }
 
     fn activity_name(&self, activity: ActivityType) -> String {
+        // Invariant: from_toml_str rejects a config missing any ActivityType
+        // entry (US-39), so every variant is present by the time this runs.
         self.activity_names
             .get(&activity)
             .cloned()
-            .unwrap_or_else(|| {
-                match activity {
-                    // label() is a UI picker string ("— unspecified —"), not a
-                    // usable folder name.
-                    ActivityType::Unknown => "unspecified".to_string(),
-                    other => other.label().to_string(),
-                }
-            })
+            .expect("activity mapping validated complete at config load")
     }
 
     fn trip_kind_name(&self, kind: TripKind) -> String {
         self.trip_kind_names
             .get(&kind)
             .cloned()
-            .unwrap_or_else(|| kind.label().to_string())
+            .expect("trip-kind mapping validated complete at config load")
     }
+}
+
+/// Every `ActivityType` an `[activity_type_names]` entry is required for,
+/// incl. `Unknown` (US-39).
+fn all_activity_types() -> impl Iterator<Item = ActivityType> {
+    std::iter::once(ActivityType::Unknown).chain(ActivityType::SELECTABLE)
 }
 
 /// Every valid `[activity_type_names]` key: the wire names, incl. `unknown`.
 fn activity_type_keys() -> Vec<String> {
-    std::iter::once(ActivityType::Unknown)
-        .chain(ActivityType::SELECTABLE)
-        .map(|a| a.as_str().to_string())
-        .collect()
+    all_activity_types().map(|a| a.as_str().to_string()).collect()
 }
 
 fn parse_template(template: &str) -> Result<Vec<Vec<Piece>>, ConfigError> {
@@ -289,13 +331,40 @@ mod tests {
     const MINIMAL: &str =
         "target_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{year}/{activity_type}\"\n";
 
+    /// `[activity_type_names]`/`[trip_type_names]` tables covering every
+    /// `ActivityType` (incl. `Unknown`) and `TripKind` variant. US-39 makes
+    /// mapping every variant mandatory, so any test exercising a successful
+    /// parse needs this. Scalar keys (e.g. `undated`) must be interpolated
+    /// *before* this constant — TOML requires bare keys to precede table
+    /// headers in the same document.
+    const FULL_NAME_TABLES: &str = "\
+[activity_type_names]\n\
+unknown = \"Unspecified\"\n\
+hiking = \"Hiking\"\n\
+mountaineering = \"Mountaineering\"\n\
+cycling = \"Cycling\"\n\
+bikepacking = \"Bikepacking\"\n\
+kayaking = \"Kayaking\"\n\
+ski_touring = \"Ski touring\"\n\
+cross_country_skiing = \"Cross-country skiing\"\n\
+snow_shoe = \"Snowshoeing\"\n\
+[trip_type_names]\n\
+recorded = \"Recorded\"\n\
+planned = \"Planned\"\n";
+
+    /// `MINIMAL` plus any extra scalar keys plus a complete name mapping —
+    /// the smallest config that actually parses under US-39.
+    fn complete(extra_scalars: &str) -> String {
+        format!("{MINIMAL}{extra_scalars}{FULL_NAME_TABLES}")
+    }
+
     fn config(toml: &str) -> ExportConfig {
         ExportConfig::from_toml_str(toml).expect("valid config")
     }
 
     #[test]
-    fn minimal_config_parses_with_defaults() {
-        let cfg = config(MINIMAL);
+    fn minimal_config_parses_with_full_mapping() {
+        let cfg = config(&complete(""));
         assert_eq!(cfg.target_db, PathBuf::from("/tmp/t.db"));
         assert_eq!(
             cfg.resolve_folder_path(
@@ -309,18 +378,18 @@ mod tests {
 
     #[test]
     fn year_falls_back_to_undated_for_trips_without_start_time() {
-        let cfg = config(MINIMAL);
+        let cfg = config(&complete(""));
         let path = cfg.resolve_folder_path(ActivityType::Hiking, TripKind::Recorded, None);
         assert_eq!(path, ["Trips", "undated", "Hiking"]);
 
-        let custom = config(&format!("{MINIMAL}undated = \"ohne Datum\"\n"));
+        let custom = config(&complete("undated = \"ohne Datum\"\n"));
         let path = custom.resolve_folder_path(ActivityType::Hiking, TripKind::Recorded, None);
         assert_eq!(path[1], "ohne Datum");
     }
 
     #[test]
     fn year_never_panics_on_a_malformed_start_time() {
-        let cfg = config(MINIMAL);
+        let cfg = config(&complete(""));
         // Byte 4 splits the second 'λ' — a char-boundary panic trap for
         // naive slicing. Malformed timestamps fall back to the undated
         // bucket instead of taking the run down.
@@ -329,27 +398,78 @@ mod tests {
     }
 
     #[test]
-    fn unknown_activity_resolves_to_unspecified_not_the_ui_label() {
-        let cfg = config(MINIMAL);
+    fn mapped_unknown_activity_resolves_to_its_configured_name() {
+        let cfg = config(&complete(""));
         let path = cfg.resolve_folder_path(ActivityType::Unknown, TripKind::Recorded, None);
-        assert_eq!(path[2], "unspecified");
+        // FULL_NAME_TABLES maps unknown -> "Unspecified"; there is no more
+        // hardcoded "unspecified" fallback (US-39 requires an explicit entry).
+        assert_eq!(path[2], "Unspecified");
+    }
+
+    #[test]
+    fn omitting_unknown_from_activity_type_names_is_an_incomplete_mapping_error() {
+        let toml = format!("{MINIMAL}{}", FULL_NAME_TABLES.replace("unknown = \"Unspecified\"\n", ""));
+        let err = ExportConfig::from_toml_str(&toml).expect_err("unknown must be mapped");
+        match &err {
+            ConfigError::IncompleteMapping(msg) => {
+                assert!(msg.contains("activity_type_names"), "{msg}");
+                assert!(msg.contains("unknown"), "{msg}");
+            }
+            other => panic!("unexpected error {other}"),
+        }
+    }
+
+    #[test]
+    fn incomplete_mapping_lists_every_missing_entry_across_both_tables() {
+        // Only `hiking` mapped; every other activity type and both trip
+        // kinds are missing. Acceptance criteria (US-39): all missing
+        // entries are listed together in one error, not just the first.
+        let toml = format!("{MINIMAL}[activity_type_names]\nhiking = \"Hiking\"\n");
+        let err = ExportConfig::from_toml_str(&toml).expect_err("incomplete mapping");
+        match &err {
+            ConfigError::IncompleteMapping(msg) => {
+                assert!(msg.contains("activity_type_names"), "{msg}");
+                for missing in [
+                    "unknown",
+                    "mountaineering",
+                    "cycling",
+                    "bikepacking",
+                    "kayaking",
+                    "ski_touring",
+                    "cross_country_skiing",
+                    "snow_shoe",
+                ] {
+                    assert!(msg.contains(missing), "missing {missing:?} not listed: {msg}");
+                }
+                assert!(msg.contains("trip_type_names"), "{msg}");
+                assert!(msg.contains("recorded"), "{msg}");
+                assert!(msg.contains("planned"), "{msg}");
+            }
+            other => panic!("unexpected error {other}"),
+        }
+    }
+
+    #[test]
+    fn complete_mapping_of_every_variant_is_accepted() {
+        config(&complete(""));
     }
 
     #[test]
     fn name_tables_override_activity_and_trip_type_spellings() {
-        let cfg = config(
+        let toml = format!(
             "target_db = \"/tmp/t.db\"\n\
-             folder_template = \"{trip_type}/{activity_type}\"\n\
-             [activity_type_names]\n\
-             ski_touring = \"Skitour\"\n\
-             [trip_type_names]\n\
-             planned = \"Geplant\"\n",
+             folder_template = \"{{trip_type}}/{{activity_type}}\"\n\
+             {}",
+            FULL_NAME_TABLES
+                .replace("ski_touring = \"Ski touring\"", "ski_touring = \"Skitour\"")
+                .replace("planned = \"Planned\"", "planned = \"Geplant\"")
         );
+        let cfg = config(&toml);
         assert_eq!(
             cfg.resolve_folder_path(ActivityType::SkiTouring, TripKind::Planned, None),
             ["Geplant", "Skitour"]
         );
-        // Unoverridden values keep their label() defaults.
+        // Unoverridden values keep their configured (non-Skitour/Geplant) names.
         assert_eq!(
             cfg.resolve_folder_path(ActivityType::Hiking, TripKind::Recorded, None),
             ["Recorded", "Hiking"]
@@ -358,8 +478,10 @@ mod tests {
 
     #[test]
     fn segments_may_mix_literals_and_placeholders() {
-        let cfg =
-            config("target_db = \"/tmp/t.db\"\nfolder_template = \"Archiv {year}-{trip_type}\"\n");
+        let toml = format!(
+            "target_db = \"/tmp/t.db\"\nfolder_template = \"Archiv {{year}}-{{trip_type}}\"\n{FULL_NAME_TABLES}"
+        );
+        let cfg = config(&toml);
         assert_eq!(
             cfg.resolve_folder_path(
                 ActivityType::Hiking,
