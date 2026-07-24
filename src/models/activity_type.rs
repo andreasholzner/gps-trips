@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// modeled as an enum rather than a bare string). Stored as `TEXT` in SQLite
 /// (`#[derive(sqlx::Type)]` maps each variant to/from its snake_case name) and
 /// serialized the same way in JSON responses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum ActivityType {

@@ -14,6 +14,7 @@ pub mod location;
 pub mod paths;
 pub mod photos;
 pub mod placement;
+pub mod qmapshack;
 pub mod render;
 pub mod repo;
 pub mod state;

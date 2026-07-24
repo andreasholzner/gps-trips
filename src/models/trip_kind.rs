@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Manual GPX import (US-31) lets the owner choose either variant; Komoot
 /// sync/backfill (US-29) writes whichever kind the source tour was listed
 /// under (`Recorded` or `Planned`, per ADR-0021).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum TripKind {

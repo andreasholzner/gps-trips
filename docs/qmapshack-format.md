@@ -140,15 +140,38 @@ The inner (pre-compression) fields for a track (`CGisItemTrk::operator>>`,
 numeric types) to one specific, documented Qt encoding regardless of which Qt version the
 reading QMapShack build uses.
 
-Field **names and order** for a track (verified present in source; exact primitive C++ types —
-`qreal` vs `float`, `quint8` vs `quint16`, etc. — should be read directly from source at
-implementation time rather than trusted from this summary):
+**Primitive encodings (byte-verified during US-36 implementation):**
+
+- `QString`: `quint32` byte length + UTF-16 code units in **stream byte order — little-endian
+  here** (not the BE of a BOM-less standalone UTF-16 file). Null string = length `0xFFFFFFFF`,
+  empty = `0`.
+- `QDateTime` (Qt_5_2): `qint64` Julian day + `quint32` milliseconds since midnight + `quint8`
+  timespec (1 = UTC). Null datetime = `i64::MIN` + `0xFFFFFFFF` + spec `0`.
+- `items.hash` = lowercase MD5 hex **of the current event's `data` chunk bytes** (magic +
+  version byte + length-prefixed compressed QByteArray) — `IGisItem::setupHistory`
+  (`IGisItem.cpp`); the same value is embedded as the event's `hash` field.
+
+Field **names, order and wire types** for a track (verified byte-for-byte against
+`format_test.db` — a strict decoder consumes every blob with zero bytes left; the Rust port
+lives in `src/server/qmapshack/blob.rs` with a test-only decoder in `.../decode.rs`):
 
 ```
-key.item, flags, trk.name, trk.cmt, trk.desc, trk.src, trk.links (QVector<link_t>),
-trk.number, trk.type, trk.color, rating, keywords, colorSourceLimit, lineScale, showArrows,
-limitsGraph1, limitsGraph2, limitsGraph3, energyCycling (energy_set_t), trk.segs
+key.item (QString), flags (quint32), trk.name/cmt/desc/src (QString),
+trk.links (QList<link_t>: quint32 count + [VER_LINK u8, uri/text/type QString]),
+trk.number (quint64), trk.type (QString), trk.color (QString name from IGisItem::init()),
+rating (f64), keywords (QSet<QString>: quint32 count + QStrings),
+colorSourceLimit (CLimit: u8 ver=1, u8 mode, QString source, f64 min, f64 max),
+lineScale/showArrows (CValue: u8 ver=1, u8 mode, QVariant [quint32 type id, u8 isNull, payload]),
+limitsGraph1..3 (CLimit), energyCycling (u8 ver=1, then f64/qint32 per energy_set_t),
+trk.segs
 ```
+
+Sentinels (`units/IUnit.h`): `NOFLOAT = 1e12`, `NOINT = 0x7FFFFFFF`. Each `trkpt_t` (ver 3) is
+`[u8 ver, quint32 flags, wpt_t base, extensions (QHash<QString,QVariant>: quint32 count + pairs),
+qint16 activity]`; the `wpt_t` base is `[u8 ver=1, f64 lat, f64 lon, qint32 ele, QDateTime time,
+qint32 magvar, qint32 geoidheight, QString name/cmt/desc/src, links, QString sym/type/fix,
+qint32 sat/hdop/vdop/pdop/ageofdgpsdata/dgpsid]` (note: `wpt_t.extensions` is *not* serialized —
+only the trkpt-level extensions hash is).
 
 `trk.segs` is `QVector<trkseg_t>`; each `trkseg_t` is `[VER_TRKSEG, QVector<trkpt_t> pts]`; each
 `trkpt_t` is `[VER_TRKPT, flags, <wpt_t base fields>, extensions, activity]`, where `wpt_t` (also
@@ -179,13 +202,20 @@ Plain PNG bytes, shown in QMapShack's item tree/list. No need to replicate QMapS
 icon-rendering logic — embedding one or a few static PNG resources (e.g. per activity type) is
 sufficient.
 
-## Open items (not yet resolved)
+## Open items
 
-- **`QDateTime` byte encoding** — not empirically decoded. Standard Qt behavior under stream
-  version `Qt_5_2` (documented by Qt), but verify against a real sample before relying on it.
-- **`folders.data` (`QMProj`) blob** — magic marker confirmed, inner structure not decoded. Only
-  matters if QMapShack turns out to require a populated blob for folders it didn't create.
+Resolved during US-36 implementation:
+
+- **`QDateTime` byte encoding** — verified against real samples (incl. null point times in
+  `Touren.db`); see "Primitive encodings" above.
+- **`folders.data` (`QMProj`) blob** — a populated blob is **not required**:
+  `CDBProject::CDBProject` (`CDBProject.cpp` ~50) explicitly branches on an empty blob and
+  falls back to the folder's SQL name/date. The exporter writes `NULL`.
+
+Still open:
+
 - **Concurrent access** — sample databases use SQLite's default rollback-journal mode (`PRAGMA
   journal_mode = delete`), and QMapShack sets `locking_mode=NORMAL`. Standard SQLite file
   locking applies: writing to the file while QMapShack has it open can hit `SQLITE_BUSY`/
-  "database is locked". No WAL mode in play.
+  "database is locked". No WAL mode in play. (The exporter pins `journal_mode = Delete` on its
+  connection so it never converts the owner's file to WAL.)

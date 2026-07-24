@@ -91,7 +91,11 @@ async fn us34_a_tag_name_with_a_comma_is_rejected_with_400() {
 async fn us34_an_empty_trip_selection_is_rejected_with_400() {
     let (app, _dir) = test_app().await;
 
-    let response = send(&app, bulk_tag_request(r#"{"trip_ids":[],"names":["hiking"]}"#)).await;
+    let response = send(
+        &app,
+        bulk_tag_request(r#"{"trip_ids":[],"names":["hiking"]}"#),
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 

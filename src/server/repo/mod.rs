@@ -4,11 +4,15 @@
 //! Re-exported flat here so existing call sites (`repo::insert_trip`,
 //! `repo::list_photos`, ...) are unaffected by the split.
 
+mod export;
 pub mod komoot;
 mod photo;
 mod tag;
 mod trip;
 
+pub use export::{
+    get_track_geojson_in_tx, list_trip_tags_in_tx, list_trips_for_export, ExportTrip,
+};
 pub use photo::{count_photos, insert_photo, list_photos, NewPhoto};
 pub use tag::{
     add_trip_tag, bulk_add_trip_tags, get_or_create_tag, list_all_tags, list_trip_tags,

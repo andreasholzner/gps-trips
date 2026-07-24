@@ -360,8 +360,12 @@ mod tests {
         let trip_id = insert_sample_trip(&db.pool).await;
 
         let names = vec!["hiking".to_string()];
-        bulk_add_trip_tags(&db.pool, &[trip_id], &names).await.unwrap();
-        bulk_add_trip_tags(&db.pool, &[trip_id], &names).await.unwrap();
+        bulk_add_trip_tags(&db.pool, &[trip_id], &names)
+            .await
+            .unwrap();
+        bulk_add_trip_tags(&db.pool, &[trip_id], &names)
+            .await
+            .unwrap();
 
         assert_eq!(list_trip_tags(&db.pool, trip_id).await.unwrap().len(), 1);
     }

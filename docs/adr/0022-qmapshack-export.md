@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -111,10 +111,15 @@ under for Komoot sync.
   `versioninfo.version` against the `DB_VERSION`/`VER_TRK` pair it was built for and refuses to
   proceed on a mismatch, with a clear error — never attempts to "migrate" the target database
   itself (that's QMapShack's own job, triggered by opening the file in QMapShack).
-- **Locking**: for the duration of a run, the exporter takes the same global lock introduced by
-  US-26 ([`requirements.md`](../requirements.md)) to block trip-archive operations that would
-  change state while it runs — giving each run a consistent snapshot of the archive instead of
-  risking a torn read against a concurrent edit or delete.
+- **Consistency without a lock** *(amended during US-36 implementation)*: the exporter does
+  **not** take the US-26 sync lock — that lock is an in-process `AtomicBool` inside the running
+  server (`server::state`), unreachable from a separate CLI process, and it stays that way.
+  Instead, each run opens **one read transaction on the archive database and holds it for the
+  entire run**: under SQLite's WAL mode (ADR-0002), a read transaction observes a single
+  consistent snapshot regardless of concurrent commits, so every trip, track, and tag read
+  during the run reflects the same instant — no torn reads against a concurrent edit or delete,
+  and no coordination with the server process at all. Archive writes made while a run is in
+  flight are picked up by the next run.
 - **Track content**: `trk.segs`/points are derived from the same GeoJSON track geometry already
   stored per trip ([ADR-0003](./0003-track-as-geojson-blob-in-sqlite.md)); no re-parsing of the
   original GPX.
