@@ -21,11 +21,11 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::config::komoot::PAGE_SIZE;
-use crate::models::TripKind;
+use crate::models::{KomootPrivacy, TripKind};
 use crate::server::{
     error::AppError,
     import::derive_track,
-    komoot::{KomootClient, KomootError, KomootPhoto, KomootTourSummary},
+    komoot::{KomootClient, KomootError, KomootPhoto, KomootTourSummary, TourUpdate},
     komoot_sport,
     photos::{ingest_photos, UploadedPhoto},
     placement::TripPhotoContext,
@@ -182,6 +182,11 @@ pub async fn list_sync_candidates(
     .await?;
     let recorded = list_all_tours_of_kind(&client, &username, TripKind::Recorded).await?;
     let planned = list_all_tours_of_kind(&client, &username, TripKind::Planned).await?;
+    // This listing is the only one a fully-synced archive ever fetches, so
+    // it's what keeps stored privacy fresh (US-35). A write on a read path,
+    // deliberately: the alternative — listing both kinds during the sync
+    // itself — would cost a Komoot call the selection doesn't need (US-29).
+    refresh_privacy_from_listing(pool, recorded.iter().chain(planned.iter())).await?;
     let linked = repo::komoot::list_linked_tour_ids(pool).await?;
 
     Ok(tag_by_kind(recorded, planned)
@@ -195,6 +200,31 @@ pub async fn list_sync_candidates(
             kind,
         })
         .collect())
+}
+
+/// Mirror the privacy of every tour in a listing this app already had to
+/// fetch (US-35, ADR-0021) — so a privacy the owner changed inside Komoot
+/// reaches the archive without one extra API call. Called from both places a
+/// listing exists: the review page (`list_sync_candidates`, which lists both
+/// kinds every time it renders) and the import pass shared by "Sync now" and
+/// `komoot_backfill`. The review page matters most: a caught-up archive has
+/// nothing to import, so the import pass would never see a listing at all.
+/// Tours with no link row, and rows with a pending edit or delete, are left
+/// alone by `refresh_privacy_from_listing` itself.
+async fn refresh_privacy_from_listing<'a>(
+    pool: &SqlitePool,
+    tours: impl Iterator<Item = &'a KomootTourSummary>,
+) -> Result<(), AppError> {
+    let listed: Vec<(&str, KomootPrivacy)> = tours
+        .map(|tour| {
+            (
+                tour.id.as_str(),
+                KomootPrivacy::from_komoot_status(&tour.status),
+            )
+        })
+        .collect();
+    repo::komoot::refresh_privacy_from_listing(pool, &listed).await?;
+    Ok(())
 }
 
 /// Tag each recorded tour `Recorded` and each planned route `Planned`, as one
@@ -310,11 +340,13 @@ async fn import_selected_tours(
     all_tours: Vec<(KomootTourSummary, TripKind)>,
     tour_ids: &[String],
 ) -> Result<SyncSummary, AppError> {
+    refresh_privacy_from_listing(pool, all_tours.iter().map(|(tour, _)| tour)).await?;
+
+    let already_linked: HashSet<String> = repo::komoot::list_linked_tour_ids(pool).await?;
     let mut by_id: HashMap<String, (KomootTourSummary, TripKind)> = all_tours
         .into_iter()
         .map(|(t, kind)| (t.id.clone(), (t, kind)))
         .collect();
-    let already_linked: HashSet<String> = repo::komoot::list_linked_tour_ids(pool).await?;
 
     let mut summary = SyncSummary::default();
     // `tour_ids` may contain repeats (`sync_selected_tours`' caller is an
@@ -430,6 +462,15 @@ async fn sync_one_tour(
     // the (non-transactional) `BlobStore`, so failing here first means
     // that race never leaves orphaned blobs behind.
     repo::komoot::insert_link_in_tx(&mut tx, trip_id, &tour.id).await?;
+    // The tour's privacy comes straight off the listing that selected it
+    // (US-35) — stored with the link row so the list page can show it without
+    // ever calling Komoot.
+    repo::komoot::set_privacy_in_tx(
+        &mut tx,
+        trip_id,
+        KomootPrivacy::from_komoot_status(&tour.status),
+    )
+    .await?;
     ingest_photos(&mut tx, store, trip_id, &ctx, uploaded_photos).await?;
     tx.commit().await?;
 
@@ -482,6 +523,12 @@ async fn push_one_edit(
     })
     .await?;
 
+    // Only ever push a privacy this app understands (ADR-0021): an `unknown`
+    // (or absent) one omits Komoot's `status` field entirely, so an edit that
+    // was really about the name can't overwrite a privacy state the archive
+    // couldn't map in the first place.
+    let outgoing_status = edit.privacy.and_then(|p| p.komoot_status());
+
     let outgoing_sport = if edit.trip_kind == TripKind::Planned {
         // Never change a planned route's sport (US-29) — it drives Komoot's
         // route planning, so resend whatever Komoot currently has regardless
@@ -497,7 +544,16 @@ async fn push_one_edit(
         let client = Arc::clone(client);
         let tour_id = edit.komoot_tour_id.clone();
         let name = edit.name.clone();
-        move || client.update_tour(&tour_id, &name, &outgoing_sport)
+        move || {
+            client.update_tour(
+                &tour_id,
+                &TourUpdate {
+                    name: &name,
+                    sport: &outgoing_sport,
+                    status: outgoing_status,
+                },
+            )
+        }
     })
     .await?;
 

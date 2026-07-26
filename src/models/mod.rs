@@ -2,6 +2,8 @@
 //! using `crate::models::{TripSummary, TripDetail}`.
 
 mod activity_type;
+mod komoot_link;
+mod komoot_privacy;
 mod location_source;
 mod photo;
 mod tag;
@@ -10,6 +12,8 @@ mod trip_kind;
 mod trip_summary;
 
 pub use activity_type::ActivityType;
+pub use komoot_link::KomootLink;
+pub use komoot_privacy::KomootPrivacy;
 pub use location_source::LocationSource;
 pub use photo::Photo;
 pub use tag::{normalize_tag_name, Tag};

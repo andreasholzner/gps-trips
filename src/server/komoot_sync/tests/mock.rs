@@ -4,6 +4,10 @@
 
 use super::*;
 
+/// One recorded `update_tour` call: tour id, name, sport, and the `status`
+/// (privacy) the push sent — `None` when it deliberately omitted the field.
+pub(super) type UpdateTourCall = (String, String, String, Option<String>);
+
 #[derive(Default)]
 pub(super) struct MockKomootClient {
     pub(super) tours: Vec<KomootTourSummary>,
@@ -38,8 +42,8 @@ pub(super) struct MockKomootClient {
     pub(super) tour_details: HashMap<String, KomootTourSummary>,
     pub(super) fail_update_tour_for: HashSet<String>,
     /// Every `update_tour` call, in order — asserted on to check exactly
-    /// what name/sport a push actually sent.
-    pub(super) update_tour_calls: Mutex<Vec<(String, String, String)>>,
+    /// what name/sport/privacy a push actually sent.
+    pub(super) update_tour_calls: Mutex<Vec<UpdateTourCall>>,
     /// US-24: tour ids `delete_tour` should fail for.
     pub(super) fail_delete_tour_for: HashSet<String>,
     /// Every `delete_tour` call, in order — asserted on to check exactly
@@ -141,11 +145,12 @@ impl KomootClient for MockKomootClient {
             })
     }
 
-    fn update_tour(&self, tour_id: &str, name: &str, sport: &str) -> Result<(), KomootError> {
+    fn update_tour(&self, tour_id: &str, update: &TourUpdate<'_>) -> Result<(), KomootError> {
         self.update_tour_calls.lock().unwrap().push((
             tour_id.to_string(),
-            name.to_string(),
-            sport.to_string(),
+            update.name.to_string(),
+            update.sport.to_string(),
+            update.status.map(str::to_string),
         ));
         if self.fail_update_tour_for.contains(tour_id) {
             return Err(KomootError::UnexpectedStatus {
@@ -172,12 +177,24 @@ impl KomootClient for MockKomootClient {
 }
 
 pub(super) fn a_tour(id: &str, name: &str, sport: &str) -> KomootTourSummary {
+    a_tour_with_status(id, name, sport, "private")
+}
+
+/// A tour whose Komoot privacy (`status`) matters to the test — the listing
+/// carries it for every tour, which is what the pull's privacy refresh reads.
+pub(super) fn a_tour_with_status(
+    id: &str,
+    name: &str,
+    sport: &str,
+    status: &str,
+) -> KomootTourSummary {
     KomootTourSummary {
         id: id.to_string(),
         name: name.to_string(),
         sport: sport.to_string(),
         date: "2026-07-11T08:47:52.000Z".to_string(),
         distance: 1000.0,
+        status: status.to_string(),
     }
 }
 

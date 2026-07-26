@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 
-use crate::models::{ActivityType, TripKind};
+use crate::models::{ActivityType, KomootPrivacy, TripKind};
 
 /// Every `komoot_tour_id` already linked to a trip (or pending Komoot-side
 /// deletion) — the anti-join dedup set US-22's "Sync now" filters Komoot's
@@ -36,13 +36,16 @@ pub async fn insert_link_in_tx(
 }
 
 /// A trip whose edit hasn't been pushed to Komoot yet (US-20): the current
-/// name/activity_type `push_pending_edits` needs to call Komoot's
+/// name/activity_type/privacy `push_pending_edits` needs to call Komoot's
 /// update-tour API with, plus the tour id to call it on.
 pub struct EditPending {
     pub trip_id: i64,
     pub komoot_tour_id: String,
     pub name: String,
     pub activity_type: ActivityType,
+    /// The privacy to push (US-35), or `None` if none is stored — in which
+    /// case the push omits Komoot's `status` field entirely.
+    pub privacy: Option<KomootPrivacy>,
     /// Recorded or planned (US-29): the push phase never changes a *planned*
     /// tour's Komoot `sport`, since that drives Komoot's route planning.
     pub trip_kind: TripKind,
@@ -55,6 +58,7 @@ pub struct EditPending {
 pub async fn list_edit_pending(pool: &SqlitePool) -> Result<Vec<EditPending>, sqlx::Error> {
     sqlx::query(
         r#"SELECT l.trip_id AS trip_id, l.komoot_tour_id AS komoot_tour_id,
+                  l.privacy_status AS privacy_status,
                   t.name AS name, t.activity_type AS activity_type, t.trip_kind AS trip_kind
            FROM trip_komoot_link l
            JOIN trip t ON t.id = l.trip_id
@@ -65,10 +69,73 @@ pub async fn list_edit_pending(pool: &SqlitePool) -> Result<Vec<EditPending>, sq
         komoot_tour_id: row.get("komoot_tour_id"),
         name: row.get("name"),
         activity_type: row.get("activity_type"),
+        privacy: row.get("privacy_status"),
         trip_kind: row.get("trip_kind"),
     })
     .fetch_all(pool)
     .await
+}
+
+/// Store the privacy the owner picked for a linked trip (US-35), on the
+/// caller's transaction so it commits atomically with the `trip` edit that
+/// requested it — never on its own. A no-op `UPDATE` for a trip with no link
+/// row; the HTTP layer rejects that case up front, since there'd be no Komoot
+/// tour to change.
+pub async fn set_privacy_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    trip_id: i64,
+    privacy: KomootPrivacy,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE trip_komoot_link SET privacy_status = ? WHERE trip_id = ?")
+        .bind(privacy)
+        .bind(trip_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+/// Whether a trip is Komoot-sourced, i.e. has a `trip_komoot_link` row
+/// (US-35) — one boolean off the indexed `trip_id`, for the edit endpoint's
+/// "can this trip's privacy be set at all?" check. Deliberately not a
+/// `get_trip` call: that reads every trip column plus this same row just to
+/// answer the same question.
+pub async fn link_exists(pool: &SqlitePool, trip_id: i64) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM trip_komoot_link WHERE trip_id = ?)")
+        .bind(trip_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Mirror the privacy Komoot reported for each listed tour into its link row
+/// (US-35). Takes a whole listing rather than one tour at a time so a sync
+/// pass is a single transaction instead of one auto-committed `UPDATE` per
+/// tour — a caught-up account re-states hundreds of unchanged rows on every
+/// pass, and that should cost one commit, not hundreds. A listed tour with no
+/// link row matches nothing, so callers need not filter to linked ones first.
+///
+/// Two kinds of row are deliberately left alone:
+/// - `edit_pending` — a queued-but-unpushed choice outranks the listing's
+///   value, so a halted push (US-25) doesn't get the owner's change silently
+///   reverted by the next listing (ADR-0021);
+/// - `delete_pending` — the tour and its row are on their way out, so there
+///   is nothing a privacy write could ever be read back for.
+pub async fn refresh_privacy_from_listing(
+    pool: &SqlitePool,
+    listed: &[(&str, KomootPrivacy)],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (komoot_tour_id, privacy) in listed {
+        sqlx::query(
+            "UPDATE trip_komoot_link SET privacy_status = ? \
+             WHERE komoot_tour_id = ? AND edit_pending = 0 AND delete_pending = 0",
+        )
+        .bind(*privacy)
+        .bind(komoot_tour_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
 }
 
 /// How many trips have a pending edit to push to Komoot (US-20) — drives the
@@ -119,7 +186,7 @@ pub async fn delete_link(pool: &SqlitePool, komoot_tour_id: &str) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::TripKind;
+    use crate::models::{KomootPrivacy, TripKind};
     use crate::server::db::testing::TestDb;
     use crate::server::gpx::TrackStats;
     use crate::server::repo::{insert_trip, NewTrip};
@@ -354,6 +421,217 @@ mod tests {
 
         assert!(list_delete_pending(&db.pool).await.unwrap().is_empty());
         assert!(list_linked_tour_ids(&db.pool).await.unwrap().is_empty());
+    }
+
+    // ── One link row per trip (schema-enforced) ──────────────────────────
+
+    #[tokio::test]
+    async fn a_trip_cannot_be_linked_to_two_komoot_tours() {
+        // The trip queries LEFT JOIN this table, so a second row for the same
+        // trip would silently duplicate it on the list page. The schema, not
+        // a convention in the sync code, is what rules that out.
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        let second = insert_link_in_tx(&mut tx, trip_id, "999999").await;
+
+        assert!(second.is_err(), "a second link row must be rejected");
+    }
+
+    #[tokio::test]
+    async fn several_orphaned_link_rows_can_coexist() {
+        // A delete-pending row's `trip_id` is NULL (ON DELETE SET NULL), and
+        // SQLite treats NULLs as distinct in a unique index — so the
+        // constraint above must not stop two tours from awaiting deletion.
+        let db = TestDb::new().await;
+        let first = a_linked_trip(&db.pool, "111").await;
+        let second = a_linked_trip(&db.pool, "222").await;
+        mark_delete_pending(&db.pool, first).await;
+        mark_delete_pending(&db.pool, second).await;
+
+        assert_eq!(list_delete_pending(&db.pool).await.unwrap().len(), 2);
+    }
+
+    // ── link_exists: the cheap "is this trip Komoot-sourced?" check ──────
+
+    #[tokio::test]
+    async fn link_exists_is_true_for_a_linked_trip() {
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+
+        assert!(link_exists(&db.pool, trip_id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn link_exists_is_false_for_a_trip_that_never_came_from_komoot() {
+        let db = TestDb::new().await;
+        let trip_id = a_trip(&db.pool).await;
+
+        assert!(!link_exists(&db.pool, trip_id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn link_exists_is_false_for_an_unknown_trip_id() {
+        let db = TestDb::new().await;
+
+        assert!(!link_exists(&db.pool, 999).await.unwrap());
+    }
+
+    // ── Komoot privacy (`status`) mirroring ──────────────────────────────
+
+    async fn stored_privacy(pool: &SqlitePool, tour_id: &str) -> Option<KomootPrivacy> {
+        sqlx::query_scalar("SELECT privacy_status FROM trip_komoot_link WHERE komoot_tour_id = ?")
+            .bind(tour_id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_fresh_link_row_has_no_privacy_yet() {
+        // Nothing is known until a sync reads the tour's `status`.
+        let db = TestDb::new().await;
+        a_linked_trip(&db.pool, "123456").await;
+        assert_eq!(stored_privacy(&db.pool, "123456").await, None);
+    }
+
+    #[tokio::test]
+    async fn set_privacy_in_tx_persists_the_owners_choice() {
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        set_privacy_in_tx(&mut tx, trip_id, KomootPrivacy::Public)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        assert_eq!(
+            stored_privacy(&db.pool, "123456").await,
+            Some(KomootPrivacy::Public)
+        );
+    }
+
+    #[tokio::test]
+    async fn set_privacy_in_tx_rolls_back_with_the_rest_of_the_transaction() {
+        // Mirrors `insert_link_in_tx`: the privacy write commits atomically
+        // with the trip edit that requested it, never on its own.
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        set_privacy_in_tx(&mut tx, trip_id, KomootPrivacy::Public)
+            .await
+            .unwrap();
+        tx.rollback().await.unwrap();
+
+        assert_eq!(stored_privacy(&db.pool, "123456").await, None);
+    }
+
+    #[tokio::test]
+    async fn refresh_privacy_stores_what_komoot_reported() {
+        let db = TestDb::new().await;
+        a_linked_trip(&db.pool, "111").await;
+        a_linked_trip(&db.pool, "222").await;
+
+        refresh_privacy_from_listing(
+            &db.pool,
+            &[
+                ("111", KomootPrivacy::Private),
+                ("222", KomootPrivacy::Public),
+            ],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            stored_privacy(&db.pool, "111").await,
+            Some(KomootPrivacy::Private)
+        );
+        assert_eq!(
+            stored_privacy(&db.pool, "222").await,
+            Some(KomootPrivacy::Public)
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_privacy_leaves_an_orphaned_delete_pending_row_alone() {
+        // Its tour is about to be deleted on Komoot and the row with it —
+        // there is nothing a privacy write to it could ever be read back for.
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        mark_delete_pending(&db.pool, trip_id).await;
+
+        refresh_privacy_from_listing(&db.pool, &[("123456", KomootPrivacy::Public)])
+            .await
+            .unwrap();
+
+        assert_eq!(stored_privacy(&db.pool, "123456").await, None);
+    }
+
+    #[tokio::test]
+    async fn refresh_privacy_does_not_overwrite_a_pending_edit() {
+        // ADR-0021: a queued-but-not-yet-pushed choice outranks whatever
+        // Komoot's listing still reports — otherwise a halted push would have
+        // the owner's change silently reverted by the next pull.
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        let mut tx = db.pool.begin().await.unwrap();
+        set_privacy_in_tx(&mut tx, trip_id, KomootPrivacy::Public)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        mark_edit_pending(&db.pool, trip_id).await;
+
+        refresh_privacy_from_listing(&db.pool, &[("123456", KomootPrivacy::Private)])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_privacy(&db.pool, "123456").await,
+            Some(KomootPrivacy::Public)
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_privacy_on_an_unknown_tour_id_is_a_no_op() {
+        // A tour Komoot lists that this archive has never linked simply has
+        // no row to refresh — not an error.
+        let db = TestDb::new().await;
+        a_linked_trip(&db.pool, "123456").await;
+
+        refresh_privacy_from_listing(&db.pool, &[("does-not-exist", KomootPrivacy::Public)])
+            .await
+            .unwrap();
+
+        assert_eq!(stored_privacy(&db.pool, "123456").await, None);
+    }
+
+    #[tokio::test]
+    async fn list_edit_pending_reports_the_stored_privacy() {
+        // The push phase needs the desired privacy alongside name/sport.
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        let mut tx = db.pool.begin().await.unwrap();
+        set_privacy_in_tx(&mut tx, trip_id, KomootPrivacy::Public)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        mark_edit_pending(&db.pool, trip_id).await;
+
+        let pending = list_edit_pending(&db.pool).await.unwrap();
+        assert_eq!(pending[0].privacy, Some(KomootPrivacy::Public));
+    }
+
+    #[tokio::test]
+    async fn list_edit_pending_reports_no_privacy_when_none_is_known() {
+        let db = TestDb::new().await;
+        let trip_id = a_linked_trip(&db.pool, "123456").await;
+        mark_edit_pending(&db.pool, trip_id).await;
+
+        let pending = list_edit_pending(&db.pool).await.unwrap();
+        assert_eq!(pending[0].privacy, None);
     }
 
     #[tokio::test]

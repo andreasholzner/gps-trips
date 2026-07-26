@@ -26,7 +26,7 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
 - Introduce a **`KomootClient` trait** (`src/server/komoot.rs`), the same seam pattern as
   `BlobStore`/`Clock` ([ADR-0007](./0007-blobstore-abstraction.md),
   [ADR-0012](./0012-tdd-test-strategy.md)), wrapping the unofficial HTTP calls (list tours, fetch
-  GPX + metadata, fetch photos, update tour name/sport). Ship one real implementation; mock it in
+  GPX + metadata, fetch photos, update tour name/sport/privacy). Ship one real implementation; mock it in
   tests.
 - **Auth** via `KOMOOT_EMAIL` / `KOMOOT_PASSWORD` env vars, read at startup, consistent with the
   existing `TRIP_ARCHIVE_DATA_DIR` config pattern. v1 uses **HTTP Basic Auth per request** (see
@@ -123,6 +123,24 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
     same id under both listings, the candidate list would show it twice and the import would resolve
     it to `planned` (the planned listing is merged last). This is accepted as intrinsic to how Komoot
     models tours; the code does not defend against a shared id.
+- **Privacy (`status`) sync.** Komoot's `status` field is mirrored into a new
+  `trip_komoot_link.privacy_status` column (`private`/`public`/`unknown`); an unrecognized Komoot
+  value maps to `unknown` rather than failing the sync, as with `sport`. `trip` stays untouched —
+  privacy is a property of the Komoot link, not of an archived trip, and a trip with no link row
+  has none.
+  - **Edit** follows the same deferred path as name/activity_type: the detail page writes the
+    desired value and sets `edit_pending` in one transaction; the next sync's push phase sends
+    `status` in the same update-tour call. An `unknown` (or absent) value omits the field, so a
+    push never overwrites a Komoot state the archive doesn't understand.
+  - **Refresh** happens wherever a tour listing has already been fetched, so it never costs an
+    extra Komoot call: the review page's candidate listing (both kinds, every render) and the
+    import pass shared by "Sync now" and `komoot_backfill`. The review page is the one that
+    matters for a caught-up archive — with nothing left to import, the sync lists nothing at all.
+    Writing from a read path is accepted for that reason; the alternative, always listing both
+    kinds during a sync, would cost a call the selection doesn't need. Rows with a pending edit or
+    delete are skipped, so a halted push doesn't have its queued value overwritten by the stale
+    upstream one, and a row on its way out isn't written to.
+  - Privacy pushes for **planned** routes as well; only `sport` stays protected there.
 
 ## Consequences
 

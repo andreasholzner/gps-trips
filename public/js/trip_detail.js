@@ -91,10 +91,14 @@ function wireEditForm(tripId) {
   const cancel = document.getElementById("edit-trip-cancel");
   const nameInput = document.getElementById("edit-name");
   const activitySelect = document.getElementById("edit-activity_type");
+  // US-35: present only for a Komoot-linked trip — an unlinked one has no
+  // tour whose privacy could be changed, so the field simply isn't rendered.
+  const privacySelect = document.getElementById("edit-privacy_status");
   if (!button || !form || !cancel || !nameInput || !activitySelect || !tripId) return;
 
   const initialName = nameInput.value;
   const initialActivity = activitySelect.value;
+  const initialPrivacy = privacySelect ? privacySelect.value : null;
 
   button.addEventListener("click", () => {
     form.style.display = form.style.display === "none" ? "block" : "none";
@@ -110,6 +114,9 @@ function wireEditForm(tripId) {
     const body = {};
     if (nameInput.value !== initialName) body.name = nameInput.value;
     if (activitySelect.value !== initialActivity) body.activity_type = activitySelect.value;
+    if (privacySelect && privacySelect.value !== initialPrivacy) {
+      body.privacy_status = privacySelect.value;
+    }
     try {
       const response = await fetch(`/api/trips/${tripId}`, {
         method: "PATCH",

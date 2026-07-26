@@ -561,3 +561,8 @@ mod delete;
 // Split out into tests/backfill.rs to keep this file under the repo's 500-line cap.
 
 mod backfill;
+
+// ── Komoot privacy push + refresh ───────────────────────────────────────
+// Split out into tests/privacy.rs to keep this file under the repo's 500-line cap.
+
+mod privacy;

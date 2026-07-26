@@ -59,6 +59,13 @@ pub struct KomootTourSummary {
     /// caller only if/when needed).
     pub date: String,
     pub distance: f64,
+    /// Komoot's privacy field, raw (`"private"`/`"public"`/anything else) —
+    /// mapped to `KomootPrivacy` by the caller (US-35). Defaulted rather than
+    /// required: a listing that ever omits it must not fail the whole pull,
+    /// and an empty string maps to `Unknown` like any other unrecognized
+    /// value.
+    #[serde(default)]
+    pub status: String,
 }
 
 /// Komoot's tour `id` has been observed as either a JSON string or number;
@@ -217,10 +224,11 @@ pub trait KomootClient: Send + Sync {
     /// send for `Cycling`.
     fn get_tour(&self, tour_id: &str) -> Result<KomootTourSummary, KomootError>;
 
-    /// Updates a tour's name and sport (`PATCH /v007/tours/{tour_id}`, US-20)
-    /// — the push half of ADR-0021's edit sync. Komoot's `status` field
-    /// (privacy) is left untouched; this app doesn't manage it.
-    fn update_tour(&self, tour_id: &str, name: &str, sport: &str) -> Result<(), KomootError>;
+    /// Updates a tour's name, sport and (optionally) privacy
+    /// (`PATCH /v007/tours/{tour_id}`, US-20/US-35) — the push half of
+    /// ADR-0021's edit sync. A `TourUpdate` with `status: None` omits the
+    /// privacy field entirely, leaving whatever Komoot has untouched.
+    fn update_tour(&self, tour_id: &str, update: &TourUpdate<'_>) -> Result<(), KomootError>;
 
     /// Deletes a tour (`DELETE /v007/tours/{tour_id}`, US-24) — the push half
     /// of ADR-0021's delete sync: called for every `trip_komoot_link` row
@@ -477,9 +485,13 @@ impl KomootClient for KomootHttpClient {
         Ok(serde_json::from_str(&body)?)
     }
 
-    fn update_tour(&self, tour_id: &str, name: &str, sport: &str) -> Result<(), KomootError> {
+    fn update_tour(&self, tour_id: &str, update: &TourUpdate<'_>) -> Result<(), KomootError> {
         let url = format!("{BASE_URL}/v007/tours/{tour_id}");
-        let body = UpdateTourRequest { sport, name };
+        let body = UpdateTourRequest {
+            sport: update.sport,
+            name: update.name,
+            status: update.status,
+        };
         self.authed_patch(&url, &body)?;
         Ok(())
     }
@@ -490,13 +502,27 @@ impl KomootClient for KomootHttpClient {
     }
 }
 
-/// The `PATCH /v007/tours/{tour_id}` request body (US-20). `status`
-/// (privacy) is omitted entirely rather than sent as `None` — this app never
-/// touches it, and the field is optional on Komoot's side (`docs/komoot-api.md`).
+/// What a push wants a tour to look like on Komoot (US-20/US-35) — grouped
+/// into one struct rather than a widening list of positional `&str`s, so a
+/// call site can't silently swap `name` and `sport`, or `sport` and `status`.
+pub struct TourUpdate<'a> {
+    pub name: &'a str,
+    pub sport: &'a str,
+    /// The privacy to set, or `None` to leave Komoot's alone — the archive
+    /// only ever sends a privacy it understands (ADR-0021).
+    pub status: Option<&'a str>,
+}
+
+/// The `PATCH /v007/tours/{tour_id}` request body (US-20/US-35). `status` is
+/// dropped from the JSON entirely when there's nothing to say about privacy,
+/// rather than sent as `null` — the field is optional on Komoot's side
+/// (`docs/komoot-api.md`), and a `null` might well be read as "clear it".
 #[derive(serde::Serialize)]
 struct UpdateTourRequest<'a> {
     sport: &'a str,
     name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<&'a str>,
 }
 
 #[cfg(any(test, feature = "test-support"))]

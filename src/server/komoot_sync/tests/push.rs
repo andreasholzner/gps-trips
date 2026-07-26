@@ -34,9 +34,17 @@ async fn a_pending_edit(
         .unwrap();
     tx.commit().await.unwrap();
 
-    repo::update_trip(pool, trip_id, Some(name), Some(activity))
-        .await
-        .unwrap();
+    repo::update_trip(
+        pool,
+        trip_id,
+        &repo::TripEdit {
+            name: Some(name),
+            activity_type: Some(activity),
+            ..repo::TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
     trip_id
 }
 
@@ -68,9 +76,17 @@ async fn a_pending_planned_edit(
         .unwrap();
     tx.commit().await.unwrap();
 
-    repo::update_trip(pool, trip_id, Some(name), Some(activity))
-        .await
-        .unwrap();
+    repo::update_trip(
+        pool,
+        trip_id,
+        &repo::TripEdit {
+            name: Some(name),
+            activity_type: Some(activity),
+            ..repo::TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
     trip_id
 }
 
@@ -96,7 +112,12 @@ async fn push_pending_edits_never_changes_a_planned_routes_sport_even_when_activ
     let calls = mock.update_tour_calls.lock().unwrap();
     assert_eq!(
         *calls,
-        vec![("555".to_string(), "New Name".to_string(), "mtb".to_string())],
+        vec![(
+            "555".to_string(),
+            "New Name".to_string(),
+            "mtb".to_string(),
+            None
+        )],
         "planned route's sport must be resent unchanged, name updated"
     );
 }
@@ -122,7 +143,12 @@ async fn push_pending_edits_reuses_the_live_sport_when_activity_type_is_unchange
     let calls = mock.update_tour_calls.lock().unwrap();
     assert_eq!(
         *calls,
-        vec![("555".to_string(), "New Name".to_string(), "mtb".to_string())]
+        vec![(
+            "555".to_string(),
+            "New Name".to_string(),
+            "mtb".to_string(),
+            None
+        )]
     );
 }
 
@@ -150,7 +176,8 @@ async fn push_pending_edits_remaps_the_sport_when_activity_type_actually_changed
         vec![(
             "555".to_string(),
             "New Name".to_string(),
-            "hike".to_string()
+            "hike".to_string(),
+            None
         )]
     );
 }

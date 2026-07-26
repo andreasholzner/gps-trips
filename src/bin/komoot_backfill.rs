@@ -22,7 +22,7 @@ use std::sync::Arc;
 use trip_archive::config;
 use trip_archive::models::TripKind;
 use trip_archive::server::komoot::{
-    KomootClient, KomootError, KomootHttpClient, KomootPhoto, KomootTourSummary,
+    KomootClient, KomootError, KomootHttpClient, KomootPhoto, KomootTourSummary, TourUpdate,
 };
 use trip_archive::server::storage::{BlobStore, LocalDisk};
 use trip_archive::server::{db, komoot_sync, paths};
@@ -224,9 +224,9 @@ impl KomootClient for InteractiveKomootClient {
         self.inner.get_tour(tour_id)
     }
 
-    fn update_tour(&self, tour_id: &str, name: &str, sport: &str) -> Result<(), KomootError> {
+    fn update_tour(&self, tour_id: &str, update: &TourUpdate<'_>) -> Result<(), KomootError> {
         self.confirm(&format!("update tour {tour_id}"))?;
-        self.inner.update_tour(tour_id, name, sport)
+        self.inner.update_tour(tour_id, update)
     }
 
     fn delete_tour(&self, tour_id: &str) -> Result<(), KomootError> {

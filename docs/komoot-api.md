@@ -369,6 +369,13 @@ Body: { "sport": "...", "name": "...", "status"?: "..." }
 
 - `200` — success.
 
+`status` is the tour's privacy. Two values are confirmed against a real account: `private` and
+`public` — both as read from the list/detail responses and as written here. Komoot may have others;
+the archive mirrors the field into `trip_komoot_link.privacy_status` and maps anything it doesn't
+recognize to `unknown`, which it then never writes back (US-35, ADR-0021). Omitting `status`
+entirely leaves the tour's privacy untouched — a `null` is not sent, since its meaning to Komoot is
+untested.
+
 ### Delete tour
 
 ```

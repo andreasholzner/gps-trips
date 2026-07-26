@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::ActivityType;
+use crate::models::{ActivityType, KomootLink};
 
 /// Full trip metadata. The track geometry (a GeoJSON blob) lives in a separate
 /// table and is not part of this struct (ADR-0003).
@@ -24,4 +24,7 @@ pub struct TripDetail {
     pub min_lon: Option<f64>,
     pub max_lat: Option<f64>,
     pub max_lon: Option<f64>,
+    /// The trip's `trip_komoot_link` row, if it has one (US-35) — the detail
+    /// page offers a privacy control only for a linked trip.
+    pub komoot: Option<KomootLink>,
 }

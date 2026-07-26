@@ -4,7 +4,7 @@
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
-use crate::models::{ActivityType, TripDetail, TripKind, TripSummary};
+use crate::models::{ActivityType, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary};
 use crate::server::gpx::TrackStats;
 
 use super::to_rfc3339;
@@ -164,8 +164,9 @@ fn next_day(date: &str) -> Option<String> {
 }
 
 /// List trips as lightweight summaries, most recent first (US-6), optionally
-/// narrowed by `filter` (US-13, ADR-0011). Reads only the `trip` table — never
-/// the track geometry — so it stays cheap. `start_time` may be NULL (GPX
+/// narrowed by `filter` (US-13, ADR-0011). Reads the `trip` table plus each
+/// trip's Komoot link row (US-35) — never the track geometry — so it stays
+/// cheap. `start_time` may be NULL (GPX
 /// without times); SQLite sorts NULLs last under DESC, and such a trip never
 /// matches a `from`/`to` filter (there's no date to compare against).
 ///
@@ -180,33 +181,42 @@ pub async fn list_trips(
     pool: &SqlitePool,
     filter: &TripFilter,
 ) -> Result<Vec<TripSummary>, sqlx::Error> {
+    // The privacy column comes from a LEFT JOIN on `trip_komoot_link` (US-35)
+    // — still no track geometry, and the join is on that table's indexed
+    // `trip_id`, so the list query stays cheap. A delete-pending link row has
+    // a NULL `trip_id` and therefore joins onto nothing.
     let mut query = sqlx::QueryBuilder::new(
-        "SELECT id, name, activity_type, start_time, distance_m, ascent_m, duration_secs, trip_kind \
-         FROM trip WHERE 1 = 1",
+        "SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type, \
+         t.start_time AS start_time, t.distance_m AS distance_m, t.ascent_m AS ascent_m, \
+         t.duration_secs AS duration_secs, t.trip_kind AS trip_kind, \
+         l.privacy_status AS privacy_status \
+         FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id WHERE 1 = 1",
     );
     if let Some(activity_type) = filter.activity_type {
-        query.push(" AND activity_type = ").push_bind(activity_type);
+        query
+            .push(" AND t.activity_type = ")
+            .push_bind(activity_type);
     }
     if let Some(trip_kind) = filter.trip_kind {
-        query.push(" AND trip_kind = ").push_bind(trip_kind);
+        query.push(" AND t.trip_kind = ").push_bind(trip_kind);
     }
     if let Some(from) = &filter.from {
         query
-            .push(" AND start_time >= ")
+            .push(" AND t.start_time >= ")
             .push_bind(format!("{from}T00:00:00"));
     }
     if let Some(to) = &filter.to {
         if let Some(next) = next_day(to) {
             query
-                .push(" AND start_time < ")
+                .push(" AND t.start_time < ")
                 .push_bind(format!("{next}T00:00:00"));
         }
     }
     if let Some(min_dist_m) = filter.min_dist_m {
-        query.push(" AND distance_m >= ").push_bind(min_dist_m);
+        query.push(" AND t.distance_m >= ").push_bind(min_dist_m);
     }
     if let Some(max_dist_m) = filter.max_dist_m {
-        query.push(" AND distance_m <= ").push_bind(max_dist_m);
+        query.push(" AND t.distance_m <= ").push_bind(max_dist_m);
     }
     if !filter.tags.is_empty() {
         // A trip matches only if it carries *every* selected tag (US-38, not
@@ -225,7 +235,7 @@ pub async fn list_trips(
         }
 
         query.push(
-            " AND id IN (SELECT trip_tag.trip_id FROM trip_tag \
+            " AND t.id IN (SELECT trip_tag.trip_id FROM trip_tag \
                JOIN tag ON tag.id = trip_tag.tag_id WHERE tag.name IN (",
         );
         let mut separated = query.separated(", ");
@@ -238,7 +248,7 @@ pub async fn list_trips(
             .push_bind(unique_tags.len() as i64)
             .push(")");
     }
-    query.push(" ORDER BY start_time DESC, id DESC");
+    query.push(" ORDER BY t.start_time DESC, t.id DESC");
 
     let trips: Vec<TripSummary> = query
         .build()
@@ -251,6 +261,7 @@ pub async fn list_trips(
             ascent_m: row.get("ascent_m"),
             duration_secs: row.get("duration_secs"),
             trip_kind: row.get("trip_kind"),
+            privacy_status: row.get("privacy_status"),
         })
         .fetch_all(pool)
         .await?;
@@ -314,10 +325,15 @@ pub async fn delete_trip(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error
 /// Fetch full trip detail by id, or `None` if no such trip exists.
 pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, sqlx::Error> {
     sqlx::query(
-        r#"SELECT id, name, activity_type, tz_name, start_time, end_time,
-                  distance_m, ascent_m, descent_m, duration_secs,
-                  min_lat, min_lon, max_lat, max_lon
-           FROM trip WHERE id = ?"#,
+        r#"SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type,
+                  t.tz_name AS tz_name, t.start_time AS start_time, t.end_time AS end_time,
+                  t.distance_m AS distance_m, t.ascent_m AS ascent_m, t.descent_m AS descent_m,
+                  t.duration_secs AS duration_secs,
+                  t.min_lat AS min_lat, t.min_lon AS min_lon,
+                  t.max_lat AS max_lat, t.max_lon AS max_lon,
+                  l.komoot_tour_id AS komoot_tour_id, l.privacy_status AS privacy_status
+           FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id
+           WHERE t.id = ?"#,
     )
     .bind(id)
     .map(row_to_detail)
@@ -340,39 +356,68 @@ pub async fn set_trip_timezone(
     Ok(())
 }
 
-/// Persist a trip's name and/or activity type (US-15). Each field is
-/// optional — `None` leaves that column untouched via `COALESCE`, so a
-/// partial edit is a single atomic statement rather than a separate
-/// read-then-write in the HTTP layer: there is no window between "check what
-/// the trip currently has" and "write the merged result" for a concurrent
-/// edit (or delete) of the same trip to race against. Returns `false` if no
-/// trip with this id exists (nothing to update).
+/// What an edit changes about a trip (US-15/US-35). Every field is
+/// independently optional — `None` means "leave this as it is" — so the owner
+/// can edit any subset in one call. A struct rather than a widening list of
+/// positional arguments: `name` and `privacy` are set independently and would
+/// otherwise be three `None`s at a call site with nothing naming which is
+/// which.
+#[derive(Debug, Default)]
+pub struct TripEdit<'a> {
+    pub name: Option<&'a str>,
+    pub activity_type: Option<ActivityType>,
+    /// The linked Komoot tour's privacy (US-35). Only meaningful for a
+    /// Komoot-sourced trip; `edit.rs` rejects it for any other, since there
+    /// would be no tour whose privacy it could change.
+    pub privacy: Option<KomootPrivacy>,
+}
+
+impl<'a> TripEdit<'a> {
+    /// A rename and nothing else — the common single-field edit.
+    pub fn named(name: &'a str) -> Self {
+        Self {
+            name: Some(name),
+            ..Self::default()
+        }
+    }
+}
+
+/// Persist a trip edit (US-15/US-35). An omitted `name`/`activity_type`
+/// leaves that column untouched via `COALESCE`, so a partial edit is a single
+/// atomic statement rather than a separate read-then-write in the HTTP layer:
+/// there is no window between "check what the trip currently has" and "write
+/// the merged result" for a concurrent edit (or delete) of the same trip to
+/// race against. Returns `false` if no trip with this id exists (nothing to
+/// update).
 ///
 /// Also marks the trip's `trip_komoot_link` row `edit_pending` (US-20,
-/// ADR-0021), in the same transaction as the `trip` update, if a link row
-/// exists — a no-op `UPDATE` otherwise, so trips never sourced from Komoot
-/// are unaffected. Deciding *whether the edit actually changed anything
-/// Komoot needs to know about* is deferred to the push phase
-/// (`komoot_sync::push_pending_edits`), which diffs against Komoot's live
-/// state rather than this call trying to detect a "real" change itself.
+/// ADR-0021), and writes `privacy` onto it when given (US-35), in the same
+/// transaction as the `trip` update, if a link row exists — no-op `UPDATE`s
+/// otherwise, so trips never sourced from Komoot are unaffected. Deciding
+/// *whether the edit actually changed anything Komoot needs to know about* is
+/// deferred to the push phase (`komoot_sync::push_pending_edits`), which
+/// diffs against Komoot's live state rather than this call trying to detect a
+/// "real" change itself.
 pub async fn update_trip(
     pool: &SqlitePool,
     id: i64,
-    name: Option<&str>,
-    activity_type: Option<ActivityType>,
+    edit: &TripEdit<'_>,
 ) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
     let result = sqlx::query(
         "UPDATE trip SET name = COALESCE(?, name), activity_type = COALESCE(?, activity_type) WHERE id = ?",
     )
-    .bind(name)
-    .bind(activity_type)
+    .bind(edit.name)
+    .bind(edit.activity_type)
     .bind(id)
     .execute(&mut *tx)
     .await?;
     let updated = result.rows_affected() > 0;
 
     if updated {
+        if let Some(privacy) = edit.privacy {
+            super::komoot::set_privacy_in_tx(&mut tx, id, privacy).await?;
+        }
         sqlx::query("UPDATE trip_komoot_link SET edit_pending = 1 WHERE trip_id = ?")
             .bind(id)
             .execute(&mut *tx)
@@ -399,6 +444,15 @@ fn row_to_detail(row: SqliteRow) -> TripDetail {
         min_lon: row.get("min_lon"),
         max_lat: row.get("max_lat"),
         max_lon: row.get("max_lon"),
+        // A missing `komoot_tour_id` *is* "not a Komoot trip" (ADR-0021: the
+        // link row's existence is the fact), which the detail page needs to
+        // tell apart from a linked trip whose privacy isn't known yet.
+        komoot: row
+            .get::<Option<String>, _>("komoot_tour_id")
+            .map(|tour_id| KomootLink {
+                tour_id,
+                privacy: row.get::<Option<KomootPrivacy>, _>("privacy_status"),
+            }),
     }
 }
 

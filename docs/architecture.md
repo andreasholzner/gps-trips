@@ -31,7 +31,7 @@ C4Context
 
     System(tripArchive, "Trip Archive", "Self-hosted web app to organize trips: GPS tracks + photos on a map, with stats, search and filtering.")
 
-    System_Ext(komoot, "komoot", "External SaaS used for recording, route planning and discovery. Source of exported GPX files and of synced tours + photos; receives pushed name/activity edits and deletes.")
+    System_Ext(komoot, "komoot", "External SaaS used for recording, route planning and discovery. Source of exported GPX files and of synced tours + photos; receives pushed name/activity/privacy edits and deletes.")
     System_Ext(osm, "OpenStreetMap tile servers", "Public raster map tiles.")
     System_Ext(qms, "QMapShack", "Owner's desktop GPS application. Reads a SQLite trip database that the exporter maintains.")
     System_Ext(owncloud, "ownCloud [planned]", "Owner's private file storage for photo blobs.")
@@ -42,7 +42,7 @@ C4Context
     Rel(tripArchive, osm, "Fetches map tiles", "HTTPS")
     Rel(tripArchive, owncloud, "Stores/serves photo blobs [planned]", "WebDAV")
     Rel(tripArchive, garmin, "Imports activities [planned]", "HTTPS API")
-    Rel(tripArchive, komoot, "Pulls tours + photos; pushes name/activity edits and deletes", "HTTPS (reverse-engineered API)")
+    Rel(tripArchive, komoot, "Pulls tours + photos; pushes name/activity/privacy edits and deletes", "HTTPS (reverse-engineered API)")
     Rel(tripArchive, qms, "Exports all trips into its database", "SQLite file")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

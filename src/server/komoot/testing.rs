@@ -13,16 +13,20 @@
 //! thing that matters is *which* Komoot call fails and whether later calls
 //! happen at all.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
-use super::{KomootClient, KomootError, KomootPhoto, KomootTourSummary};
+use super::{KomootClient, KomootError, KomootPhoto, KomootTourSummary, TourUpdate};
 
 /// Every Komoot call this mock recorded, in order — used to assert that a
 /// halted sync genuinely never attempted a later item (US-25), not just
 /// that it reported a failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordedCall {
-    UpdateTour(String),
+    /// The tour id plus the `status` (privacy) the push sent, if any —
+    /// `None` means the push deliberately omitted the field, leaving
+    /// Komoot's own privacy untouched.
+    UpdateTour(String, Option<String>),
     DeleteTour(String),
     GetTourGpx(String),
 }
@@ -41,6 +45,32 @@ pub struct MockKomootClient {
     pub fail_update_tour_for: std::collections::HashSet<String>,
     pub fail_delete_tour_for: std::collections::HashSet<String>,
     pub fail_get_tour_gpx_for: std::collections::HashSet<String>,
+    /// Komoot `status` (privacy) values that replace a configured tour's own,
+    /// as of the next call — how a test says "the owner changed this tour's
+    /// privacy inside Komoot after it was imported" (US-35). Behind a
+    /// `Mutex` because the client is shared as `Arc<dyn KomootClient>` by the
+    /// time a test wants to change it.
+    pub status_overrides: Mutex<HashMap<String, String>>,
+}
+
+impl MockKomootClient {
+    /// Make Komoot report a different privacy for `tour_id` from now on.
+    pub fn set_tour_status(&self, tour_id: &str, status: &str) {
+        self.status_overrides
+            .lock()
+            .unwrap()
+            .insert(tour_id.to_string(), status.to_string());
+    }
+
+    /// A tour as Komoot would report it right now, i.e. with any override
+    /// applied — every listing/detail response goes through this.
+    fn as_reported(&self, tour: &KomootTourSummary) -> KomootTourSummary {
+        let mut tour = tour.clone();
+        if let Some(status) = self.status_overrides.lock().unwrap().get(&tour.id) {
+            tour.status = status.clone();
+        }
+        tour
+    }
 }
 
 fn boom() -> KomootError {
@@ -62,7 +92,7 @@ impl KomootClient for MockKomootClient {
         page: Option<u32>,
     ) -> Result<Vec<KomootTourSummary>, KomootError> {
         Ok(if page.unwrap_or(0) == 0 {
-            self.tours.clone()
+            self.tours.iter().map(|t| self.as_reported(t)).collect()
         } else {
             Vec::new()
         })
@@ -75,7 +105,10 @@ impl KomootClient for MockKomootClient {
         page: Option<u32>,
     ) -> Result<Vec<KomootTourSummary>, KomootError> {
         Ok(if page.unwrap_or(0) == 0 {
-            self.planned_tours.clone()
+            self.planned_tours
+                .iter()
+                .map(|t| self.as_reported(t))
+                .collect()
         } else {
             Vec::new()
         })
@@ -109,18 +142,18 @@ impl KomootClient for MockKomootClient {
         self.tours
             .iter()
             .find(|t| t.id == tour_id)
-            .cloned()
+            .map(|t| self.as_reported(t))
             .ok_or_else(|| KomootError::UnexpectedStatus {
                 status: 404,
                 body: "no tour configured for this id in the test".to_string(),
             })
     }
 
-    fn update_tour(&self, tour_id: &str, _name: &str, _sport: &str) -> Result<(), KomootError> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push(RecordedCall::UpdateTour(tour_id.to_string()));
+    fn update_tour(&self, tour_id: &str, update: &TourUpdate<'_>) -> Result<(), KomootError> {
+        self.calls.lock().unwrap().push(RecordedCall::UpdateTour(
+            tour_id.to_string(),
+            update.status.map(str::to_string),
+        ));
         if self.fail_update_tour_for.contains(tour_id) {
             return Err(boom());
         }
@@ -142,11 +175,18 @@ impl KomootClient for MockKomootClient {
 /// A minimal `KomootTourSummary` fixture — only the fields the sync tests
 /// actually branch on need real values.
 pub fn a_tour(id: &str, name: &str, sport: &str) -> KomootTourSummary {
+    a_tour_with_status(id, name, sport, "private")
+}
+
+/// A tour fixture whose Komoot privacy (`status`) the test cares about — the
+/// value the pull mirrors into `trip_komoot_link.privacy_status`.
+pub fn a_tour_with_status(id: &str, name: &str, sport: &str, status: &str) -> KomootTourSummary {
     KomootTourSummary {
         id: id.to_string(),
         name: name.to_string(),
         sport: sport.to_string(),
         date: "2026-07-11T08:47:52.000Z".to_string(),
         distance: 1000.0,
+        status: status.to_string(),
     }
 }

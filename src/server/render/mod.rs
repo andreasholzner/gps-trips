@@ -8,7 +8,7 @@
 
 mod trip_list;
 
-use crate::models::{ActivityType, TripDetail, TripKind};
+use crate::models::{ActivityType, KomootLink, KomootPrivacy, TripDetail, TripKind};
 use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
 
 pub use trip_list::render_trip_list;
@@ -124,6 +124,60 @@ fn activity_type_select_value(activity: ActivityType) -> &'static str {
     }
 }
 
+/// The edit form's Komoot privacy `<select>` (US-35), or nothing at all for a
+/// trip that never came from Komoot — privacy is the linked tour's property,
+/// so an unlinked trip has none to offer (`edit.rs` rejects the field for one
+/// too). Only `SELECTABLE` values are settable: `Unknown` is a state Komoot
+/// put the tour in, never one to pick.
+///
+/// A linked trip whose privacy isn't a settable one — not read from Komoot
+/// yet, or read as something this app can't map — gets a selected placeholder
+/// ahead of the real options. Without it the browser would show the *first*
+/// option, silently claiming a privacy the archive doesn't know; and since
+/// `trip_detail.js` only sends a value that differs from the one the page
+/// loaded with, that claim would also make the shown value the one privacy
+/// the owner couldn't then choose.
+fn privacy_field(link: Option<&KomootLink>) -> String {
+    let Some(link) = link else {
+        return String::new();
+    };
+    let known = link
+        .privacy
+        .filter(|privacy| KomootPrivacy::SELECTABLE.contains(privacy));
+    let placeholder = match known {
+        Some(_) => String::new(),
+        None => format!(
+            "<option value=\"\" selected>{label}</option>\n        ",
+            label = KomootPrivacy::Unknown.label(),
+        ),
+    };
+    let options: String = KomootPrivacy::SELECTABLE
+        .iter()
+        .map(|privacy| {
+            format!(
+                "<option value=\"{value}\"{sel}>{label}</option>\n",
+                value = privacy.as_str(),
+                sel = if known == Some(*privacy) {
+                    " selected"
+                } else {
+                    ""
+                },
+                label = privacy.label(),
+            )
+        })
+        .collect();
+    let options = format!("{placeholder}{options}");
+
+    format!(
+        r#"<p>
+      <label for="edit-privacy_status">Komoot privacy</label><br>
+      <select id="edit-privacy_status" name="privacy_status">
+        {options}
+      </select>
+    </p>"#
+    )
+}
+
 /// Render the trip detail page — relive a trip (US-7): the track on an OSM map,
 /// an elevation profile, a photo gallery, and the trip's tags (US-33).
 ///
@@ -172,6 +226,7 @@ pub fn render_detail(trip: &TripDetail) -> String {
         {activity_options}
       </select>
     </p>
+    {privacy_field}
     <button type="submit" id="edit-trip-save">Save</button>
     <button type="button" id="edit-trip-cancel">Cancel</button>
   </form>
@@ -215,6 +270,7 @@ pub fn render_detail(trip: &TripDetail) -> String {
         name = html_escape(&trip.name),
         activity = html_escape(trip.activity_type.as_str()),
         activity_options = activity_type_options(activity_type_select_value(trip.activity_type)),
+        privacy_field = privacy_field(trip.komoot.as_ref()),
         tz_name = html_escape(trip.tz_name.as_deref().unwrap_or("unknown")),
         start = html_escape(&start),
         distance = distance_km,
@@ -377,6 +433,117 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{KomootLink, KomootPrivacy};
+
+    /// A trip detail with no Komoot link — the plain, GPX-imported case.
+    fn a_detail() -> TripDetail {
+        TripDetail {
+            id: 1,
+            name: "Oslo Hills Walk".to_string(),
+            activity_type: ActivityType::Hiking,
+            tz_name: Some("Europe/Oslo".to_string()),
+            start_time: None,
+            end_time: None,
+            distance_m: 1000.0,
+            ascent_m: None,
+            descent_m: None,
+            duration_secs: None,
+            min_lat: None,
+            min_lon: None,
+            max_lat: None,
+            max_lon: None,
+            komoot: None,
+        }
+    }
+
+    fn a_linked_detail(privacy: Option<KomootPrivacy>) -> TripDetail {
+        TripDetail {
+            komoot: Some(KomootLink {
+                tour_id: "123456".to_string(),
+                privacy,
+            }),
+            ..a_detail()
+        }
+    }
+
+    #[test]
+    fn detail_page_offers_a_privacy_control_for_a_komoot_linked_trip() {
+        let html = render_detail(&a_linked_detail(Some(KomootPrivacy::Private)));
+
+        assert!(html.contains("id=\"edit-privacy_status\""));
+        for privacy in KomootPrivacy::SELECTABLE {
+            assert!(
+                html.contains(&format!("value=\"{}\"", privacy.as_str())),
+                "every settable privacy must be offered: {privacy}"
+            );
+        }
+        assert!(
+            html.contains("value=\"private\" selected"),
+            "the trip's current privacy must be pre-selected"
+        );
+    }
+
+    #[test]
+    fn detail_page_has_no_privacy_control_for_a_trip_that_never_came_from_komoot() {
+        // Privacy is Komoot's field; a GPX-imported trip has none to set.
+        let html = render_detail(&a_detail());
+
+        assert!(!html.contains("edit-privacy_status"));
+    }
+
+    #[test]
+    fn detail_page_still_offers_the_control_when_the_privacy_is_not_known_yet() {
+        // Linked but never synced: the owner can still pick a value, which
+        // the next sync pushes.
+        let html = render_detail(&a_linked_detail(None));
+
+        assert!(html.contains("id=\"edit-privacy_status\""));
+    }
+
+    /// The privacy picker's own markup — asserted on directly rather than
+    /// through the whole page, which carries a second `<select>` (activity
+    /// type) with a blank option of its own.
+    fn privacy_picker(privacy: Option<KomootPrivacy>) -> String {
+        privacy_field(Some(&KomootLink {
+            tour_id: "123456".to_string(),
+            privacy,
+        }))
+    }
+
+    #[test]
+    fn the_privacy_picker_never_claims_a_privacy_that_is_not_known() {
+        // A `<select>` with no `selected` option shows its *first* one, so
+        // leaving every option unselected would assert "Private" for a trip
+        // whose privacy the archive has no idea about — and, since the page's
+        // JS only sends a value that differs from the one it loaded, would
+        // make Private the one value the owner then couldn't choose. Both
+        // "no privacy stored yet" and "Komoot reported something unmappable"
+        // must therefore select a placeholder instead.
+        for privacy in [None, Some(KomootPrivacy::Unknown)] {
+            let html = privacy_picker(privacy);
+
+            assert!(
+                html.contains("<option value=\"\" selected"),
+                "a placeholder must be the selected option for {privacy:?}"
+            );
+            for settable in KomootPrivacy::SELECTABLE {
+                assert!(
+                    !html.contains(&format!("value=\"{}\" selected", settable.as_str())),
+                    "{settable} must not look chosen for {privacy:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_privacy_picker_has_no_placeholder_once_the_privacy_is_known() {
+        // The placeholder is not a value the owner can go back to — it only
+        // exists to avoid claiming one that isn't known.
+        let html = privacy_picker(Some(KomootPrivacy::Public));
+
+        assert!(!html.contains("<option value=\"\""));
+        assert!(html.contains("value=\"public\" selected"));
+    }
 
     fn a_candidate(tour_id: &str, name: &str, kind: TripKind) -> SyncCandidate {
         SyncCandidate {

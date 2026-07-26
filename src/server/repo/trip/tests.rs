@@ -289,8 +289,11 @@ async fn us15_update_trip_persists_name_and_activity_type() {
     let updated = update_trip(
         &db.pool,
         id,
-        Some("Renamed Trip"),
-        Some(ActivityType::Cycling),
+        &TripEdit {
+            name: Some("Renamed Trip"),
+            activity_type: Some(ActivityType::Cycling),
+            ..TripEdit::default()
+        },
     )
     .await
     .unwrap();
@@ -304,7 +307,7 @@ async fn us15_update_trip_persists_name_and_activity_type() {
 async fn us15_update_trip_with_name_only_leaves_activity_type_unchanged() {
     let db = TestDb::new().await;
     let id = insert_sample_trip(&db.pool).await;
-    update_trip(&db.pool, id, Some("Renamed Trip"), None)
+    update_trip(&db.pool, id, &TripEdit::named("Renamed Trip"))
         .await
         .unwrap();
     let detail = get_trip(&db.pool, id).await.unwrap().unwrap();
@@ -316,9 +319,16 @@ async fn us15_update_trip_with_name_only_leaves_activity_type_unchanged() {
 async fn us15_update_trip_with_activity_type_only_leaves_name_unchanged() {
     let db = TestDb::new().await;
     let id = insert_sample_trip(&db.pool).await;
-    update_trip(&db.pool, id, None, Some(ActivityType::Cycling))
-        .await
-        .unwrap();
+    update_trip(
+        &db.pool,
+        id,
+        &TripEdit {
+            activity_type: Some(ActivityType::Cycling),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
     let detail = get_trip(&db.pool, id).await.unwrap().unwrap();
     assert_eq!(detail.name, "Oslo Hills Walk");
     assert_eq!(detail.activity_type, ActivityType::Cycling);
@@ -327,9 +337,17 @@ async fn us15_update_trip_with_activity_type_only_leaves_name_unchanged() {
 #[tokio::test]
 async fn us15_update_trip_on_an_unknown_id_returns_false() {
     let db = TestDb::new().await;
-    let updated = update_trip(&db.pool, 999, Some("Whatever"), Some(ActivityType::Hiking))
-        .await
-        .unwrap();
+    let updated = update_trip(
+        &db.pool,
+        999,
+        &TripEdit {
+            name: Some("Whatever"),
+            activity_type: Some(ActivityType::Hiking),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
     assert!(!updated);
 }
 
@@ -353,7 +371,7 @@ async fn us20_update_trip_sets_edit_pending_on_a_linked_trip() {
         .unwrap();
     tx.commit().await.unwrap();
 
-    update_trip(&db.pool, id, Some("Renamed Trip"), None)
+    update_trip(&db.pool, id, &TripEdit::named("Renamed Trip"))
         .await
         .unwrap();
 
@@ -365,11 +383,190 @@ async fn us20_update_trip_leaves_an_unlinked_trip_without_a_link_row() {
     let db = TestDb::new().await;
     let id = insert_sample_trip(&db.pool).await;
 
-    update_trip(&db.pool, id, Some("Renamed Trip"), None)
+    update_trip(&db.pool, id, &TripEdit::named("Renamed Trip"))
         .await
         .unwrap();
 
     assert_eq!(edit_pending_flag(&db.pool, id).await, None);
+}
+
+// ── Komoot privacy: stored on the link row, surfaced by the trip queries ──
+
+async fn link_trip_to_komoot(pool: &SqlitePool, trip_id: i64, tour_id: &str) {
+    let mut tx = pool.begin().await.unwrap();
+    crate::server::repo::komoot::insert_link_in_tx(&mut tx, trip_id, tour_id)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn us35_update_trip_persists_the_chosen_privacy_on_the_link_row() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+    link_trip_to_komoot(&db.pool, id, "123456").await;
+
+    let updated = update_trip(
+        &db.pool,
+        id,
+        &TripEdit {
+            privacy: Some(KomootPrivacy::Public),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(updated);
+    let detail = get_trip(&db.pool, id).await.unwrap().unwrap();
+    assert_eq!(
+        detail.komoot.unwrap().privacy,
+        Some(KomootPrivacy::Public),
+        "the privacy the owner picked must be readable back"
+    );
+}
+
+#[tokio::test]
+async fn us35_a_privacy_only_edit_queues_the_push_and_leaves_the_trip_alone() {
+    // Privacy lives on the link row, so a privacy-only edit must not disturb
+    // name/activity_type — but must still mark the row `edit_pending`, or the
+    // change would never reach Komoot.
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+    link_trip_to_komoot(&db.pool, id, "123456").await;
+
+    update_trip(
+        &db.pool,
+        id,
+        &TripEdit {
+            privacy: Some(KomootPrivacy::Private),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let detail = get_trip(&db.pool, id).await.unwrap().unwrap();
+    assert_eq!(detail.name, "Oslo Hills Walk");
+    assert_eq!(detail.activity_type, ActivityType::Hiking);
+    assert_eq!(edit_pending_flag(&db.pool, id).await, Some(true));
+}
+
+#[tokio::test]
+async fn us35_update_trip_without_a_privacy_leaves_the_stored_one_untouched() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+    link_trip_to_komoot(&db.pool, id, "123456").await;
+    update_trip(
+        &db.pool,
+        id,
+        &TripEdit {
+            privacy: Some(KomootPrivacy::Public),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    update_trip(
+        &db.pool,
+        id,
+        &TripEdit {
+            name: Some("Renamed Trip"),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let detail = get_trip(&db.pool, id).await.unwrap().unwrap();
+    assert_eq!(detail.name, "Renamed Trip");
+    assert_eq!(detail.komoot.unwrap().privacy, Some(KomootPrivacy::Public));
+}
+
+#[tokio::test]
+async fn us35_get_trip_reports_no_komoot_link_for_an_unlinked_trip() {
+    // The detail page tells "not a Komoot trip" (no privacy control at all)
+    // from "linked, privacy not yet known" by the link's presence, not by a
+    // null privacy.
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+
+    let detail = get_trip(&db.pool, id).await.unwrap().unwrap();
+    assert!(detail.komoot.is_none());
+}
+
+#[tokio::test]
+async fn us35_get_trip_reports_a_linked_trips_tour_id_and_unknown_privacy() {
+    let db = TestDb::new().await;
+    let id = insert_sample_trip(&db.pool).await;
+    link_trip_to_komoot(&db.pool, id, "123456").await;
+
+    let link = get_trip(&db.pool, id)
+        .await
+        .unwrap()
+        .unwrap()
+        .komoot
+        .unwrap();
+    assert_eq!(link.tour_id, "123456");
+    assert_eq!(link.privacy, None);
+}
+
+#[tokio::test]
+async fn us35_list_trips_reports_each_trips_privacy() {
+    // The list page shows privacy per row, so it has to come out of the same
+    // single list query — not a per-row lookup.
+    let db = TestDb::new().await;
+    let linked = insert_sample_trip(&db.pool).await;
+    link_trip_to_komoot(&db.pool, linked, "123456").await;
+    update_trip(
+        &db.pool,
+        linked,
+        &TripEdit {
+            privacy: Some(KomootPrivacy::Public),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
+    let unlinked = insert_sample_trip(&db.pool).await;
+
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+
+    let privacy_of = |id: i64| trips.iter().find(|t| t.id == id).unwrap().privacy_status;
+    assert_eq!(privacy_of(linked), Some(KomootPrivacy::Public));
+    assert_eq!(
+        privacy_of(unlinked),
+        None,
+        "a trip that never came from Komoot has no privacy to show"
+    );
+}
+
+#[tokio::test]
+async fn us35_list_trips_ignores_an_orphaned_delete_pending_link_row() {
+    // A delete-pending link row has a NULL trip_id (ON DELETE SET NULL), so
+    // it must never join onto some other trip's summary row.
+    let db = TestDb::new().await;
+    let doomed = insert_sample_trip(&db.pool).await;
+    link_trip_to_komoot(&db.pool, doomed, "123456").await;
+    update_trip(
+        &db.pool,
+        doomed,
+        &TripEdit {
+            privacy: Some(KomootPrivacy::Public),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .unwrap();
+    delete_trip(&db.pool, doomed).await.unwrap();
+    let other = insert_sample_trip(&db.pool).await;
+
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+
+    assert_eq!(trips.len(), 1);
+    assert_eq!(trips[0].id, other);
+    assert_eq!(trips[0].privacy_status, None);
 }
 
 // ── US-24: deleting a Komoot-sourced trip marks its link row delete_pending ──

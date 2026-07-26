@@ -15,7 +15,7 @@ use trip_archive::models::{ActivityType, TripKind};
 use trip_archive::server::gpx::{compute_stats, TrackPoint};
 use trip_archive::server::qmapshack::{self, config::ExportConfig, decode};
 use trip_archive::server::repo::{
-    add_trip_tag, delete_trip, get_or_create_tag, insert_trip, update_trip, NewTrip,
+    add_trip_tag, delete_trip, get_or_create_tag, insert_trip, update_trip, NewTrip, TripEdit,
 };
 use trip_archive::server::{db, geojson};
 
@@ -200,7 +200,7 @@ async fn us37_renamed_trip_is_updated_in_place() {
         .await
         .expect("first run");
 
-    update_trip(&archive, trip, Some("Nytt navn"), None)
+    update_trip(&archive, trip, &TripEdit::named("Nytt navn"))
         .await
         .expect("rename trip");
 
@@ -263,9 +263,16 @@ async fn us37_activity_change_moves_the_item_and_refreshes_its_content() {
         .await
         .unwrap();
 
-    update_trip(&archive, trip, None, Some(ActivityType::SkiTouring))
-        .await
-        .expect("change activity type");
+    update_trip(
+        &archive,
+        trip,
+        &TripEdit {
+            activity_type: Some(ActivityType::SkiTouring),
+            ..TripEdit::default()
+        },
+    )
+    .await
+    .expect("change activity type");
 
     let second = qmapshack::run_export(&archive, &cfg)
         .await
@@ -487,7 +494,7 @@ async fn us37_owner_created_items_and_folders_are_left_untouched() {
         .unwrap();
 
     // Force real reconciliation work: an edit and a deletion in the archive.
-    update_trip(&archive, trip, Some("Egen tur II"), None)
+    update_trip(&archive, trip, &TripEdit::named("Egen tur II"))
         .await
         .expect("rename");
     let doomed = insert_test_trip(

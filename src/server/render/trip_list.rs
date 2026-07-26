@@ -1,7 +1,7 @@
 //! The trip list page (US-6/US-13), split into a Recorded/Planned tab
 //! (US-32).
 
-use crate::models::{normalize_tag_name, ActivityType, Tag, TripKind, TripSummary};
+use crate::models::{normalize_tag_name, ActivityType, KomootPrivacy, Tag, TripKind, TripSummary};
 use crate::server::filter::TripFilterQuery;
 
 use super::{dash, fmt_duration, fmt_metres, html_escape};
@@ -35,7 +35,7 @@ pub fn render_trip_list(
         let rows: String = trips.iter().map(render_trip_row).collect();
         format!(
             "<table>\n\
-             <thead><tr><th><input type=\"checkbox\" id=\"select-all\"></th><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th></tr></thead>\n\
+             <thead><tr><th><input type=\"checkbox\" id=\"select-all\"></th><th>Trip</th><th>Activity</th><th>Date</th><th>Distance</th><th>Ascent</th><th>Duration</th><th>Privacy</th></tr></thead>\n\
              <tbody>\n{rows}</tbody>\n\
              </table>"
         )
@@ -262,6 +262,12 @@ fn activity_filter_options(selected: &str) -> String {
     options
 }
 
+/// The privacy cell of a trip row: the Komoot privacy of a linked trip, or a
+/// dash for a trip that never came from Komoot (and so has none).
+fn privacy_cell(privacy: Option<KomootPrivacy>) -> String {
+    privacy.map(|p| p.label().to_string()).unwrap_or_else(dash)
+}
+
 /// One row of the trip list table.
 fn render_trip_row(trip: &TripSummary) -> String {
     // start_time is RFC-3339 (e.g. "2024-06-01T08:00:00+00:00"); show the date part.
@@ -277,7 +283,8 @@ fn render_trip_row(trip: &TripSummary) -> String {
     format!(
         "<tr><td><input type=\"checkbox\" class=\"trip-select\" value=\"{id}\"></td>\
          <td><a href=\"/trips/{id}\">{name}</a></td><td>{activity}</td>\
-         <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td></tr>\n",
+         <td>{date}</td><td>{distance:.2} km</td><td>{ascent}</td><td>{duration}</td>\
+         <td>{privacy}</td></tr>\n",
         id = trip.id,
         name = html_escape(&trip.name),
         activity = html_escape(trip.activity_type.as_str()),
@@ -285,5 +292,57 @@ fn render_trip_row(trip: &TripSummary) -> String {
         distance = distance_km,
         ascent = ascent,
         duration = duration,
+        privacy = privacy_cell(trip.privacy_status),
     )
+}
+
+// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn a_trip(id: i64, privacy: Option<KomootPrivacy>) -> TripSummary {
+        TripSummary {
+            id,
+            name: "Oslo Hills Walk".to_string(),
+            activity_type: ActivityType::Hiking,
+            start_time: Some("2024-06-01T08:00:00+00:00".to_string()),
+            distance_m: 1000.0,
+            ascent_m: None,
+            duration_secs: None,
+            trip_kind: TripKind::Recorded,
+            privacy_status: privacy,
+        }
+    }
+
+    fn render(trips: &[TripSummary]) -> String {
+        render_trip_list(trips, &TripFilterQuery::default(), TripKind::Recorded, &[])
+    }
+
+    #[test]
+    fn the_list_shows_each_trips_komoot_privacy() {
+        let html = render(&[a_trip(1, Some(KomootPrivacy::Public))]);
+
+        assert!(html.contains("<th>Privacy</th>"));
+        assert!(html.contains(&format!("<td>{}</td>", KomootPrivacy::Public.label())));
+    }
+
+    #[test]
+    fn a_linked_trip_whose_privacy_komoot_reported_unmappably_shows_it_as_unknown() {
+        // Distinct from the dash below: the archive *has* looked, and what
+        // Komoot said didn't map — not the same as "never came from Komoot".
+        let html = render(&[a_trip(1, Some(KomootPrivacy::Unknown))]);
+
+        assert!(html.contains(&format!("<td>{}</td>", KomootPrivacy::Unknown.label())));
+    }
+
+    #[test]
+    fn a_trip_that_never_came_from_komoot_shows_no_privacy() {
+        let html = render(&[a_trip(1, None)]);
+
+        assert!(html.contains("<th>Privacy</th>"));
+        assert!(!html.contains(&format!("<td>{}</td>", KomootPrivacy::Public.label())));
+        assert!(!html.contains(&format!("<td>{}</td>", KomootPrivacy::Private.label())));
+    }
 }
