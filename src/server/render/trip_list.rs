@@ -48,6 +48,17 @@ pub fn render_trip_list(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Trip Archive</title>
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  <style>
+    #region-map {{ height: 20rem; max-width: 40rem; }}
+    /* While "Select area" is armed, the map's own controls must not swallow
+       the mousedown that starts (or the mouseup that ends) the rectangle —
+       otherwise a drag begun over the zoom buttons, or released over the
+       attribution, silently does nothing (US-14). Targets `.leaflet-control`
+       itself, not just its container: leaflet.css re-enables pointer events
+       on each control, so a rule on the container alone is overridden. */
+    #region-map.region-drawing .leaflet-control {{ pointer-events: none; }}
+  </style>
 </head>
 <body>
   <h1>Trips</h1>
@@ -56,6 +67,7 @@ pub fn render_trip_list(
   {filter_form}
   {body}
   {bulk_tag_panel}
+  <script src="/static/vendor/leaflet.js"></script>
   <script src="/static/js/trip_list.js"></script>
 </body>
 </html>"#,
@@ -126,6 +138,7 @@ fn hidden_filter_inputs(query: &TripFilterQuery) -> String {
         ("min_dist", query.min_dist.as_deref()),
         ("max_dist", query.max_dist.as_deref()),
         ("tags", query.tags.as_deref()),
+        ("bbox", query.bbox.as_deref()),
     ]
     .into_iter()
     .filter_map(|(name, value)| {
@@ -153,6 +166,7 @@ fn any_filter_set(query: &TripFilterQuery) -> bool {
         || is_non_blank(query.max_dist.as_deref())
         || is_non_blank(query.q.as_deref())
         || is_non_blank(query.tags.as_deref())
+        || is_non_blank(query.bbox.as_deref())
 }
 
 fn is_non_blank(s: Option<&str>) -> bool {
@@ -179,6 +193,7 @@ fn render_filter_form(query: &TripFilterQuery, all_tags: &[Tag]) -> String {
     let tags_value = html_escape(query.tags.as_deref().unwrap_or(""));
     let activity_options = activity_filter_options(query.activity.as_deref().unwrap_or(""));
     let tags_options = tag_filter_options(query.tags.as_deref().unwrap_or(""), all_tags);
+    let region = render_region_field(query.bbox.as_deref().unwrap_or(""));
 
     format!(
         r#"<form method="get" action="/" id="filter-form">
@@ -196,9 +211,35 @@ fn render_filter_form(query: &TripFilterQuery, all_tags: &[Tag]) -> String {
     </select>
   </label>
   <input type="hidden" id="tags-input" name="tags" value="{tags_value}">
+  {region}
   <button type="submit">Filter</button>
   <a href="/">Clear</a>
 </form>"#
+    )
+}
+
+/// The region filter (US-14): a `<details>` holding the map the owner drags a
+/// rectangle on, plus the hidden `bbox` input that rectangle is written into —
+/// `minLon,minLat,maxLon,maxLat` per ADR-0008, the same value `parse_filter`
+/// reads back. Collapsed by default so an ordinary list view initialises no
+/// map and fetches no OSM tiles, and opened when a region is already active so
+/// the owner can see and adjust what they selected. `trip_list.js` initialises
+/// Leaflet the first time it opens and restores the rectangle from the input.
+fn render_region_field(bbox: &str) -> String {
+    let open = if bbox.trim().is_empty() { "" } else { " open" };
+
+    format!(
+        r#"<details id="region-filter"{open}>
+    <summary>Region</summary>
+    <p>
+      <button type="button" id="region-select">Select area</button>
+      <button type="button" id="region-clear">Clear area</button>
+      <span id="region-hint"></span>
+    </p>
+    <div id="region-map"></div>
+    <input type="hidden" id="region-input" name="bbox" value="{bbox}">
+  </details>"#,
+        bbox = html_escape(bbox),
     )
 }
 
@@ -318,6 +359,79 @@ mod tests {
 
     fn render(trips: &[TripSummary]) -> String {
         render_trip_list(trips, &TripFilterQuery::default(), TripKind::Recorded, &[])
+    }
+
+    fn render_with(query: &TripFilterQuery) -> String {
+        render_trip_list(&[a_trip(1, None)], query, TripKind::Recorded, &[])
+    }
+
+    fn with_bbox(bbox: &str) -> TripFilterQuery {
+        TripFilterQuery {
+            bbox: Some(bbox.to_string()),
+            ..Default::default()
+        }
+    }
+
+    // ── US-14: the map-drawn region filter ───────────────────────────────
+
+    #[test]
+    fn us14_the_filter_form_offers_a_map_to_select_a_region_on() {
+        let html = render(&[a_trip(1, None)]);
+
+        assert!(html.contains("id=\"region-map\""), "got: {html}");
+        assert!(html.contains("name=\"bbox\""), "got: {html}");
+        // The map needs Leaflet on the list page, self-hosted (US-10/ADR-0005).
+        assert!(html.contains("/static/vendor/leaflet.js"), "got: {html}");
+        assert!(html.contains("/static/vendor/leaflet.css"), "got: {html}");
+    }
+
+    #[test]
+    fn us14_an_active_region_is_echoed_back_into_the_form() {
+        // Same round-trip US-13's other filter fields get: a follow-up filter
+        // edit must not silently drop the region the owner already selected.
+        let html = render_with(&with_bbox("10.7,59.9,10.8,60.0"));
+
+        assert!(
+            html.contains("value=\"10.7,59.9,10.8,60.0\""),
+            "got: {html}"
+        );
+    }
+
+    #[test]
+    fn us14_the_region_details_is_open_when_a_region_is_active() {
+        let active = render_with(&with_bbox("10.7,59.9,10.8,60.0"));
+        let inactive = render_with(&TripFilterQuery::default());
+
+        assert!(
+            active.contains("id=\"region-filter\" open"),
+            "got: {active}"
+        );
+        assert!(
+            !inactive.contains("id=\"region-filter\" open"),
+            "got: {inactive}"
+        );
+    }
+
+    #[test]
+    fn us14_switching_tabs_preserves_the_active_region() {
+        let html = render_with(&with_bbox("10.7,59.9,10.8,60.0"));
+
+        assert!(
+            html.contains("<input type=\"hidden\" name=\"bbox\" value=\"10.7,59.9,10.8,60.0\">"),
+            "got: {html}"
+        );
+    }
+
+    #[test]
+    fn us14_a_region_matching_nothing_shows_the_filtered_empty_state() {
+        let html = render_trip_list(
+            &[],
+            &with_bbox("10.7,59.9,10.8,60.0"),
+            TripKind::Recorded,
+            &[],
+        );
+
+        assert!(html.contains("No trips match your filters"), "got: {html}");
     }
 
     #[test]

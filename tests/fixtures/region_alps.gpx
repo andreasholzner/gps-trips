@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A second track, far from sample.gpx's Oslo coordinates, so the US-14
+     region filter can be shown to *narrow* a list rather than only to match
+     or not match a single trip. -->
+<gpx version="1.1" creator="trip-archive-test"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Inn Valley Ride</name>
+    <trkseg>
+      <trkpt lat="47.2600" lon="11.3800">
+        <ele>600.0</ele>
+        <time>2024-07-01T08:00:00Z</time>
+      </trkpt>
+      <trkpt lat="47.2800" lon="11.4000">
+        <ele>640.0</ele>
+        <time>2024-07-01T08:30:00Z</time>
+      </trkpt>
+      <trkpt lat="47.3000" lon="11.4200">
+        <ele>620.0</ele>
+        <time>2024-07-01T09:00:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

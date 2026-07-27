@@ -634,9 +634,11 @@ async fn us6_list_trips_does_not_require_track_geometry() {
     assert_eq!(trips.len(), 1, "list must not depend on the track row");
 }
 
-// US-13 (filter the trip list) tests split into tests/filter.rs to keep this
-// file under the repo's 500-line cap.
+// US-13 (filter the trip list) and US-14 (filter by map region) tests split
+// into tests/filter.rs and tests/region.rs to keep this file under the repo's
+// 500-line cap.
 mod filter;
+mod region;
 
 // ── US-32: distinguish recorded from planned trips ───────────────────────
 

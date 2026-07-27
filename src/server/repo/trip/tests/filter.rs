@@ -1,7 +1,7 @@
 //! US-13 — filter the trip list by activity type, date interval, distance,
 //! and free search of the name. Split out of the parent `tests.rs` (US-1/
 //! US-6/US-7/US-9/US-15/US-21's tests) purely to keep that file under the
-//! repo's 500-line cap.
+//! repo's 500-line cap. US-14's region tests are the sibling `region.rs`.
 
 use super::*;
 use crate::server::repo::{add_trip_tag, get_or_create_tag};

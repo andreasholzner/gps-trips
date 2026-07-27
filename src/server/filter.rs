@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use time::Date;
 
-use crate::models::{normalize_tag_name, ActivityType, TripKind};
+use crate::models::{normalize_tag_name, ActivityType, BoundingBox, TripKind};
 use crate::server::{error::AppError, repo::TripFilter};
 
 /// `"[year]-[month]-[day]"`, built once at compile time (rather than
@@ -14,10 +14,9 @@ const DATE_FORMAT: &[time::format_description::FormatItem<'_>] =
     time::macros::format_description!("[year]-[month]-[day]");
 
 /// The raw query-string shape both `GET /` and `GET /api/trips` accept —
-/// ADR-0008 fixes these exact parameter names (except `bbox`, which belongs
-/// to US-14's geographic-region filter and is out of v1 scope). `min_dist`/
-/// `max_dist` are in kilometres, matching how distance is shown everywhere
-/// else in the UI; `parse_filter` converts to the DB's metres.
+/// ADR-0008 fixes these exact parameter names. `min_dist`/`max_dist` are in
+/// kilometres, matching how distance is shown everywhere else in the UI;
+/// `parse_filter` converts to the DB's metres.
 ///
 /// `min_dist`/`max_dist` are kept as raw strings (not `f64`) so that a blank
 /// value — which is exactly what a real `<form method="get">` submits for an
@@ -44,6 +43,10 @@ pub struct TripFilterQuery {
     /// repeated query keys into a `Vec` field; kept as a raw string, like
     /// every other field here, and split/validated in `parse_filter`.
     pub tags: Option<String>,
+    /// The map-drawn region (US-14) as `minLon,minLat,maxLon,maxLat` — the
+    /// exact parameter shape ADR-0008 fixes. Kept as a raw string like every
+    /// other field here, and split/validated in `parse_filter`.
+    pub bbox: Option<String>,
 }
 
 /// Parse a raw query into a `TripFilter`, validating each field at this HTTP
@@ -95,6 +98,7 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
     };
 
     let tags = parse_tags(query.tags.as_deref())?;
+    let region = parse_optional_bbox(query.bbox.as_deref())?;
 
     Ok(TripFilter {
         activity_type,
@@ -105,7 +109,70 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         name_query,
         trip_kind,
         tags,
+        region,
     })
+}
+
+/// Blank → `None` ("no region selected", which is what the filter form's
+/// untouched region control submits); otherwise exactly four comma-separated
+/// numbers in ADR-0008's `minLon,minLat,maxLon,maxLat` order, each finite and
+/// within its coordinate range.
+///
+/// A backwards range on either axis is a 400 rather than a silently empty
+/// result: on longitude that is also how a rectangle crossing the antimeridian
+/// would arrive, and ADR-0011's v1 rectangle doesn't wrap — better to say so
+/// than to return "no trips" for a region the owner did select. Non-finite
+/// values are rejected for the same reason `parse_optional_distance_km`
+/// rejects them: SQLite binds a `NaN` `REAL` parameter as `NULL`, which the
+/// query can't tell apart from "no filter".
+fn parse_optional_bbox(s: Option<&str>) -> Result<Option<BoundingBox>, AppError> {
+    let raw = match s.map(str::trim) {
+        None | Some("") => return Ok(None),
+        Some(value) => value,
+    };
+
+    let parts: Vec<&str> = raw.split(',').collect();
+    let [min_lon, min_lat, max_lon, max_lat] = parts.as_slice() else {
+        return Err(AppError::BadRequest(format!(
+            "invalid bbox (expected minLon,minLat,maxLon,maxLat): {raw:?}"
+        )));
+    };
+
+    let min_lon = parse_coordinate(min_lon, "longitude", -180.0, 180.0)?;
+    let min_lat = parse_coordinate(min_lat, "latitude", -90.0, 90.0)?;
+    let max_lon = parse_coordinate(max_lon, "longitude", -180.0, 180.0)?;
+    let max_lat = parse_coordinate(max_lat, "latitude", -90.0, 90.0)?;
+
+    if min_lon > max_lon {
+        return Err(AppError::BadRequest(format!(
+            "bbox min longitude ({min_lon}) must not be greater than max longitude ({max_lon})"
+        )));
+    }
+    if min_lat > max_lat {
+        return Err(AppError::BadRequest(format!(
+            "bbox min latitude ({min_lat}) must not be greater than max latitude ({max_lat})"
+        )));
+    }
+
+    Ok(Some(BoundingBox {
+        min_lat,
+        min_lon,
+        max_lat,
+        max_lon,
+    }))
+}
+
+/// One bbox coordinate: a finite number within `[min, max]` degrees.
+fn parse_coordinate(s: &str, axis: &str, min: f64, max: f64) -> Result<f64, AppError> {
+    let value: f64 = s.trim().parse().map_err(|_| {
+        AppError::BadRequest(format!("invalid bbox {axis} (expected a number): {s:?}"))
+    })?;
+    if !value.is_finite() || value < min || value > max {
+        return Err(AppError::BadRequest(format!(
+            "bbox {axis} must be between {min} and {max}: {s:?}"
+        )));
+    }
+    Ok(value)
 }
 
 /// Blank → no filter (empty `Vec`); otherwise split on `,`, normalize each
@@ -179,247 +246,4 @@ fn parse_optional_distance_km(s: Option<&str>) -> Result<Option<f64>, AppError> 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn query(f: impl FnOnce(&mut TripFilterQuery)) -> TripFilterQuery {
-        let mut q = TripFilterQuery::default();
-        f(&mut q);
-        q
-    }
-
-    #[test]
-    fn empty_query_produces_no_filters() {
-        let filter = parse_filter(&TripFilterQuery::default()).unwrap();
-        assert!(filter.activity_type.is_none());
-        assert!(filter.from.is_none());
-        assert!(filter.to.is_none());
-        assert!(filter.min_dist_m.is_none());
-        assert!(filter.max_dist_m.is_none());
-        assert!(filter.name_query.is_none());
-        assert!(filter.trip_kind.is_none());
-        assert!(filter.tags.is_empty());
-    }
-
-    #[test]
-    fn blank_tags_means_no_filter() {
-        let q = query(|q| q.tags = Some("   ".to_string()));
-        assert!(parse_filter(&q).unwrap().tags.is_empty());
-    }
-
-    #[test]
-    fn a_single_tag_is_parsed() {
-        let q = query(|q| q.tags = Some("alps".to_string()));
-        assert_eq!(parse_filter(&q).unwrap().tags, vec!["alps".to_string()]);
-    }
-
-    #[test]
-    fn comma_separated_tags_are_split_and_trimmed() {
-        let q = query(|q| q.tags = Some(" alps , hiking ".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().tags,
-            vec!["alps".to_string(), "hiking".to_string()]
-        );
-    }
-
-    #[test]
-    fn tags_are_normalized_like_us33s_write_path() {
-        let q = query(|q| q.tags = Some("Alps".to_string()));
-        assert_eq!(parse_filter(&q).unwrap().tags, vec!["alps".to_string()]);
-    }
-
-    #[test]
-    fn duplicate_tags_are_deduplicated() {
-        let q = query(|q| q.tags = Some("alps,alps".to_string()));
-        assert_eq!(parse_filter(&q).unwrap().tags, vec!["alps".to_string()]);
-    }
-
-    #[test]
-    fn a_tag_containing_whitespace_is_rejected_with_bad_request() {
-        let q = query(|q| q.tags = Some("day trip".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn a_stray_comma_is_tolerated() {
-        let q = query(|q| q.tags = Some("alps,,hiking,".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().tags,
-            vec!["alps".to_string(), "hiking".to_string()]
-        );
-    }
-
-    #[test]
-    fn blank_kind_means_no_filter() {
-        let q = query(|q| q.kind = Some(String::new()));
-        assert!(parse_filter(&q).unwrap().trip_kind.is_none());
-    }
-
-    #[test]
-    fn a_valid_kind_is_parsed() {
-        let q = query(|q| q.kind = Some("planned".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().trip_kind,
-            Some(crate::models::TripKind::Planned)
-        );
-    }
-
-    #[test]
-    fn unrecognized_kind_is_rejected_with_bad_request() {
-        let q = query(|q| q.kind = Some("hypothetical".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn blank_activity_means_no_filter() {
-        let q = query(|q| q.activity = Some(String::new()));
-        assert!(parse_filter(&q).unwrap().activity_type.is_none());
-    }
-
-    #[test]
-    fn activity_is_trimmed_before_parsing_like_import_and_edit_do() {
-        let q = query(|q| q.activity = Some("  cycling  ".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().activity_type,
-            Some(ActivityType::Cycling)
-        );
-    }
-
-    #[test]
-    fn explicit_unknown_activity_is_a_valid_filter_value() {
-        let q = query(|q| q.activity = Some("unknown".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().activity_type,
-            Some(ActivityType::Unknown)
-        );
-    }
-
-    #[test]
-    fn unrecognized_activity_is_rejected_with_bad_request() {
-        let q = query(|q| q.activity = Some("unicycling".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn blank_from_and_to_mean_no_filter() {
-        let q = query(|q| {
-            q.from = Some("   ".to_string());
-            q.to = Some(String::new());
-        });
-        let filter = parse_filter(&q).unwrap();
-        assert!(filter.from.is_none());
-        assert!(filter.to.is_none());
-    }
-
-    #[test]
-    fn a_valid_date_round_trips_unchanged() {
-        let q = query(|q| q.from = Some("2024-06-01".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().from.as_deref(),
-            Some("2024-06-01")
-        );
-    }
-
-    #[test]
-    fn an_invalid_date_is_rejected_with_bad_request() {
-        let q = query(|q| q.to = Some("2024-13-40".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn from_after_to_is_rejected_with_bad_request() {
-        let q = query(|q| {
-            q.from = Some("2024-06-10".to_string());
-            q.to = Some("2024-06-01".to_string());
-        });
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn from_equal_to_to_is_accepted() {
-        let q = query(|q| {
-            q.from = Some("2024-06-01".to_string());
-            q.to = Some("2024-06-01".to_string());
-        });
-        assert!(parse_filter(&q).is_ok());
-    }
-
-    #[test]
-    fn blank_min_and_max_dist_mean_no_filter() {
-        let q = query(|q| {
-            q.min_dist = Some("   ".to_string());
-            q.max_dist = Some(String::new());
-        });
-        let filter = parse_filter(&q).unwrap();
-        assert!(filter.min_dist_m.is_none());
-        assert!(filter.max_dist_m.is_none());
-    }
-
-    #[test]
-    fn min_max_dist_are_converted_from_km_to_metres() {
-        let q = query(|q| {
-            q.min_dist = Some("1.5".to_string());
-            q.max_dist = Some("10".to_string());
-        });
-        let filter = parse_filter(&q).unwrap();
-        assert_eq!(filter.min_dist_m, Some(1500.0));
-        assert_eq!(filter.max_dist_m, Some(10_000.0));
-    }
-
-    #[test]
-    fn non_numeric_dist_is_rejected_with_bad_request() {
-        let q = query(|q| q.min_dist = Some("abc".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn nan_dist_is_rejected_with_bad_request() {
-        let q = query(|q| q.min_dist = Some("nan".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn infinite_dist_is_rejected_with_bad_request() {
-        let q = query(|q| q.max_dist = Some("inf".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn negative_dist_is_rejected_with_bad_request() {
-        let q = query(|q| q.min_dist = Some("-5".to_string()));
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn min_dist_greater_than_max_dist_is_rejected_with_bad_request() {
-        let q = query(|q| {
-            q.min_dist = Some("50".to_string());
-            q.max_dist = Some("5".to_string());
-        });
-        assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
-    }
-
-    #[test]
-    fn min_dist_equal_to_max_dist_is_accepted() {
-        let q = query(|q| {
-            q.min_dist = Some("5".to_string());
-            q.max_dist = Some("5".to_string());
-        });
-        assert!(parse_filter(&q).is_ok());
-    }
-
-    #[test]
-    fn blank_name_query_is_no_filter() {
-        let q = query(|q| q.q = Some("   ".to_string()));
-        assert!(parse_filter(&q).unwrap().name_query.is_none());
-    }
-
-    #[test]
-    fn name_query_is_trimmed() {
-        let q = query(|q| q.q = Some("  oslo  ".to_string()));
-        assert_eq!(
-            parse_filter(&q).unwrap().name_query.as_deref(),
-            Some("oslo")
-        );
-    }
-}
+mod tests;

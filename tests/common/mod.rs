@@ -22,6 +22,9 @@ use trip_archive::server::{
 
 pub const SAMPLE_GPX: &[u8] = include_bytes!("../fixtures/sample.gpx");
 pub const NO_TRACKS_GPX: &[u8] = include_bytes!("../fixtures/no_tracks.gpx");
+/// A track in the Alps — far from `SAMPLE_GPX`'s Oslo coordinates, so the
+/// US-14 region filter can be tested on a list holding trips in two places.
+pub const REGION_ALPS_GPX: &[u8] = include_bytes!("../fixtures/region_alps.gpx");
 
 /// A router backed by a fresh temp database and a `LocalDisk` blob store, both
 /// under one `TempDir`. Keep the returned `TempDir` alive for the whole test —

@@ -4,7 +4,9 @@
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
-use crate::models::{ActivityType, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary};
+use crate::models::{
+    ActivityType, BoundingBox, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary,
+};
 use crate::server::gpx::TrackStats;
 
 use super::to_rfc3339;
@@ -139,6 +141,11 @@ pub struct TripFilter {
     /// `HAVING COUNT(DISTINCT ...)` AND-semantics query would otherwise
     /// silently match nothing for a filter containing a repeated name.
     pub tags: Vec<String>,
+    /// The geographic region the owner selected on the map (US-14). A trip
+    /// matches when its stored bounding box *overlaps* this rectangle — a
+    /// deliberately coarse test (ADR-0011): a trip whose box overlaps but
+    /// whose track never enters the region is an accepted false positive.
+    pub region: Option<BoundingBox>,
 }
 
 /// `"[year]-[month]-[day]"` — must match `filter::parse_filter`'s format,
@@ -211,6 +218,24 @@ pub async fn list_trips(
                 .push(" AND t.start_time < ")
                 .push_bind(format!("{next}T00:00:00"));
         }
+    }
+    if let Some(region) = filter.region {
+        // Bbox overlap, no PostGIS (US-14, ADR-0011): two rectangles overlap
+        // iff they overlap on both axes, which is exactly this pair of
+        // comparisons per axis. Edge-touching counts as overlap, matching the
+        // inclusive boundaries of the date and distance filters. A trip with
+        // NULL bbox columns never matches — SQL comparisons against NULL are
+        // never true — same as a NULL `start_time` never matching a date
+        // filter.
+        query
+            .push(" AND t.min_lat <= ")
+            .push_bind(region.max_lat)
+            .push(" AND t.max_lat >= ")
+            .push_bind(region.min_lat)
+            .push(" AND t.min_lon <= ")
+            .push_bind(region.max_lon)
+            .push(" AND t.max_lon >= ")
+            .push_bind(region.min_lon);
     }
     if let Some(min_dist_m) = filter.min_dist_m {
         query.push(" AND t.distance_m >= ").push_bind(min_dist_m);

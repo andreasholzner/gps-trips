@@ -1,0 +1,14 @@
+-- ADR-0011: the geographic-region filter (US-14) is a bbox-overlap test over
+-- the trip table's bounding-box columns, and the ADR calls for supporting
+-- indexes on those columns.
+--
+-- Note what SQLite actually does with it today: the list query's
+-- `ORDER BY t.start_time DESC` makes the planner scan via idx_trip_start_time
+-- and evaluate the bbox comparisons per row, so this index is not used —
+-- `EXPLAIN QUERY PLAN` reports `SCAN t USING INDEX idx_trip_start_time`. It is
+-- created for ADR-0011 compliance and would start paying off if the ordering
+-- or query shape changed; at this scale (one owner's trips) the row-by-row
+-- comparison is not a bottleneck either way. If bbox filtering ever does need
+-- real acceleration, ADR-0011 names SQLite's R*Tree module as the escalation
+-- rather than a new database.
+CREATE INDEX IF NOT EXISTS idx_trip_bbox ON trip(min_lat, max_lat, min_lon, max_lon);

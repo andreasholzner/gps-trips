@@ -2,6 +2,7 @@
 //! using `crate::models::{TripSummary, TripDetail}`.
 
 mod activity_type;
+mod bounding_box;
 mod komoot_link;
 mod komoot_privacy;
 mod location_source;
@@ -12,6 +13,7 @@ mod trip_kind;
 mod trip_summary;
 
 pub use activity_type::ActivityType;
+pub use bounding_box::BoundingBox;
 pub use komoot_link::KomootLink;
 pub use komoot_privacy::KomootPrivacy;
 pub use location_source::LocationSource;

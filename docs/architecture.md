@@ -215,6 +215,7 @@ C4Component
     Rel(detail, server, "GET detail, track.geojson; PATCH/DELETE", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
     Rel(map, osm, "Fetch tiles", "HTTPS")
+    Rel(list, osm, "Fetch tiles (region-select map, US-14)", "HTTPS")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
