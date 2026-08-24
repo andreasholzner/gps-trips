@@ -19,7 +19,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0011](./0011-filtering-search-geo-queries.md)       | Filtering, search & geographic queries on SQLite (no PostGIS)               | Accepted                      |
 | [0012](./0012-tdd-test-strategy.md)                  | TDD; requirement-covering tests, mock only externals                        | Accepted (amended 2026-07-24) |
 | [0013](./0013-integer-surrogate-keys.md)             | Integer surrogate primary keys (revisit only for offline-first replication) | Accepted                      |
-| [0014](./0014-defer-deployment-topology.md)          | Defer deployment topology; local-first for now                              | Accepted                      |
+| [0014](./0014-defer-deployment-topology.md)          | Defer deployment topology; local-first for now                              | Superseded by 0023            |
 | [0015](./0015-db-model-response-type-separation.md)  | Separate DB models from API response types                                  | Accepted                      |
 | [0016](./0016-assets-relative-to-executable.md)      | Resolve static assets relative to the executable, not the CWD               | Accepted                      |
 | [0017](./0017-kamadak-exif-for-gps-extraction.md)    | Use `kamadak-exif` for EXIF GPS extraction                                  | Accepted                      |
@@ -28,6 +28,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0020](./0020-image-crate-for-thumbnails.md)         | Use the `image` crate for thumbnail generation                              | Accepted                      |
 | [0021](./0021-reverse-engineered-komoot-client.md)   | Reverse-engineered Komoot client for automated import & edit sync           | Accepted                      |
 | [0022](./0022-qmapshack-export.md)                   | One-way QMapShack database export                                           | Proposed                      |
+| [0023](./0023-managed-scale-to-zero-hosting.md)      | Managed scale-to-zero hosting; mobile access via the web UI                 | Accepted                      |
 
 ## Conventions
 
