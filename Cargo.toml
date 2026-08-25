@@ -1,3 +1,8 @@
+# The server crate. `crates/types` holds the shared, wasm-safe data models and
+# `crates/ui-dioxus` the Dioxus SPA spike (docs/dioxus-spike.md).
+[workspace]
+members = ["crates/types", "crates/ui-dioxus"]
+
 [package]
 name = "trip-archive"
 version = "0.1.0"
@@ -25,6 +30,10 @@ time-tz = "2"
 # Thumbnail generation (US-5, ADR-0020); feature set trimmed to the 4 formats
 # content_type_from_path already accepts as photo uploads
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+
+# Shared data models (src/models/ moved here so the WASM UI can reuse them);
+# the `sqlx` feature adds the SQLite mappings only this crate needs.
+trip-archive-types = { path = "crates/types", features = ["sqlx"] }
 
 # Serialization (track GeoJSON blob + JSON models)
 serde      = { version = "1", features = ["derive"] }

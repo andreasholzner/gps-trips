@@ -1,0 +1,20 @@
+[application]
+name = "ui-dioxus"
+
+[web.app]
+title = "Trip Archive"
+# Matches where the built bundle is mounted on the Axum server (`/app`), so the
+# dev server and the deployed SPA resolve assets and routes identically.
+base_path = "app"
+
+# The SPA talks to the real server (`cargo run`, 127.0.0.1:3000) rather than a
+# mock: `/api` for JSON, `/media` for photo blobs, `/static` for the vendored
+# Leaflet/uPlot assets (ADR-0005/0006) the interop layer drives.
+[[web.proxy]]
+backend = "http://127.0.0.1:3000/api"
+
+[[web.proxy]]
+backend = "http://127.0.0.1:3000/media"
+
+[[web.proxy]]
+backend = "http://127.0.0.1:3000/static"

@@ -1,0 +1,22 @@
+[package]
+name = "ui-dioxus"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+dioxus = { version = "0.7", features = ["web", "router"] }
+# The server's own data models, reused verbatim over the JSON API — the whole
+# point of a Rust front-end (crates/types is dependency-free by design).
+trip-archive-types = { path = "../types" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+gloo-net = { version = "0.7", default-features = false, features = ["http", "json"] }
+
+# Two deliberately different JS-interop styles are compared in `interop.rs`:
+# stringly `document::eval` (Leaflet) vs. typed `wasm-bindgen` externs (uPlot).
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Window"] }

@@ -1,5 +1,7 @@
-//! Shared data models — one type per file, re-exported here so callers keep
-//! using `crate::models::{TripSummary, TripDetail}`.
+//! Shared data models for the trip archive — one type per file, re-exported
+//! here. Deliberately free of server dependencies so the same types compile to
+//! `wasm32-unknown-unknown` for a Rust WASM UI; the SQLite mapping the server
+//! needs lives behind the optional `sqlx` feature.
 
 mod activity_type;
 mod bounding_box;

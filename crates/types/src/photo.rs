@@ -1,4 +1,4 @@
-use crate::models::LocationSource;
+use crate::LocationSource;
 
 /// A photo attached to a trip (US-2). The image *bytes* live in the `BlobStore`
 /// under `blob_key` (ADR-0007); this is the metadata row that associates them

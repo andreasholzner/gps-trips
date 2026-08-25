@@ -64,3 +64,6 @@ Thumbs.db
 # ───────── Reference clones (not project source) ─────────
 docs/qmapshack_analysis/qmapshack-src/
 docs/qmapshack_analysis/Touren.db
+
+# Built output of the Dioxus SPA spike (crates/ui-dioxus), served at /app
+public/app/

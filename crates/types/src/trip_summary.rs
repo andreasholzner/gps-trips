@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::{ActivityType, KomootPrivacy, TripKind};
+use crate::{ActivityType, KomootPrivacy, TripKind};
 
 /// A lightweight trip row for the list view (US-6). Holds only the summary
 /// fields shown in the list — never the track geometry (ADR-0003), so the list
 /// query stays cheap.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TripSummary {
     pub id: i64,
     pub name: String,

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::KomootPrivacy;
+use crate::KomootPrivacy;
 
 /// A trip's `trip_komoot_link` row as the trip queries surface it (US-35).
 /// Its presence *is* "this trip is Komoot-sourced" (ADR-0021), which is what

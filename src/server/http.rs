@@ -8,10 +8,10 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
-use crate::models::{LocationSource, Photo, TripKind, TripSummary};
+use crate::models::{LocationSource, Photo, TripDetail, TripKind, TripSummary};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
@@ -85,7 +85,9 @@ pub fn router(state: AppState) -> Router {
         // body limit; every other route keeps the default.
         .route(
             "/api/import",
-            post(handle_import).layer(DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT)),
+            post(handle_import).layer(DefaultBodyLimit::max(
+                config::server::PHOTO_IMPORT_BODY_LIMIT,
+            )),
         )
         // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
         .route("/api/trips", get(list_trips_api))
@@ -93,15 +95,20 @@ pub fn router(state: AppState) -> Router {
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
         // US-9/US-24: delete a trip and its photo blobs. US-15: edit its name/activity type.
+        // US-16: read it as JSON, the detail counterpart of `/api/trips`.
         .route(
             "/api/trips/:id",
-            axum::routing::delete(handle_delete_trip).patch(handle_edit_trip),
+            get(get_trip_api)
+                .delete(handle_delete_trip)
+                .patch(handle_edit_trip),
         )
         // US-2: attach photos later (POST) and list a trip's photos (GET).
         .route(
             "/api/trips/:id/photos",
             post(handle_add_photos)
-                .layer(DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT))
+                .layer(DefaultBodyLimit::max(
+                    config::server::PHOTO_IMPORT_BODY_LIMIT,
+                ))
                 .get(list_trip_photos),
         )
         // US-33: tag a trip (POST/GET) and untag it (DELETE).
@@ -126,7 +133,20 @@ pub fn router(state: AppState) -> Router {
         // Resolved relative to the executable, not the CWD, so "binary + adjacent
         // public/ folder" is a deployable unit startable from anywhere (ADR-0016).
         .nest_service("/static", ServeDir::new(paths::assets_dir()))
+        // The Dioxus SPA spike's built bundle (docs/dioxus-spike.md), if one
+        // has been built into `public/app`. Unknown paths under it fall back
+        // to the app shell so the SPA's own routes survive a reload or a
+        // shared link; the server-rendered pages at `/` are untouched.
+        .nest_service("/app", spa_service(paths::spa_dir()))
         .with_state(state)
+}
+
+/// Serve a single-page-app bundle: its files where they exist, its
+/// `index.html` for everything else. A directory that was never built simply
+/// answers 404, the same way a missing assets dir does.
+fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
+    let index = dir.join("index.html");
+    ServeDir::new(dir).fallback(ServeFile::new(index))
 }
 
 /// GET `/` — the trip list, the archive's home (US-6), optionally narrowed by
@@ -159,6 +179,22 @@ async fn list_trips_api(
 ) -> Result<Json<Vec<TripSummary>>, AppError> {
     let filter = parse_filter(&query)?;
     Ok(Json(repo::list_trips(&state.pool, &filter).await?))
+}
+
+/// GET `/api/trips/:id` — one trip's full metadata as JSON (US-16, ADR-0008),
+/// the detail counterpart of `list_trips_api`. Serves `TripDetail` as-is: the
+/// detail page computes nothing per request that isn't already stored, so
+/// there is no `*Response` wrapper to add here (ADR-0015). The track geometry
+/// (ADR-0003) and the photos stay on their own endpoints, so opening a trip
+/// costs one cheap query.
+async fn get_trip_api(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<TripDetail>, AppError> {
+    repo::get_trip(&state.pool, id)
+        .await?
+        .map(Json)
+        .ok_or(AppError::NotFound)
 }
 
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).
