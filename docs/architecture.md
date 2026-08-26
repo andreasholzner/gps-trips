@@ -11,11 +11,11 @@ Legend: solid = v1; elements/relationships marked **[planned]** are future exten
 that the architecture must not preclude, not part of v1.
 
 **Target vs. current UI:** the Web UI container and its components show the *target* stack
-([ADR-0001](./adr/0001-rust-leptos-fullstack.md): Leptos SSR + hydration). The current UI is an
-intentionally throwaway server-rendered proof-of-concept (`src/server/render/` + vanilla JS under
-`public/js/`), good enough to validate the rest of the stack; the final UI (and deployment,
-[ADR-0014](./adr/0014-defer-deployment-topology.md)) will be decided later, and ADR-0001
-re-decided then.
+([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md): a client-side-rendered Dioxus SPA served as
+static files, plus an Android app from the same source). The current UI is still the intentionally
+throwaway server-rendered proof-of-concept, good enough to validate the rest of the stack; it is
+retired page by page as the SPA reaches parity, under
+[ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
 
 ---
 
@@ -73,8 +73,8 @@ C4Container
     Person(owner, "Owner", "Single user, via a web browser")
 
     System_Boundary(ta, "Trip Archive (self-hosted)") {
-        Container(spa, "Web UI", "Rust → WASM (Leptos, hydrated) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import & filter UI. Runs in the browser.")
-        Container(server, "Application Server", "Rust (Axum + Leptos SSR), single binary", "Serves SSR pages and a JSON API; handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
+        Container(spa, "Web UI", "Rust → WASM (Dioxus, client-side rendered) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import & filter UI. Runs in the browser.")
+        Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files; handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
         ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
         Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "One-way reconcile of every trip into a QMapShack database; run manually or from cron, never from inside the app. TOML config for target path + folder mapping; rolling backups; version gate.")
@@ -127,13 +127,13 @@ C4Container
 C4Component
     title Component diagram — Application Server
 
-    Container(spa, "Web UI", "Leptos / WASM")
+    Container(spa, "Web UI", "Dioxus / WASM")
     ContainerDb(db, "Database", "SQLite")
     Container(blobs, "Photo Store", "filesystem")
 
     Container_Boundary(server, "Application Server") {
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, optional shared-password auth middleware [planned, US-19].")
-        Component(ssr, "Leptos SSR + Routes", "leptos_axum", "Server-side render of pages; serves hydration bundle.")
+        Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
@@ -145,8 +145,8 @@ C4Component
         Component(store, "BlobStore (LocalDisk)", "Rust trait", "put/get/url_for for photo originals & thumbnails.")
     }
 
-    Rel(spa, router, "JSON API & page requests", "HTTPS")
-    Rel(router, ssr, "Page render requests")
+    Rel(spa, router, "JSON API requests", "HTTPS")
+    Rel(router, spaassets, "Requests for the app shell and its assets")
     Rel(router, api, "Trip CRUD + filter requests")
     Rel(router, import, "Multipart upload requests")
 
@@ -161,7 +161,6 @@ C4Component
     Rel(sync, repo, "Link rows + transactional tour import")
     Rel(photo, store, "Write originals & thumbnails")
     Rel(api, repo, "Read/write; run filters")
-    Rel(ssr, repo, "Read for SSR")
     Rel(repo, db, "SQL", "sqlx")
     Rel(store, blobs, "File IO")
 
@@ -187,20 +186,20 @@ C4Component
 
 ```mermaid
 C4Component
-    title Component diagram — Web UI (Leptos client)
+    title Component diagram — Web UI (Dioxus client)
 
     Person(owner, "Owner")
     Container(server, "Application Server", "Axum + JSON API")
     System_Ext(osm, "OpenStreetMap tiles")
 
     Container_Boundary(spa, "Web UI") {
-        Component(approuter, "App Router", "leptos_router", "Client-side routing between pages.")
-        Component(list, "Trip List + Filter Bar", "Leptos", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
-        Component(detail, "Trip Detail", "Leptos", "Composes map, elevation, gallery; inline edit of name + activity type; tag chips with add/remove + autocomplete.")
-        Component(importform, "Import Form", "Leptos", "GPX + photos upload, activity type, date-prefixed name.")
-        Component(map, "Map", "Leptos + Leaflet binding", "Track polyline + photo markers via wasm-bindgen glue.")
-        Component(elev, "Elevation Chart", "Leptos + uPlot binding", "Elevation vs distance/time via wasm-bindgen glue.")
-        Component(gallery, "Photo Gallery", "Leptos", "Thumbnails; links markers ↔ photos.")
+        Component(approuter, "App Router", "dioxus_router", "Client-side routing between pages.")
+        Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
+        Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; inline edit of name + activity type; tag chips with add/remove + autocomplete.")
+        Component(importform, "Import Form", "Dioxus", "GPX + photos upload, activity type, date-prefixed name.")
+        Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
+        Component(elev, "Elevation Chart", "Dioxus + uPlot", "Elevation vs distance/time, drawn through `document::eval`.")
+        Component(gallery, "Photo Gallery", "Dioxus", "Thumbnails; links markers ↔ photos.")
     }
 
     Rel(owner, approuter, "Navigates", "HTTPS")
@@ -221,12 +220,15 @@ C4Component
 ```
 
 **Notes**
-- Map and chart are thin Leptos wrappers over vendored JS (Leaflet, uPlot) through wasm-bindgen
-  glue; map/chart code runs client-side only ([ADR-0005](./adr/0005-leaflet-osm-via-wasm-interop.md),
-  [ADR-0006](./adr/0006-uplot-elevation-chart.md)).
+- Map and chart are thin Dioxus wrappers over vendored JS (Leaflet, uPlot), driven through
+  `document::eval` so the same code runs on the web and in the Android WebView; map/chart code
+  runs client-side only ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)).
+- The same components build for Android ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)); the
+  shared data models live in their own dependency-free crate so server and UI describe trips with
+  one set of types.
 - Reusable logic (stats, EXIF decode, time-match, bbox) lives in plain Rust modules on the server
   side, keeping these view components thin and the logic unit-testable
-  ([ADR-0001](./adr/0001-rust-leptos-fullstack.md), [ADR-0012](./adr/0012-tdd-test-strategy.md)).
+  ([ADR-0012](./adr/0012-tdd-test-strategy.md)).
 
 ---
 

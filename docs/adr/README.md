@@ -6,18 +6,18 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 
 | ADR                                                  | Title                                                                       | Status                        |
 |------------------------------------------------------|-----------------------------------------------------------------------------|-------------------------------|
-| [0001](./0001-rust-leptos-fullstack.md)              | Rust full-stack with Leptos (SSR + hydration on Axum)                       | Accepted                      |
+| [0001](./0001-rust-leptos-fullstack.md)              | Rust full-stack with Leptos (SSR + hydration on Axum)                       | Superseded by 0024            |
 | [0002](./0002-sqlite-local-disk.md)                  | SQLite (sqlx), local disk only                                              | Accepted                      |
 | [0003](./0003-track-as-geojson-blob-in-sqlite.md)    | Track geometry as a GeoJSON blob in SQLite                                  | Accepted                      |
 | [0004](./0004-import-via-axum-multipart.md)          | Import via native Axum multipart handler                                    | Accepted                      |
-| [0005](./0005-leaflet-osm-via-wasm-interop.md)       | Leaflet + OSM raster tiles via wasm-bindgen interop                         | Accepted                      |
-| [0006](./0006-uplot-elevation-chart.md)              | uPlot for the elevation chart                                               | Accepted                      |
+| [0005](./0005-leaflet-osm-via-wasm-interop.md)       | Leaflet + OSM raster tiles via wasm-bindgen interop                         | Superseded by 0025            |
+| [0006](./0006-uplot-elevation-chart.md)              | uPlot for the elevation chart                                               | Superseded by 0025            |
 | [0007](./0007-blobstore-abstraction.md)              | `BlobStore` storage abstraction (local now, ownCloud later)                 | Accepted                      |
 | [0008](./0008-json-first-api.md)                     | JSON-first API                                                              | Accepted                      |
 | [0009](./0009-utc-timestamp-normalization.md)        | Normalize timestamps to UTC; document EXIF-offset assumption                | Accepted                      |
 | [0010](./0010-single-user-optional-auth.md)          | Single-user; optional shared-password auth                                  | Accepted                      |
 | [0011](./0011-filtering-search-geo-queries.md)       | Filtering, search & geographic queries on SQLite (no PostGIS)               | Accepted                      |
-| [0012](./0012-tdd-test-strategy.md)                  | TDD; requirement-covering tests, mock only externals                        | Accepted (amended 2026-07-24) |
+| [0012](./0012-tdd-test-strategy.md)                  | TDD; requirement-covering tests, mock only externals                        | Accepted (amended 2026-08-26) |
 | [0013](./0013-integer-surrogate-keys.md)             | Integer surrogate primary keys (revisit only for offline-first replication) | Accepted                      |
 | [0014](./0014-defer-deployment-topology.md)          | Defer deployment topology; local-first for now                              | Superseded by 0023            |
 | [0015](./0015-db-model-response-type-separation.md)  | Separate DB models from API response types                                  | Accepted                      |
@@ -29,6 +29,8 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0021](./0021-reverse-engineered-komoot-client.md)   | Reverse-engineered Komoot client for automated import & edit sync           | Accepted                      |
 | [0022](./0022-qmapshack-export.md)                   | One-way QMapShack database export                                           | Proposed                      |
 | [0023](./0023-managed-scale-to-zero-hosting.md)      | Managed scale-to-zero hosting; mobile access via the web UI                 | Accepted                      |
+| [0024](./0024-dioxus-ui-web-and-android.md)          | Dioxus UI: a CSR SPA on the web and an Android app from one source          | Accepted                      |
+| [0025](./0025-js-widget-interop-via-eval.md)         | Vendored JS widgets driven from Rust through `document::eval`               | Accepted                      |
 
 ## Conventions
 

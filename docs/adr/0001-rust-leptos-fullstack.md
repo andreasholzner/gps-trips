@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0024](./0024-dioxus-ui-web-and-android.md)
 
 ## Context
 

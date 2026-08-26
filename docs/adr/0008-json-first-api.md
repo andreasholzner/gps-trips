@@ -12,7 +12,7 @@ relied solely on Leptos server functions, a separate client would have no clean 
 
 ## Decision
 
-Implement reads and writes as **plain Axum JSON handlers**. The Leptos web UI consumes these
+Implement reads and writes as **plain Axum JSON handlers**. The web UI consumes these
 **same endpoints**, and the shared serde structs in `models.rs` are the API contract. The v1
 surface:
 
