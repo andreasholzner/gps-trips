@@ -4,19 +4,26 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+default = ["web"]
+# One crate, two platforms (docs/dioxus-spike.md). `dx` selects the feature
+# matching `--platform`; on Android `dioxus/mobile` is the same webview
+# renderer as desktop, which is why the HTML/CSS/JS interop carries over.
+web = ["dioxus/web"]
+mobile = ["dioxus/mobile"]
+
 [dependencies]
-dioxus = { version = "0.7", features = ["web", "router"] }
+dioxus = { version = "0.7", features = ["router", "asset"] }
 # The server's own data models, reused verbatim over the JSON API — the whole
 # point of a Rust front-end (crates/types is dependency-free by design).
 trip-archive-types = { path = "../types" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-gloo-net = { version = "0.7", default-features = false, features = ["http", "json"] }
+# Works on both targets: `fetch` under wasm, a native client on Android.
+# `gloo-net` (wasm-only) was the first casualty of going multi-platform.
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 
-# Two deliberately different JS-interop styles are compared in `interop.rs`:
-# stringly `document::eval` (Leaflet) vs. typed `wasm-bindgen` externs (uPlot).
-wasm-bindgen = "0.2"
-serde-wasm-bindgen = "0.6"
-js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Window"] }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# TLS is a native-only concern; the browser provides its own.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

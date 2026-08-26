@@ -12,14 +12,17 @@ use crate::Route;
 #[component]
 pub fn TripList() -> Element {
     let filters = use_signal(Filters::default);
-    // Re-runs whenever the query string changes — reading `filters` inside
-    // the closure is the whole subscription; there is no dependency list to
-    // keep in sync by hand.
-    let trips =
-        use_resource(move || async move { api::list_trips(filters.read().to_query()).await });
+    let base_url = use_context::<Signal<String>>();
+    // Re-runs whenever the query string or the configured archive changes —
+    // reading the signals inside the closure is the whole subscription; there
+    // is no dependency list to keep in sync by hand.
+    let trips = use_resource(move || async move {
+        api::list_trips(&base_url(), filters.read().to_query()).await
+    });
 
     rsx! {
         h1 { "Trips" }
+        p { Link { to: Route::Settings {}, "Settings" } }
         KindTabs { filters }
         FilterPanel { filters }
         match &*trips.read_unchecked() {

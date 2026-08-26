@@ -26,7 +26,7 @@ pub mod storage {
 /// topology is otherwise deferred per ADR-0014).
 pub mod server {
     /// Address the HTTP server binds to.
-    pub const BIND_ADDR: &str = "127.0.0.1:3000";
+    pub const BIND_ADDR: &str = "0.0.0.0:3000";
 
     /// Request-body cap for the multipart upload routes (`/api/import` and
     /// `/api/trips/:id/photos`, ADR-0004). Axum's 2 MB default is far too

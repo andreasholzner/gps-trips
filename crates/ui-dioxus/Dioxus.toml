@@ -18,3 +18,16 @@ backend = "http://127.0.0.1:3000/media"
 
 [[web.proxy]]
 backend = "http://127.0.0.1:3000/static"
+
+# ── Android (docs/dioxus-spike.md) ───────────────────────────────────────────
+[bundle]
+identifier = "org.triparchive.spike"
+publisher = "Trip Archive"
+
+[android.application]
+# The archive is reached over plain HTTP on the LAN, and Android has blocked
+# cleartext by default since API 28. The Rust side opens its own sockets and is
+# unaffected, but the webview loading photo thumbnails from `http://…/media/…`
+# is not — without this the gallery silently shows nothing. A deployed HTTPS
+# instance (ADR-0023) would not need it.
+uses_cleartext_traffic = true

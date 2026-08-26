@@ -3,13 +3,6 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- The vendored, self-hosted map/chart assets (ADR-0005/0006, US-10),
-         proxied from the Axum server. Loaded here rather than injected from
-         Rust so `L` and `uPlot` are globals before any component mounts. -->
-    <link rel="stylesheet" href="/static/vendor/leaflet.css" />
-    <link rel="stylesheet" href="/static/vendor/uPlot.min.css" />
-    <script src="/static/vendor/leaflet.js"></script>
-    <script src="/static/vendor/uPlot.iife.min.js"></script>
   </head>
   <body>
     <div id="main"></div>
