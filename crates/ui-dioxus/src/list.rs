@@ -170,3 +170,64 @@ fn TripTable(trips: Vec<TripSummary>) -> Element {
         }
     }
 }
+
+// ── Exemplar view-layer tests (ADR-0012 amendment) ───────────────────────────
+//
+// Two levels, deliberately kept as worked examples: one component rendered
+// from props, one whole screen against a real server. `test_support` holds the
+// harness; see its module docs for what this style of test cannot reach.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{render, render_against_archive, serve_test_archive};
+    use trip_archive_types::ActivityType;
+
+    fn a_trip(id: i64, name: &str) -> TripSummary {
+        TripSummary {
+            id,
+            name: name.to_string(),
+            activity_type: ActivityType::Hiking,
+            start_time: Some("2026-07-11T09:30:00Z".to_string()),
+            distance_m: 12_345.0,
+            ascent_m: Some(410.0),
+            duration_secs: Some(3_725),
+            trip_kind: TripKind::Recorded,
+            privacy_status: None,
+        }
+    }
+
+    #[test]
+    fn the_trip_table_shows_a_row_per_trip_linking_to_its_detail() {
+        let trips = vec![a_trip(1, "Oslo Hills Walk"), a_trip(2, "Inn Valley Ride")];
+
+        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
+
+        assert!(html.contains("Oslo Hills Walk"), "{html}");
+        assert!(html.contains("Inn Valley Ride"), "{html}");
+        // The formatting the screen is responsible for, not the raw values.
+        assert!(html.contains("12.35 km"), "{html}");
+        assert!(html.contains("01:02:05"), "{html}");
+        assert!(html.contains("2026-07-11"), "{html}");
+        assert!(
+            html.contains("/trips/1"),
+            "each row links to its trip: {html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_list_screen_reports_an_empty_archive() {
+        // The whole screen against a real server: the fetch, the filter query,
+        // and the empty state the owner actually sees. Nothing is mocked.
+        let (base_url, _dir) = serve_test_archive().await;
+
+        let html = render_against_archive(
+            &base_url,
+            || rsx! { TripList {} },
+            |html| !html.contains("Loading"),
+        )
+        .await;
+
+        assert!(html.contains("No trips yet"), "{html}");
+    }
+}

@@ -18,6 +18,8 @@ mod format;
 mod interop;
 mod list;
 mod settings;
+#[cfg(test)]
+mod test_support;
 
 /// The screens. The two trip paths mirror the server-rendered app's own (`/`
 /// and `/trips/:id`); the deployed web bundle is mounted under `/app`
