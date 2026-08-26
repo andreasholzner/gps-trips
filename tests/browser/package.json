@@ -1,0 +1,12 @@
+{
+  "name": "trip-archive-browser-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser-level tests for the Dioxus SPA (ADR-0012, amendment 2026-08-26b). Test-only tooling; nothing here ships.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

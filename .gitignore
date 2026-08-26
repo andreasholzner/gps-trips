@@ -67,3 +67,7 @@ docs/qmapshack_analysis/Touren.db
 
 # Built output of the Dioxus SPA spike (crates/ui-dioxus), served at /app
 public/app/
+
+# Playwright browser tests (tests/browser) — local artefacts only
+tests/browser/test-results/
+tests/browser/playwright-report/
