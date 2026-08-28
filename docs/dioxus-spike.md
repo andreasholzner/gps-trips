@@ -1,7 +1,8 @@
 # Dioxus spike — trip list & trip detail, on web and Android
 
 **Date:** 2026-08-25, Android confirmed on-device 2026-08-26 · **Branch:** `spike-dioxus` ·
-**Status:** spike complete, verdict pending the Leptos spike.
+**Status:** spike complete; **decided by [ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)** —
+Dioxus adopted, the Leptos spike deliberately dropped rather than run.
 
 A timeboxed spike of the two core screens as a Rust UI running on two platforms from one
 source — a client-side-rendered WASM SPA on the web, and an Android app — both against the
@@ -9,8 +10,10 @@ existing JSON API. It informs the UI-framework decision that will re-decide
 [ADR-0001](./adr/0001-rust-leptos-fullstack.md). The motivation for looking at Dioxus at all
 is its multi-platform story (US-16).
 
-**No ADR is written or changed by this spike.** The decision belongs to a planning step once
-both spikes are in.
+**No ADR was written or changed by this spike** — the decision belonged to a planning step
+afterwards. That step has since happened: [ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)
+supersedes ADR-0001 and [ADR-0025](./adr/0025-js-widget-interop-via-eval.md) settles the interop
+mechanism. What follows is the record the decision was made from, kept as written.
 
 ## What was built
 
@@ -259,6 +262,10 @@ feels broken — so it belongs on the cost side of the ledger, not the "free" si
 - No component-level test story was evaluated; only pure logic is covered by tests.
 
 ## For a fair Leptos comparison
+
+**Never executed.** ADR-0024 dropped this spike rather than running it: Leptos targets the web
+only, so no web-side result it produced could have outweighed the Android capability confirmed
+below. Kept as the record of what a fair comparison would have required.
 
 Build the same screens against the same API and record the same numbers: cold build,
 incremental rebuild, hot-reload behaviour, gzipped wasm, and the interop approach for Leaflet
