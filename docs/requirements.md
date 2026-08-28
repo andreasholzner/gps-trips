@@ -16,7 +16,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 
 - **The owner** — the single user who owns and runs the instance. There are no other roles in v1.
 
-## v1 User Stories (initial milestone)
+## v1 User Stories (initial proof of concept)
 
 **State:** ✅ done · 🚧 in progress · 📋 planned
 
@@ -49,7 +49,7 @@ The overarching driver: *"self-host the whole thing so I own my data."* and a le
 | **US-26** |  ✅   | As the owner, editing or deleting a trip is blocked while a sync is running, so my change can't race the sync's read of pending state.                                         | `PATCH`/`DELETE` requests made while a sync is in flight are rejected with `409`. Only one sync runs at a time (single in-process flag).                                                                                                                                                                                                                                                                                                                                                                                    |
 | **US-23** |  ✅   | As the owner, I run a one-off backfill so my historical trips already in Komoot (including photos) end up in the archive without hand-importing each one.                      | A separate CLI binary (`komoot_backfill`) imports every not-yet-linked Komoot tour, incl. photos, through the existing pipeline. Re-running after an interruption is safe (dedup via `komoot_tour_id`). No web UI interaction required. An `--interactive` flag asks for confirmation before each Komoot request (mainly for testing against the real API). A `--limit N` flag caps the number of tours synced in the run (mainly for testing and for bounding load on Komoot); omitting it syncs all not-yet-linked tours. |
 
-## v2 User stories (current scope)
+## v2 User stories (basically working proof of concept)
 
 **State:** ✅ done · 🚧 in progress · 📋 planned
 
