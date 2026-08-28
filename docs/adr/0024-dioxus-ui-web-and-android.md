@@ -79,10 +79,11 @@ Supporting decisions that come with it:
   "must never run during SSR" constraint all describe an architecture that no longer exists.
   [ADR-0025](./0025-js-widget-interop-via-eval.md) supersedes both, keeping their library choices
   and replacing the mechanism.
-- **[ADR-0015](./0015-db-model-response-type-separation.md) has an unresolved gap.** Response
-  types — a DB model plus per-request computed fields — live with the HTTP handlers and cannot be
-  shared with a WASM or Android client, so the UI mirrors them by hand. One duplicated shape today; it will multiply. Where
-  response types live needs deciding — moved into the types crate, or generated.
+- **[ADR-0015](./0015-db-model-response-type-separation.md) needed a decision, and has one.**
+  Response types — a stored record plus per-request computed fields — lived with the HTTP handlers
+  and could not be shared with a WASM or Android client, so the UI mirrored them by hand.
+  ADR-0015's 2026-08-28 amendment moves them to the shared crate; the alternative of generating
+  them from a schema was considered and rejected as disproportionate.
 - **Auth ([ADR-0010](./0010-single-user-optional-auth.md), US-19) now gates two clients.** It was
   already a blocking prerequisite for exposing the instance; the mobile app makes it more urgent,
   since a phone on an untrusted network is the normal case rather than the exception.
@@ -90,6 +91,11 @@ Supporting decisions that come with it:
   `https://dioxus.localhost`, so photo thumbnails fetched over plain `http://` are blocked as
   mixed content. Against the deployed HTTPS instance of ADR-0023 this resolves itself; against a
   plain-HTTP laptop it does not.
+- **A breaking API change is a two-part release.** The web client ships with the server, but the
+  Android app is installed and can lag the deployed instance indefinitely. Changing the API is
+  therefore a server deploy *plus* an app rebuild and reinstall — acceptable, since every deployment
+  target is the owner's, but nothing in the test suite reports a skipped second half. The symptom is
+  a broken app on the phone and a green build.
 - **Interop is untyped forever.** Every JS library the UI touches is reached through strings with
   no compile-time checking and errors that surface in a webview console — awkward to read on a
   phone. This is the concrete price of the multi-platform property.

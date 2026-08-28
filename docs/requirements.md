@@ -118,11 +118,11 @@ US-41 and US-42 are the two screens the spike already built
 ([docs/dioxus-spike.md](./dioxus-spike.md)); US-43 and US-44 are new. US-41 comes first — it is
 the screen the SPA's routing, filter state and API client are shaped by.
 
-Two things are known to bite before US-41 is done, both already recorded in
-[ADR-0024](./adr/0024-dioxus-ui-web-and-android.md) rather than restated here as criteria:
-response types are mirrored by hand in the UI until it is decided where they live
-([ADR-0015](./adr/0015-db-model-response-type-separation.md)), and the Android build needs HTTPS
-before thumbnails load at all.
+One thing is known to bite before US-41 is done, already recorded in
+[ADR-0024](./adr/0024-dioxus-ui-web-and-android.md) rather than restated here as criteria: the
+Android build needs HTTPS before thumbnails load at all. The response-type question that sat
+alongside it is settled by [ADR-0015](./adr/0015-db-model-response-type-separation.md)'s amendment,
+and lands before US-42.
 
 ## Deployment (ADR-0023)
 
