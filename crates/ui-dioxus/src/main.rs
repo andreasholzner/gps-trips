@@ -15,6 +15,7 @@ mod list;
 mod test_support;
 mod trip_table;
 
+use filters::Filters;
 use list::TripList;
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
@@ -28,10 +29,15 @@ const APP_CSS: Asset = asset!("/assets/app.css");
 /// The screens. The trip-list path mirrors the server-rendered app's own
 /// (`/`); the deployed web bundle is mounted under `/app` (Dioxus.toml's
 /// `base_path`), which the router applies for us.
+///
+/// The filters live in the query string (US-52), so a narrowed list is
+/// bookmarkable and survives a reload — the same property the
+/// server-rendered page had for free, and what lets the region rectangle be
+/// restored onto the map on the next load.
 #[derive(Routable, Clone, PartialEq)]
 enum Route {
-    #[route("/")]
-    TripList {},
+    #[route("/?:..filters")]
+    TripList { filters: Filters },
 }
 
 fn main() {
@@ -77,5 +83,53 @@ async fn resolve_origin() -> String {
         eval.recv::<String>().await.unwrap_or_default()
     } else {
         String::new()
+    }
+}
+// Appended to main.rs as a test module.
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+    use std::str::FromStr;
+    use trip_archive_types::{ActivityType, TripKind};
+
+    /// The router owns the URL, and it percent-decodes the whole query string
+    /// before handing it to `FromQuery`. That interacts with this crate's own
+    /// escaping, so the round trip is asserted through `Route` itself rather
+    /// than reasoned about.
+    fn round_trip(filters: Filters) {
+        let url = Route::TripList {
+            filters: filters.clone(),
+        }
+        .to_string();
+        let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+        let Route::TripList { filters: back } = parsed;
+        assert_eq!(back, filters, "url was {url:?}");
+    }
+
+    #[test]
+    fn a_plain_filter_round_trips_through_the_url() {
+        round_trip(Filters {
+            kind: TripKind::Planned,
+            q: "oslo".to_string(),
+            activity: Some(ActivityType::Hiking),
+            tags: vec!["alpine".to_string()],
+            ..Default::default()
+        });
+    }
+
+    #[test]
+    fn a_search_containing_url_separators_round_trips_through_the_url() {
+        // `&` and `=` inside a value are the case that breaks a naive scheme.
+        round_trip(Filters {
+            q: "b&b = 100% fun?".to_string(),
+            ..Default::default()
+        });
+    }
+
+    #[test]
+    fn the_bare_app_url_is_the_default_view() {
+        let parsed = Route::from_str("/").expect("the bare path must parse");
+        let Route::TripList { filters } = parsed;
+        assert_eq!(filters, Filters::default());
     }
 }

@@ -12,12 +12,23 @@ use crate::bulk_tag::BulkTagPanel;
 use crate::filters::Filters;
 use crate::trip_table::TripTable;
 
-/// `initial` seeds the filter state — the default for the app's own route;
-/// tests (and later a deep link) start the screen pre-narrowed.
+/// The `filters` prop comes from the URL's query string (US-52), so opening
+/// a bookmarked or reloaded link starts the screen already narrowed — the
+/// same property the server-rendered page had for free.
 #[component]
-pub fn TripList(#[props(default)] initial: Filters) -> Element {
-    let filters = use_signal(move || initial.clone());
+pub fn TripList(#[props(default)] filters: Filters) -> Element {
+    let filters = use_signal(move || filters.clone());
     let base_url = use_context::<Signal<String>>();
+    // Keep the address bar in step with the live filters. `replace`, not
+    // `push`: filtering as you type would otherwise leave one history entry
+    // per keystroke between the owner and wherever they came from.
+    //
+    // Reading the signal inside the effect is what subscribes it; the URL is
+    // written as a plain path so this does not depend on which router the
+    // screen happens to be mounted in (the test harness has its own).
+    use_effect(move || {
+        navigator().replace(format!("/?{}", filters.read().to_query()));
+    });
     // Re-runs whenever the filters or the configured archive change —
     // reading the signals inside the closure is the whole subscription.
     let mut trips = use_resource(move || async move {
@@ -269,7 +280,7 @@ mod tests {
         let html = render_against_archive(
             &base_url,
             || {
-                rsx! { TripList { initial: Filters { kind: TripKind::Planned, ..Default::default() } } }
+                rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
             },
             |html| html.contains("Dream Route"),
         )
@@ -287,7 +298,7 @@ mod tests {
         let html = render_against_archive(
             &base_url,
             || {
-                rsx! { TripList { initial: Filters { kind: TripKind::Planned, ..Default::default() } } }
+                rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
             },
             |html| !html.contains("Loading"),
         )
@@ -327,7 +338,7 @@ mod tests {
         let html = render_against_archive(
             &base_url,
             || {
-                rsx! { TripList { initial: Filters { q: "inn".to_string(), ..Default::default() } } }
+                rsx! { TripList { filters: Filters { q: "inn".to_string(), ..Default::default() } } }
             },
             |html| html.contains("Inn Valley Ride"),
         )
@@ -346,7 +357,7 @@ mod tests {
         let html = render_against_archive(
             &base_url,
             || {
-                rsx! { TripList { initial: Filters { q: "nomatch".to_string(), ..Default::default() } } }
+                rsx! { TripList { filters: Filters { q: "nomatch".to_string(), ..Default::default() } } }
             },
             |html| !html.contains("Loading"),
         )
@@ -398,7 +409,7 @@ mod tests {
         let html = render_against_archive(
             &base_url,
             || {
-                rsx! { TripList { initial: Filters {
+                rsx! { TripList { filters: Filters {
                     tags: vec!["alpine".to_string(), "summer".to_string()],
                     ..Default::default()
                 } } }

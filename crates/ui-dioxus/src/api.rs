@@ -39,10 +39,12 @@ async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
         .map_err(|err| ApiError(format!("{url} returned unreadable JSON: {err}")))
 }
 
-/// `GET /api/trips` — the filtered list (US-6/US-13); `query` is the
-/// `?`-prefixed query string, or empty for the unfiltered list.
+/// `GET /api/trips` — the filtered list (US-6/US-13). `query` is
+/// `Filters::to_query`'s output, without a leading `?` (the same string the
+/// SPA carries in its own URL); empty means the unfiltered list.
 pub async fn list_trips(base_url: &str, query: String) -> Result<Vec<TripSummary>, ApiError> {
-    get_json(format!("{base_url}/api/trips{query}")).await
+    let separator = if query.is_empty() { "" } else { "?" };
+    get_json(format!("{base_url}/api/trips{separator}{query}")).await
 }
 
 /// `GET /api/tags` — every known tag, for the tag filter's choices (US-38)
@@ -131,7 +133,7 @@ mod tests {
         assert!(names.contains(&"alpine".to_string()), "{names:?}");
         assert!(names.contains(&"summer".to_string()), "{names:?}");
         // Both trips carry both tags: filtering on both lists both.
-        let both = list_trips(&base_url, "?tags=alpine,summer".to_string())
+        let both = list_trips(&base_url, "tags=alpine,summer".to_string())
             .await
             .expect("filtered list");
         assert_eq!(both.len(), 2, "{both:?}");

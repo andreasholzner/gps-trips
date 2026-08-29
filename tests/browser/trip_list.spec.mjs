@@ -82,6 +82,25 @@ test("the list narrows as the owner types (US-13)", async ({ page }) => {
   await expect(rows(page).first()).toContainText("Inn Valley Ride");
 });
 
+// US-52 needs the region rectangle restored "when the list is loaded again",
+// which only works if the filters live in the URL. That is a property of the
+// address bar and a real reload, so it can only be checked here.
+test("a filtered list is in the URL and survives a reload (US-52)", async ({ page }) => {
+  await page.goto("/app/");
+  await page.getByRole("searchbox").fill("inn");
+  await expect(rows(page)).toHaveCount(1);
+
+  // The address bar followed the typing, without stacking a history entry
+  // per keystroke: one Back leaves the filtered list behind entirely.
+  await expect(page).toHaveURL(/[?&]q=inn/);
+
+  await page.reload();
+
+  await expect(page.getByRole("searchbox")).toHaveValue("inn");
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toContainText("Inn Valley Ride");
+});
+
 test("switching tabs keeps the active filter (US-32)", async ({ page }) => {
   // Needs a real click *and* a preserved input value across it — the one
   // criterion that is only observable once both events have happened.
