@@ -23,12 +23,32 @@ pub fn TripList(#[props(default)] initial: Filters) -> Element {
 
     rsx! {
         h1 { "Trips" }
+        KindTabs { filters }
         FilterPanel { filters }
         match &*trips.read_unchecked() {
             None => rsx! { p { "Loading…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load trips: {err}" } },
             Some(Ok(trips)) if trips.is_empty() => rsx! { EmptyState { filters } },
             Some(Ok(trips)) => rsx! { TripTable { trips: trips.clone() } },
+        }
+    }
+}
+
+/// The Recorded/Planned tabs (US-32). Switching tabs writes only `kind`
+/// into the shared signal, so every other filter is kept — the same
+/// guarantee the server-rendered page's tab forms give.
+#[component]
+fn KindTabs(filters: Signal<Filters>) -> Element {
+    rsx! {
+        nav {
+            for kind in TripKind::ALL {
+                button {
+                    key: "{kind}",
+                    disabled: filters.read().kind == kind,
+                    onclick: move |_| filters.write().kind = kind,
+                    "{kind.label()}"
+                }
+            }
         }
     }
 }
@@ -208,6 +228,81 @@ mod tests {
         let html = render(move || rsx! { TripTable { trips: trips.clone() } });
 
         assert!(html.contains("—"), "{html}");
+    }
+
+    // The Recorded/Planned tabs (US-32): both tabs offered, the active one
+    // marked. Actually clicking a tab is a real event, which this layer
+    // cannot dispatch — the browser layer covers the switch itself, and
+    // that switching keeps the other filters is KindTabs writing only
+    // `kind` into the shared signal.
+    #[test]
+    fn the_tabs_offer_recorded_and_planned_with_the_active_one_marked() {
+        let html = render(|| {
+            let filters = Signal::new(Filters::default());
+            rsx! { KindTabs { filters } }
+        });
+
+        assert!(html.contains("Recorded"), "{html}");
+        assert!(html.contains("Planned"), "{html}");
+        assert!(
+            html.contains("disabled"),
+            "the active tab is not clickable: {html}"
+        );
+    }
+
+    // US-32 against a real server: the screen defaults to the Recorded tab,
+    // so a planned trip stays off it.
+    #[tokio::test]
+    async fn the_list_screen_defaults_to_the_recorded_tab() {
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&base_url, &[("name", "Dream Route"), ("kind", "planned")]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || rsx! { TripList {} },
+            |html| html.contains("Oslo Hills Walk"),
+        )
+        .await;
+
+        assert!(!html.contains("Dream Route"), "{html}");
+    }
+
+    // US-32: the Planned tab shows exactly the other partition.
+    #[tokio::test]
+    async fn the_planned_tab_shows_only_planned_trips() {
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&base_url, &[("name", "Dream Route"), ("kind", "planned")]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { initial: Filters { kind: TripKind::Planned, ..Default::default() } } }
+            },
+            |html| html.contains("Dream Route"),
+        )
+        .await;
+
+        assert!(!html.contains("Oslo Hills Walk"), "{html}");
+    }
+
+    // US-32: an empty Planned tab says so, not "no trips yet".
+    #[tokio::test]
+    async fn an_empty_planned_tab_reports_no_planned_trips() {
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { initial: Filters { kind: TripKind::Planned, ..Default::default() } } }
+            },
+            |html| !html.contains("Loading"),
+        )
+        .await;
+
+        assert!(html.contains("No planned trips yet."), "{html}");
     }
 
     // The filter form itself (US-13): every dimension the owner can narrow
