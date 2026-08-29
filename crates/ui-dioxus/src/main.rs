@@ -7,11 +7,13 @@
 use dioxus::prelude::*;
 
 mod api;
+mod bulk_tag;
 mod filters;
 mod format;
 mod list;
 #[cfg(test)]
 mod test_support;
+mod trip_table;
 
 use list::TripList;
 

@@ -2,12 +2,15 @@
 //! slice moves its story's acceptance assertions over from the
 //! server-rendered page (ADR-0012's migration rule).
 
+use std::collections::BTreeSet;
+
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, Tag, TripKind, TripSummary};
+use trip_archive_types::{ActivityType, Tag, TripKind};
 
 use crate::api;
+use crate::bulk_tag::BulkTagPanel;
 use crate::filters::Filters;
-use crate::format;
+use crate::trip_table::TripTable;
 
 /// `initial` seeds the filter state — the default for the app's own route;
 /// tests (and later a deep link) start the screen pre-narrowed.
@@ -17,29 +20,43 @@ pub fn TripList(#[props(default)] initial: Filters) -> Element {
     let base_url = use_context::<Signal<String>>();
     // Re-runs whenever the filters or the configured archive change —
     // reading the signals inside the closure is the whole subscription.
-    let trips = use_resource(move || async move {
+    let mut trips = use_resource(move || async move {
         api::list_trips(&base_url(), filters.read().to_query()).await
     });
-    // The known tags, as the tag filter's choices (US-38). A failure here
-    // costs the tag filter, not the list — hence the separate resource and
-    // the fallback to no choices.
-    let all_tags = use_resource(move || async move { api::list_tags(&base_url()).await });
-    let all_tags = all_tags
+    // The known tags: the tag filter's choices (US-38) and the bulk-tag
+    // suggestions (US-34). A failure here costs those choices, not the list
+    // — hence the separate resource and the fallback to none.
+    let mut tag_resource = use_resource(move || async move { api::list_tags(&base_url()).await });
+    let all_tags = tag_resource
         .read_unchecked()
         .as_ref()
         .and_then(|tags| tags.clone().ok())
         .unwrap_or_default();
+    // Which trips the bulk-tag panel will act on (US-34).
+    let selected = use_signal(BTreeSet::new);
+    let staged = use_signal(Vec::new);
 
     rsx! {
         h1 { "Trips" }
         KindTabs { filters }
         FilterPanel { filters }
-        TagFilter { filters, all_tags }
+        TagFilter { filters, all_tags: all_tags.clone() }
+        BulkTagPanel {
+            selected,
+            staged,
+            all_tags,
+            // A new tag now exists and the trips carry it: both the
+            // suggestions and a tag-filtered list are out of date.
+            on_applied: move |_| {
+                tag_resource.restart();
+                trips.restart();
+            },
+        }
         match &*trips.read_unchecked() {
             None => rsx! { p { "Loading…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load trips: {err}" } },
             Some(Ok(trips)) if trips.is_empty() => rsx! { EmptyState { filters } },
-            Some(Ok(trips)) => rsx! { TripTable { trips: trips.clone() } },
+            Some(Ok(trips)) => rsx! { TripTable { trips: trips.clone(), selected } },
         }
     }
 }
@@ -190,42 +207,6 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
     }
 }
 
-/// One row per trip: name, activity, date, distance, ascent, duration
-/// (US-6), and the linked Komoot tour's privacy (US-35). The name becomes a
-/// link to the trip's detail screen when US-42 builds it; until then the row
-/// is display-only.
-#[component]
-fn TripTable(trips: Vec<TripSummary>) -> Element {
-    rsx! {
-        table {
-            thead {
-                tr {
-                    th { "Trip" }
-                    th { "Activity" }
-                    th { "Date" }
-                    th { "Distance" }
-                    th { "Ascent" }
-                    th { "Duration" }
-                    th { "Privacy" }
-                }
-            }
-            tbody {
-                for trip in trips {
-                    tr { key: "{trip.id}",
-                        td { "{trip.name}" }
-                        td { "{trip.activity_type.label()}" }
-                        td { {format::date(trip.start_time.as_deref())} }
-                        td { {format::km(trip.distance_m)} }
-                        td { {format::metres(trip.ascent_m)} }
-                        td { {format::duration(trip.duration_secs)} }
-                        td { {format::privacy(trip.privacy_status)} }
-                    }
-                }
-            }
-        }
-    }
-}
-
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
@@ -234,99 +215,7 @@ mod tests {
     use crate::test_support::{
         import_sample, render, render_against_archive, serve_test_archive, tag_trip,
     };
-    use trip_archive_types::{ActivityType, KomootPrivacy, Tag, TripKind};
-
-    fn a_trip(id: i64, name: &str) -> TripSummary {
-        TripSummary {
-            id,
-            name: name.to_string(),
-            activity_type: ActivityType::Hiking,
-            start_time: Some("2026-07-11T09:30:00Z".to_string()),
-            distance_m: 12_345.0,
-            ascent_m: Some(410.0),
-            duration_secs: Some(3_725),
-            trip_kind: TripKind::Recorded,
-            privacy_status: None,
-        }
-    }
-
-    // Exemplar for the component-render layer (ADR-0012, 2026-08-26a): props
-    // in, HTML string out, no server. US-6: each trip's name, date, distance,
-    // ascent and duration — asserting the formatting the screen is
-    // responsible for, not the raw values.
-    #[test]
-    fn the_trip_table_shows_a_row_per_trip() {
-        let trips = vec![a_trip(1, "Oslo Hills Walk"), a_trip(2, "Inn Valley Ride")];
-
-        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
-
-        assert!(html.contains("Oslo Hills Walk"), "{html}");
-        assert!(html.contains("Inn Valley Ride"), "{html}");
-        assert!(html.contains("2026-07-11"), "{html}");
-        assert!(html.contains("12.35 km"), "{html}");
-        assert!(html.contains("410 m"), "{html}");
-        assert!(html.contains("01:02:05"), "{html}");
-        assert!(html.contains("Hiking"), "{html}");
-    }
-
-    // US-35's Privacy column. A linked trip's privacy is a stored value the
-    // row displays, so the component layer covers it (ADR-0012); seeding a
-    // real Komoot link would need the mocked client the server's own US-35
-    // tests use, and would assert nothing more about this screen.
-    #[test]
-    fn the_privacy_column_shows_a_linked_trips_privacy() {
-        let trips = vec![TripSummary {
-            privacy_status: Some(KomootPrivacy::Public),
-            ..a_trip(1, "Komoot Trip")
-        }];
-
-        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
-
-        assert!(html.contains("Privacy"), "{html}");
-        assert!(html.contains(KomootPrivacy::Public.label()), "{html}");
-    }
-
-    #[test]
-    fn a_privacy_komoot_reported_unmappably_shows_as_unknown() {
-        // The archive never pretends to know a privacy it couldn't map
-        // (ADR-0021); it shows it, and the push side leaves it alone.
-        let trips = vec![TripSummary {
-            privacy_status: Some(KomootPrivacy::Unknown),
-            ..a_trip(1, "Odd Privacy")
-        }];
-
-        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
-
-        assert!(html.contains(KomootPrivacy::Unknown.label()), "{html}");
-    }
-
-    #[test]
-    fn a_trip_that_never_came_from_komoot_shows_no_privacy() {
-        let trips = vec![a_trip(1, "Local Trip")];
-
-        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
-
-        assert!(
-            html.contains("Privacy"),
-            "the column is always there: {html}"
-        );
-        assert!(!html.contains(KomootPrivacy::Public.label()), "{html}");
-        assert!(!html.contains(KomootPrivacy::Private.label()), "{html}");
-    }
-
-    #[test]
-    fn a_trip_missing_optional_stats_shows_dashes_not_blanks() {
-        let trips = vec![TripSummary {
-            start_time: None,
-            ascent_m: None,
-            duration_secs: None,
-            ..a_trip(1, "Bare Trip")
-        }];
-
-        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
-
-        assert!(html.contains("—"), "{html}");
-    }
+    use trip_archive_types::{KomootPrivacy, Tag, TripKind};
 
     // The Recorded/Planned tabs (US-32): both tabs offered, the active one
     // marked. Actually clicking a tab is a real event, which this layer
