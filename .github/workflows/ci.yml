@@ -1,0 +1,141 @@
+# The two test layers of [ADR-0012](../../docs/adr/0012-tdd-test-strategy.md),
+# as two jobs in one workflow:
+#
+#   test     — everything under `cargo test`, on the host target.
+#   browser  — Playwright against the shipped artifact, gated on `test`.
+#
+# The gate is the point: a browser, a wasm bundle and a release build are
+# minutes of work that tell you nothing new once the unit tests are already
+# red. `needs:` rather than a second workflow on `workflow_run`, which would
+# run from the default branch with `github.sha` pointing at the default
+# branch's last commit rather than the one under test.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A newer push supersedes an in-flight run of the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The runner image ships a current stable toolchain; this only adds the
+      # wasm target, which the SPA and the shared crate are checked against
+      # below. clippy and rustfmt are already present.
+      - name: Prepare the toolchain
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+          cargo --version
+
+      # Caches the dependency half of `target/` and `~/.cargo`, and — unlike a
+      # hand-rolled `actions/cache` of the whole `target/` — drops this
+      # workspace's own artifacts before saving and prunes dependency versions
+      # that went unused. Its key includes the rustc version, which matters
+      # here: `rust-toolchain.toml` floats on `stable`, so the compiler moves
+      # under us and artifacts built by the previous one are worthless. It
+      # also keys per job, so this job and `browser` cannot restore each
+      # other's cache. Pinned to the commit behind v2.9.2.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # ADR-0024's load-bearing property: the shared models and the UI must
+      # compile for the browser, without the server's dependencies. A `sqlx`
+      # derive escaping the optional feature breaks this and nothing else.
+      - name: The shared crate and the SPA compile for wasm
+        run: |
+          cargo check -p trip-archive-types --target wasm32-unknown-unknown
+          cargo check -p ui-dioxus --target wasm32-unknown-unknown
+
+  browser:
+    name: Browser
+    # Only worth the wasm build and the browser download once the fast layer
+    # is green (ADR-0012's 2026-08-26b amendment).
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      # The dx CLI and the dioxus crate are pinned together and must match
+      # (ADR-0024); the crate is pinned in crates/ui-dioxus/Cargo.toml.
+      DX_VERSION: 0.7.10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the toolchain
+        run: rustup target add wasm32-unknown-unknown
+
+      # A cache of its own: this job builds release and wasm artifacts, which
+      # share almost nothing with the debug ones the `test` job leaves behind.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+
+      # The prebuilt binary rather than `cargo install dioxus-cli`, which
+      # compiles for minutes. The release publishes a checksum next to the
+      # tarball; it covers the zip too, hence --ignore-missing.
+      - name: Install the dx CLI
+        run: |
+          set -euo pipefail
+          base="https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}"
+          asset="dx-x86_64-unknown-linux-gnu"
+          curl -fsSLO "${base}/${asset}.tar.gz"
+          curl -fsSLO "${base}/${asset}.sha256"
+          sha256sum --check --ignore-missing "${asset}.sha256"
+          sudo tar xzf "${asset}.tar.gz" -C /usr/local/bin
+          dx --version
+
+      # The deployed shape: the bundle served by Axum itself from public/app.
+      # target/dx is wiped first because dx keeps previously built,
+      # content-hashed artifacts there and copying would carry orphans along.
+      - name: Build the web bundle
+        run: |
+          set -euo pipefail
+          rm -rf target/dx/ui-dioxus public/app
+          (cd crates/ui-dioxus && dx build --release --platform web)
+          cp -r target/dx/ui-dioxus/release/web/public public/app
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+
+      - name: Install the test tooling
+        working-directory: tests/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Playwright starts the server itself, on a fresh temporary data
+      # directory, and refuses to run at all if the bundle above is missing.
+      - name: Run the browser tests
+        working-directory: tests/browser
+        run: npm test
+
+      # Failures in this layer are usually timing; the trace is what makes
+      # them diagnosable after the fact.
+      - name: Keep the traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/browser/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
