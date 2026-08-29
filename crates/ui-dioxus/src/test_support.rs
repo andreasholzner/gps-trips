@@ -164,6 +164,22 @@ pub async fn import_sample(base_url: &str, fields: &[(&str, &str)]) -> i64 {
         .expect("numeric trip id")
 }
 
+/// Tag a trip through the real API (`POST /api/trips/:id/tags`, US-33) —
+/// the seeding path for tag-filter and bulk-tag tests.
+pub async fn tag_trip(base_url: &str, trip_id: i64, name: &str) {
+    let response = reqwest::Client::new()
+        .post(format!("{base_url}/api/trips/{trip_id}/tags"))
+        .json(&serde_json::json!({ "name": name }))
+        .send()
+        .await
+        .expect("tag request");
+    assert!(
+        response.status().is_success(),
+        "tagging failed: {}",
+        response.status()
+    );
+}
+
 /// Start a real Trip Archive server on an ephemeral port, backed by a fresh
 /// temporary database and blob store — the same "real collaborators, mock
 /// only externals" setup the server's own tests use (ADR-0012).

@@ -3,7 +3,7 @@
 //! server-rendered page (ADR-0012's migration rule).
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, TripKind, TripSummary};
+use trip_archive_types::{ActivityType, Tag, TripKind, TripSummary};
 
 use crate::api;
 use crate::filters::Filters;
@@ -20,11 +20,21 @@ pub fn TripList(#[props(default)] initial: Filters) -> Element {
     let trips = use_resource(move || async move {
         api::list_trips(&base_url(), filters.read().to_query()).await
     });
+    // The known tags, as the tag filter's choices (US-38). A failure here
+    // costs the tag filter, not the list — hence the separate resource and
+    // the fallback to no choices.
+    let all_tags = use_resource(move || async move { api::list_tags(&base_url()).await });
+    let all_tags = all_tags
+        .read_unchecked()
+        .as_ref()
+        .and_then(|tags| tags.clone().ok())
+        .unwrap_or_default();
 
     rsx! {
         h1 { "Trips" }
         KindTabs { filters }
         FilterPanel { filters }
+        TagFilter { filters, all_tags }
         match &*trips.read_unchecked() {
             None => rsx! { p { "Loading…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load trips: {err}" } },
@@ -128,6 +138,44 @@ fn FilterPanel(filters: Signal<Filters>) -> Element {
     }
 }
 
+/// The tag filter (US-38): one checkbox per known tag; only trips carrying
+/// all checked tags are listed. Nothing renders while the archive has no
+/// tags at all — an empty fieldset would only raise the question of what
+/// belongs in it.
+#[component]
+fn TagFilter(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
+    if all_tags.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        fieldset {
+            legend { "Tags" }
+            for tag in all_tags {
+                label {
+                    input {
+                        r#type: "checkbox",
+                        checked: filters.read().tags.contains(&tag.name),
+                        onchange: {
+                            let name = tag.name.clone();
+                            move |event: FormEvent| {
+                                let mut filters = filters.write();
+                                if event.checked() {
+                                    if !filters.tags.contains(&name) {
+                                        filters.tags.push(name.clone());
+                                    }
+                                } else {
+                                    filters.tags.retain(|chosen| chosen != &name);
+                                }
+                            }
+                        },
+                    }
+                    "{tag.name}"
+                }
+            }
+        }
+    }
+}
+
 /// Tells "nothing imported yet" apart from "nothing matches the filters" —
 /// the same distinction the server-rendered page draws (US-13).
 #[component]
@@ -180,8 +228,10 @@ fn TripTable(trips: Vec<TripSummary>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{import_sample, render, render_against_archive, serve_test_archive};
-    use trip_archive_types::{ActivityType, TripKind};
+    use crate::test_support::{
+        import_sample, render, render_against_archive, serve_test_archive, tag_trip,
+    };
+    use trip_archive_types::{ActivityType, Tag, TripKind};
 
     fn a_trip(id: i64, name: &str) -> TripSummary {
         TripSummary {
@@ -363,6 +413,65 @@ mod tests {
 
         assert!(html.contains("No trips match your filters."), "{html}");
         assert!(!html.contains("No trips yet"), "{html}");
+    }
+
+    // The tag filter (US-38): one checkbox per known tag, the chosen ones
+    // checked. Toggling is a real event — browser layer.
+    #[test]
+    fn the_tag_filter_offers_every_known_tag_with_chosen_ones_checked() {
+        let all_tags = vec![
+            Tag {
+                id: 1,
+                name: "alpine".to_string(),
+            },
+            Tag {
+                id: 2,
+                name: "summer".to_string(),
+            },
+        ];
+
+        let html = render(move || {
+            let filters = Signal::new(Filters {
+                tags: vec!["alpine".to_string()],
+                ..Default::default()
+            });
+            rsx! { TagFilter { filters, all_tags: all_tags.clone() } }
+        });
+
+        assert!(html.contains("alpine"), "{html}");
+        assert!(html.contains("summer"), "{html}");
+        assert!(html.contains("checked"), "{html}");
+    }
+
+    // US-38 against a real server: only trips carrying all chosen tags are
+    // listed, and the known tags show up as filter choices.
+    #[tokio::test]
+    async fn the_list_screen_narrows_to_trips_with_all_chosen_tags() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let tagged = import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+        let partly = import_sample(&base_url, &[("name", "Inn Valley Ride")]).await;
+        tag_trip(&base_url, tagged, "alpine").await;
+        tag_trip(&base_url, tagged, "summer").await;
+        tag_trip(&base_url, partly, "alpine").await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { initial: Filters {
+                    tags: vec!["alpine".to_string(), "summer".to_string()],
+                    ..Default::default()
+                } } }
+            },
+            |html| html.contains("Oslo Hills Walk"),
+        )
+        .await;
+
+        assert!(
+            !html.contains("Inn Valley Ride"),
+            "one tag of two is not enough: {html}"
+        );
+        // The known tags are offered as choices, fetched from the server.
+        assert!(html.contains("summer"), "{html}");
     }
 
     // US-6 as the owner sees it: an imported trip appears on the list, with

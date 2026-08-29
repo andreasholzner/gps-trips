@@ -23,6 +23,10 @@ pub struct Filters {
     /// Kilometres, the unit `min_dist`/`max_dist` are documented in.
     pub min_dist: String,
     pub max_dist: String,
+    /// Chosen tag names (US-38): only trips carrying *all* of them are
+    /// listed. Already-normalized names, straight from the server's own tag
+    /// list, so no validation happens here.
+    pub tags: Vec<String>,
 }
 
 impl Default for Filters {
@@ -35,6 +39,7 @@ impl Default for Filters {
             to: String::new(),
             min_dist: String::new(),
             max_dist: String::new(),
+            tags: Vec::new(),
         }
     }
 }
@@ -60,6 +65,11 @@ impl Filters {
                 params.push((name, value.to_string()));
             }
         }
+        if !self.tags.is_empty() {
+            // One comma-separated parameter (US-38, ADR-0011): unambiguous
+            // because a tag name can never contain a comma (US-33).
+            params.push(("tags", self.tags.join(",")));
+        }
         let query: Vec<String> = params
             .iter()
             .map(|(name, value)| format!("{name}={}", encode(value)))
@@ -71,6 +81,7 @@ impl Filters {
     /// list uses it to tell "nothing imported yet" from "nothing matches".
     pub fn any_set(&self) -> bool {
         self.activity.is_some()
+            || !self.tags.is_empty()
             || [
                 &self.q,
                 &self.from,
@@ -121,6 +132,7 @@ mod tests {
             to: "2026-12-31".to_string(),
             min_dist: "5".to_string(),
             max_dist: "40".to_string(),
+            tags: Vec::new(),
         };
 
         assert_eq!(
@@ -139,6 +151,19 @@ mod tests {
 
         assert_eq!(filters.to_query(), "?kind=recorded");
         assert!(!filters.any_set());
+    }
+
+    #[test]
+    fn chosen_tags_travel_as_one_comma_separated_parameter() {
+        // US-38: comma-joined is unambiguous because a tag name can never
+        // contain a comma (US-33).
+        let filters = Filters {
+            tags: vec!["alpine".to_string(), "summer".to_string()],
+            ..Default::default()
+        };
+
+        assert_eq!(filters.to_query(), "?kind=recorded&tags=alpine%2Csummer");
+        assert!(filters.any_set());
     }
 
     #[test]

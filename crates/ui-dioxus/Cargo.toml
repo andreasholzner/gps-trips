@@ -34,6 +34,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 dioxus-ssr = "0.7"
 dioxus-core = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+serde_json = "1"
 tempfile = "3"
 axum = "0.7"
 # The real server for whole-screen tests: nothing is mocked (ADR-0012).

@@ -13,7 +13,7 @@
 //! platforms can share this file (ADR-0024).
 
 use serde::de::DeserializeOwned;
-use trip_archive_types::TripSummary;
+use trip_archive_types::{Tag, TripSummary};
 
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,4 +42,10 @@ async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
 /// `?`-prefixed query string, or empty for the unfiltered list.
 pub async fn list_trips(base_url: &str, query: String) -> Result<Vec<TripSummary>, ApiError> {
     get_json(format!("{base_url}/api/trips{query}")).await
+}
+
+/// `GET /api/tags` — every known tag, for the tag filter's choices (US-38)
+/// and later the bulk-tag suggestions (US-34).
+pub async fn list_tags(base_url: &str) -> Result<Vec<Tag>, ApiError> {
+    get_json(format!("{base_url}/api/tags")).await
 }
