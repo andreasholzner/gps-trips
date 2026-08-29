@@ -7,6 +7,7 @@
 use dioxus::prelude::*;
 
 mod api;
+mod filters;
 mod format;
 mod list;
 #[cfg(test)]
