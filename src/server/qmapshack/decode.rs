@@ -255,8 +255,10 @@ impl<'a> QtReader<'a> {
         ensure!(len % 2 == 0, "odd QString byte length {len}");
         let bytes = self.raw(len as usize)?;
         let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_le_bytes(*pair))
             .collect();
         Ok(Some(String::from_utf16(&units).context("invalid UTF-16")?))
     }
