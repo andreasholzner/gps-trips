@@ -69,7 +69,14 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
                                 },
                             }
                         }
-                        td { "{trip.name}" }
+                        td {
+                            // A plain link, not a `Link`: until US-42 builds
+                            // the detail screen, this leaves the SPA for the
+                            // server-rendered page that still owns editing,
+                            // tagging and reliving a trip. It becomes a
+                            // client-side route then.
+                            a { href: "/trips/{trip.id}", "{trip.name}" }
+                        }
                         td { "{trip.activity_type.label()}" }
                         td { {format::date(trip.start_time.as_deref())} }
                         td { {format::km(trip.distance_m)} }
@@ -121,6 +128,9 @@ mod tests {
 
         assert!(html.contains("Oslo Hills Walk"), "{html}");
         assert!(html.contains("Inn Valley Ride"), "{html}");
+        // Each row reaches its trip — the server-rendered detail page for
+        // now, an SPA route once US-42 lands.
+        assert!(html.contains("/trips/1"), "{html}");
         assert!(html.contains("2026-07-11"), "{html}");
         assert!(html.contains("12.35 km"), "{html}");
         assert!(html.contains("410 m"), "{html}");

@@ -21,6 +21,13 @@ button {
   width: auto;
 }
 
+/* Links out to the pages the SPA does not own yet (US-43, US-44). */
+nav.elsewhere {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 /* Recorded/Planned (US-32). The active tab is the `disabled` one, which
    Pico would otherwise dim into looking broken: it keeps the solid fill and
    the tab you can switch to becomes an outline, so "you are here" is legible

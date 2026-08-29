@@ -26,8 +26,10 @@ hardware the owner controls.
 Narrower references: [`docs/komoot-api.md`](./docs/komoot-api.md) (the reverse-engineered Komoot
 API), [`docs/qmapshack.md`](./docs/qmapshack.md) and
 [`docs/qmapshack-format.md`](./docs/qmapshack-format.md) (the QMapShack export and its database
-format), and [`docs/dioxus-spike.md`](./docs/dioxus-spike.md) (the spike that settled the UI
-framework, including the Android toolchain).
+format), and two spike records — [`docs/dioxus-spike.md`](./docs/dioxus-spike.md) (the spike that
+settled the UI framework, including the Android toolchain) and
+[`docs/eval-two-way-spike.md`](./docs/eval-two-way-spike.md) (whether the JS-interop mechanism
+could carry a map reporting back into Rust).
 [`docs/initial_plan.md`](./docs/initial_plan.md) is a frozen historical snapshot — the living
 documents above supersede it.
 

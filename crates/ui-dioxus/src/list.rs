@@ -50,6 +50,14 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
 
     rsx! {
         h1 { "Trips" }
+        // The server-rendered list page used to be the way to these; it is
+        // gone (US-52) and the SPA is the archive's home now. Plain links
+        // because both pages are still server-rendered — they become SPA
+        // routes with US-43 and US-44.
+        nav { class: "elsewhere",
+            a { href: "/import", "Import a trip" }
+            a { href: "/komoot/sync", "Sync with Komoot" }
+        }
         KindTabs { filters }
         FilterPanel { filters }
         TagFilter { filters, all_tags: all_tags.clone() }

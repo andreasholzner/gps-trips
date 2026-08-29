@@ -13,13 +13,14 @@ that the architecture must not preclude, not part of v1.
 **Target vs. current UI:** the Web UI container and its components show the *target* stack
 ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md): a client-side-rendered Dioxus SPA served as
 static files, plus an Android app from the same source). That SPA now exists as
-`crates/ui-dioxus` and is served at `/app`, but only the **trip-list screen** is built (US-41);
-the trip detail, import and Komoot-sync screens are still to come (US-42/43/44), and the region
-filter on the list screen with them (US-52). Until each arrives, the intentionally throwaway
-server-rendered proof-of-concept keeps serving `/` and remains how the owner does that work. It
-is retired page by page as the SPA reaches parity, under
-[ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule — the list page specifically stays
-until US-52, because the region filter rides on it.
+`crates/ui-dioxus` and is served at `/app`, with the **trip-list screen** complete — browsing,
+filtering, tagging and the region map (US-41, US-52). `/` redirects to it: the server-rendered
+list page has been deleted, its acceptance assertions having moved to the SPA and the JSON API
+under [ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
+
+What remains of the intentionally throwaway proof-of-concept is the trip detail, import and
+Komoot-sync pages, still reachable and still how the owner does that work until US-42/43/44
+replace them; the SPA links out to them. They are retired the same way, page by page.
 
 ---
 
@@ -232,9 +233,14 @@ C4Component
   SQLite mappings sit behind a feature only the server enables) so server and UI describe trips
   with one set of types rather than mirroring shapes by hand
   ([ADR-0015](./adr/0015-db-model-response-type-separation.md)).
-- **Built so far:** the App Router and the Trip List with its filter bar, tag filter and
-  bulk-tagging (US-41). Its region-select map arrives with US-52, and the remaining components
-  with US-42/43/44.
+- **Built so far:** the App Router and the Trip List — filter bar, tag filter, bulk-tagging and
+  the region-select map (US-41, US-52). The remaining components arrive with US-42/43/44.
+- The list screen's filters live in the SPA's own URL query, so a narrowed list is bookmarkable
+  and survives a reload, and the region rectangle can be restored onto the map (US-52). The map
+  reports each dragged rectangle back into Rust state over `document::eval`'s channel — the
+  sustained two-way interaction [ADR-0025](./adr/0025-js-widget-interop-via-eval.md) named as
+  its own revisit trigger, spiked before implementation and found to hold
+  ([eval-two-way-spike.md](./eval-two-way-spike.md)).
 - Reusable logic (stats, EXIF decode, time-match, bbox) lives in plain Rust modules on the server
   side, keeping these view components thin and the logic unit-testable
   ([ADR-0012](./adr/0012-tdd-test-strategy.md)).
