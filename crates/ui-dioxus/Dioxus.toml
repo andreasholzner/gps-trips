@@ -1,0 +1,29 @@
+[application]
+name = "ui-dioxus"
+
+[web.app]
+title = "Trip Archive"
+# Matches where the built bundle is mounted on the Axum server (`/app`), so the
+# dev server and the deployed SPA resolve assets and routes identically.
+base_path = "app"
+
+# The dev server (`dx serve`) proxies to the real server (`cargo run`,
+# 127.0.0.1:3000) rather than a mock: `/api` for JSON, `/media` for photo
+# blobs (ADR-0012: nothing is mocked, the API contract is what's under test).
+[[web.proxy]]
+backend = "http://127.0.0.1:3000/api"
+
+[[web.proxy]]
+backend = "http://127.0.0.1:3000/media"
+
+# ── Android (ADR-0024; US-16 ships the actual app) ───────────────────────────
+[bundle]
+identifier = "org.triparchive.app"
+publisher = "Trip Archive"
+
+[android.application]
+# On the LAN the archive is reached over plain HTTP, and Android has blocked
+# cleartext by default since API 28. The Rust side opens its own sockets and
+# is unaffected, but the webview is not. A deployed HTTPS instance (ADR-0023)
+# does not need this.
+uses_cleartext_traffic = true

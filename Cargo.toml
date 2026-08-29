@@ -1,7 +1,7 @@
 # The server crate; `crates/types` holds the shared, wasm-safe data models
-# (ADR-0024). The Dioxus UI crate joins the workspace with US-41.
+# and `crates/ui-dioxus` the Dioxus SPA (ADR-0024, US-41).
 [workspace]
-members = ["crates/types"]
+members = ["crates/types", "crates/ui-dioxus"]
 
 [package]
 name = "trip-archive"

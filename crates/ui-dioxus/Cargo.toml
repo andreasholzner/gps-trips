@@ -1,0 +1,20 @@
+[package]
+name = "ui-dioxus"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["web"]
+# One crate, two platforms (ADR-0024). `dx` selects the feature matching
+# `--platform`; on Android `dioxus/mobile` is the same webview renderer as
+# desktop, which is why the HTML/CSS/JS carries over.
+web = ["dioxus/web"]
+mobile = ["dioxus/mobile"]
+
+[dependencies]
+# Crate and `dx` CLI versions must match and are pinned together (ADR-0024).
+dioxus = { version = "=0.7.10", features = ["router", "asset"] }
+# The server's own data models, reused verbatim over the JSON API — the whole
+# point of a Rust front-end (crates/types is server-dependency-free by design).
+trip-archive-types = { path = "../types" }

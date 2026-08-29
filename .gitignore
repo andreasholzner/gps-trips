@@ -61,6 +61,9 @@ Thumbs.db
 # Application runtime data (SQLite DB, photos)
 /data/
 
+# Built output of the Dioxus SPA (crates/ui-dioxus), served at /app
+public/app/
+
 # ───────── Reference clones (not project source) ─────────
 docs/qmapshack_analysis/qmapshack-src/
 docs/qmapshack_analysis/Touren.db

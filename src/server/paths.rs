@@ -19,6 +19,13 @@ pub fn data_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(DEFAULT_DATA_DIR))
 }
 
+/// Where the Dioxus SPA's built bundle lives (US-41, ADR-0024): an `app/`
+/// folder inside the assets directory, so it ships with the rest of
+/// `public/` and needs no configuration of its own.
+pub fn spa_dir() -> PathBuf {
+    assets_dir().join("app")
+}
+
 /// Where the vendored static assets (`public/`) live.
 pub fn assets_dir() -> PathBuf {
     resolve_assets_dir(

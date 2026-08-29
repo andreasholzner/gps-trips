@@ -8,7 +8,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
 use crate::models::{LocationSource, Photo, TripKind, TripSummary};
@@ -126,7 +126,21 @@ pub fn router(state: AppState) -> Router {
         // Resolved relative to the executable, not the CWD, so "binary + adjacent
         // public/ folder" is a deployable unit startable from anywhere (ADR-0016).
         .nest_service("/static", ServeDir::new(paths::assets_dir()))
+        // The Dioxus SPA's built bundle (US-41, ADR-0024), if one has been
+        // built into `public/app`. Unknown paths under it fall back to the
+        // app shell so the SPA's own routes survive a reload or a shared
+        // link; the server-rendered pages at `/` are untouched until their
+        // screens' stories complete (ADR-0012's migration rule).
+        .nest_service("/app", spa_service(paths::spa_dir()))
         .with_state(state)
+}
+
+/// Serve a single-page-app bundle: its files where they exist, its
+/// `index.html` for everything else. A directory that was never built simply
+/// answers 404, the same way a missing assets dir does.
+fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
+    let index = dir.join("index.html");
+    ServeDir::new(dir).fallback(ServeFile::new(index))
 }
 
 /// GET `/` — the trip list, the archive's home (US-6), optionally narrowed by
