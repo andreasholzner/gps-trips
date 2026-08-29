@@ -1,0 +1,95 @@
+# The browser layer (ADR-0012's 2026-08-26b amendment): Playwright against the
+# *shipped artifact* — the built web bundle, served by the real server on a
+# throwaway data directory. It is its own workflow because it needs two things
+# the default loop does not: the wasm bundle built by `dx`, and a browser.
+#
+# Slower than the Rust workflow by design; running them separately keeps the
+# fast feedback fast. See docs/development.md for the same steps by hand.
+name: Browser tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The dx CLI and the dioxus crate are pinned together and must match
+  # (ADR-0024); the crate is pinned in crates/ui-dioxus/Cargo.toml.
+  DX_VERSION: 0.7.10
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the toolchain
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-browser-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-browser-
+
+      # The prebuilt binary rather than `cargo install dioxus-cli`, which
+      # compiles for minutes. The release publishes a checksum next to the
+      # tarball; it covers the zip too, hence --ignore-missing.
+      - name: Install the dx CLI
+        run: |
+          set -euo pipefail
+          base="https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}"
+          asset="dx-x86_64-unknown-linux-gnu"
+          curl -fsSLO "${base}/${asset}.tar.gz"
+          curl -fsSLO "${base}/${asset}.sha256"
+          sha256sum --check --ignore-missing "${asset}.sha256"
+          sudo tar xzf "${asset}.tar.gz" -C /usr/local/bin
+          dx --version
+
+      # The deployed shape: the bundle served by Axum itself from public/app.
+      # target/dx is wiped first because dx keeps previously built,
+      # content-hashed artifacts there and copying would carry orphans along.
+      - name: Build the web bundle
+        run: |
+          set -euo pipefail
+          rm -rf target/dx/ui-dioxus public/app
+          (cd crates/ui-dioxus && dx build --release --platform web)
+          cp -r target/dx/ui-dioxus/release/web/public public/app
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+
+      - name: Install the test tooling
+        working-directory: tests/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Playwright starts the server itself, on a fresh temporary data
+      # directory, and refuses to run at all if the bundle above is missing.
+      - name: Run the browser tests
+        working-directory: tests/browser
+        run: npm test
+
+      # Failures in this layer are usually timing; the trace is what makes
+      # them diagnosable after the fact.
+      - name: Keep the traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/browser/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
