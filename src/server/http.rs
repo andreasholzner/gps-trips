@@ -85,7 +85,9 @@ pub fn router(state: AppState) -> Router {
         // body limit; every other route keeps the default.
         .route(
             "/api/import",
-            post(handle_import).layer(DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT)),
+            post(handle_import).layer(DefaultBodyLimit::max(
+                config::server::PHOTO_IMPORT_BODY_LIMIT,
+            )),
         )
         // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
         .route("/api/trips", get(list_trips_api))
@@ -101,7 +103,9 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/trips/:id/photos",
             post(handle_add_photos)
-                .layer(DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT))
+                .layer(DefaultBodyLimit::max(
+                    config::server::PHOTO_IMPORT_BODY_LIMIT,
+                ))
                 .get(list_trip_photos),
         )
         // US-33: tag a trip (POST/GET) and untag it (DELETE).

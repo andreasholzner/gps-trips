@@ -113,9 +113,7 @@ fn oversized_gpx(min_len: usize) -> Vec<u8> {
          \x20     </trkpt>\n",
     );
     while gpx.len() < min_len {
-        gpx.push_str(
-            "      <trkpt lat=\"59.9200\" lon=\"10.7600\"><ele>50.0</ele></trkpt>\n",
-        );
+        gpx.push_str("      <trkpt lat=\"59.9200\" lon=\"10.7600\"><ele>50.0</ele></trkpt>\n");
     }
     gpx.push_str(
         "      <trkpt lat=\"59.9250\" lon=\"10.7650\">\n\

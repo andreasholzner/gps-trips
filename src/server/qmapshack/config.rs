@@ -232,7 +232,9 @@ fn all_activity_types() -> impl Iterator<Item = ActivityType> {
 
 /// Every valid `[activity_type_names]` key: the wire names, incl. `unknown`.
 fn activity_type_keys() -> Vec<String> {
-    all_activity_types().map(|a| a.as_str().to_string()).collect()
+    all_activity_types()
+        .map(|a| a.as_str().to_string())
+        .collect()
 }
 
 fn parse_template(template: &str) -> Result<Vec<Vec<Piece>>, ConfigError> {
@@ -408,7 +410,10 @@ planned = \"Planned\"\n";
 
     #[test]
     fn omitting_unknown_from_activity_type_names_is_an_incomplete_mapping_error() {
-        let toml = format!("{MINIMAL}{}", FULL_NAME_TABLES.replace("unknown = \"Unspecified\"\n", ""));
+        let toml = format!(
+            "{MINIMAL}{}",
+            FULL_NAME_TABLES.replace("unknown = \"Unspecified\"\n", "")
+        );
         let err = ExportConfig::from_toml_str(&toml).expect_err("unknown must be mapped");
         match &err {
             ConfigError::IncompleteMapping(msg) => {
@@ -439,7 +444,10 @@ planned = \"Planned\"\n";
                     "cross_country_skiing",
                     "snow_shoe",
                 ] {
-                    assert!(msg.contains(missing), "missing {missing:?} not listed: {msg}");
+                    assert!(
+                        msg.contains(missing),
+                        "missing {missing:?} not listed: {msg}"
+                    );
                 }
                 assert!(msg.contains("trip_type_names"), "{msg}");
                 assert!(msg.contains("recorded"), "{msg}");
