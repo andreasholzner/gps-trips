@@ -12,10 +12,14 @@ that the architecture must not preclude, not part of v1.
 
 **Target vs. current UI:** the Web UI container and its components show the *target* stack
 ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md): a client-side-rendered Dioxus SPA served as
-static files, plus an Android app from the same source). The current UI is still the intentionally
-throwaway server-rendered proof-of-concept, good enough to validate the rest of the stack; it is
-retired page by page as the SPA reaches parity, under
-[ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
+static files, plus an Android app from the same source). That SPA now exists as
+`crates/ui-dioxus` and is served at `/app`, but only the **trip-list screen** is built (US-41);
+the trip detail, import and Komoot-sync screens are still to come (US-42/43/44), and the region
+filter on the list screen with them (US-52). Until each arrives, the intentionally throwaway
+server-rendered proof-of-concept keeps serving `/` and remains how the owner does that work. It
+is retired page by page as the SPA reaches parity, under
+[ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule — the list page specifically stays
+until US-52, because the region filter rides on it.
 
 ---
 
@@ -224,8 +228,13 @@ C4Component
   `document::eval` so the same code runs on the web and in the Android WebView; map/chart code
   runs client-side only ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)).
 - The same components build for Android ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)); the
-  shared data models live in their own dependency-free crate so server and UI describe trips with
-  one set of types.
+  shared data models live in their own crate (`crates/types`, free of server dependencies — the
+  SQLite mappings sit behind a feature only the server enables) so server and UI describe trips
+  with one set of types rather than mirroring shapes by hand
+  ([ADR-0015](./adr/0015-db-model-response-type-separation.md)).
+- **Built so far:** the App Router and the Trip List with its filter bar, tag filter and
+  bulk-tagging (US-41). Its region-select map arrives with US-52, and the remaining components
+  with US-42/43/44.
 - Reusable logic (stats, EXIF decode, time-match, bbox) lives in plain Rust modules on the server
   side, keeping these view components thin and the logic unit-testable
   ([ADR-0012](./adr/0012-tdd-test-strategy.md)).
