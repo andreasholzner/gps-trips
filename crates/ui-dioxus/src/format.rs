@@ -2,6 +2,8 @@
 //! browser types so it runs under a plain `cargo test` on the host
 //! (ADR-0012: pure logic lives in plain modules).
 
+use trip_archive_types::KomootPrivacy;
+
 /// Metres as kilometres, the unit the list shows.
 pub fn km(metres: f64) -> String {
     format!("{:.2} km", metres / 1000.0)
@@ -27,6 +29,14 @@ pub fn date(timestamp: Option<&str>) -> String {
         None => dash(),
         Some(ts) => ts.split('T').next().unwrap_or(ts).to_string(),
     }
+}
+
+/// A linked Komoot tour's privacy (US-35), or a dash for a trip that never
+/// came from Komoot — and for a linked one whose privacy no sync has read
+/// yet. A privacy Komoot reported that the archive couldn't map shows as
+/// "Unknown": displayed, never pushed back (ADR-0021).
+pub fn privacy(privacy: Option<KomootPrivacy>) -> String {
+    privacy.map_or_else(dash, |p| p.label().to_string())
 }
 
 fn dash() -> String {
@@ -58,6 +68,16 @@ mod tests {
         assert_eq!(duration(Some(0)), "00:00:00");
         // Over a day: hours keep counting up rather than wrapping.
         assert_eq!(duration(Some(90_000)), "25:00:00");
+    }
+
+    #[test]
+    fn a_privacy_is_shown_by_its_label_and_an_absent_one_as_a_dash() {
+        assert_eq!(privacy(Some(KomootPrivacy::Public)), "Public");
+        assert_eq!(privacy(Some(KomootPrivacy::Private)), "Private");
+        // Shown, not hidden: the archive says what it couldn't map.
+        assert_eq!(privacy(Some(KomootPrivacy::Unknown)), "Unknown");
+        // Never came from Komoot, or no sync has read its privacy yet.
+        assert_eq!(privacy(None), "—");
     }
 
     #[test]

@@ -191,8 +191,9 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
 }
 
 /// One row per trip: name, activity, date, distance, ascent, duration
-/// (US-6). The name becomes a link to the trip's detail screen when US-42
-/// builds it; until then the row is display-only.
+/// (US-6), and the linked Komoot tour's privacy (US-35). The name becomes a
+/// link to the trip's detail screen when US-42 builds it; until then the row
+/// is display-only.
 #[component]
 fn TripTable(trips: Vec<TripSummary>) -> Element {
     rsx! {
@@ -205,6 +206,7 @@ fn TripTable(trips: Vec<TripSummary>) -> Element {
                     th { "Distance" }
                     th { "Ascent" }
                     th { "Duration" }
+                    th { "Privacy" }
                 }
             }
             tbody {
@@ -216,6 +218,7 @@ fn TripTable(trips: Vec<TripSummary>) -> Element {
                         td { {format::km(trip.distance_m)} }
                         td { {format::metres(trip.ascent_m)} }
                         td { {format::duration(trip.duration_secs)} }
+                        td { {format::privacy(trip.privacy_status)} }
                     }
                 }
             }
@@ -231,7 +234,7 @@ mod tests {
     use crate::test_support::{
         import_sample, render, render_against_archive, serve_test_archive, tag_trip,
     };
-    use trip_archive_types::{ActivityType, Tag, TripKind};
+    use trip_archive_types::{ActivityType, KomootPrivacy, Tag, TripKind};
 
     fn a_trip(id: i64, name: &str) -> TripSummary {
         TripSummary {
@@ -264,6 +267,51 @@ mod tests {
         assert!(html.contains("410 m"), "{html}");
         assert!(html.contains("01:02:05"), "{html}");
         assert!(html.contains("Hiking"), "{html}");
+    }
+
+    // US-35's Privacy column. A linked trip's privacy is a stored value the
+    // row displays, so the component layer covers it (ADR-0012); seeding a
+    // real Komoot link would need the mocked client the server's own US-35
+    // tests use, and would assert nothing more about this screen.
+    #[test]
+    fn the_privacy_column_shows_a_linked_trips_privacy() {
+        let trips = vec![TripSummary {
+            privacy_status: Some(KomootPrivacy::Public),
+            ..a_trip(1, "Komoot Trip")
+        }];
+
+        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
+
+        assert!(html.contains("Privacy"), "{html}");
+        assert!(html.contains(KomootPrivacy::Public.label()), "{html}");
+    }
+
+    #[test]
+    fn a_privacy_komoot_reported_unmappably_shows_as_unknown() {
+        // The archive never pretends to know a privacy it couldn't map
+        // (ADR-0021); it shows it, and the push side leaves it alone.
+        let trips = vec![TripSummary {
+            privacy_status: Some(KomootPrivacy::Unknown),
+            ..a_trip(1, "Odd Privacy")
+        }];
+
+        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
+
+        assert!(html.contains(KomootPrivacy::Unknown.label()), "{html}");
+    }
+
+    #[test]
+    fn a_trip_that_never_came_from_komoot_shows_no_privacy() {
+        let trips = vec![a_trip(1, "Local Trip")];
+
+        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
+
+        assert!(
+            html.contains("Privacy"),
+            "the column is always there: {html}"
+        );
+        assert!(!html.contains(KomootPrivacy::Public.label()), "{html}");
+        assert!(!html.contains(KomootPrivacy::Private.label()), "{html}");
     }
 
     #[test]
@@ -492,6 +540,10 @@ mod tests {
         assert!(html.contains("Oslo Hills Walk"), "{html}");
         assert!(html.contains(" km"), "{html}");
         assert!(html.contains("Hiking"), "{html}");
+        // US-35: an imported trip never came from Komoot, so its privacy
+        // cell is a dash rather than a claim.
+        assert!(html.contains("Privacy"), "{html}");
+        assert!(!html.contains(KomootPrivacy::Public.label()), "{html}");
     }
 
     // Exemplar for the whole-screen layer (ADR-0012, 2026-08-26a): the fetch
