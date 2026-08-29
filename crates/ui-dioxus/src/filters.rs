@@ -27,6 +27,12 @@ pub struct Filters {
     /// listed. Already-normalized names, straight from the server's own tag
     /// list, so no validation happens here.
     pub tags: Vec<String>,
+    /// The region rectangle (US-14/US-52) as the API's own parameter,
+    /// `minLon,minLat,maxLon,maxLat`; blank means no region chosen. Kept as
+    /// the raw string like every other field here, so it travels in the URL
+    /// and to the server unchanged, and the map is the only thing that has
+    /// to know it is four numbers.
+    pub bbox: String,
 }
 
 impl Default for Filters {
@@ -40,6 +46,7 @@ impl Default for Filters {
             min_dist: String::new(),
             max_dist: String::new(),
             tags: Vec::new(),
+            bbox: String::new(),
         }
     }
 }
@@ -62,6 +69,7 @@ impl Filters {
             ("to", &self.to),
             ("min_dist", &self.min_dist),
             ("max_dist", &self.max_dist),
+            ("bbox", &self.bbox),
         ] {
             let value = value.trim();
             if !value.is_empty() {
@@ -101,6 +109,7 @@ impl Filters {
                 "to" => filters.to = value,
                 "min_dist" => filters.min_dist = value,
                 "max_dist" => filters.max_dist = value,
+                "bbox" => filters.bbox = value,
                 "tags" => {
                     filters.tags = value
                         .split(',')
@@ -125,6 +134,11 @@ impl Filters {
                 &self.to,
                 &self.min_dist,
                 &self.max_dist,
+                // A chosen region narrows the list, so an empty result is
+                // "nothing matches" rather than "nothing imported yet"
+                // (US-14) — the spike got this wrong by keeping bbox outside
+                // Filters, and the wrong empty state is what gave it away.
+                &self.bbox,
             ]
             .iter()
             .any(|value| !value.trim().is_empty())
@@ -238,6 +252,7 @@ mod tests {
             min_dist: "5".to_string(),
             max_dist: "40".to_string(),
             tags: Vec::new(),
+            bbox: String::new(),
         };
 
         assert_eq!(
@@ -284,6 +299,7 @@ mod tests {
             min_dist: "5".to_string(),
             max_dist: "40".to_string(),
             tags: vec!["alpine".to_string(), "summer".to_string()],
+            bbox: String::new(),
         };
 
         assert_eq!(Filters::from_query(&filters.to_query()), filters);
@@ -297,6 +313,33 @@ mod tests {
         };
 
         assert_eq!(Filters::from_query(&filters.to_query()), filters);
+    }
+
+    #[test]
+    fn a_chosen_region_travels_as_the_apis_bbox_parameter() {
+        let filters = Filters {
+            bbox: "10.75,59.91,11.25,60.12".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            filters.to_query(),
+            "kind=recorded&bbox=10.75%2C59.91%2C11.25%2C60.12"
+        );
+        assert_eq!(Filters::from_query(&filters.to_query()), filters);
+    }
+
+    #[test]
+    fn a_chosen_region_counts_as_a_filter() {
+        // Otherwise an empty result reads "no trips yet" instead of "nothing
+        // matches your filters" (US-14).
+        let filters = Filters {
+            bbox: "10.75,59.91,11.25,60.12".to_string(),
+            ..Default::default()
+        };
+
+        assert!(filters.any_set());
+        assert!(!Filters::default().any_set());
     }
 
     #[test]

@@ -10,7 +10,9 @@ mod api;
 mod bulk_tag;
 mod filters;
 mod format;
+mod interop;
 mod list;
+mod region;
 #[cfg(test)]
 mod test_support;
 mod trip_table;
@@ -25,6 +27,16 @@ use list::TripList;
 /// the components. `app.css` holds only what Pico has no opinion about.
 const PICO_CSS: Asset = asset!("/assets/pico.classless.min.css");
 const APP_CSS: Asset = asset!("/assets/app.css");
+
+/// Leaflet and OSM raster tiles, kept from ADR-0005 and vendored rather than
+/// fetched from a CDN (US-10). Bundled with `asset!` so it ships inside the
+/// APK too, where there is no server to fetch it from ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)).
+///
+/// This is a second copy of `public/vendor`'s file — `asset!` refuses paths
+/// outside the crate, symlinks included — which that ADR accepts and which
+/// resolves when the PoC UI retires (US-42).
+const LEAFLET_CSS: Asset = asset!("/assets/leaflet.css");
+const LEAFLET_JS: Asset = asset!("/assets/leaflet.js");
 
 /// The screens. The trip-list path mirrors the server-rendered app's own
 /// (`/`); the deployed web bundle is mounted under `/app` (Dioxus.toml's
@@ -62,6 +74,10 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "stylesheet", href: PICO_CSS }
         document::Link { rel: "stylesheet", href: APP_CSS }
+        // Injected asynchronously, so anything using `L` waits for it
+        // (interop.rs) rather than assuming load order.
+        document::Link { rel: "stylesheet", href: LEAFLET_CSS }
+        document::Script { src: LEAFLET_JS }
 
         main {
             if loaded() {

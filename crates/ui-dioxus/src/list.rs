@@ -10,6 +10,7 @@ use trip_archive_types::{ActivityType, Tag, TripKind};
 use crate::api;
 use crate::bulk_tag::BulkTagPanel;
 use crate::filters::Filters;
+use crate::region::RegionFilter;
 use crate::trip_table::TripTable;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
@@ -52,6 +53,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         KindTabs { filters }
         FilterPanel { filters }
         TagFilter { filters, all_tags: all_tags.clone() }
+        RegionFilter { filters }
         BulkTagPanel {
             selected,
             staged,

@@ -82,6 +82,14 @@ nav.tabs button:not(:disabled) {
   min-width: 12ch;
 }
 
+/* The region map (US-52). Leaflet needs a container with a real height, or
+   it lays out into nothing. */
+.region-map {
+  height: 320px;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
 /* Staged tag names, before they are applied (US-34). */
 .chips {
   display: flex;

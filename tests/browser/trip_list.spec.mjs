@@ -129,6 +129,52 @@ test("choosing a tag narrows the list to trips carrying it (US-38)", async ({ pa
   await expect(rows(page).first()).toContainText("Oslo Hills Walk");
 });
 
+// US-14, carried by US-52. Dragging is a real mouse gesture and the map is
+// drawn by JS through `document::eval`, so neither is observable anywhere but
+// here — both of this layer's exemptions at once.
+test("dragging a rectangle on the map filters by region, and it survives a reload (US-14)", async ({
+  page,
+}) => {
+  await page.goto("/app/");
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+
+  // Collapsed by default: no map, and so no tiles, on an ordinary list view.
+  await expect(page.locator("#region-map")).toHaveCount(0);
+  await page.getByText("Region", { exact: true }).click();
+  await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
+
+  // Arm the drawing, then drag a rectangle over the map's western ocean,
+  // nowhere near the fixture's Oslo track.
+  //
+  // `page.mouse` works in viewport coordinates and does not scroll the way
+  // `locator.click()` does, so the map has to be brought into view first or
+  // the drag lands on whatever happens to be there instead. Starting a tenth
+  // of the way in also keeps clear of Leaflet's zoom control, which swallows
+  // mousedown in the top-left corner.
+  await page.locator("#region-select").click();
+  await page.locator("#region-map").scrollIntoViewIfNeeded();
+  const box = await page.locator("#region-map").boundingBox();
+  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.75, { steps: 8 });
+  await page.mouse.up();
+
+  // The region reached the filters, the query and the URL.
+  await expect(page.getByText("No trips match your filters.")).toBeVisible();
+  await expect(page).toHaveURL(/[?&]bbox=/);
+
+  // And it is restored onto the map on the next load (US-14).
+  await page.reload();
+  await expect(page.getByText("No trips match your filters.")).toBeVisible();
+  await page.getByText("Region", { exact: true }).click();
+  await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
+
+  // Clearing brings the trips back.
+  await page.locator("#region-clear").click();
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]bbox=/);
+});
+
 test("selected trips are tagged in one go, after confirming a new tag (US-34)", async ({
   page,
 }) => {
