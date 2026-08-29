@@ -22,6 +22,9 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
         !listed.is_empty() && listed.iter().all(|id| selected.read().contains(id));
 
     rsx! {
+        // Eight columns don't fit a phone: the table scrolls inside this
+        // box so the page itself never scrolls sideways (US-41).
+        div { class: "table-scroll",
         table {
             thead {
                 tr {
@@ -77,8 +80,10 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
                 }
             }
         }
+        }
     }
 }
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]

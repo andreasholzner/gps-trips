@@ -1,0 +1,129 @@
+/* What Pico's classless build doesn't cover: this screen's own layout, and
+   the phone-width behaviour US-41 asks for ("the same on my laptop and my
+   phone"). Pico styles the bare elements; everything here is either a
+   layout decision or a component Pico has no opinion about. */
+
+/* Pico's classless build puts the page gutters on `body > main`, but the
+   SPA mounts inside its own div, so our `main` is a grandchild and misses
+   them — without this the content sits flush against the screen edge. The
+   max-width keeps a laptop from stretching the filter grid across a metre
+   of desk. */
+main {
+  max-width: 70rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Pico stretches standalone buttons to full width, which is right for a
+   form's submit and wrong for every button on this screen — tabs, chips,
+   "Add", "Apply". */
+button {
+  width: auto;
+}
+
+/* Recorded/Planned (US-32). The active tab is the `disabled` one, which
+   Pico would otherwise dim into looking broken: it keeps the solid fill and
+   the tab you can switch to becomes an outline, so "you are here" is legible
+   at a glance rather than a subtle shade difference. */
+nav.tabs {
+  display: flex;
+  /* Pico spreads a `nav`'s children apart; two tabs belong side by side. */
+  justify-content: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+nav.tabs button:disabled {
+  opacity: 1;
+}
+
+nav.tabs button:not(:disabled) {
+  background: transparent;
+  color: var(--pico-primary);
+}
+
+/* The filter inputs sit side by side where there is room and fold down to
+   two columns on a phone, without a media query: each field claims a
+   comfortable minimum and wraps when it can't have it. The minimum is what
+   still fits twice across a 390px screen once the page gutters are taken. */
+.filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0 1rem;
+  align-items: end;
+}
+
+/* Tag checkboxes read as a row of choices, not a column of form rows. */
+.tag-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+}
+
+.tag-choices label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Eight columns do not fit a phone. The table scrolls inside its own box so
+   the page itself never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-scroll table {
+  margin-bottom: 0;
+}
+
+/* A trip name is the row's anchor; on a phone it may wrap, but it must not
+   be squeezed to a sliver by the numeric columns beside it. */
+.table-scroll td:nth-child(2) {
+  min-width: 12ch;
+}
+
+/* Staged tag names, before they are applied (US-34). */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  background: var(--pico-secondary-background);
+  color: var(--pico-secondary-inverse);
+  font-size: 0.875rem;
+}
+
+/* The chip's remove button is a glyph, not a bar. */
+.chip button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  line-height: 1;
+}
+
+/* The staging row: input and its button on one line, wrapping on a phone. */
+.tag-entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tag-entry input {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+  margin-bottom: 0;
+}
+
+.error {
+  color: var(--pico-del-color);
+}

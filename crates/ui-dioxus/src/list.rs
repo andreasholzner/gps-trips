@@ -67,7 +67,7 @@ pub fn TripList(#[props(default)] initial: Filters) -> Element {
 #[component]
 fn KindTabs(filters: Signal<Filters>) -> Element {
     rsx! {
-        nav {
+        nav { class: "tabs",
             for kind in TripKind::ALL {
                 button {
                     key: "{kind}",
@@ -88,6 +88,7 @@ fn FilterPanel(filters: Signal<Filters>) -> Element {
     rsx! {
         fieldset {
             legend { "Filter" }
+            div { class: "filter-fields",
             label {
                 "Search "
                 input {
@@ -143,6 +144,7 @@ fn FilterPanel(filters: Signal<Filters>) -> Element {
                     oninput: move |event| filters.write().max_dist = event.value(),
                 }
             }
+            }
             button {
                 onclick: move |_| {
                     // Clearing keeps the tab the owner is on.
@@ -167,6 +169,7 @@ fn TagFilter(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
     rsx! {
         fieldset {
             legend { "Tags" }
+            div { class: "tag-choices",
             for tag in all_tags {
                 label {
                     input {
@@ -188,6 +191,7 @@ fn TagFilter(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                     }
                     "{tag.name}"
                 }
+            }
             }
         }
     }

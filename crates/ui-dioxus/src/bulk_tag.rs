@@ -94,7 +94,7 @@ pub fn BulkTagPanel(
     rsx! {
         fieldset {
             legend { "Tag selected trips" }
-            div {
+            div { class: "chips",
                 for name in chips {
                     span { key: "{name}", class: "chip",
                         "{name}"
@@ -111,14 +111,16 @@ pub fn BulkTagPanel(
                     option { key: "{tag.id}", value: "{tag.name}" }
                 }
             }
-            input {
-                r#type: "text",
-                list: "bulk-tag-suggestions",
-                placeholder: "add a tag",
-                value: "{typed}",
-                oninput: move |event| typed.set(event.value()),
+            div { class: "tag-entry",
+                input {
+                    r#type: "text",
+                    list: "bulk-tag-suggestions",
+                    placeholder: "add a tag",
+                    value: "{typed}",
+                    oninput: move |event| typed.set(event.value()),
+                }
+                button { r#type: "button", onclick: move |_| add_typed(), "Add" }
             }
-            button { r#type: "button", onclick: move |_| add_typed(), "Add" }
 
             if let Some(name) = awaiting_confirmation() {
                 p {

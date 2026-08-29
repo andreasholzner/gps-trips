@@ -17,6 +17,14 @@ mod trip_table;
 
 use list::TripList;
 
+/// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
+/// CDN: the archive is self-contained (US-10) and the Android app has no
+/// server to fetch from at all. Classless because the markup is plain
+/// elements — a fieldset is a fieldset — so styling costs no class names in
+/// the components. `app.css` holds only what Pico has no opinion about.
+const PICO_CSS: Asset = asset!("/assets/pico.classless.min.css");
+const APP_CSS: Asset = asset!("/assets/app.css");
+
 /// The screens. The trip-list path mirrors the server-rendered app's own
 /// (`/`); the deployed web bundle is mounted under `/app` (Dioxus.toml's
 /// `base_path`), which the router applies for us.
@@ -46,10 +54,15 @@ fn App() -> Element {
     use_context_provider(|| base_url);
 
     rsx! {
-        if loaded() {
-            Router::<Route> {}
-        } else {
-            p { "Starting…" }
+        document::Link { rel: "stylesheet", href: PICO_CSS }
+        document::Link { rel: "stylesheet", href: APP_CSS }
+
+        main {
+            if loaded() {
+                Router::<Route> {}
+            } else {
+                p { "Starting…" }
+            }
         }
     }
 }
