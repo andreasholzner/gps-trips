@@ -33,22 +33,22 @@ async fn us38_tag_filter_narrows_the_html_list_to_trips_with_every_selected_tag(
     tag_trip(&app, both, "hiking").await;
     tag_trip(&app, one, "alps").await;
 
-    let html = body_string(get(&app, "/?tags=alps,hiking").await).await;
-    assert!(html.contains(&format!("/trips/{both}")), "got: {html}");
-    assert!(!html.contains(&format!("/trips/{one}")), "got: {html}");
-    assert!(!html.contains(&format!("/trips/{neither}")), "got: {html}");
+    let json = body_string(get(&app, "/api/trips?tags=alps,hiking").await).await;
+    assert!(json.contains(&format!("\"id\":{both}")), "got: {json}");
+    assert!(!json.contains(&format!("\"id\":{one}")), "got: {json}");
+    assert!(!json.contains(&format!("\"id\":{neither}")), "got: {json}");
 }
 
 #[tokio::test]
-async fn us38_a_single_selected_tag_narrows_the_html_list() {
+async fn us38_a_single_selected_tag_narrows_the_list() {
     let (app, _dir) = test_app().await;
     let tagged = import_sample(&app).await;
     let untagged = import_sample(&app).await;
     tag_trip(&app, tagged, "alps").await;
 
-    let html = body_string(get(&app, "/?tags=alps").await).await;
-    assert!(html.contains(&format!("/trips/{tagged}")), "got: {html}");
-    assert!(!html.contains(&format!("/trips/{untagged}")), "got: {html}");
+    let json = body_string(get(&app, "/api/trips?tags=alps").await).await;
+    assert!(json.contains(&format!("\"id\":{tagged}")), "got: {json}");
+    assert!(!json.contains(&format!("\"id\":{untagged}")), "got: {json}");
 }
 
 #[tokio::test]
@@ -76,9 +76,9 @@ async fn us38_no_tags_selected_shows_every_trip() {
     let b = import_sample(&app).await;
     tag_trip(&app, a, "alps").await;
 
-    let html = body_string(get(&app, "/").await).await;
-    assert!(html.contains(&format!("/trips/{a}")), "got: {html}");
-    assert!(html.contains(&format!("/trips/{b}")), "got: {html}");
+    let json = body_string(get(&app, "/api/trips").await).await;
+    assert!(json.contains(&format!("\"id\":{a}")), "got: {json}");
+    assert!(json.contains(&format!("\"id\":{b}")), "got: {json}");
 }
 
 #[tokio::test]
@@ -87,22 +87,16 @@ async fn us38_tag_filter_combines_with_other_filters_as_and() {
     let a = import_sample(&app).await;
     tag_trip(&app, a, "alps").await;
 
-    let html = body_string(get(&app, "/?tags=alps&activity=cycling").await).await;
-    assert!(
-        html.to_lowercase().contains("no trips match"),
-        "got: {html}"
-    );
+    let json = body_string(get(&app, "/api/trips?tags=alps&activity=cycling").await).await;
+    assert_eq!(json, "[]", "got: {json}");
 }
 
 #[tokio::test]
 async fn us38_a_tag_value_containing_whitespace_is_rejected_with_400() {
     let (app, _dir) = test_app().await;
 
-    let html_response = get(&app, "/?tags=day%20trip").await;
-    assert_eq!(html_response.status(), StatusCode::BAD_REQUEST);
-
-    let api_response = get(&app, "/api/trips?tags=day%20trip").await;
-    assert_eq!(api_response.status(), StatusCode::BAD_REQUEST);
+    let response = get(&app, "/api/trips?tags=day%20trip").await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -110,48 +104,20 @@ async fn us38_a_well_formed_but_unknown_tag_matches_nothing_without_erroring() {
     let (app, _dir) = test_app().await;
     import_sample(&app).await;
 
-    let response = get(&app, "/?tags=nonexistent").await;
+    let response = get(&app, "/api/trips?tags=nonexistent").await;
     assert_eq!(response.status(), StatusCode::OK);
-    let html = body_string(response).await;
-    assert!(
-        html.to_lowercase().contains("no trips match"),
-        "got: {html}"
-    );
+    let json = body_string(response).await;
+    assert_eq!(json, "[]", "got: {json}");
 }
 
+/// Filtering by a differently-cased tag value — from a hand-edited or shared
+/// URL — still matches, since stored names are normalized (US-33).
 #[tokio::test]
-async fn us38_the_filter_form_renders_a_tag_multiselect_populated_with_known_tags_and_echoes_the_selection(
-) {
+async fn us38_a_differently_cased_tag_value_still_matches() {
     let (app, _dir) = test_app().await;
     let a = import_sample(&app).await;
     tag_trip(&app, a, "alps").await;
 
-    let html = body_string(get(&app, "/?tags=alps").await).await;
-    assert!(html.contains(r#"id="tags-select""#), "got: {html}");
-    assert!(
-        html.contains(r#"<option value="alps" selected>"#),
-        "got: {html}"
-    );
-    assert!(
-        html.contains(r#"id="tags-input" name="tags" value="alps""#),
-        "got: {html}"
-    );
-}
-
-/// Regression test: filtering by a differently-cased tag value (e.g. from a
-/// hand-edited or shared URL) must both filter correctly *and* show the
-/// matching option as selected in the multi-select — not just filter
-/// correctly while leaving the dropdown looking like nothing is selected.
-#[tokio::test]
-async fn us38_a_differently_cased_tag_value_still_shows_the_option_as_selected() {
-    let (app, _dir) = test_app().await;
-    let a = import_sample(&app).await;
-    tag_trip(&app, a, "alps").await;
-
-    let html = body_string(get(&app, "/?tags=Alps").await).await;
-    assert!(html.contains(&format!("/trips/{a}")), "got: {html}");
-    assert!(
-        html.contains(r#"<option value="alps" selected>"#),
-        "got: {html}"
-    );
+    let json = body_string(get(&app, "/api/trips?tags=Alps").await).await;
+    assert!(json.contains(&format!("\"id\":{a}")), "got: {json}");
 }

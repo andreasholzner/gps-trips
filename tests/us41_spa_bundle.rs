@@ -42,6 +42,25 @@ async fn the_spa_bundle_is_served_at_app() {
 }
 
 #[tokio::test]
+async fn the_archives_home_sends_the_owner_to_the_spa() {
+    // US-52 retired the server-rendered trip list, which was `/`. The SPA is
+    // the archive's home now, so an old bookmark lands on it rather than on
+    // a 404. The remaining proof-of-concept pages — the trip detail, the
+    // import form, the Komoot review — are untouched and stay reachable
+    // until US-42/43/44 replace them.
+    let (app, _db_dir) = common::test_app().await;
+
+    let response = common::get(&app, "/").await;
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response.headers()["location"],
+        "/app/",
+        "the home page must lead to the SPA"
+    );
+}
+
+#[tokio::test]
 async fn a_deep_link_into_the_spa_falls_back_to_its_index() {
     // The SPA routes paths like `/app/trips/:id` client-side, so opening or
     // reloading such a URL must still hand the browser the app shell rather

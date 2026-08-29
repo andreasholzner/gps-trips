@@ -20,16 +20,16 @@ async fn us31_a_trip_imported_as_planned_appears_under_the_planned_tab_only() {
     assert_eq!(redirect.status(), StatusCode::SEE_OTHER);
     let id = trip_id_from_redirect(&redirect);
 
-    let planned_html = body_string(get(&app, "/?kind=planned").await).await;
+    let planned = body_string(get(&app, "/api/trips?kind=planned").await).await;
     assert!(
-        planned_html.contains(&format!("/trips/{id}")),
-        "planned tab should list the imported trip; got: {planned_html}"
+        planned.contains(&format!("\"id\":{id}")),
+        "the planned list should carry the imported trip; got: {planned}"
     );
 
-    let recorded_html = body_string(get(&app, "/").await).await;
+    let recorded = body_string(get(&app, "/api/trips?kind=recorded").await).await;
     assert!(
-        !recorded_html.contains(&format!("/trips/{id}")),
-        "recorded tab (the default) should not list a trip imported as planned; got: {recorded_html}"
+        !recorded.contains(&format!("\"id\":{id}")),
+        "a trip imported as planned must not be listed as recorded; got: {recorded}"
     );
 }
 
@@ -38,16 +38,16 @@ async fn us31_omitted_kind_defaults_to_recorded() {
     let (app, _dir) = test_app().await;
     let id = common::import_sample(&app).await;
 
-    let recorded_html = body_string(get(&app, "/").await).await;
+    let recorded = body_string(get(&app, "/api/trips?kind=recorded").await).await;
     assert!(
-        recorded_html.contains(&format!("/trips/{id}")),
-        "default (recorded) tab should list a trip imported without a kind; got: {recorded_html}"
+        recorded.contains(&format!("\"id\":{id}")),
+        "a trip imported without a kind must be recorded; got: {recorded}"
     );
 
-    let planned_html = body_string(get(&app, "/?kind=planned").await).await;
+    let planned = body_string(get(&app, "/api/trips?kind=planned").await).await;
     assert!(
-        !planned_html.contains(&format!("/trips/{id}")),
-        "planned tab should not list a trip that defaulted to recorded; got: {planned_html}"
+        !planned.contains(&format!("\"id\":{id}")),
+        "it must not appear as planned; got: {planned}"
     );
 }
 

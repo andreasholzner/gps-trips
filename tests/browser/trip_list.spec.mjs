@@ -163,6 +163,12 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
   await expect(page).toHaveURL(/[?&]bbox=/);
 
+  // The region outlives a tab switch, like every other filter (US-14).
+  await page.getByRole("button", { name: "Planned" }).click();
+  await expect(page).toHaveURL(/[?&]bbox=/);
+  await expect(page).toHaveURL(/kind=planned/);
+  await page.getByRole("button", { name: "Recorded" }).click();
+
   // And it is restored onto the map on the next load (US-14).
   await page.reload();
   await expect(page.getByText("No trips match your filters.")).toBeVisible();

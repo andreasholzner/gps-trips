@@ -8,7 +8,7 @@ mod common;
 use axum::http::{Method, StatusCode};
 use common::{
     body_string, detail_activity_fragment, detail_name_fragment, get, import_sample, json_request,
-    list_activity_fragment, send, test_app,
+    send, test_app,
 };
 
 fn patch_request(id: i64, body: &str) -> axum::http::Request<axum::body::Body> {
@@ -30,10 +30,6 @@ async fn us15_editing_both_fields_updates_the_list_and_detail_page() {
     let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
     assert!(detail_html.contains(&detail_name_fragment("Renamed Trip")));
     assert!(detail_html.contains(&detail_activity_fragment("cycling")));
-
-    let list_html = body_string(get(&app, "/").await).await;
-    assert!(list_html.contains("Renamed Trip"));
-    assert!(list_html.contains(&list_activity_fragment("cycling")));
 }
 
 #[tokio::test]

@@ -230,7 +230,8 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
 mod tests {
     use super::*;
     use crate::test_support::{
-        import_sample, render, render_against_archive, serve_test_archive, tag_trip,
+        import_gpx, import_sample, render, render_against_archive, serve_test_archive, tag_trip,
+        ALPS_GPX,
     };
     use trip_archive_types::{KomootPrivacy, Tag, TripKind};
 
@@ -426,6 +427,98 @@ mod tests {
         );
         // The known tags are offered as choices, fetched from the server.
         assert!(html.contains("summer"), "{html}");
+    }
+
+    // ── US-14's region filter, moved off the server-rendered page (US-52) ──
+    //
+    // The rectangle is dragged in the browser layer; what belongs here is
+    // what the region does to the list once chosen.
+
+    #[tokio::test]
+    async fn the_list_screen_narrows_to_trips_in_the_chosen_region() {
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+        import_gpx(&base_url, ALPS_GPX, &[("name", "Inn Valley Ride")]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { filters: Filters {
+                    bbox: "10.5,59.8,11.0,60.0".to_string(),
+                    ..Default::default()
+                } } }
+            },
+            |html| html.contains("Oslo Hills Walk"),
+        )
+        .await;
+
+        assert!(!html.contains("Inn Valley Ride"), "{html}");
+    }
+
+    #[tokio::test]
+    async fn a_different_region_shows_the_other_trip() {
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+        import_gpx(&base_url, ALPS_GPX, &[("name", "Inn Valley Ride")]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { filters: Filters {
+                    bbox: "11.2,47.1,11.6,47.4".to_string(),
+                    ..Default::default()
+                } } }
+            },
+            |html| html.contains("Inn Valley Ride"),
+        )
+        .await;
+
+        assert!(!html.contains("Oslo Hills Walk"), "{html}");
+    }
+
+    #[tokio::test]
+    async fn a_region_containing_no_trips_shows_the_filtered_empty_state() {
+        // Not "No trips yet": the archive has trips, this region has none.
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { filters: Filters {
+                    bbox: "-30.0,30.0,-20.0,40.0".to_string(),
+                    ..Default::default()
+                } } }
+            },
+            |html| !html.contains("Loading"),
+        )
+        .await;
+
+        assert!(html.contains("No trips match your filters."), "{html}");
+        assert!(!html.contains("No trips yet"), "{html}");
+    }
+
+    #[tokio::test]
+    async fn the_region_combines_with_the_other_filters_as_and() {
+        // A trip inside the region but failing another filter is not listed.
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || {
+                rsx! { TripList { filters: Filters {
+                    bbox: "10.5,59.8,11.0,60.0".to_string(),
+                    q: "nomatch".to_string(),
+                    ..Default::default()
+                } } }
+            },
+            |html| !html.contains("Loading"),
+        )
+        .await;
+
+        assert!(html.contains("No trips match your filters."), "{html}");
+        assert!(!html.contains("Oslo Hills Walk"), "{html}");
     }
 
     // US-6 as the owner sees it: an imported trip appears on the list, with

@@ -247,10 +247,3 @@ pub fn detail_name_fragment(name: &str) -> String {
 pub fn detail_activity_fragment(activity: &str) -> String {
     format!("<span id=\"trip-activity\">{activity}</span>")
 }
-
-/// The exact fragment `render_trip_row` emits for the activity column — the
-/// column right after the trip's name link, so this can't match some other
-/// coincidental appearance of the word elsewhere on the list page.
-pub fn list_activity_fragment(activity: &str) -> String {
-    format!("</td><td>{activity}</td>")
-}

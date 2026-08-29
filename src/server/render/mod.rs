@@ -1,17 +1,15 @@
-//! HTML page rendering (import form, trip list, trip detail) — kept separate
-//! from `http.rs`'s routing/handlers, mirroring how `delete.rs`/`edit.rs`/
-//! `import.rs` already isolate their own concerns rather than folding
-//! everything into one file.
+//! HTML page rendering (import form, trip detail, Komoot review) — kept
+//! separate from `http.rs`'s routing/handlers, mirroring how
+//! `delete.rs`/`edit.rs`/`import.rs` already isolate their own concerns
+//! rather than folding everything into one file.
 //!
-//! The trip-list page (US-6/US-13/US-32) lives in its own `trip_list`
-//! submodule to keep this file under the repo's 500-line cap.
-
-mod trip_list;
+//! These are the remains of the proof-of-concept UI. The trip-list page was
+//! deleted by US-52, once the SPA carried its acceptance assertions
+//! ([ADR-0012](../../../docs/adr/0012-tdd-test-strategy.md)'s migration
+//! rule); the rest goes with US-42/43/44.
 
 use crate::models::{ActivityType, KomootLink, KomootPrivacy, TripDetail, TripKind};
 use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
-
-pub use trip_list::render_trip_list;
 
 /// GET `/import` — the import form (US-1: the owner uploads a GPX file).
 /// The `{options}` placeholder is filled via `format!`, not a runtime

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
-use crate::models::{LocationSource, Photo, TripKind, TripSummary};
+use crate::models::{LocationSource, Photo, TripSummary};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
@@ -21,7 +21,7 @@ use crate::server::{
     komoot::KomootClient,
     komoot_sync::{self, SyncResultQuery},
     paths,
-    render::{render_detail, render_import_form, render_sync_candidates, render_trip_list},
+    render::{render_detail, render_import_form, render_sync_candidates},
     repo,
     state::{self, AppState},
     tags::{
@@ -78,7 +78,7 @@ impl PhotoResponse {
 /// both exercise the exact same routing (ADR-0012).
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(trip_list))
+        .route("/", get(home))
         .route("/import", get(import_form))
         // Multipart uploads carry a GPX plus whole photo batches, so this
         // route (and the add-photos one below) raises axum's 2 MB default
@@ -147,26 +147,17 @@ fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
     ServeDir::new(dir).fallback(ServeFile::new(index))
 }
 
-/// GET `/` — the trip list, the archive's home (US-6), optionally narrowed by
-/// the filter query parameters (US-13, ADR-0011) and split into a Recorded/
-/// Planned tab (US-32). Unlike every other filter dimension, `kind` always
-/// resolves to a concrete value here — the page shows exactly one tab's worth
-/// of trips, defaulting to Recorded when `?kind=` is absent.
-async fn trip_list(
-    State(state): State<AppState>,
-    Query(query): Query<TripFilterQuery>,
-) -> Result<Html<String>, AppError> {
-    let mut filter = parse_filter(&query)?;
-    let active_kind = filter.trip_kind.unwrap_or(TripKind::Recorded);
-    filter.trip_kind = Some(active_kind);
-    let trips = repo::list_trips(&state.pool, &filter).await?;
-    let all_tags = repo::list_all_tags(&state.pool).await?;
-    Ok(Html(render_trip_list(
-        &trips,
-        &query,
-        active_kind,
-        &all_tags,
-    )))
+/// GET `/` — the archive's home, which is now the SPA (US-52).
+///
+/// The server-rendered trip list that lived here was deleted once its
+/// acceptance assertions had moved to the SPA and its API
+/// ([ADR-0012](../../docs/adr/0012-tdd-test-strategy.md)'s migration rule).
+/// The redirect keeps old bookmarks working, and keeps `/` meaning "the
+/// archive" while the remaining proof-of-concept pages (trip detail, import,
+/// Komoot review) live on until US-42/43/44 replace them.
+async fn home() -> Redirect {
+    // `Redirect::to` is axum's 303 See Other.
+    Redirect::to("/app/")
 }
 
 /// GET `/api/trips` — the same filtered trip list as JSON (US-13, ADR-0008/0011),

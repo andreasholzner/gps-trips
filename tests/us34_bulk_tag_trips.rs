@@ -113,20 +113,6 @@ async fn us34_an_empty_tag_list_is_rejected_with_400() {
 }
 
 #[tokio::test]
-async fn us34_the_list_page_renders_row_checkboxes_and_the_bulk_tag_panel() {
-    let (app, _dir) = test_app().await;
-    import_sample(&app).await;
-
-    let list_html = body_string(get(&app, "/").await).await;
-    assert!(list_html.contains("class=\"trip-select\""));
-    assert!(list_html.contains("id=\"select-all\""));
-    assert!(list_html.contains("id=\"bulk-tag-panel\""));
-    assert!(list_html.contains("id=\"bulk-tag-input\""));
-    assert!(list_html.contains("id=\"bulk-tag-suggestions\""));
-    assert!(list_html.contains("id=\"bulk-tag-apply\""));
-}
-
-#[tokio::test]
 async fn us34_bulk_tagging_reuses_an_existing_tag_rather_than_duplicating_it() {
     let (app, _dir) = test_app().await;
     let a = import_sample(&app).await;

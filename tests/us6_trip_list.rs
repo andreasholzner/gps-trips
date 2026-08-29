@@ -4,6 +4,12 @@
 //!   "List shows each trip's name, date, distance, ascent, and duration; loads
 //!    without reading track geometry."
 //!
+//! The list *screen* is the SPA's (US-41): that the five fields are shown,
+//! formatted, and linked is asserted in `crates/ui-dioxus/src/trip_table.rs`
+//! and `crates/ui-dioxus/src/list.rs`. What stays here is the server's half —
+//! that `GET /api/trips` carries those fields and no track geometry, which is
+//! what makes the list cheap (ADR-0003).
+//!
 //! Drives the real Axum router in-process against a real temp SQLite DB (ADR-0012).
 
 mod common;
@@ -12,43 +18,29 @@ use axum::http::StatusCode;
 use common::{body_string, get, import_sample, test_app};
 
 #[tokio::test]
-async fn us6_empty_list_shows_an_empty_state() {
-    let (app, _dir) = test_app().await;
-
-    let response = get(&app, "/").await;
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let html = body_string(response).await;
-    assert!(
-        html.to_lowercase().contains("no trips"),
-        "empty list should show an empty state; got: {html}"
-    );
-    assert!(
-        html.contains("/import"),
-        "empty state should link to import; got: {html}"
-    );
-}
-
-#[tokio::test]
-async fn us6_list_shows_imported_trip_summary_fields() {
+async fn us6_the_list_carries_every_summary_field_and_no_geometry() {
     let (app, _dir) = test_app().await;
     let id = import_sample(&app).await;
 
-    let response = get(&app, "/").await;
+    let response = get(&app, "/api/trips").await;
     assert_eq!(response.status(), StatusCode::OK);
 
-    let html = body_string(response).await;
-    // The five required fields: name, date, distance, ascent, duration.
-    assert!(html.contains("Oslo Hills Walk"), "name; got: {html}");
-    assert!(html.contains("2024-06-01"), "date; got: {html}");
-    assert!(html.contains("km"), "distance; got: {html}");
-    assert!(html.contains("40 m"), "ascent; got: {html}");
-    assert!(html.contains("01:00:00"), "duration; got: {html}");
-    // Each trip links to its detail page.
-    assert!(
-        html.contains(&format!("/trips/{id}")),
-        "list should link to the trip detail; got: {html}"
-    );
+    let body = body_string(response).await;
+    let trips: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let trip = &trips.as_array().expect("JSON array")[0];
+
+    // The five required fields, as data — the screen does the formatting.
+    assert_eq!(trip["id"], id);
+    assert_eq!(trip["name"], "Oslo Hills Walk");
+    assert_eq!(trip["start_time"], "2024-06-01T08:00:00Z");
+    assert!(trip["distance_m"].is_number(), "distance; got: {body}");
+    assert_eq!(trip["ascent_m"], 40.0);
+    assert_eq!(trip["duration_secs"], 3600);
+
+    // "Loads without reading track geometry": the row carries none, so the
+    // list stays cheap however long the track is (ADR-0003).
+    assert!(trip.get("track").is_none(), "got: {body}");
+    assert!(trip.get("geojson").is_none(), "got: {body}");
 }
 
 #[tokio::test]

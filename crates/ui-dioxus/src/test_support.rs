@@ -108,8 +108,12 @@ pub async fn render_against_archive(
 }
 
 /// The canonical GPX fixture (`tests/fixtures/sample.gpx`): one recorded
-/// track named "Oslo Hills Walk".
+/// track named "Oslo Hills Walk", near Oslo (59.91 N, 10.75 E).
 pub const SAMPLE_GPX: &[u8] = include_bytes!("../../../tests/fixtures/sample.gpx");
+
+/// A second track, in the Alps (47.26 N, 11.38 E) — far enough from
+/// [`SAMPLE_GPX`] that a region can hold one and not the other (US-14).
+pub const ALPS_GPX: &[u8] = include_bytes!("../../../tests/fixtures/region_alps.gpx");
 
 const BOUNDARY: &str = "UiDioxusTestBoundary";
 
@@ -118,13 +122,18 @@ const BOUNDARY: &str = "UiDioxusTestBoundary";
 /// are the import form's text fields (`name`, `activity_type`, `kind`, …);
 /// returns the new trip's id, parsed from the import's redirect.
 pub async fn import_sample(base_url: &str, fields: &[(&str, &str)]) -> i64 {
+    import_gpx(base_url, SAMPLE_GPX, fields).await
+}
+
+/// As [`import_sample`], for a caller that needs a particular track.
+pub async fn import_gpx(base_url: &str, gpx: &[u8], fields: &[(&str, &str)]) -> i64 {
     let mut body = Vec::new();
     body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
     body.extend_from_slice(
         b"Content-Disposition: form-data; name=\"gpx\"; filename=\"track.gpx\"\r\n\
           Content-Type: application/gpx+xml\r\n\r\n",
     );
-    body.extend_from_slice(SAMPLE_GPX);
+    body.extend_from_slice(gpx);
     body.extend_from_slice(b"\r\n");
     for (field, value) in fields {
         body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());

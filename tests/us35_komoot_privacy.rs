@@ -1,5 +1,10 @@
 //! US-35 — control a linked Komoot tour's privacy_status from the archive.
 //!
+//! The list screen's Privacy column is the SPA's (US-41):
+//! `crates/ui-dioxus/src/trip_table.rs` asserts the dash, the value and the
+//! "Unknown" case. What stays here is where each privacy comes from and where
+//! it goes — asserted through `GET /api/trips`.
+//!
 //! Acceptance criteria: the privacy_status is visible on the list page, and
 //! it can be edited from the details page.
 //!
@@ -67,29 +72,29 @@ async fn app_with_a_synced_tour(
 }
 
 #[tokio::test]
-async fn us35_the_list_page_shows_a_linked_trips_privacy() {
+async fn us35_a_linked_trips_privacy_is_carried_by_the_list() {
     let (app, _mock, _trip_id, _dir) = app_with_a_synced_tour("private").await;
 
-    let html = body_string(get(&app, "/").await).await;
+    let json = body_string(get(&app, "/api/trips").await).await;
 
-    assert!(html.contains("<th>Privacy</th>"));
-    assert!(html.contains("<td>Private</td>"));
+    assert!(
+        json.contains(r#""privacy_status":"private""#),
+        "got: {json}"
+    );
 }
 
 #[tokio::test]
-async fn us35_the_list_page_shows_no_privacy_for_a_trip_that_never_came_from_komoot() {
+async fn us35_a_trip_that_never_came_from_komoot_has_no_privacy() {
     let (app, _dir) = test_app().await;
     import_sample(&app).await;
 
-    let html = body_string(get(&app, "/").await).await;
+    let json = body_string(get(&app, "/api/trips").await).await;
 
-    assert!(html.contains("<th>Privacy</th>"));
-    assert!(!html.contains("<td>Private</td>"));
-    assert!(!html.contains("<td>Public</td>"));
+    assert!(json.contains(r#""privacy_status":null"#), "got: {json}");
 }
 
 #[tokio::test]
-async fn us35_editing_the_privacy_from_the_detail_page_shows_up_on_the_list() {
+async fn us35_editing_the_privacy_shows_up_on_the_list() {
     let (app, _mock, trip_id, _dir) = app_with_a_synced_tour("private").await;
 
     let response = send(
@@ -99,9 +104,8 @@ async fn us35_editing_the_privacy_from_the_detail_page_shows_up_on_the_list() {
     .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    let html = body_string(get(&app, "/").await).await;
-    assert!(html.contains("<td>Public</td>"));
-    assert!(!html.contains("<td>Private</td>"));
+    let json = body_string(get(&app, "/api/trips").await).await;
+    assert!(json.contains(r#""privacy_status":"public""#), "got: {json}");
 }
 
 #[tokio::test]
@@ -143,8 +147,11 @@ async fn us35_a_privacy_komoot_reports_unmappably_is_shown_as_unknown_and_can_be
     // including the one a bare picker would already be showing.
     let (app, mock, trip_id, _dir) = app_with_a_synced_tour("friends_only").await;
 
-    let list = body_string(get(&app, "/").await).await;
-    assert!(list.contains("<td>Unknown</td>"));
+    let list = body_string(get(&app, "/api/trips").await).await;
+    assert!(
+        list.contains(r#""privacy_status":"unknown""#),
+        "got: {list}"
+    );
 
     let detail = body_string(get(&app, &format!("/trips/{trip_id}")).await).await;
     assert!(detail.contains("<option value=\"\" selected"));
@@ -157,9 +164,9 @@ async fn us35_a_privacy_komoot_reports_unmappably_is_shown_as_unknown_and_can_be
     .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    assert!(body_string(get(&app, "/").await)
+    assert!(body_string(get(&app, "/api/trips").await)
         .await
-        .contains("<td>Private</td>"));
+        .contains(r#""privacy_status":"private""#));
     send(&app, sync_request(&[])).await;
     assert!(
         mock.calls
@@ -184,8 +191,8 @@ async fn us35_a_caught_up_archive_still_picks_up_a_privacy_changed_inside_komoot
     let review = body_string(get(&app, "/komoot/sync").await).await;
     assert!(review.contains("No new tours to sync"));
 
-    let list = body_string(get(&app, "/").await).await;
-    assert!(list.contains("<td>Public</td>"), "{list}");
+    let list = body_string(get(&app, "/api/trips").await).await;
+    assert!(list.contains(r#""privacy_status":"public""#), "{list}");
 }
 
 #[tokio::test]
@@ -210,8 +217,11 @@ async fn us35_an_unrecognized_privacy_is_rejected_and_nothing_changes() {
     .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let html = body_string(get(&app, "/").await).await;
-    assert!(html.contains("<td>Private</td>"));
+    let json = body_string(get(&app, "/api/trips").await).await;
+    assert!(
+        json.contains(r#""privacy_status":"private""#),
+        "got: {json}"
+    );
 }
 
 #[tokio::test]
