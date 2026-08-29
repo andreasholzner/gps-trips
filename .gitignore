@@ -64,6 +64,10 @@ Thumbs.db
 # Built output of the Dioxus SPA (crates/ui-dioxus), served at /app
 public/app/
 
+# Playwright browser tests (tests/browser) — local artefacts only
+tests/browser/test-results/
+tests/browser/playwright-report/
+
 # ───────── Reference clones (not project source) ─────────
 docs/qmapshack_analysis/qmapshack-src/
 docs/qmapshack_analysis/Touren.db
