@@ -18,3 +18,23 @@ dioxus = { version = "=0.7.10", features = ["router", "asset"] }
 # The server's own data models, reused verbatim over the JSON API — the whole
 # point of a Rust front-end (crates/types is server-dependency-free by design).
 trip-archive-types = { path = "../types" }
+
+serde = { version = "1", features = ["derive"] }
+# Works on both targets: `fetch` under wasm, a native client on Android —
+# the reason the two platforms can share one API client (ADR-0024).
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# TLS is a native-only concern; the browser provides its own.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+# ADR-0012 (2026-08-26a): components and whole screens render to HTML on the
+# host target — no browser, no wasm toolchain, no device.
+dioxus-ssr = "0.7"
+dioxus-core = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+tempfile = "3"
+axum = "0.7"
+# The real server for whole-screen tests: nothing is mocked (ADR-0012).
+trip-archive = { path = "../.." }
