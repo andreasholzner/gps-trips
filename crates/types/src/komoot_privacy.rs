@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 /// some other field can't overwrite a privacy state the archive doesn't
 /// understand (ADR-0021). It is deliberately not offered in the UI; see
 /// [`Self::SELECTABLE`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[serde(rename_all = "snake_case")]
-#[sqlx(rename_all = "snake_case")]
+#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 pub enum KomootPrivacy {
     /// Komoot reported a `status` this app has no mapping for (or none at
     /// all).

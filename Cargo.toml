@@ -1,9 +1,18 @@
+# The server crate; `crates/types` holds the shared, wasm-safe data models
+# (ADR-0024). The Dioxus UI crate joins the workspace with US-41.
+[workspace]
+members = ["crates/types"]
+
 [package]
 name = "trip-archive"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# The shared data models, with their SQLite mappings switched on — only the
+# server enables the `sqlx` feature (ADR-0024).
+trip-archive-types = { path = "crates/types", features = ["sqlx"] }
+
 # Web server
 axum  = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1",   features = ["rt-multi-thread", "macros", "net"] }

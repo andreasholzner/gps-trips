@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 /// string). Stored as `TEXT` in SQLite (`#[derive(sqlx::Type)]` maps each
 /// variant to/from its lowercase name) and serialized the same way in JSON
 /// responses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[serde(rename_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
+#[cfg_attr(feature = "sqlx", sqlx(rename_all = "lowercase"))]
 pub enum LocationSource {
     /// No GPS could be determined (no EXIF GPS, unparseable, or out of range).
     None,

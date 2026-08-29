@@ -1,5 +1,9 @@
-//! Shared data models — one type per file, re-exported here so callers keep
-//! using `crate::models::{TripSummary, TripDetail}`.
+//! Shared data models (ADR-0024): one crate serving the Axum server and the
+//! UI targets (`wasm32-unknown-unknown`, Android), so the JSON API's shapes
+//! are defined once. One type per file, re-exported here; the server
+//! re-exports the whole crate as `crate::models`, so its
+//! `crate::models::{TripSummary, TripDetail}` paths are unchanged. The SQLite
+//! mappings sit behind the optional `sqlx` feature only the server enables.
 
 mod activity_type;
 mod bounding_box;

@@ -1,0 +1,14 @@
+[package]
+name = "trip-archive-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Optional so the same types compile for the UI targets (wasm32, Android —
+# ADR-0024), where sqlx and its SQLite driver have no business being. The
+# server enables it to get the `sqlx::Type` mappings its queries rely on.
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"], optional = true }
+
+[features]
+sqlx = ["dep:sqlx"]

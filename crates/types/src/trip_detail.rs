@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::{ActivityType, KomootLink};
+use crate::{ActivityType, KomootLink};
 
 /// Full trip metadata. The track geometry (a GeoJSON blob) lives in a separate
-/// table and is not part of this struct (ADR-0003).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// table and is not part of this struct (ADR-0003). `PartialEq` because
+/// Dioxus component props require it (ADR-0024).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TripDetail {
     pub id: i64,
     pub name: String,

@@ -2822,7 +2822,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trip-archive",
+ "trip-archive-types",
  "tzf-rs",
+]
+
+[[package]]
+name = "trip-archive-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sqlx",
 ]
 
 [[package]]
