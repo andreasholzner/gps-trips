@@ -107,6 +107,63 @@ pub async fn render_against_archive(
     panic!("the screen never reached the expected state; last render:\n{html}");
 }
 
+/// The canonical GPX fixture (`tests/fixtures/sample.gpx`): one recorded
+/// track named "Oslo Hills Walk".
+pub const SAMPLE_GPX: &[u8] = include_bytes!("../../../tests/fixtures/sample.gpx");
+
+const BOUNDARY: &str = "UiDioxusTestBoundary";
+
+/// Seed a trip through the real import API (`POST /api/import`), the same
+/// path the owner's own uploads take — no direct database writes. `fields`
+/// are the import form's text fields (`name`, `activity_type`, `kind`, …);
+/// returns the new trip's id, parsed from the import's redirect.
+pub async fn import_sample(base_url: &str, fields: &[(&str, &str)]) -> i64 {
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"gpx\"; filename=\"track.gpx\"\r\n\
+          Content-Type: application/gpx+xml\r\n\r\n",
+    );
+    body.extend_from_slice(SAMPLE_GPX);
+    body.extend_from_slice(b"\r\n");
+    for (field, value) in fields {
+        body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
+        body.extend_from_slice(
+            format!("Content-Disposition: form-data; name=\"{field}\"\r\n\r\n").as_bytes(),
+        );
+        body.extend_from_slice(value.as_bytes());
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("client");
+    let response = client
+        .post(format!("{base_url}/api/import"))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .body(body)
+        .send()
+        .await
+        .expect("import request");
+    assert!(
+        response.status().is_redirection(),
+        "import failed: {}",
+        response.status()
+    );
+    response.headers()["location"]
+        .to_str()
+        .unwrap()
+        .strip_prefix("/trips/")
+        .expect("redirect to /trips/<id>")
+        .parse()
+        .expect("numeric trip id")
+}
+
 /// Start a real Trip Archive server on an ephemeral port, backed by a fresh
 /// temporary database and blob store — the same "real collaborators, mock
 /// only externals" setup the server's own tests use (ADR-0012).

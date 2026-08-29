@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 use trip_archive_types::TripSummary;
 
 use crate::api;
+use crate::format;
 
 #[component]
 pub fn TripList() -> Element {
@@ -26,16 +27,32 @@ pub fn TripList() -> Element {
     }
 }
 
-/// One row per trip (US-6). The row's stats, formatting and detail link grow
-/// here in their own slices.
+/// One row per trip: name, activity, date, distance, ascent, duration
+/// (US-6). The name becomes a link to the trip's detail screen when US-42
+/// builds it; until then the row is display-only.
 #[component]
 fn TripTable(trips: Vec<TripSummary>) -> Element {
     rsx! {
         table {
+            thead {
+                tr {
+                    th { "Trip" }
+                    th { "Activity" }
+                    th { "Date" }
+                    th { "Distance" }
+                    th { "Ascent" }
+                    th { "Duration" }
+                }
+            }
             tbody {
                 for trip in trips {
                     tr { key: "{trip.id}",
                         td { "{trip.name}" }
+                        td { "{trip.activity_type.label()}" }
+                        td { {format::date(trip.start_time.as_deref())} }
+                        td { {format::km(trip.distance_m)} }
+                        td { {format::metres(trip.ascent_m)} }
+                        td { {format::duration(trip.duration_secs)} }
                     }
                 }
             }
@@ -48,7 +65,7 @@ fn TripTable(trips: Vec<TripSummary>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{render, render_against_archive, serve_test_archive};
+    use crate::test_support::{import_sample, render, render_against_archive, serve_test_archive};
     use trip_archive_types::{ActivityType, TripKind};
 
     fn a_trip(id: i64, name: &str) -> TripSummary {
@@ -66,8 +83,9 @@ mod tests {
     }
 
     // Exemplar for the component-render layer (ADR-0012, 2026-08-26a): props
-    // in, HTML string out, no server. US-6's full row content (stats,
-    // formatting) grows here in its own slice.
+    // in, HTML string out, no server. US-6: each trip's name, date, distance,
+    // ascent and duration — asserting the formatting the screen is
+    // responsible for, not the raw values.
     #[test]
     fn the_trip_table_shows_a_row_per_trip() {
         let trips = vec![a_trip(1, "Oslo Hills Walk"), a_trip(2, "Inn Valley Ride")];
@@ -76,6 +94,45 @@ mod tests {
 
         assert!(html.contains("Oslo Hills Walk"), "{html}");
         assert!(html.contains("Inn Valley Ride"), "{html}");
+        assert!(html.contains("2026-07-11"), "{html}");
+        assert!(html.contains("12.35 km"), "{html}");
+        assert!(html.contains("410 m"), "{html}");
+        assert!(html.contains("01:02:05"), "{html}");
+        assert!(html.contains("Hiking"), "{html}");
+    }
+
+    #[test]
+    fn a_trip_missing_optional_stats_shows_dashes_not_blanks() {
+        let trips = vec![TripSummary {
+            start_time: None,
+            ascent_m: None,
+            duration_secs: None,
+            ..a_trip(1, "Bare Trip")
+        }];
+
+        let html = render(move || rsx! { TripTable { trips: trips.clone() } });
+
+        assert!(html.contains("—"), "{html}");
+    }
+
+    // US-6 as the owner sees it: an imported trip appears on the list, with
+    // its stats formatted — against a real server, seeded through the real
+    // import API.
+    #[tokio::test]
+    async fn the_list_screen_shows_an_imported_trip() {
+        let (base_url, _dir) = serve_test_archive().await;
+        import_sample(&base_url, &[("activity_type", "hiking")]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            || rsx! { TripList {} },
+            |html| !html.contains("Loading"),
+        )
+        .await;
+
+        assert!(html.contains("Oslo Hills Walk"), "{html}");
+        assert!(html.contains(" km"), "{html}");
+        assert!(html.contains("Hiking"), "{html}");
     }
 
     // Exemplar for the whole-screen layer (ADR-0012, 2026-08-26a): the fetch
