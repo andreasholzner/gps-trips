@@ -57,8 +57,9 @@ pub fn absolute(base_url: &str, url: &str) -> String {
 /// one to use — the full-size image stands in when none could be made).
 ///
 /// `error` is what the archive said when the photos could not be read. It is
-/// shown instead of the empty state, because "no photos yet" is a claim about
-/// the trip and a failed fetch is not evidence for it.
+/// shown alongside whatever is already on screen, and in place of the empty
+/// state — because "no photos yet" is a claim about the trip, and a failed
+/// fetch is not evidence for it.
 #[component]
 pub fn PhotoGallery(
     photos: Vec<PhotoResponse>,
@@ -67,10 +68,13 @@ pub fn PhotoGallery(
 ) -> Element {
     rsx! {
         h2 { "Photos" }
-        if let Some(error) = error {
+        if let Some(error) = error.clone() {
             p { class: "error", "Could not load the photos: {error}" }
-        } else if photos.is_empty() {
-            p { "No photos yet." }
+        }
+        if photos.is_empty() {
+            if error.is_none() {
+                p { "No photos yet." }
+            }
         } else {
             div { class: "gallery",
                 for photo in photos {
@@ -93,6 +97,11 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
     let base_url = use_context::<Signal<String>>();
     let mut chosen = use_signal(Vec::<PhotoUpload>::new);
     let mut status = use_signal(|| None::<String>);
+    // Bumped after a successful upload to rebuild the file input. Nothing can
+    // clear one in place, and an input still naming files that are no longer
+    // staged contradicts the button, which would answer "choose one or more
+    // photos first".
+    let mut picker = use_signal(|| 0_u32);
 
     rsx! {
         form {
@@ -107,6 +116,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                 match api::add_photos(&base_url(), id, photos).await {
                     Ok(()) => {
                         chosen.take();
+                        picker += 1;
                         status.set(None);
                         on_added.call(());
                     }
@@ -117,6 +127,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                 }
             },
             input {
+                key: "photos-{picker}",
                 r#type: "file",
                 accept: "image/*",
                 multiple: true,
@@ -267,6 +278,26 @@ mod tests {
 
         assert!(html.contains("the archive is unreachable"), "{html}");
         assert!(!html.contains("No photos yet"), "{html}");
+    }
+
+    #[test]
+    fn a_gallery_that_failed_to_refresh_keeps_what_is_already_on_screen() {
+        // The refresh after an upload can fail; the photos already read are
+        // still true, and blanking them would be a second, invented loss.
+        let photos = vec![a_photo(1, "first.jpg", None)];
+
+        let html = render(move || {
+            rsx! {
+                PhotoGallery {
+                    photos: photos.clone(),
+                    base_url: String::new(),
+                    error: Some("the archive is unreachable".to_string()),
+                }
+            }
+        });
+
+        assert!(html.contains("the archive is unreachable"), "{html}");
+        assert!(html.contains("thumb-first.jpg"), "{html}");
     }
 
     #[test]

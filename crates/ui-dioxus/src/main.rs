@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 mod api;
 mod bulk_tag;
 mod detail;
+mod edit;
 mod filters;
 mod format;
 mod interop;

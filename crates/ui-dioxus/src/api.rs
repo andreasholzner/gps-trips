@@ -127,10 +127,12 @@ pub struct PhotoUpload {
 /// (US-2: photos can be added at a later time). The same multipart endpoint
 /// the import form posts to (ADR-0004), issued from the SPA.
 ///
-/// A part whose content type the file picker did not report, or reported
-/// unparseably, is sent without one — the archive already treats it as
-/// optional, reading the image's own bytes to make a thumbnail (US-5) and
-/// serving it back under a type derived from the stored key's extension.
+/// A part whose content type the file picker did not report, or did not
+/// report as a `type/subtype`, is sent without one rather than not at all —
+/// one oddly described file must not take the rest of the batch down with it,
+/// and the archive already treats the type as optional: it reads the image's
+/// own bytes to make a thumbnail (US-5) and serves it back under a type
+/// derived from the stored key's extension.
 ///
 /// The endpoint answers `303` to the trip's page and every client follows it
 /// — a browser `fetch` gives no way not to — so what this reads is the status
@@ -144,16 +146,12 @@ pub async fn add_photos(base_url: &str, id: i64, photos: Vec<PhotoUpload>) -> Re
     let mut form = reqwest::multipart::Form::new();
     for photo in photos {
         let name = photo.file_name.clone();
+        let content_type = usable_content_type(photo.content_type.as_deref());
         let mut part = reqwest::multipart::Part::bytes(photo.bytes).file_name(photo.file_name);
-        if let Some(content_type) = photo.content_type {
-            // Reported by the file picker, so this is a browser's own MIME
-            // string. If it is somehow not one, the upload says so rather
-            // than dropping the photo on the floor.
-            part = part.mime_str(&content_type).map_err(|err| {
-                ApiError::new(format!(
-                    "{name} has an unusable type {content_type:?}: {err}"
-                ))
-            })?;
+        if let Some(content_type) = content_type {
+            part = part
+                .mime_str(content_type)
+                .map_err(|err| ApiError::new(format!("{name} has an unusable type: {err}")))?;
         }
         form = form.part("photos", part);
     }
@@ -176,12 +174,86 @@ pub async fn add_photos(base_url: &str, id: i64, photos: Vec<PhotoUpload>) -> Re
     Ok(())
 }
 
+/// A content type worth attaching to a part: `type/subtype`, both halves
+/// present and made of the characters a MIME type is allowed to contain.
+///
+/// A web file picker reports either that or an empty string, but the Android
+/// target's is a different implementation (ADR-0024), so what arrives is
+/// checked rather than assumed.
+fn usable_content_type(content_type: Option<&str>) -> Option<&str> {
+    /// RFC 9110's token characters, minus the alphanumerics tested separately.
+    const TOKEN_PUNCTUATION: &str = "!#$%&'*+-.^_`|~";
+    let is_token = |part: &str| {
+        !part.is_empty()
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || TOKEN_PUNCTUATION.contains(c))
+    };
+
+    let content_type = content_type?;
+    let (kind, subtype) = content_type.split_once('/')?;
+    (is_token(kind) && is_token(subtype)).then_some(content_type)
+}
+
 /// The server's own words, where it answered with words. The API's own
 /// errors are a plain sentence the owner can act on; a redirect that landed
 /// on an error *page* answers in HTML, which belongs in no error line.
 fn readable_body(body: String) -> Option<String> {
     let body = body.trim();
     (!body.is_empty() && !body.starts_with('<')).then(|| body.to_string())
+}
+
+/// The `PATCH /api/trips/:id` body (US-15/US-35). Every field is optional and
+/// an omitted one is left unchanged — which is why only what the owner
+/// actually changed is sent: an edit of the name alone must not write back a
+/// stale activity type that another tab, or a Komoot sync, changed after this
+/// screen loaded.
+#[derive(Default, Serialize)]
+pub struct TripEdit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The wire value, not the label; empty resets the trip to `Unknown`,
+    /// the same as importing without choosing one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_type: Option<String>,
+    /// US-35: the linked Komoot tour's privacy, pushed to Komoot by the next
+    /// sync. Only a settable value is accepted; `unknown` is a state Komoot
+    /// put the tour in, never one to choose.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub privacy_status: Option<String>,
+}
+
+impl TripEdit {
+    /// Whether anything is actually being changed — an edit of nothing is
+    /// worth no request.
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none() && self.activity_type.is_none() && self.privacy_status.is_none()
+    }
+}
+
+/// `PATCH /api/trips/:id` — save an edit (US-15/US-35). The archive's own
+/// words come back for a rejected one (a blank name, an unrecognized
+/// activity, a privacy on a trip that never came from Komoot), so the owner
+/// reads what is wrong rather than a status code — and for a 409 while a
+/// "Sync now" run is in flight (US-26).
+pub async fn edit_trip(base_url: &str, id: i64, edit: &TripEdit) -> Result<(), ApiError> {
+    let url = format!("{base_url}/api/trips/{id}");
+    let response = reqwest::Client::new()
+        .patch(&url)
+        .json(edit)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(ApiError::from_status(
+            status,
+            readable_body(body).unwrap_or_else(|| format!("{url} returned {status}")),
+        ));
+    }
+    Ok(())
 }
 
 /// The `POST /api/trips/tags` body (US-34): every name applied to every
@@ -240,6 +312,7 @@ pub async fn bulk_add_tags(
 mod tests {
     use super::*;
     use crate::test_support::{import_sample, serve_test_archive};
+    use trip_archive_types::ActivityType;
 
     #[tokio::test]
     async fn bulk_tagging_applies_every_tag_to_every_selected_trip() {
@@ -277,6 +350,118 @@ mod tests {
     // US-2's "photos can be added at a later time", from the SPA. Uploading
     // is a request, not a screen behaviour, so it belongs here — only the
     // file picker itself needs a browser (ADR-0012).
+    // ── US-15: editing a trip's name and activity type ───────────────────
+    //
+    // The acceptance criterion is that the new values are saved, so these
+    // read them back over the API. Which fields a form sends is the screen's
+    // business, and tested there.
+
+    #[tokio::test]
+    async fn an_edited_name_and_activity_type_are_saved() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        edit_trip(
+            &base_url,
+            id,
+            &TripEdit {
+                name: Some("Renamed Trip".to_string()),
+                activity_type: Some("cycling".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("edit");
+
+        let trip = get_trip(&base_url, id).await.expect("trip");
+        assert_eq!(trip.name, "Renamed Trip");
+        assert_eq!(trip.activity_type, ActivityType::Cycling);
+    }
+
+    #[tokio::test]
+    async fn editing_one_field_leaves_the_other_alone() {
+        // The reason only changed fields are sent: an omitted field must not
+        // be written back from what this screen happened to load with.
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[("activity_type", "hiking")]).await;
+
+        edit_trip(
+            &base_url,
+            id,
+            &TripEdit {
+                name: Some("Only Name Changed".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("edit");
+
+        let trip = get_trip(&base_url, id).await.expect("trip");
+        assert_eq!(trip.name, "Only Name Changed");
+        assert_eq!(trip.activity_type, ActivityType::Hiking);
+    }
+
+    #[tokio::test]
+    async fn a_blank_name_is_refused_in_the_archives_own_words() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let err = edit_trip(
+            &base_url,
+            id,
+            &TripEdit {
+                name: Some("   ".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("a blank name is not a name");
+
+        assert!(err.to_string().contains("name"), "{err}");
+        assert_eq!(
+            get_trip(&base_url, id).await.expect("trip").name,
+            "Oslo Hills Walk",
+            "a refused edit changes nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_privacy_on_a_trip_that_never_came_from_komoot_is_refused() {
+        // US-35: privacy belongs to the linked tour, so an unlinked trip has
+        // none to change — and the screen offers no picker for one.
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let err = edit_trip(
+            &base_url,
+            id,
+            &TripEdit {
+                privacy_status: Some("public".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("there is no tour to make public");
+
+        assert!(!err.to_string().is_empty(), "the archive says why");
+    }
+
+    #[test]
+    fn only_a_content_type_worth_attaching_is_attached() {
+        assert_eq!(usable_content_type(Some("image/jpeg")), Some("image/jpeg"));
+        assert_eq!(
+            usable_content_type(Some("image/svg+xml")),
+            Some("image/svg+xml")
+        );
+        // What a web picker reports for a file it cannot classify, and what
+        // another platform's might.
+        assert_eq!(usable_content_type(Some("")), None);
+        assert_eq!(usable_content_type(Some("image")), None);
+        assert_eq!(usable_content_type(Some("image/")), None);
+        assert_eq!(usable_content_type(Some("image/jpeg; charset=utf-8")), None);
+        assert_eq!(usable_content_type(None), None);
+    }
+
     #[test]
     fn only_a_servers_own_words_reach_the_owner() {
         assert_eq!(
