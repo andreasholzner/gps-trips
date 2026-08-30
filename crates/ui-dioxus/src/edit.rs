@@ -76,6 +76,14 @@ pub fn changes(trip: &Trip, form: &EditForm) -> TripEdit {
 #[component]
 pub fn EditTrip(trip: Trip, on_saved: EventHandler<()>) -> Element {
     let mut open = use_signal(|| false);
+    // The router shows the next trip through this same scope, so an editor
+    // left open would carry over to it — with the previous trip's typed
+    // values in it, aimed at the new trip's id. Changing trip closes it.
+    let id = trip.id;
+    use_effect(use_reactive!(|id| {
+        let _ = id;
+        open.set(false);
+    }));
 
     rsx! {
         p {
@@ -109,6 +117,14 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
     let mut error = use_signal(|| None::<String>);
     let id = trip.id;
     let komoot = trip.komoot.clone();
+    // Belt and braces with `EditTrip`'s own reset above: the fields are the
+    // trip's, so they follow the trip if this form is ever mounted across a
+    // change of one.
+    let subject = trip.clone();
+    use_effect(use_reactive!(|subject| {
+        form.set(EditForm::of(&subject));
+        error.set(None);
+    }));
 
     rsx! {
             form {

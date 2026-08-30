@@ -33,7 +33,7 @@ async function importTrip(request, fields) {
     },
   });
   expect(response.status(), `importing ${fields.name}`).toBe(303);
-  return Number(response.headers()["location"].replace("/trips/", ""));
+  return Number(response.headers()["location"].replace("/app/trips/", ""));
 }
 
 /// A tag no archive can already hold, so the confirm-before-create step

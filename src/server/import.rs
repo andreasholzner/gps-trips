@@ -1,5 +1,6 @@
 use axum::{
     extract::{multipart::Field, Multipart, Path, State},
+    http::StatusCode,
     response::{IntoResponse, Redirect},
 };
 use time::OffsetDateTime;
@@ -55,7 +56,7 @@ pub(crate) fn derive_track(raw: &[u8]) -> Result<DerivedTrack, ImportError> {
 /// import).
 ///
 /// On success: stores the trip, its track and its photos in one transaction and
-/// redirects to `/trips/{id}` (303 See Other). On failure: a 4xx with a
+/// redirects to `/app/trips/{id}` (303 See Other). On failure: a 4xx with a
 /// plain-text message — 400 for a malformed/missing upload, 422 for GPX content
 /// we cannot use.
 ///
@@ -129,12 +130,18 @@ pub async fn handle_import(
     ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
-    Ok(Redirect::to(&format!("/trips/{trip_id}")))
+    Ok(Redirect::to(&format!("/app/trips/{trip_id}")))
 }
 
 /// `POST /api/trips/:id/photos` — attach photos to an existing trip (US-2:
 /// photos can be added at a later time). Reuses the exact import ingestion path.
-/// Redirects back to the trip detail page; 404 if the trip does not exist.
+///
+/// 204 with an empty body on success, like every other write on the JSON API
+/// (ADR-0008), and 404 if the trip does not exist. It used to redirect to the
+/// server-rendered detail page, which US-42 retires; a redirect would also be
+/// the wrong answer for the SPA that calls this now, because a browser
+/// `fetch` cannot decline to follow one — the caller would be reading the
+/// status of whatever page it landed on as the upload's.
 pub async fn handle_add_photos(
     State(state): State<AppState>,
     Path(trip_id): Path<i64>,
@@ -167,7 +174,7 @@ pub async fn handle_add_photos(
     ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
-    Ok(Redirect::to(&format!("/trips/{trip_id}")))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Resolve the track's timed points and a concrete timezone for adding photos

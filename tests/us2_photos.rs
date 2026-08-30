@@ -71,11 +71,13 @@ async fn us2_photos_can_be_added_after_import() {
     let id = import_sample(&app).await;
 
     let response = send(&app, add_photos_request(id, &[("later.jpg", PHOTO_A)])).await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    assert_eq!(
-        response.headers().get("location").unwrap(),
-        &format!("/trips/{id}")
-    );
+    // 204, like every other write on the JSON API (ADR-0008): the caller is
+    // the SPA, which re-reads the trip's photos itself. The endpoint used to
+    // redirect to the server-rendered detail page, which US-42 retires — and
+    // a browser `fetch` cannot decline to follow a redirect, so the SPA would
+    // have been reading that page's status as the upload's.
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert!(response.headers().get("location").is_none());
 
     let photos = photos_json(&app, id).await;
     assert_eq!(photos.len(), 1);
@@ -107,7 +109,7 @@ async fn us2_photo_larger_than_two_megabytes_is_accepted() {
 
     assert_eq!(
         response.status(),
-        StatusCode::SEE_OTHER,
+        StatusCode::NO_CONTENT,
         "a large photo must not be rejected by the request-body limit"
     );
 }
@@ -126,16 +128,4 @@ async fn us2_listing_photos_for_an_unknown_trip_returns_404() {
     let (app, _dir) = test_app().await;
     let response = get(&app, "/api/trips/999/photos").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn us2_detail_page_offers_an_add_photos_form() {
-    let (app, _dir) = test_app().await;
-    let id = import_sample(&app).await;
-
-    let html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(
-        html.contains(&format!("action=\"/api/trips/{id}/photos\"")),
-        "detail page should offer an add-photos form; got: {html}"
-    );
 }

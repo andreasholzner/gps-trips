@@ -167,8 +167,8 @@ pub async fn import_gpx(base_url: &str, gpx: &[u8], fields: &[(&str, &str)]) -> 
     response.headers()["location"]
         .to_str()
         .unwrap()
-        .strip_prefix("/trips/")
-        .expect("redirect to /trips/<id>")
+        .strip_prefix("/app/trips/")
+        .expect("redirect to /app/trips/<id>")
         .parse()
         .expect("numeric trip id")
 }

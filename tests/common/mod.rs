@@ -197,7 +197,7 @@ pub async fn import(app: &Router, gpx: &[u8]) -> Response {
     send(app, import_request(gpx)).await
 }
 
-/// Parse the `/trips/<id>` redirect target into a trip id.
+/// Parse the `/app/trips/<id>` redirect target into a trip id.
 pub fn trip_id_from_redirect(response: &Response) -> i64 {
     response
         .headers()
@@ -205,8 +205,8 @@ pub fn trip_id_from_redirect(response: &Response) -> i64 {
         .expect("Location header")
         .to_str()
         .unwrap()
-        .strip_prefix("/trips/")
-        .expect("redirect to /trips/<id>")
+        .strip_prefix("/app/trips/")
+        .expect("redirect to /app/trips/<id>")
         .parse()
         .expect("numeric trip id")
 }
