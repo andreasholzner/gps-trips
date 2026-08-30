@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use trip_archive_types::TripSummary;
 
 use crate::format;
+use crate::Route;
 
 /// One row per trip: name, activity, date, distance, ascent, duration
 /// (US-6), and the linked Komoot tour's privacy (US-35). The name becomes a
@@ -70,12 +71,11 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
                             }
                         }
                         td {
-                            // A plain link, not a `Link`: until US-42 builds
-                            // the detail screen, this leaves the SPA for the
-                            // server-rendered page that still owns editing,
-                            // tagging and reliving a trip. It becomes a
-                            // client-side route then.
-                            a { href: "/trips/{trip.id}", "{trip.name}" }
+                            // A router `Link`, so the detail screen (US-42)
+                            // is reached without a page load — and so the
+                            // href picks up the bundle's base path, which a
+                            // hand-written one would have to know about.
+                            Link { to: Route::TripDetail { id: trip.id }, "{trip.name}" }
                         }
                         td { "{trip.activity_type.label()}" }
                         td { {format::date(trip.start_time.as_deref())} }
@@ -164,6 +164,24 @@ mod tests {
     // row displays, so the component layer covers it (ADR-0012); seeding a
     // real Komoot link would need the mocked client the server's own US-35
     // tests use, and would assert nothing more about this screen.
+    // US-42 made the detail screen part of the SPA: a row must reach it
+    // through the router rather than by leaving the app for a page load.
+    #[test]
+    fn a_rows_name_links_to_the_trips_detail_screen() {
+        let trips = vec![a_trip(7, "Oslo Hills Walk")];
+
+        let html = render(move || {
+            let selected = Signal::new(BTreeSet::new());
+            rsx! { TripTable { trips: trips.clone(), selected } }
+        });
+
+        assert!(html.contains("href=\"/trips/7\""), "{html}");
+        assert!(
+            !html.contains("noopener"),
+            "an in-app route, not an external link out of the SPA: {html}"
+        );
+    }
+
     #[test]
     fn the_privacy_column_shows_a_linked_trips_privacy() {
         let trips = vec![TripSummary {
