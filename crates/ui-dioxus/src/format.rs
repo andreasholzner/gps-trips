@@ -31,6 +31,16 @@ pub fn date(timestamp: Option<&str>) -> String {
     }
 }
 
+/// A stored string shown as it is, or a dash when there is none — a start
+/// time (RFC-3339 and UTC-normalized, ADR-0009), a timezone name. No
+/// formatting of its own on purpose: the detail screen shows a start time
+/// whole, because the clock time is part of reliving a trip, and rendering
+/// that instant in the trip's own timezone would need a timezone database
+/// this crate deliberately does not carry.
+pub fn or_dash(value: Option<&str>) -> String {
+    value.map_or_else(dash, str::to_string)
+}
+
 /// A linked Komoot tour's privacy (US-35), or a dash for a trip that never
 /// came from Komoot — and for a linked one whose privacy no sync has read
 /// yet. A privacy Komoot reported that the archive couldn't map shows as
@@ -78,6 +88,16 @@ mod tests {
         assert_eq!(privacy(Some(KomootPrivacy::Unknown)), "Unknown");
         // Never came from Komoot, or no sync has read its privacy yet.
         assert_eq!(privacy(None), "—");
+    }
+
+    #[test]
+    fn a_stored_value_is_shown_unchanged_and_an_absent_one_as_a_dash() {
+        assert_eq!(
+            or_dash(Some("2026-07-11T09:30:00Z")),
+            "2026-07-11T09:30:00Z"
+        );
+        assert_eq!(or_dash(Some("Europe/Oslo")), "Europe/Oslo");
+        assert_eq!(or_dash(None), "—");
     }
 
     #[test]

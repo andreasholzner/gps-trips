@@ -14,29 +14,66 @@
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use trip_archive_types::{Tag, TripSummary};
+use trip_archive_types::{Tag, TripDetail, TripSummary};
 
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ApiError(pub String);
+pub struct ApiError {
+    message: String,
+    /// The status the archive answered with, where it answered at all —
+    /// `None` for a request that never got a response, or an answer that
+    /// could not be read. Screens branch on it only where the status means
+    /// something to the owner rather than to a programmer: a trip that is
+    /// simply gone (404), or an edit refused while a sync runs (409, US-26).
+    status: Option<u16>,
+}
+
+impl ApiError {
+    /// A failure with no status behind it.
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            status: None,
+        }
+    }
+
+    /// A failure the archive answered with, keeping the status for the few
+    /// screens that read it.
+    fn from_status(status: reqwest::StatusCode, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            status: Some(status.as_u16()),
+        }
+    }
+
+    /// Whether the archive answered "no such thing" — for the screens where
+    /// that is an ordinary outcome and not a fault.
+    pub fn is_not_found(&self) -> bool {
+        self.status == Some(reqwest::StatusCode::NOT_FOUND.as_u16())
+    }
+}
 
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 
 async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
     let response = reqwest::get(&url)
         .await
-        .map_err(|err| ApiError(format!("{url} unreachable: {err}")))?;
-    if !response.status().is_success() {
-        return Err(ApiError(format!("{url} returned {}", response.status())));
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::from_status(
+            status,
+            format!("{url} returned {status}"),
+        ));
     }
     response
         .json::<T>()
         .await
-        .map_err(|err| ApiError(format!("{url} returned unreadable JSON: {err}")))
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
 }
 
 /// `GET /api/trips` — the filtered list (US-6/US-13). `query` is
@@ -45,6 +82,14 @@ async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
 pub async fn list_trips(base_url: &str, query: String) -> Result<Vec<TripSummary>, ApiError> {
     let separator = if query.is_empty() { "" } else { "?" };
     get_json(format!("{base_url}/api/trips{separator}{query}")).await
+}
+
+/// `GET /api/trips/:id` — one trip's metadata for the detail screen (US-7).
+/// A 404 travels back as such (`ApiError::is_not_found`), because a trip the
+/// owner has deleted is an ordinary thing to ask for and the screen says so
+/// in its own words.
+pub async fn get_trip(base_url: &str, id: i64) -> Result<TripDetail, ApiError> {
+    get_json(format!("{base_url}/api/trips/{id}")).await
 }
 
 /// `GET /api/tags` — every known tag, for the tag filter's choices (US-38)
@@ -77,26 +122,30 @@ pub async fn bulk_add_tags(
         .json(&BulkAddTags { trip_ids, names })
         .send()
         .await
-        .map_err(|err| ApiError(format!("{url} unreachable: {err}")))?;
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND {
-        return Err(ApiError(
-            "one or more selected trips no longer exist; nothing was tagged".to_string(),
+        return Err(ApiError::from_status(
+            status,
+            "one or more selected trips no longer exist; nothing was tagged",
         ));
     }
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(ApiError(if body.trim().is_empty() {
-            format!("{url} returned {status}")
-        } else {
-            body
-        }));
+        return Err(ApiError::from_status(
+            status,
+            if body.trim().is_empty() {
+                format!("{url} returned {status}")
+            } else {
+                body
+            },
+        ));
     }
     response
         .json()
         .await
-        .map_err(|err| ApiError(format!("{url} returned unreadable JSON: {err}")))
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

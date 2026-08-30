@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 
 mod api;
 mod bulk_tag;
+mod detail;
 mod filters;
 mod format;
 mod interop;
@@ -17,6 +18,7 @@ mod region;
 mod test_support;
 mod trip_table;
 
+use detail::TripDetail;
 use filters::Filters;
 use list::TripList;
 
@@ -50,6 +52,9 @@ const LEAFLET_JS: Asset = asset!("/assets/leaflet.js");
 enum Route {
     #[route("/?:..filters")]
     TripList { filters: Filters },
+    /// One trip, by id (US-42) — the target of every row in the list.
+    #[route("/trips/:id")]
+    TripDetail { id: i64 },
 }
 
 fn main() {
@@ -118,7 +123,9 @@ mod route_tests {
         }
         .to_string();
         let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
-        let Route::TripList { filters: back } = parsed;
+        let Route::TripList { filters: back } = parsed else {
+            panic!("a list URL must parse back to the list screen; url was {url:?}")
+        };
         assert_eq!(back, filters, "url was {url:?}");
     }
 
@@ -143,9 +150,25 @@ mod route_tests {
     }
 
     #[test]
+    fn a_trips_url_round_trips_through_the_detail_route() {
+        // The property the detail screen rests on (US-42): a row's link, a
+        // bookmark and a reload are the same URL, and it names one trip.
+        let url = Route::TripDetail { id: 42 }.to_string();
+        assert_eq!(url, "/trips/42");
+
+        let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+        let Route::TripDetail { id } = parsed else {
+            panic!("a trip URL must parse back to the detail screen; url was {url:?}")
+        };
+        assert_eq!(id, 42);
+    }
+
+    #[test]
     fn the_bare_app_url_is_the_default_view() {
         let parsed = Route::from_str("/").expect("the bare path must parse");
-        let Route::TripList { filters } = parsed;
+        let Route::TripList { filters } = parsed else {
+            panic!("the bare path must be the list screen")
+        };
         assert_eq!(filters, Filters::default());
     }
 }
