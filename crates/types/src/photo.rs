@@ -8,8 +8,8 @@ use crate::LocationSource;
 /// thumbnail generation failed, or a legacy photo imported before US-5
 /// shipped — callers fall back to the full-size original in that case.
 ///
-/// This is a pure DB record. HTTP handlers project it into a `PhotoResponse`
-/// (defined in `server::http`) that adds the public serving URL.
+/// This is a pure DB record. HTTP handlers project it into a
+/// [`PhotoResponse`](crate::PhotoResponse) that adds the public serving URLs.
 #[derive(Debug, Clone)]
 pub struct Photo {
     pub id: i64,

@@ -65,6 +65,44 @@ async fn us7_track_geojson_endpoint_404_for_unknown_trip() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+// ── The detail metadata endpoint: what the screen shows around the map ──────
+
+#[tokio::test]
+async fn us7_detail_api_returns_the_trips_metadata() {
+    // ADR-0008's v1 surface names `GET /api/trips/:id`; until US-42 only the
+    // server-rendered page existed, so the SPA had no way to read a single
+    // trip. The stats here are US-8's, computed at import — the endpoint
+    // reports them, it does not recompute them.
+    let (app, _dir) = test_app().await;
+    let id = import_sample(&app).await;
+
+    let response = get(&app, &format!("/api/trips/{id}")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+
+    assert_eq!(json["id"], id);
+    assert_eq!(json["name"], "Oslo Hills Walk");
+    assert_eq!(json["activity_type"], "unknown");
+    assert!(
+        json["distance_m"].as_f64().is_some_and(|m| m > 0.0),
+        "the track's computed distance must travel with the trip; got: {json}"
+    );
+    assert!(
+        json["start_time"].is_string(),
+        "the start time must travel with the trip; got: {json}"
+    );
+    // A trip that never came from Komoot has no link, and so no privacy the
+    // detail screen could offer to change (US-35).
+    assert!(json["komoot"].is_null(), "got: {json}");
+}
+
+#[tokio::test]
+async fn us7_detail_api_404_for_unknown_trip() {
+    let (app, _dir) = test_app().await;
+    let response = get(&app, "/api/trips/999").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
 // ── The detail page: wires up the map and the elevation chart ────────────────
 
 #[tokio::test]

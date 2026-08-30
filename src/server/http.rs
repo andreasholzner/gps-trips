@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
-use crate::models::{LocationSource, Photo, TripSummary};
+use crate::models::{PhotoResponse, TripDetail, TripSummary};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
@@ -29,50 +29,6 @@ use crate::server::{
         handle_list_trip_tags, handle_remove_trip_tag,
     },
 };
-
-/// The JSON shape returned by `GET /api/trips/:id/photos` (ADR-0008).
-///
-/// Wraps the DB `Photo` record and adds the public `url`/`thumbnail_url` the
-/// client uses to fetch the image bytes. Constructed at the HTTP boundary so
-/// the DB model stays a plain record with no HTTP concerns. `lat`/`lon`/
-/// `location_source` (US-3) are derived once at import and persisted, so —
-/// unlike `url` — they travel straight from `photo` with no extra constructor
-/// argument (ADR-0015). `thumbnail_url` (US-5) is always populated — it falls
-/// back to the full-size `url` when a photo has no thumbnail (generation
-/// failed, or the photo predates US-5) — so the client never has to branch on
-/// its absence.
-#[derive(Serialize)]
-struct PhotoResponse {
-    id: i64,
-    trip_id: i64,
-    original_name: String,
-    content_type: Option<String>,
-    byte_len: i64,
-    created_at: String,
-    url: String,
-    thumbnail_url: String,
-    lat: Option<f64>,
-    lon: Option<f64>,
-    location_source: LocationSource,
-}
-
-impl PhotoResponse {
-    fn from_photo(photo: Photo, url: String, thumbnail_url: String) -> Self {
-        Self {
-            id: photo.id,
-            trip_id: photo.trip_id,
-            original_name: photo.original_name,
-            content_type: photo.content_type,
-            byte_len: photo.byte_len,
-            created_at: photo.created_at,
-            url,
-            thumbnail_url,
-            lat: photo.lat,
-            lon: photo.lon,
-            location_source: photo.location_source,
-        }
-    }
-}
 
 /// Build the application router. Shared by `main` and the integration tests so
 /// both exercise the exact same routing (ADR-0012).
@@ -94,10 +50,13 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
+        // US-7: one trip's metadata as JSON, for the SPA's detail screen (US-42).
         // US-9/US-24: delete a trip and its photo blobs. US-15: edit its name/activity type.
         .route(
             "/api/trips/:id",
-            axum::routing::delete(handle_delete_trip).patch(handle_edit_trip),
+            get(trip_detail_api)
+                .delete(handle_delete_trip)
+                .patch(handle_edit_trip),
         )
         // US-2: attach photos later (POST) and list a trip's photos (GET).
         .route(
@@ -297,6 +256,20 @@ async fn trip_detail(
         .await?
         .ok_or(AppError::NotFound)?;
     Ok(Html(render_detail(&trip)))
+}
+
+/// GET `/api/trips/:id` — one trip's metadata as JSON (US-7, ADR-0008's v1
+/// surface). The track geometry is not part of it (ADR-0003): the detail
+/// screen fetches `track.geojson` separately, for the map and the elevation
+/// chart alike. 404 if no such trip exists.
+async fn trip_detail_api(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<TripDetail>, AppError> {
+    let trip = repo::get_trip(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(Json(trip))
 }
 
 /// GET `/api/trips/:id/gpx` — download the original uploaded GPX file
