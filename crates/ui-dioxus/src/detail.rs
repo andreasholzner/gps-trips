@@ -10,6 +10,8 @@ use trip_archive_types::TripDetail as Trip;
 use crate::api;
 use crate::filters::Filters;
 use crate::format;
+use crate::interop;
+use crate::track::{self, Track};
 use crate::Route;
 
 /// The screen. `id` comes from the route (`/trips/:id`), so a link, a
@@ -42,9 +44,80 @@ pub fn TripDetail(id: i64) -> Element {
                 p { class: "error", "There is no such trip — it may have been deleted." }
             },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load this trip: {err}" } },
-            Some(Ok(trip)) => rsx! { TripStats { trip: trip.clone() } },
+            Some(Ok(trip)) => rsx! {
+                TripStats { trip: trip.clone() }
+                TrackSection { id }
+            },
         }
     }
+}
+
+/// The track on an OSM map and the elevation profile below it (US-7), from
+/// the one fetch that carries both (ADR-0025).
+///
+/// A track that will not load costs the map and the chart, not the screen:
+/// the stats, the gallery and the edit controls around it are unaffected.
+#[component]
+fn TrackSection(id: i64) -> Element {
+    let base_url = use_context::<Signal<String>>();
+    let track = use_resource(use_reactive!(|id| async move {
+        api::get_track(&base_url(), id).await
+    }));
+
+    rsx! {
+        match &*track.read_unchecked() {
+            None => rsx! { p { "Loading the track…" } },
+            Some(Err(err)) => rsx! { p { class: "error", "Could not load the track: {err}" } },
+            Some(Ok(track)) => rsx! { TrackViews { track: track.clone() } },
+        }
+    }
+}
+
+/// The two widgets themselves, once there is a track to draw. Split from the
+/// fetch above so each starts its script exactly once, when it mounts with
+/// the values it draws — never on a re-render of the screen around it.
+#[component]
+fn TrackViews(track: Track) -> Element {
+    let points = track::polyline(&track);
+    let series = track::elevation_series(&track);
+
+    rsx! {
+        TrackMap { points }
+        if let Some((distance_km, elevation_m)) = series {
+            ElevationChart { distance_km, elevation_m }
+        }
+    }
+}
+
+/// The map container. Rendered empty and never given children: Leaflet owns
+/// this subtree from the moment it initialises (ADR-0025).
+#[component]
+fn TrackMap(points: Vec<[f64; 2]>) -> Element {
+    // Redrawn whenever the line changes, not only when the component first
+    // mounts: the router shows a different trip through this same component,
+    // and a plain `use_future` would leave the previous trip's track on the
+    // map. The script is written to be drawn into twice (`interop::track`).
+    use_future(use_reactive!(|points| async move {
+        let mut map = interop::start_track_map(points);
+        // The handle is the channel: hold it until this draw is superseded or
+        // the screen goes away, or a dropped handle takes the payload with it
+        // before the script has read it. Nothing is sent back yet — photo
+        // markers (US-3/US-4) make this a real loop.
+        let _: Result<(), _> = map.recv().await;
+    }));
+
+    rsx! { div { id: "track-map", class: "track-map" } }
+}
+
+/// The elevation chart's container, on the same terms as the map's.
+#[component]
+fn ElevationChart(distance_km: Vec<f64>, elevation_m: Vec<f64>) -> Element {
+    use_future(use_reactive!(|distance_km, elevation_m| async move {
+        let mut chart = interop::start_elevation_chart(distance_km, elevation_m);
+        let _: Result<(), _> = chart.recv().await;
+    }));
+
+    rsx! { div { id: "elevation", class: "elevation" } }
 }
 
 /// The trip's name and its stats — every one of them computed at import and
@@ -161,6 +234,33 @@ mod tests {
         assert!(html.contains(ActivityType::Hiking.label()), "{html}");
         // SAMPLE_GPX's own track, measured at import (US-8).
         assert!(html.contains(" km"), "{html}");
+    }
+
+    // US-7's map and chart. `document::eval` does nothing headless, so what
+    // this layer can assert is the wiring: both containers exist, and both
+    // are empty — Leaflet and uPlot own those subtrees outright and Dioxus
+    // must never render children into them (ADR-0025). That they actually
+    // draw is the browser layer's business (ADR-0012's 2026-08-26b rule).
+    #[tokio::test]
+    async fn the_screen_gives_the_map_and_the_chart_a_container_of_their_own() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains("track-map"),
+        )
+        .await;
+
+        assert!(
+            html.contains(r#"<div id="track-map" class="track-map"></div>"#),
+            "an empty map container: {html}"
+        );
+        assert!(
+            html.contains(r#"<div id="elevation" class="elevation"></div>"#),
+            "an empty chart container — the fixture track has elevations: {html}"
+        );
     }
 
     #[tokio::test]

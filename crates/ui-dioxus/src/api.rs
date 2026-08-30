@@ -16,6 +16,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{Tag, TripDetail, TripSummary};
 
+use crate::track::Track;
+
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApiError {
@@ -90,6 +92,13 @@ pub async fn list_trips(base_url: &str, query: String) -> Result<Vec<TripSummary
 /// in its own words.
 pub async fn get_trip(base_url: &str, id: i64) -> Result<TripDetail, ApiError> {
     get_json(format!("{base_url}/api/trips/{id}")).await
+}
+
+/// `GET /api/trips/:id/track.geojson` — the track geometry (ADR-0003). One
+/// fetch feeds both the map and the elevation chart: the geometry and the
+/// chart's series travel together in the same blob (ADR-0025).
+pub async fn get_track(base_url: &str, id: i64) -> Result<Track, ApiError> {
+    get_json(format!("{base_url}/api/trips/{id}/track.geojson")).await
 }
 
 /// `GET /api/tags` — every known tag, for the tag filter's choices (US-38)
