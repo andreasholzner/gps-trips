@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use trip_archive_types::TripDetail as Trip;
 
 use crate::api;
+use crate::edit::EditTrip;
 use crate::filters::Filters;
 use crate::format;
 use crate::interop;
@@ -25,7 +26,7 @@ pub fn TripDetail(id: i64) -> Element {
     // another reuses this component's scope, and a resource that only
     // watched signals would keep showing the trip it first fetched.
     // `use_reactive` is what subscribes it to the prop.
-    let trip = use_resource(use_reactive!(|id| async move {
+    let mut trip_resource = use_resource(use_reactive!(|id| async move {
         api::get_trip(&base_url(), id).await
     }));
     // Fetched once for the two things that show them: the gallery, and the
@@ -34,16 +35,24 @@ pub fn TripDetail(id: i64) -> Element {
     let mut photo_list = use_resource(use_reactive!(|id| async move {
         api::list_photos(&base_url(), id).await
     }));
-    // The photos last read successfully. A restarted resource reads as
-    // pending, and showing that as "no photos" would blank the gallery and
-    // pull every marker off the map for as long as the refresh takes — so
-    // what is on screen stays there until there is something newer.
-    let mut photos = use_signal(Vec::<PhotoResponse>::new);
+    // The photos last read successfully, and which trip they belong to. A
+    // restarted resource reads as pending, and showing that as "no photos"
+    // would blank the gallery and pull every marker off the map for as long
+    // as the refresh takes — so what is on screen stays there until there is
+    // something newer. It is kept with its trip's id because this same
+    // component shows the next trip too: without that, a trip whose stats
+    // arrive before its photos would briefly wear the previous one's gallery
+    // and plot its markers on the wrong track.
+    let mut cached = use_signal(|| (id, Vec::<PhotoResponse>::new()));
     use_effect(move || {
         if let Some(Ok(latest)) = &*photo_list.read() {
-            photos.set(latest.clone());
+            cached.set((id, latest.clone()));
         }
     });
+    let photos = match cached() {
+        (cached_id, photos) if cached_id == id => photos,
+        _ => Vec::new(),
+    };
     let photos_error = match &*photo_list.read_unchecked() {
         Some(Err(err)) => Some(err.to_string()),
         _ => None,
@@ -57,7 +66,7 @@ pub fn TripDetail(id: i64) -> Element {
         nav { class: "elsewhere",
             Link { to: Route::TripList { filters: Filters::default() }, "← All trips" }
         }
-        match &*trip.read_unchecked() {
+        match &*trip_resource.read_unchecked() {
             None => rsx! { p { "Loading…" } },
             // A trip that is simply gone — a stale bookmark, or the Back
             // button after a delete (US-9) — is an ordinary outcome, not a
@@ -68,9 +77,10 @@ pub fn TripDetail(id: i64) -> Element {
             Some(Err(err)) => rsx! { p { class: "error", "Could not load this trip: {err}" } },
             Some(Ok(trip)) => rsx! {
                 TripStats { trip: trip.clone() }
-                TrackSection { id, markers: photos::photo_markers(&base_url(), &photos()) }
+                EditTrip { trip: trip.clone(), on_saved: move |_| trip_resource.restart() }
+                TrackSection { id, markers: photos::photo_markers(&base_url(), &photos) }
                 PhotoGallery {
-                    photos: photos(),
+                    photos: photos.clone(),
                     base_url: base_url(),
                     error: photos_error.clone(),
                 }
@@ -291,6 +301,25 @@ mod tests {
             html.contains(r#"<div id="elevation" class="elevation"></div>"#),
             "an empty chart container — the fixture track has elevations: {html}"
         );
+    }
+
+    // US-15: the screen offers the edit, and saving it re-reads the trip.
+    // What the form sends is `edit::changes`' own business; that it is
+    // reachable from the screen at all is this one's.
+    #[tokio::test]
+    async fn the_screen_offers_the_edit_form() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains("Oslo Hills Walk"),
+        )
+        .await;
+
+        assert!(html.contains(r#"id="edit-trip""#), "{html}");
+        assert!(html.contains("Edit name / activity"), "{html}");
     }
 
     // US-7's gallery, and US-2's "photos can be added at a later time" as the

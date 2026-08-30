@@ -80,10 +80,15 @@ const TRACK_MAP_SCRIPT: &str = r##"
     ).addTo(map);
 
     const points = view.points || [];
-    if (points.length === 0) return;
-    map.trackLine = L.polyline(points, { color: "#3367d6", weight: 3 }).addTo(map);
+    if (points.length > 0) {
+      map.trackLine = L.polyline(points, { color: "#3367d6", weight: 3 }).addTo(map);
+    }
 
-    const bounds = map.trackLine.getBounds();
+    // Framed on everything there is to see. A track with no drawable
+    // positions still has photos, and they should not be left somewhere on a
+    // view of the whole world.
+    const bounds = L.latLngBounds([]);
+    if (map.trackLine) bounds.extend(map.trackLine.getBounds());
     if (map.photoMarkers.getLayers().length > 0) {
       bounds.extend(map.photoMarkers.getBounds());
     }
