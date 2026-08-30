@@ -22,11 +22,15 @@ trip-archive-types = { path = "../types" }
 serde = { version = "1", features = ["derive"] }
 # Works on both targets: `fetch` under wasm, a native client on Android —
 # the reason the two platforms can share one API client (ADR-0024).
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # TLS is a native-only concern; the browser provides its own.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "multipart",
+    "rustls-tls",
+] }
 
 [dev-dependencies]
 # ADR-0012 (2026-08-26a): components and whole screens render to HTML on the

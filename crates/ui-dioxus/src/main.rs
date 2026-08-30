@@ -13,6 +13,7 @@ mod filters;
 mod format;
 mod interop;
 mod list;
+mod photos;
 mod region;
 #[cfg(test)]
 mod test_support;
