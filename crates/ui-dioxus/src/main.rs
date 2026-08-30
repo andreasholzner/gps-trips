@@ -16,6 +16,7 @@ mod list;
 mod region;
 #[cfg(test)]
 mod test_support;
+mod track;
 mod trip_table;
 
 use detail::TripDetail;
@@ -39,6 +40,12 @@ const APP_CSS: Asset = asset!("/assets/app.css");
 /// resolves when the PoC UI retires (US-42).
 const LEAFLET_CSS: Asset = asset!("/assets/leaflet.css");
 const LEAFLET_JS: Asset = asset!("/assets/leaflet.js");
+
+/// uPlot, the elevation profile's chart library, on exactly the same terms
+/// (ADR-0006, kept by ADR-0025). Only the detail screen draws one, but the
+/// bundle is one artifact and the library is 50 KB.
+const UPLOT_CSS: Asset = asset!("/assets/uPlot.min.css");
+const UPLOT_JS: Asset = asset!("/assets/uPlot.iife.min.js");
 
 /// The screens. The trip-list path mirrors the server-rendered app's own
 /// (`/`); the deployed web bundle is mounted under `/app` (Dioxus.toml's
@@ -83,6 +90,8 @@ fn App() -> Element {
         // (interop.rs) rather than assuming load order.
         document::Link { rel: "stylesheet", href: LEAFLET_CSS }
         document::Script { src: LEAFLET_JS }
+        document::Link { rel: "stylesheet", href: UPLOT_CSS }
+        document::Script { src: UPLOT_JS }
 
         main {
             if loaded() {

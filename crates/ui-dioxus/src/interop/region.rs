@@ -1,21 +1,4 @@
-//! The one place this crate talks to a JS library ([ADR-0025](../../../docs/adr/0025-js-widget-interop-via-eval.md)).
-//!
-//! `document::eval` is the only interop that works identically on the web and
-//! in the Android WebView, so every widget is driven from here through a
-//! string of JS and a message channel — never `wasm-bindgen` externs or
-//! `web-sys`, which do not exist on the mobile target.
-//!
-//! The rules that ADR carries, applied here:
-//!
-//! - **Payloads cross over the channel**, never spliced into the script text.
-//! - **Wait for the library's global**, rather than assuming script order —
-//!   and, since `use_future` can run before the node it draws into exists,
-//!   for the container too (a spike finding, `docs/eval-two-way-spike.md`).
-//! - **The container is Dioxus-empty**; Leaflet owns that subtree, and the
-//!   script refuses to initialise a second time into it.
-//! - **JS renders; Rust decides.** The script draws a rectangle and reports
-//!   its corners; turning those into the `bbox` the API takes is Rust's job,
-//!   below, where it is unit-testable.
+//! The region map (US-52/US-14) — the trip list's own widget.
 
 use dioxus::prelude::*;
 

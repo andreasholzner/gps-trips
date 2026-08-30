@@ -97,6 +97,19 @@ nav.tabs button:not(:disabled) {
   margin-bottom: 0.5rem;
 }
 
+/* The detail screen's track map and elevation profile (US-7), both drawn by a
+   JS library into a container Dioxus leaves empty. Leaflet lays out into
+   nothing without a real height, so the map is sized here; uPlot sizes its
+   own canvas, so the chart only needs room above it. */
+.track-map {
+  height: 384px;
+  width: 100%;
+}
+
+.elevation {
+  margin-top: 1rem;
+}
+
 /* Staged tag names, before they are applied (US-34). */
 .chips {
   display: flex;
