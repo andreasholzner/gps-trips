@@ -11,8 +11,10 @@ use crate::api;
 use crate::filters::Filters;
 use crate::format;
 use crate::interop;
+use crate::photos::{self, AddPhotos, PhotoGallery, PhotoMarker};
 use crate::track::{self, Track};
 use crate::Route;
+use trip_archive_types::PhotoResponse;
 
 /// The screen. `id` comes from the route (`/trips/:id`), so a link, a
 /// bookmark and a reload all land on the same trip.
@@ -26,6 +28,26 @@ pub fn TripDetail(id: i64) -> Element {
     let trip = use_resource(use_reactive!(|id| async move {
         api::get_trip(&base_url(), id).await
     }));
+    // Fetched once for the two things that show them: the gallery, and the
+    // markers on the track map (US-3/US-4). Adding photos restarts this, so
+    // both are current.
+    let mut photo_list = use_resource(use_reactive!(|id| async move {
+        api::list_photos(&base_url(), id).await
+    }));
+    // The photos last read successfully. A restarted resource reads as
+    // pending, and showing that as "no photos" would blank the gallery and
+    // pull every marker off the map for as long as the refresh takes — so
+    // what is on screen stays there until there is something newer.
+    let mut photos = use_signal(Vec::<PhotoResponse>::new);
+    use_effect(move || {
+        if let Some(Ok(latest)) = &*photo_list.read() {
+            photos.set(latest.clone());
+        }
+    });
+    let photos_error = match &*photo_list.read_unchecked() {
+        Some(Err(err)) => Some(err.to_string()),
+        _ => None,
+    };
 
     rsx! {
         // Back to the unfiltered list. Whatever the owner had narrowed it to
@@ -46,7 +68,13 @@ pub fn TripDetail(id: i64) -> Element {
             Some(Err(err)) => rsx! { p { class: "error", "Could not load this trip: {err}" } },
             Some(Ok(trip)) => rsx! {
                 TripStats { trip: trip.clone() }
-                TrackSection { id }
+                TrackSection { id, markers: photos::photo_markers(&base_url(), &photos()) }
+                PhotoGallery {
+                    photos: photos(),
+                    base_url: base_url(),
+                    error: photos_error.clone(),
+                }
+                AddPhotos { id, on_added: move |_| photo_list.restart() }
             },
         }
     }
@@ -58,7 +86,7 @@ pub fn TripDetail(id: i64) -> Element {
 /// A track that will not load costs the map and the chart, not the screen:
 /// the stats, the gallery and the edit controls around it are unaffected.
 #[component]
-fn TrackSection(id: i64) -> Element {
+fn TrackSection(id: i64, markers: Vec<PhotoMarker>) -> Element {
     let base_url = use_context::<Signal<String>>();
     let track = use_resource(use_reactive!(|id| async move {
         api::get_track(&base_url(), id).await
@@ -68,7 +96,9 @@ fn TrackSection(id: i64) -> Element {
         match &*track.read_unchecked() {
             None => rsx! { p { "Loading the track…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load the track: {err}" } },
-            Some(Ok(track)) => rsx! { TrackViews { track: track.clone() } },
+            Some(Ok(track)) => rsx! {
+                TrackViews { track: track.clone(), markers: markers.clone() }
+            },
         }
     }
 }
@@ -77,12 +107,12 @@ fn TrackSection(id: i64) -> Element {
 /// fetch above so each starts its script exactly once, when it mounts with
 /// the values it draws — never on a re-render of the screen around it.
 #[component]
-fn TrackViews(track: Track) -> Element {
+fn TrackViews(track: Track, markers: Vec<PhotoMarker>) -> Element {
     let points = track::polyline(&track);
     let series = track::elevation_series(&track);
 
     rsx! {
-        TrackMap { points }
+        TrackMap { points, markers }
         if let Some((distance_km, elevation_m)) = series {
             ElevationChart { distance_km, elevation_m }
         }
@@ -92,13 +122,13 @@ fn TrackViews(track: Track) -> Element {
 /// The map container. Rendered empty and never given children: Leaflet owns
 /// this subtree from the moment it initialises (ADR-0025).
 #[component]
-fn TrackMap(points: Vec<[f64; 2]>) -> Element {
+fn TrackMap(points: Vec<[f64; 2]>, markers: Vec<PhotoMarker>) -> Element {
     // Redrawn whenever the line changes, not only when the component first
     // mounts: the router shows a different trip through this same component,
     // and a plain `use_future` would leave the previous trip's track on the
     // map. The script is written to be drawn into twice (`interop::track`).
-    use_future(use_reactive!(|points| async move {
-        let mut map = interop::start_track_map(points);
+    use_future(use_reactive!(|points, markers| async move {
+        let mut map = interop::start_track_map(points, markers);
         // The handle is the channel: hold it until this draw is superseded or
         // the screen goes away, or a dropped handle takes the payload with it
         // before the script has read it. Nothing is sent back yet — photo
@@ -261,6 +291,39 @@ mod tests {
             html.contains(r#"<div id="elevation" class="elevation"></div>"#),
             "an empty chart container — the fixture track has elevations: {html}"
         );
+    }
+
+    // US-7's gallery, and US-2's "photos can be added at a later time" as the
+    // screen offers it. Which photos reach the *map* is `photos::` own unit
+    // test — a marker is invisible to a rendered string.
+    #[tokio::test]
+    async fn the_screen_shows_the_trips_photos_and_offers_to_add_more() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+        api::add_photos(
+            &base_url,
+            id,
+            vec![crate::api::PhotoUpload {
+                file_name: "later.jpg".to_string(),
+                content_type: Some("image/jpeg".to_string()),
+                bytes: b"\xFF\xD8\xFF-fake-jpeg".to_vec(),
+            }],
+        )
+        .await
+        .expect("upload");
+
+        let html = render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains("later.jpg"),
+        )
+        .await;
+
+        assert!(
+            html.contains(&format!("{base_url}/media/")),
+            "the gallery fetches the image from the archive it read: {html}"
+        );
+        assert!(html.contains("Add photos"), "{html}");
     }
 
     #[tokio::test]

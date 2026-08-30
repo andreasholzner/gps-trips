@@ -3,6 +3,9 @@
 //! (`crate::track`) — these scripts only draw.
 
 use dioxus::prelude::*;
+use serde::Serialize;
+
+use crate::photos::PhotoMarker;
 
 /// The track map. Draws into `#track-map`: the polyline it is given, fitted
 /// to the view, over OSM raster tiles.
@@ -54,15 +57,45 @@ const TRACK_MAP_SCRIPT: &str = r##"
       widgets[CONTAINER] = map;
     }
 
-    const points = await dioxus.recv();
-    if (map.trackLine) {
-      map.removeLayer(map.trackLine);
-      map.trackLine = null;
+    // One payload carries the whole picture — the line and the photos on it —
+    // so a redraw replaces what is there rather than layering on top of it.
+    const view = await dioxus.recv();
+    for (const layer of [map.trackLine, map.photoMarkers]) {
+      if (layer) map.removeLayer(layer);
     }
-    if (!points || points.length === 0) return;
+    map.trackLine = null;
+    map.photoMarkers = null;
+
+    // A feature group, not a plain layer group: the view has to be able to
+    // include a photo whose EXIF GPS puts it off the track (US-3), which
+    // needs the markers' own bounds.
+    map.photoMarkers = L.featureGroup(
+      (view.markers || []).map((photo) => {
+        const img = document.createElement("img");
+        img.src = photo.thumbnail_url;
+        img.alt = photo.name;
+        img.style.maxWidth = "150px";
+        return L.marker([photo.lat, photo.lon]).bindPopup(img);
+      }),
+    ).addTo(map);
+
+    const points = view.points || [];
+    if (points.length === 0) return;
     map.trackLine = L.polyline(points, { color: "#3367d6", weight: 3 }).addTo(map);
+
     const bounds = map.trackLine.getBounds();
-    if (bounds.isValid()) map.fitBounds(bounds);
+    if (map.photoMarkers.getLayers().length > 0) {
+      bounds.extend(map.photoMarkers.getBounds());
+    }
+    if (!bounds.isValid()) return;
+    // Only when there is something new to frame. This script runs again
+    // whenever the photos change, and refitting then would throw away a
+    // zoom the owner had just made into part of the track.
+    const framed = bounds.toBBoxString();
+    if (map.framed !== framed) {
+      map.fitBounds(bounds);
+      map.framed = framed;
+    }
 "##;
 
 /// The elevation profile. Draws into `#elevation`: elevation in metres
@@ -114,13 +147,26 @@ const ELEVATION_SCRIPT: &str = r##"
     );
 "##;
 
-/// Start the track map with the polyline to draw (`[lat, lon]` pairs).
+/// What the map shows: the track as `[lat, lon]` pairs, and a marker per
+/// photo that has a position (US-3/US-4). Sent as one value because it is one
+/// picture — a redraw with new markers must not lose the line.
+#[derive(Serialize)]
+struct TrackMapView {
+    points: Vec<[f64; 2]>,
+    markers: Vec<PhotoMarker>,
+}
+
+/// Start the track map with the line and the photo markers to draw.
 ///
 /// The returned handle is the channel: it must be kept alive until the
 /// script has taken the payload, so callers hold it for the life of the
 /// screen.
-pub fn start_track_map(points: Vec<[f64; 2]>) -> document::Eval {
-    start(TRACK_MAP_SCRIPT, points, "the track map")
+pub fn start_track_map(points: Vec<[f64; 2]>, markers: Vec<PhotoMarker>) -> document::Eval {
+    start(
+        TRACK_MAP_SCRIPT,
+        TrackMapView { points, markers },
+        "the track map",
+    )
 }
 
 /// Start the elevation chart with its two prepared series. The handle is the

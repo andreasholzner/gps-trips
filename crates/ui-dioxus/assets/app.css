@@ -110,6 +110,19 @@ nav.tabs button:not(:disabled) {
   margin-top: 1rem;
 }
 
+/* The photo gallery (US-7). Thumbnails are already small (US-5); the cap is
+   for the full-size original that stands in when none could be made. */
+.gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gallery img {
+  max-height: 200px;
+  width: auto;
+}
+
 /* Staged tag names, before they are applied (US-34). */
 .chips {
   display: flex;
