@@ -180,7 +180,9 @@ fn privacy_field(link: Option<&KomootLink>) -> String {
 /// an elevation profile, a photo gallery, and the trip's tags (US-33).
 ///
 /// The map and chart are driven from a single track-GeoJSON fetch (ADR-0005/0006);
-/// the gallery fetches the photos JSON (US-2) and renders `<img>` elements. Tags
+/// the gallery fetches the photos JSON (US-2) and renders `<img>` elements —
+/// read-only now that the SPA owns adding them (US-42), which is also why
+/// `POST /api/trips/:id/photos` answers 204 rather than redirecting here. Tags
 /// are fetched separately (`/api/trips/:id/tags`) and rendered as removable chips;
 /// `#tag-suggestions` is populated from `/api/tags` for the `#tag-input`
 /// `<datalist>` autocomplete. The page only emits the containers and the
@@ -250,10 +252,6 @@ pub fn render_detail(trip: &TripDetail) -> String {
 
   <h2>Photos</h2>
   <div id="gallery"></div>
-  <form method="post" action="/api/trips/{id}/photos" enctype="multipart/form-data">
-    <input type="file" name="photos" accept="image/*" multiple>
-    <button type="submit">Add photos</button>
-  </form>
 
   <p><a href="/api/trips/{id}/gpx">Download original GPX</a></p>
   <p><button id="delete-trip">Delete trip</button></p>

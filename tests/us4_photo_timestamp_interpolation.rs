@@ -73,7 +73,7 @@ async fn us4_photos_added_later_via_add_photos_endpoint_are_also_interpolated() 
 
     let bytes = capture_time_bytes("2024:06:01 10:15:00", None);
     let response = send(&app, add_photos_request(id, &[("later.jpg", &bytes)])).await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     let photos_response = common::get(&app, &format!("/api/trips/{id}/photos")).await;
     let json: serde_json::Value =
@@ -102,7 +102,7 @@ async fn us4_a_trip_missing_its_timezone_is_backfilled_the_first_time_photos_are
 
     let bytes = capture_time_bytes("2024:06:01 10:15:00", None);
     let response = send(&app, add_photos_request(id, &[("later.jpg", &bytes)])).await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     // The photo still gets interpolated (the timezone was guessed on the fly)...
     let photos_response = common::get(&app, &format!("/api/trips/{id}/photos")).await;

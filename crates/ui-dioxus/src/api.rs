@@ -134,13 +134,11 @@ pub struct PhotoUpload {
 /// own bytes to make a thumbnail (US-5) and serves it back under a type
 /// derived from the stored key's extension.
 ///
-/// The endpoint answers `303` to the trip's page and every client follows it
-/// — a browser `fetch` gives no way not to — so what this reads is the status
-/// of the *page*, not of the upload. That holds only while the redirect
-/// target exists; retiring the server-rendered detail page (US-42) has to
-/// repoint it, or a successful upload starts reporting a 404. The endpoint
-/// answering `204` like `DELETE` does would end the coupling for good, and is
-/// what US-43 wants for the import too.
+/// The endpoint answers `204`, so this reports the upload's own outcome. It
+/// used to redirect to the server-rendered detail page, which meant reading
+/// that page's status instead — a browser `fetch` gives no way to decline a
+/// redirect — and would have started reporting 404 the moment US-42 retired
+/// the page. US-43's import wants the same treatment.
 pub async fn add_photos(base_url: &str, id: i64, photos: Vec<PhotoUpload>) -> Result<(), ApiError> {
     let url = format!("{base_url}/api/trips/{id}/photos");
     let mut form = reqwest::multipart::Form::new();

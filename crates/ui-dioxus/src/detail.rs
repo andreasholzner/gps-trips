@@ -32,8 +32,14 @@ pub fn TripDetail(id: i64) -> Element {
     // Fetched once for the two things that show them: the gallery, and the
     // markers on the track map (US-3/US-4). Adding photos restarts this, so
     // both are current.
+    // The trip's id travels back with its photos: a resource keeps its last
+    // value while a new fetch is pending, so reading the id from this scope
+    // instead would let the previous trip's photos be stamped with the new
+    // trip's id — the very mix-up the cache below exists to prevent.
     let mut photo_list = use_resource(use_reactive!(|id| async move {
-        api::list_photos(&base_url(), id).await
+        api::list_photos(&base_url(), id)
+            .await
+            .map(|photos| (id, photos))
     }));
     // The photos last read successfully, and which trip they belong to. A
     // restarted resource reads as pending, and showing that as "no photos"
@@ -46,7 +52,7 @@ pub fn TripDetail(id: i64) -> Element {
     let mut cached = use_signal(|| (id, Vec::<PhotoResponse>::new()));
     use_effect(move || {
         if let Some(Ok(latest)) = &*photo_list.read() {
-            cached.set((id, latest.clone()));
+            cached.set(latest.clone());
         }
     });
     let photos = match cached() {

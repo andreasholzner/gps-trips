@@ -75,7 +75,18 @@ const TRACK_MAP_SCRIPT: &str = r##"
         img.src = photo.thumbnail_url;
         img.alt = photo.name;
         img.style.maxWidth = "150px";
-        return L.marker([photo.lat, photo.lon]).bindPopup(img);
+        // A circle marker, not Leaflet's default pin: that pin is an image
+        // file, and neither the bundle nor the APK ships Leaflet's `images/`
+        // directory — every one of them would 404 and leave the photo
+        // invisible on the map. This needs no asset at all, and reads
+        // against the track line rather than into it.
+        return L.circleMarker([photo.lat, photo.lon], {
+          radius: 7,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: "#d6336c",
+          fillOpacity: 1,
+        }).bindPopup(img);
       }),
     ).addTo(map);
 

@@ -80,7 +80,7 @@ async fn us3_photos_added_later_via_add_photos_endpoint_also_get_location_extrac
 
     let geotagged = geotagged_bytes(51.5, -0.12);
     let response = send(&app, add_photos_request(id, &[("later.jpg", &geotagged)])).await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     let photos_response = common::get(&app, &format!("/api/trips/{id}/photos")).await;
     let json: serde_json::Value =

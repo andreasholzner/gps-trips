@@ -107,7 +107,7 @@ async fn us5_photos_added_later_via_add_photos_endpoint_also_get_a_thumbnail() {
         add_photos_request(id, &[("later.jpg", &valid_jpeg_bytes(200, 100))]),
     )
     .await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     let photos_response = common::get(&app, &format!("/api/trips/{id}/photos")).await;
     let json: serde_json::Value =

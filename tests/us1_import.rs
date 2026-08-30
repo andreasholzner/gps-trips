@@ -31,10 +31,13 @@ async fn us1_valid_gpx_redirects_to_detail_page() {
         .expect("Location header")
         .to_str()
         .unwrap();
+    // Into the SPA (US-42): the server-rendered detail page this used to name
+    // is retired, and the trip the owner just imported is shown by the screen
+    // that replaced it.
     let id: i64 = location
-        .strip_prefix("/trips/")
+        .strip_prefix("/app/trips/")
         .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| panic!("expected /trips/<id>, got {location}"));
+        .unwrap_or_else(|| panic!("expected /app/trips/<id>, got {location}"));
     assert!(id > 0, "trip id must be positive");
 }
 
