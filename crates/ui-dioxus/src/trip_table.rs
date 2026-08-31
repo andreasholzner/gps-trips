@@ -160,10 +160,6 @@ mod tests {
         );
     }
 
-    // US-35's Privacy column. A linked trip's privacy is a stored value the
-    // row displays, so the component layer covers it (ADR-0012); seeding a
-    // real Komoot link would need the mocked client the server's own US-35
-    // tests use, and would assert nothing more about this screen.
     // US-42 made the detail screen part of the SPA: a row must reach it
     // through the router rather than by leaving the app for a page load.
     #[test]
@@ -182,6 +178,10 @@ mod tests {
         );
     }
 
+    // US-35's Privacy column. A linked trip's privacy is a stored value the
+    // row displays, so the component layer covers it (ADR-0012); seeding a
+    // real Komoot link would need the mocked client the server's own US-35
+    // tests use, and would assert nothing more about this screen.
     #[test]
     fn the_privacy_column_shows_a_linked_trips_privacy() {
         let trips = vec![TripSummary {

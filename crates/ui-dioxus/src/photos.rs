@@ -56,13 +56,14 @@ pub fn absolute(base_url: &str, url: &str) -> String {
 /// The gallery: every photo as a thumbnail (US-5 guarantees there is always
 /// one to use — the full-size image stands in when none could be made).
 ///
-/// `error` is what the archive said when the photos could not be read. It is
-/// shown alongside whatever is already on screen, and in place of the empty
-/// state — because "no photos yet" is a claim about the trip, and a failed
-/// fetch is not evidence for it.
+/// `photos` is `None` until the trip's photos have been read — distinct from
+/// an empty list, because "no photos yet" is a claim about the trip and a
+/// read still in flight is not evidence for it. `error` is what the archive
+/// said when that read failed, and is shown alongside whatever is already on
+/// screen rather than replacing it.
 #[component]
 pub fn PhotoGallery(
-    photos: Vec<PhotoResponse>,
+    photos: Option<Vec<PhotoResponse>>,
     base_url: String,
     #[props(default)] error: Option<String>,
 ) -> Element {
@@ -71,20 +72,25 @@ pub fn PhotoGallery(
         if let Some(error) = error.clone() {
             p { class: "error", "Could not load the photos: {error}" }
         }
-        if photos.is_empty() {
-            if error.is_none() {
-                p { "No photos yet." }
-            }
-        } else {
-            div { class: "gallery",
-                for photo in photos {
-                    img {
-                        key: "{photo.id}",
-                        src: absolute(&base_url, &photo.thumbnail_url),
-                        alt: "{photo.original_name}",
+        match photos {
+            None if error.is_none() => rsx! { p { "Loading the photos…" } },
+            None => rsx! {},
+            Some(photos) if photos.is_empty() => rsx! {
+                if error.is_none() {
+                    p { "No photos yet." }
+                }
+            },
+            Some(photos) => rsx! {
+                div { class: "gallery",
+                    for photo in photos {
+                        img {
+                            key: "{photo.id}",
+                            src: absolute(&base_url, &photo.thumbnail_url),
+                            alt: "{photo.original_name}",
+                        }
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -237,7 +243,12 @@ mod tests {
         ];
 
         let html = render(move || {
-            rsx! { PhotoGallery { photos: photos.clone(), base_url: "http://archive.test".to_string() } }
+            rsx! {
+                PhotoGallery {
+                    photos: Some(photos.clone()),
+                    base_url: "http://archive.test".to_string(),
+                }
+            }
         });
 
         assert!(
@@ -253,7 +264,7 @@ mod tests {
     #[test]
     fn a_trip_with_no_photos_says_so() {
         let html = render(|| {
-            rsx! { PhotoGallery { photos: Vec::new(), base_url: String::new() } }
+            rsx! { PhotoGallery { photos: Some(Vec::new()), base_url: String::new() } }
         });
 
         assert!(html.contains("No photos yet"), "{html}");
@@ -269,7 +280,7 @@ mod tests {
         let html = render(|| {
             rsx! {
                 PhotoGallery {
-                    photos: Vec::new(),
+                    photos: Some(Vec::new()),
                     base_url: String::new(),
                     error: Some("the archive is unreachable".to_string()),
                 }
@@ -289,7 +300,7 @@ mod tests {
         let html = render(move || {
             rsx! {
                 PhotoGallery {
-                    photos: photos.clone(),
+                    photos: Some(photos.clone()),
                     base_url: String::new(),
                     error: Some("the archive is unreachable".to_string()),
                 }
@@ -298,6 +309,18 @@ mod tests {
 
         assert!(html.contains("the archive is unreachable"), "{html}");
         assert!(html.contains("thumb-first.jpg"), "{html}");
+    }
+
+    #[test]
+    fn a_gallery_that_has_not_been_read_yet_claims_nothing_about_the_trip() {
+        // "No photos yet" is a claim; a read still in flight is not evidence
+        // for it, any more than a failed one is.
+        let html = render(|| {
+            rsx! { PhotoGallery { photos: None, base_url: String::new() } }
+        });
+
+        assert!(!html.contains("No photos yet"), "{html}");
+        assert!(html.contains("Loading"), "{html}");
     }
 
     #[test]

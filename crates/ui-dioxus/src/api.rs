@@ -201,6 +201,39 @@ fn readable_body(body: String) -> Option<String> {
     (!body.is_empty() && !body.starts_with('<')).then(|| body.to_string())
 }
 
+/// `DELETE /api/trips/:id` — delete a trip and its photo blobs (US-9). A
+/// Komoot-sourced trip is also queued for deletion on Komoot by the next
+/// sync (US-24), which is the archive's business, not this call's.
+///
+/// The archive's own words come back for a refusal — notably the 409 while a
+/// "Sync now" run is in flight (US-26), which is a "not now", not a failure.
+pub async fn delete_trip(base_url: &str, id: i64) -> Result<(), ApiError> {
+    let url = format!("{base_url}/api/trips/{id}");
+    let response = reqwest::Client::new()
+        .delete(&url)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(ApiError::from_status(
+            status,
+            readable_body(body).unwrap_or_else(|| format!("{url} returned {status}")),
+        ));
+    }
+    Ok(())
+}
+
+/// The address the original uploaded GPX is downloaded from (US-21). A plain
+/// link, not a fetch: the archive answers with the bytes it stored and a
+/// `Content-Disposition` naming the file, so the browser saves it — reading
+/// it into wasm first would only take a detour through memory.
+pub fn original_gpx_url(base_url: &str, id: i64) -> String {
+    format!("{base_url}/api/trips/{id}/gpx")
+}
+
 /// The `PATCH /api/trips/:id` body (US-15/US-35). Every field is optional and
 /// an omitted one is left unchanged — which is why only what the owner
 /// actually changed is sent: an edit of the name alone must not write back a
@@ -566,6 +599,47 @@ mod tests {
 
         assert!(err.to_string().contains("cannot contain spaces"), "{err}");
         assert!(list_tags(&base_url).await.expect("tags").is_empty());
+    }
+
+    // ── US-9: deleting a trip ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn a_deleted_trip_is_gone_from_the_archive() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        delete_trip(&base_url, id).await.expect("delete");
+
+        let err = get_trip(&base_url, id)
+            .await
+            .expect_err("the trip must be gone");
+        assert!(err.is_not_found(), "{err}");
+        assert!(list_trips(&base_url, String::new())
+            .await
+            .expect("list")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn deleting_a_trip_that_is_already_gone_says_so() {
+        // Two windows, or the Back button onto a trip just deleted.
+        let (base_url, _dir) = serve_test_archive().await;
+
+        let err = delete_trip(&base_url, 9_999)
+            .await
+            .expect_err("there is nothing to delete");
+
+        assert!(err.is_not_found(), "{err}");
+    }
+
+    #[test]
+    fn the_original_gpx_is_downloaded_from_the_archive_that_stored_it() {
+        // US-21, and US-16's reason for it being absolute: on Android the app
+        // is not served from the archive at all.
+        assert_eq!(
+            original_gpx_url("http://archive.test", 7),
+            "http://archive.test/api/trips/7/gpx"
+        );
     }
 
     #[test]
