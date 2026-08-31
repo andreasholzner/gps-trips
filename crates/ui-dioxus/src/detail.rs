@@ -14,6 +14,7 @@ use crate::format;
 use crate::interop;
 use crate::photos::{self, AddPhotos, PhotoGallery, PhotoMarker};
 use crate::track::{self, Track};
+use crate::trip_tags::TripTags;
 use crate::Route;
 use trip_archive_types::PhotoResponse;
 
@@ -84,6 +85,7 @@ pub fn TripDetail(id: i64) -> Element {
             Some(Ok(trip)) => rsx! {
                 TripStats { trip: trip.clone() }
                 EditTrip { trip: trip.clone(), on_saved: move |_| trip_resource.restart() }
+                TripTags { id }
                 TrackSection { id, markers: photos::photo_markers(&base_url(), &photos) }
                 PhotoGallery {
                     photos: photos.clone(),
@@ -326,6 +328,26 @@ mod tests {
 
         assert!(html.contains(r#"id="edit-trip""#), "{html}");
         assert!(html.contains("Edit name / activity"), "{html}");
+    }
+
+    // US-33: the trip's tags, and the field that adds one.
+    #[tokio::test]
+    async fn the_screen_shows_the_trips_tags() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+        crate::test_support::tag_trip(&base_url, id, "alpine").await;
+
+        let html = render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains("alpine"),
+        )
+        .await;
+
+        assert!(html.contains("Tags"), "{html}");
+        assert!(html.contains(r#"id="tag-input""#), "{html}");
+        // Every known tag is offered while typing.
+        assert!(html.contains("<datalist"), "{html}");
     }
 
     // US-7's gallery, and US-2's "photos can be added at a later time" as the
