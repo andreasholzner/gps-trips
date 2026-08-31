@@ -233,17 +233,3 @@ pub async fn body_bytes(response: Response) -> Vec<u8> {
 pub async fn body_string(response: Response) -> String {
     String::from_utf8(body_bytes(response).await).unwrap()
 }
-
-/// The exact fragment `render_detail` (`src/server/render.rs`) emits for the
-/// trip name — scoped to the element US-15 introduced so a match can't be
-/// satisfied by some unrelated part of the page.
-pub fn detail_name_fragment(name: &str) -> String {
-    format!("<h1 id=\"trip-name\">{name}</h1>")
-}
-
-/// The exact fragment `render_detail` emits for the activity type — scoped so
-/// it can't be satisfied by `tz_name`'s own independent "unknown" fallback on
-/// the same page.
-pub fn detail_activity_fragment(activity: &str) -> String {
-    format!("<span id=\"trip-activity\">{activity}</span>")
-}

@@ -6,8 +6,12 @@
 //!
 //! The track map and elevation profile are driven from a single track-GeoJSON fetch
 //! (ADR-0005/0006). The photo gallery (US-2) fetches `/api/trips/:id/photos` and
-//! renders images served at `/media/*path`. Photo map markers depend on US-3/US-4
-//! (EXIF + interpolated coordinates) and are not yet implemented.
+//! renders images served at `/media/*path`.
+//!
+//! What this file covers is the data the screen is built from. The screen
+//! itself is the SPA's (US-42) and is tested in `crates/ui-dioxus`; the
+//! server-rendered page that used to carry these assertions is gone, its
+//! coverage having moved first (ADR-0012's migration rule).
 //!
 //! Drives the real Axum router in-process against a real temp SQLite DB (ADR-0012).
 
@@ -103,46 +107,6 @@ async fn us7_detail_api_404_for_unknown_trip() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-// ── The detail page: wires up the map and the elevation chart ────────────────
-
-#[tokio::test]
-async fn us7_detail_page_renders_map_and_elevation_consuming_the_track() {
-    let (app, _dir) = test_app().await;
-    let id = import_sample(&app).await;
-
-    let response = get(&app, &format!("/trips/{id}")).await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let html = body_string(response).await;
-
-    // Containers the client script renders the map and elevation chart into.
-    assert!(html.contains(r#"id="map""#), "map container; got: {html}");
-    assert!(
-        html.contains(r#"id="elevation""#),
-        "elevation chart container; got: {html}"
-    );
-    // Both are fed from the single track-GeoJSON fetch (ADR-0005/0006).
-    assert!(
-        html.contains(&format!("/api/trips/{id}/track.geojson")),
-        "page must point the client at its track data; got: {html}"
-    );
-    // The vendored, self-hosted map + chart libraries (ADR-0005/0006, US-10).
-    assert!(
-        html.contains("leaflet"),
-        "Leaflet must be loaded; got: {html}"
-    );
-    assert!(
-        html.to_lowercase().contains("uplot"),
-        "uPlot must be loaded; got: {html}"
-    );
-}
-
-#[tokio::test]
-async fn us7_detail_page_404_for_unknown_trip() {
-    let (app, _dir) = test_app().await;
-    let response = get(&app, "/trips/999").await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
 // ── Photo gallery: images served + gallery container ─────────────────────────
 
 #[tokio::test]
@@ -186,42 +150,4 @@ async fn us7_media_endpoint_returns_404_for_missing_blob() {
     let (app, _dir) = test_app().await;
     let response = get(&app, "/media/trips/999/0000-nope.jpg").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn us7_detail_page_has_gallery_container_and_photos_data_url() {
-    let (app, _dir) = test_app().await;
-    let id = import_sample(&app).await;
-
-    let html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(
-        html.contains(r#"id="gallery""#),
-        "must have gallery container; got: {html}"
-    );
-    assert!(
-        html.contains(&format!("data-photos-url=\"/api/trips/{id}/photos\"")),
-        "must expose photos URL as data attribute; got: {html}"
-    );
-}
-
-// The map and chart are useless if their assets 404; assert they are served
-// (self-hosted vendored files, ADR-0005/0006).
-#[tokio::test]
-async fn us7_vendored_map_and_chart_assets_are_served() {
-    let (app, _dir) = test_app().await;
-
-    for asset in [
-        "/static/vendor/leaflet.js",
-        "/static/vendor/leaflet.css",
-        "/static/vendor/uPlot.iife.min.js",
-        "/static/vendor/uPlot.min.css",
-        "/static/js/trip_detail.js",
-    ] {
-        let response = get(&app, asset).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "vendored asset must be served: {asset}"
-        );
-    }
 }

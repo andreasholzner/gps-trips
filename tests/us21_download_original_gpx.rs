@@ -58,19 +58,6 @@ async fn us21_download_is_served_as_attachment_named_after_the_trip() {
 }
 
 #[tokio::test]
-async fn us21_detail_page_links_to_the_download() {
-    let (app, _dir) = test_app().await;
-    let id = import_sample(&app).await;
-
-    let detail = get(&app, &format!("/trips/{id}")).await;
-    let html = String::from_utf8(body_bytes(detail).await).unwrap();
-    assert!(
-        html.contains(&format!("/api/trips/{id}/gpx")),
-        "detail page should link to the GPX download; got: {html}"
-    );
-}
-
-#[tokio::test]
 async fn us21_download_for_unknown_trip_returns_404() {
     let (app, _dir) = test_app().await;
     let response = get(&app, "/api/trips/999/gpx").await;

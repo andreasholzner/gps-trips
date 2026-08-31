@@ -28,8 +28,12 @@ pub fn TripDetail(id: i64) -> Element {
     // another reuses this component's scope, and a resource that only
     // watched signals would keep showing the trip it first fetched.
     // `use_reactive` is what subscribes it to the prop.
+    // The id travels back with the answer. A resource keeps its previous
+    // value while a new fetch is pending, so navigating from one trip to
+    // another would otherwise render this trip's name and stats above
+    // controls — delete among them — already aimed at the next trip's id.
     let mut trip_resource = use_resource(use_reactive!(|id| async move {
-        api::get_trip(&base_url(), id).await
+        (id, api::get_trip(&base_url(), id).await)
     }));
     // Fetched once for the two things that show them: the gallery, and the
     // markers on the track map (US-3/US-4). Adding photos restarts this, so
@@ -78,15 +82,20 @@ pub fn TripDetail(id: i64) -> Element {
             Link { to: Route::TripList { filters: Filters::default() }, "← All trips" }
         }
         match &*trip_resource.read_unchecked() {
+            // Either nothing has been read yet, or what was read belongs to
+            // the trip this screen was showing a moment ago.
             None => rsx! { p { "Loading…" } },
+            Some((read_for, _)) if *read_for != id => rsx! { p { "Loading…" } },
             // A trip that is simply gone — a stale bookmark, or the Back
             // button after a delete (US-9) — is an ordinary outcome, not a
             // fault, and reads as one.
-            Some(Err(err)) if err.is_not_found() => rsx! {
+            Some((_, Err(err))) if err.is_not_found() => rsx! {
                 p { class: "error", "There is no such trip — it may have been deleted." }
             },
-            Some(Err(err)) => rsx! { p { class: "error", "Could not load this trip: {err}" } },
-            Some(Ok(trip)) => rsx! {
+            Some((_, Err(err))) => rsx! {
+                p { class: "error", "Could not load this trip: {err}" }
+            },
+            Some((_, Ok(trip))) => rsx! {
                 TripStats { trip: trip.clone() }
                 EditTrip { trip: trip.clone(), on_saved: move |_| trip_resource.restart() }
                 TripTags { id }

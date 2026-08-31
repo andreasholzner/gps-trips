@@ -6,10 +6,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{
-    body_string, detail_activity_fragment, detail_name_fragment, get, import_sample, json_request,
-    send, test_app,
-};
+use common::{body_string, get, import_sample, json_request, send, test_app};
 
 fn patch_request(id: i64, body: &str) -> axum::http::Request<axum::body::Body> {
     json_request(Method::PATCH, &format!("/api/trips/{id}"), body)
@@ -27,9 +24,9 @@ async fn us15_editing_both_fields_updates_the_list_and_detail_page() {
     .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(detail_html.contains(&detail_name_fragment("Renamed Trip")));
-    assert!(detail_html.contains(&detail_activity_fragment("cycling")));
+    let trip = body_string(get(&app, &format!("/api/trips/{id}")).await).await;
+    assert!(trip.contains(r#""name":"Renamed Trip""#), "{trip}");
+    assert!(trip.contains(r#""activity_type":"cycling""#), "{trip}");
 }
 
 #[tokio::test]
@@ -40,11 +37,11 @@ async fn us15_editing_only_activity_type_leaves_the_name_unchanged() {
     let response = send(&app, patch_request(id, r#"{"activity_type":"kayaking"}"#)).await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(detail_html.contains(&detail_activity_fragment("kayaking")));
+    let trip = body_string(get(&app, &format!("/api/trips/{id}")).await).await;
+    assert!(trip.contains(r#""activity_type":"kayaking""#), "{trip}");
     // SAMPLE_GPX's own <name> ("Oslo Hills Walk") is what import_sample resolves to;
     // it must survive an edit that only touches activity_type.
-    assert!(detail_html.contains(&detail_name_fragment("Oslo Hills Walk")));
+    assert!(trip.contains(r#""name":"Oslo Hills Walk""#), "{trip}");
 }
 
 #[tokio::test]
@@ -55,9 +52,9 @@ async fn us15_editing_only_name_leaves_the_activity_type_unchanged() {
     let response = send(&app, patch_request(id, r#"{"name":"Only Name Changed"}"#)).await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(detail_html.contains(&detail_name_fragment("Only Name Changed")));
-    assert!(detail_html.contains(&detail_activity_fragment("unknown")));
+    let trip = body_string(get(&app, &format!("/api/trips/{id}")).await).await;
+    assert!(trip.contains(r#""name":"Only Name Changed""#), "{trip}");
+    assert!(trip.contains(r#""activity_type":"unknown""#), "{trip}");
 }
 
 #[tokio::test]
@@ -68,8 +65,8 @@ async fn us15_a_blank_name_is_rejected_with_400_and_nothing_changes() {
     let response = send(&app, patch_request(id, r#"{"name":"   "}"#)).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(detail_html.contains(&detail_name_fragment("Oslo Hills Walk")));
+    let trip = body_string(get(&app, &format!("/api/trips/{id}")).await).await;
+    assert!(trip.contains(r#""name":"Oslo Hills Walk""#), "{trip}");
 }
 
 #[tokio::test]

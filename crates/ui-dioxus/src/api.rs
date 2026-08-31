@@ -439,9 +439,6 @@ mod tests {
     /// and undecodable, which the thumbnail step already tolerates (US-5).
     const FAKE_JPEG: &[u8] = b"\xFF\xD8\xFF-fake-jpeg";
 
-    // US-2's "photos can be added at a later time", from the SPA. Uploading
-    // is a request, not a screen behaviour, so it belongs here — only the
-    // file picker itself needs a browser (ADR-0012).
     // ── US-15: editing a trip's name and activity type ───────────────────
     //
     // The acceptance criterion is that the new values are saved, so these
@@ -670,6 +667,9 @@ mod tests {
         assert_eq!(readable_body("<!DOCTYPE html><h1>oh no".to_string()), None);
     }
 
+    // US-2's "photos can be added at a later time", from the SPA. Uploading
+    // is a request, not a screen behaviour, so it belongs here — only the
+    // file picker itself needs a browser (ADR-0012).
     #[tokio::test]
     async fn a_photo_added_after_the_import_joins_the_trips_photos() {
         let (base_url, _dir) = serve_test_archive().await;

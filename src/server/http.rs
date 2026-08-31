@@ -21,7 +21,7 @@ use crate::server::{
     komoot::KomootClient,
     komoot_sync::{self, SyncResultQuery},
     paths,
-    render::{render_detail, render_import_form, render_sync_candidates},
+    render::{render_import_form, render_sync_candidates},
     repo,
     state::{self, AppState},
     tags::{
@@ -47,7 +47,6 @@ pub fn router(state: AppState) -> Router {
         )
         // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
         .route("/api/trips", get(list_trips_api))
-        .route("/trips/:id", get(trip_detail))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
         // US-7: one trip's metadata as JSON, for the SPA's detail screen (US-42).
@@ -85,9 +84,11 @@ pub fn router(state: AppState) -> Router {
         // US-7: serve photo blobs stored by the BlobStore (ADR-0007).
         // The wildcard captures the blob key so any backend's url_for works here.
         .route("/media/*path", get(serve_media))
-        // Vendored, self-hosted map/chart assets and glue (ADR-0005/0006, US-10).
-        // Resolved relative to the executable, not the CWD, so "binary + adjacent
-        // public/ folder" is a deployable unit startable from anywhere (ADR-0016).
+        // The remaining proof-of-concept pages' own script, self-hosted
+        // (US-10). Resolved relative to the executable, not the CWD, so
+        // "binary + adjacent public/ folder" is a deployable unit startable
+        // from anywhere (ADR-0016). The vendored map and chart libraries left
+        // with the detail page (US-42); the SPA bundles its own (ADR-0025).
         .nest_service("/static", ServeDir::new(paths::assets_dir()))
         // The Dioxus SPA's built bundle (US-41, ADR-0024), if one has been
         // built into `public/app`. Unknown paths under it fall back to the
@@ -245,17 +246,6 @@ async fn handle_sync(
         failed_msg: summary.failed.map(|(_, msg)| msg),
         failed_phase,
     }))
-}
-
-/// GET `/trips/:id` — the trip detail page (the redirect target after import).
-async fn trip_detail(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Html<String>, AppError> {
-    let trip = repo::get_trip(&state.pool, id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    Ok(Html(render_detail(&trip)))
 }
 
 /// GET `/api/trips/:id` — one trip's metadata as JSON (US-7, ADR-0008's v1

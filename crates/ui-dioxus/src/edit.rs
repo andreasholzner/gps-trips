@@ -238,6 +238,30 @@ mod tests {
         EditForm::of(trip)
     }
 
+    /// Just the privacy picker's own options. The form carries a second
+    /// `<select>` — the activity one — with a blank option of its own, so a
+    /// claim about "the blank option" has to say which picker it means.
+    fn privacy_picker(html: &str) -> &str {
+        let from = html
+            .find(r#"id="edit-privacy_status""#)
+            .expect("a privacy picker to look at");
+        let rest = &html[from..];
+        &rest[..rest.find("</select>").expect("a closed picker")]
+    }
+
+    /// The form as the trip opens it, rendered.
+    fn rendered(trip: Trip) -> String {
+        render(move || {
+            rsx! {
+                EditTripForm {
+                    trip: trip.clone(),
+                    on_saved: move |_| {},
+                    on_cancel: move |_| {},
+                }
+            }
+        })
+    }
+
     #[test]
     fn a_form_nobody_touched_asks_for_no_change_at_all() {
         let trip = a_trip(ActivityType::Hiking, None);
@@ -345,6 +369,39 @@ mod tests {
     }
 
     #[test]
+    fn a_privacy_the_archive_does_not_know_opens_on_a_placeholder() {
+        // A `<select>` with no `selected` option shows its *first* one, so a
+        // bare picker would assert "Private" for a trip whose privacy the
+        // archive has no idea about — and, since only a changed value is
+        // sent, would make Private the one value the owner then could not
+        // choose. Both "no privacy read yet" and "Komoot reported something
+        // unmappable" must therefore open on a placeholder.
+        for privacy in [None, Some(KomootPrivacy::Unknown)] {
+            let trip = a_trip(
+                ActivityType::Hiking,
+                Some(KomootLink {
+                    tour_id: "111".to_string(),
+                    privacy,
+                }),
+            );
+
+            let html = rendered(trip);
+            let picker = privacy_picker(&html);
+
+            assert!(
+                picker.contains(r#"<option value="">"#),
+                "a placeholder must be offered for {privacy:?}: {picker}"
+            );
+            for settable in KomootPrivacy::SELECTABLE {
+                assert!(
+                    !picker.contains(&format!(r#"value="{}" selected"#, settable.as_str())),
+                    "{settable} must not look chosen for {privacy:?}: {picker}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_linked_trip_is_offered_the_settable_privacies() {
         let trip = a_trip(
             ActivityType::Hiking,
@@ -365,8 +422,12 @@ mod tests {
         });
 
         assert!(html.contains("Komoot privacy"), "{html}");
-        assert!(html.contains(KomootPrivacy::Public.label()), "{html}");
-        assert!(html.contains(KomootPrivacy::Private.label()), "{html}");
+        let picker = privacy_picker(&html);
+        assert!(picker.contains(KomootPrivacy::Public.label()), "{picker}");
+        assert!(picker.contains(KomootPrivacy::Private.label()), "{picker}");
+        // The placeholder only exists to avoid claiming a privacy that is not
+        // known; it is not a value the owner can go back to.
+        assert!(!picker.contains(r#"<option value="">"#), "{picker}");
         // Never offered: it is a state Komoot put the tour in, not a choice.
         assert!(
             !html.contains(&format!("value=\"{}\"", KomootPrivacy::Unknown.as_str())),

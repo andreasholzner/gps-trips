@@ -7,34 +7,33 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{
-    body_string, detail_activity_fragment, get, import_request_with_fields, send, test_app,
-    trip_id_from_redirect, SAMPLE_GPX,
+    body_string, get, import_request_with_fields, send, test_app, trip_id_from_redirect, SAMPLE_GPX,
 };
 
 #[tokio::test]
-async fn us11_chosen_activity_type_appears_on_the_list_and_detail_page() {
+async fn us11_chosen_activity_type_is_stored_and_served() {
     let (app, _dir) = test_app().await;
     let request = import_request_with_fields(SAMPLE_GPX, &[("activity_type", "cycling")], &[]);
     let redirect = send(&app, request).await;
     assert_eq!(redirect.status(), StatusCode::SEE_OTHER);
     let id = trip_id_from_redirect(&redirect);
 
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
+    let detail = body_string(get(&app, &format!("/api/trips/{id}")).await).await;
     assert!(
-        detail_html.contains(&detail_activity_fragment("cycling")),
-        "detail page should show the chosen activity type; got: {detail_html}"
+        detail.contains(r#""activity_type":"cycling""#),
+        "the trip must carry the chosen activity type; got: {detail}"
     );
 }
 
 #[tokio::test]
-async fn us11_omitted_activity_type_defaults_to_unknown_on_both_pages() {
+async fn us11_omitted_activity_type_defaults_to_unknown() {
     let (app, _dir) = test_app().await;
     let id = common::import_sample(&app).await;
 
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
+    let detail = body_string(get(&app, &format!("/api/trips/{id}")).await).await;
     assert!(
-        detail_html.contains(&detail_activity_fragment("unknown")),
-        "detail page should show the default activity type; got: {detail_html}"
+        detail.contains(r#""activity_type":"unknown""#),
+        "an import that named no activity must default to unknown; got: {detail}"
     );
 }
 

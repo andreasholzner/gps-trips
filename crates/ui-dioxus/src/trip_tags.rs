@@ -36,11 +36,15 @@ pub fn TripTags(id: i64) -> Element {
     // a typed name is new. Restarted with the trip's own tags, because using
     // a new name adds to both.
     let mut known = use_resource(move || async move { api::list_tags(&base_url()).await });
-    let suggestions = known
-        .read_unchecked()
-        .as_ref()
-        .and_then(|tags| tags.clone().ok())
-        .unwrap_or_default();
+    // Held across refreshes: adding a tag restarts this, and treating the gap
+    // as "the archive knows no tags" would ask the owner to confirm creating
+    // one that already exists — the very claim `is_new_name` exists to avoid.
+    let mut suggestions = use_signal(Vec::<Tag>::new);
+    use_effect(move || {
+        if let Some(Ok(tags)) = &*known.read() {
+            suggestions.set(tags.clone());
+        }
+    });
 
     let mut typed = use_signal(String::new);
     let mut confirming = use_signal(|| None::<String>);
@@ -124,7 +128,7 @@ pub fn TripTags(id: i64) -> Element {
             }
         } else {
             TagInput {
-                suggestions,
+                suggestions: suggestions(),
                 value: typed(),
                 on_input: move |value| typed.set(value),
                 on_submit: move |_| {
@@ -134,10 +138,7 @@ pub fn TripTags(id: i64) -> Element {
                     }
                     // A name nobody has used is created only after the owner
                     // says so (US-33); a known one is applied straight away.
-                    if is_new_name(&known.read_unchecked().as_ref()
-                        .and_then(|tags| tags.clone().ok())
-                        .unwrap_or_default(), &name)
-                    {
+                    if is_new_name(&suggestions.read(), &name) {
                         confirming.set(Some(name));
                     } else {
                         add.call(name);

@@ -42,16 +42,16 @@ async fn us1_valid_gpx_redirects_to_detail_page() {
 }
 
 #[tokio::test]
-async fn us1_detail_page_shows_the_imported_trip() {
+async fn us1_the_imported_trip_is_readable() {
     let (app, _dir) = test_app().await;
     let id = import_sample(&app).await;
 
-    let detail = get(&app, &format!("/trips/{id}")).await;
+    let detail = get(&app, &format!("/api/trips/{id}")).await;
     assert_eq!(detail.status(), StatusCode::OK);
-    let html = body_string(detail).await;
+    let json = body_string(detail).await;
     assert!(
-        html.contains("Oslo Hills Walk"),
-        "detail page should show the trip name; got: {html}"
+        json.contains("Oslo Hills Walk"),
+        "the trip the import redirects to must be readable; got: {json}"
     );
 }
 
