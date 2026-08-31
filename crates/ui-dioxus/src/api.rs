@@ -254,6 +254,67 @@ pub async fn edit_trip(base_url: &str, id: i64, edit: &TripEdit) -> Result<(), A
     Ok(())
 }
 
+/// `GET /api/trips/:id/tags` — the tags on one trip (US-33).
+pub async fn list_trip_tags(base_url: &str, id: i64) -> Result<Vec<Tag>, ApiError> {
+    get_json(format!("{base_url}/api/trips/{id}/tags")).await
+}
+
+/// The `POST /api/trips/:id/tags` body (US-33): the name as typed. The
+/// archive normalizes it — trimmed and lowercased — and creates the tag if it
+/// is new, so casing never makes a second one.
+#[derive(Serialize)]
+struct AddTag<'a> {
+    name: &'a str,
+}
+
+/// `POST /api/trips/:id/tags` — tag a trip, creating the tag if this is the
+/// first use of the name (US-33). The archive's own words come back for a
+/// name it refuses (one with a space or a comma), so the owner reads the rule
+/// rather than a status code.
+pub async fn add_trip_tag(base_url: &str, id: i64, name: &str) -> Result<Tag, ApiError> {
+    let url = format!("{base_url}/api/trips/{id}/tags");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .json(&AddTag { name })
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(ApiError::from_status(
+            status,
+            readable_body(body).unwrap_or_else(|| format!("{url} returned {status}")),
+        ));
+    }
+    response
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `DELETE /api/trips/:id/tags/:tag_id` — take a tag off a trip (US-33). The
+/// tag itself stays in the archive, unused but suggestible again later.
+pub async fn remove_trip_tag(base_url: &str, id: i64, tag_id: i64) -> Result<(), ApiError> {
+    let url = format!("{base_url}/api/trips/{id}/tags/{tag_id}");
+    let response = reqwest::Client::new()
+        .delete(&url)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(ApiError::from_status(
+            status,
+            readable_body(body).unwrap_or_else(|| format!("{url} returned {status}")),
+        ));
+    }
+    Ok(())
+}
+
 /// The `POST /api/trips/tags` body (US-34): every name applied to every
 /// trip, in one request.
 #[derive(Serialize)]
@@ -442,6 +503,69 @@ mod tests {
         .expect_err("there is no tour to make public");
 
         assert!(!err.to_string().is_empty(), "the archive says why");
+    }
+
+    // ── US-33: tagging a trip from its detail screen ─────────────────────
+
+    #[tokio::test]
+    async fn a_new_tag_is_created_by_using_it_and_normalized_as_it_is_stored() {
+        // "Tag names are normalized (trimmed, lowercased) so casing doesn't
+        // create duplicates."
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let created = add_trip_tag(&base_url, id, "  Alpine  ")
+            .await
+            .expect("tag");
+        assert_eq!(created.name, "alpine");
+
+        // The same name in another casing joins the tag that exists rather
+        // than making a second one.
+        add_trip_tag(&base_url, id, "ALPINE").await.expect("tag");
+        let names: Vec<String> = list_tags(&base_url)
+            .await
+            .expect("tags")
+            .into_iter()
+            .map(|tag| tag.name)
+            .collect();
+        assert_eq!(names, vec!["alpine".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn untagging_a_trip_keeps_the_tag_for_next_time() {
+        // "Untagging a trip keeps the now-unused tag row around, suggestible
+        // again later."
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+        let tag = add_trip_tag(&base_url, id, "alpine").await.expect("tag");
+
+        remove_trip_tag(&base_url, id, tag.id).await.expect("untag");
+
+        assert!(
+            list_trip_tags(&base_url, id)
+                .await
+                .expect("trip tags")
+                .is_empty(),
+            "the trip is untagged"
+        );
+        assert_eq!(
+            list_tags(&base_url).await.expect("tags").len(),
+            1,
+            "the tag itself outlives the trip that used it"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_name_the_archive_refuses_is_reported_in_its_own_words() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let err = add_trip_tag(&base_url, id, "day trip")
+            .await
+            .expect_err("a name with a space is not a tag");
+
+        assert!(err.to_string().contains("cannot contain spaces"), "{err}");
+        assert!(list_tags(&base_url).await.expect("tags").is_empty());
     }
 
     #[test]

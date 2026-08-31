@@ -20,6 +20,7 @@ mod region;
 mod test_support;
 mod track;
 mod trip_table;
+mod trip_tags;
 
 use detail::TripDetail;
 use filters::Filters;

@@ -151,6 +151,15 @@ nav.tabs button:not(:disabled) {
   line-height: 1;
 }
 
+/* Confirming a tag nobody has used yet (US-33). In the page rather than a
+   browser dialog, so it behaves the same in the Android webview. */
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 /* The staging row: input and its button on one line, wrapping on a phone. */
 .tag-entry {
   display: flex;
