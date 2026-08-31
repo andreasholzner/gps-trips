@@ -47,6 +47,8 @@ pub fn router(state: AppState) -> Router {
         )
         // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
         .route("/api/trips", get(list_trips_api))
+        // US-42: what a bookmark to the old detail page now means.
+        .route("/trips/:id", get(trip_page_moved))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
         // US-7: one trip's metadata as JSON, for the SPA's detail screen (US-42).
@@ -113,11 +115,20 @@ fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
 /// acceptance assertions had moved to the SPA and its API
 /// ([ADR-0012](../../docs/adr/0012-tdd-test-strategy.md)'s migration rule).
 /// The redirect keeps old bookmarks working, and keeps `/` meaning "the
-/// archive" while the remaining proof-of-concept pages (trip detail, import,
-/// Komoot review) live on until US-42/43/44 replace them.
+/// archive" while the remaining proof-of-concept pages (import, Komoot
+/// review) live on until US-43 and US-44 replace them.
 async fn home() -> Redirect {
     // `Redirect::to` is axum's 303 See Other.
     Redirect::to("/app/")
+}
+
+/// GET `/trips/:id` — where the server-rendered detail page used to be
+/// (US-42), for the same reason `/` still answers: a bookmark or a link
+/// shared before the page was deleted should reach the screen that replaced
+/// it, not a 404. The id is not looked up here — the SPA's own screen says
+/// so, in its own words, if the trip is gone.
+async fn trip_page_moved(Path(id): Path<i64>) -> Redirect {
+    Redirect::to(&format!("/app/trips/{id}"))
 }
 
 /// GET `/api/trips` — the same filtered trip list as JSON (US-13, ADR-0008/0011),
