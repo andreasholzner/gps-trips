@@ -160,6 +160,14 @@ nav.tabs button:not(:disabled) {
   align-items: center;
 }
 
+/* Deleting is irreversible (US-9), and reads as such — on both the button
+   that arms it and the one that carries it out. */
+.danger {
+  background: var(--pico-del-color);
+  border-color: var(--pico-del-color);
+  color: var(--pico-primary-inverse);
+}
+
 /* The staging row: input and its button on one line, wrapping on a phone. */
 .tag-entry {
   display: flex;

@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use trip_archive_types::TripDetail as Trip;
 
 use crate::api;
+use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
 use crate::filters::Filters;
 use crate::format;
@@ -50,15 +51,18 @@ pub fn TripDetail(id: i64) -> Element {
     // component shows the next trip too: without that, a trip whose stats
     // arrive before its photos would briefly wear the previous one's gallery
     // and plot its markers on the wrong track.
-    let mut cached = use_signal(|| (id, Vec::<PhotoResponse>::new()));
+    let mut cached = use_signal(|| (None::<i64>, Vec::<PhotoResponse>::new()));
     use_effect(move || {
-        if let Some(Ok(latest)) = &*photo_list.read() {
-            cached.set(latest.clone());
+        if let Some(Ok((read_for, photos))) = &*photo_list.read() {
+            cached.set((Some(*read_for), photos.clone()));
         }
     });
+    // `None` until something has been read for *this* trip: seeding the cache
+    // with an empty list would make the gallery claim the trip has no photos
+    // for as long as the first read takes.
     let photos = match cached() {
-        (cached_id, photos) if cached_id == id => photos,
-        _ => Vec::new(),
+        (Some(cached_id), photos) if cached_id == id => Some(photos),
+        _ => None,
     };
     let photos_error = match &*photo_list.read_unchecked() {
         Some(Err(err)) => Some(err.to_string()),
@@ -86,13 +90,20 @@ pub fn TripDetail(id: i64) -> Element {
                 TripStats { trip: trip.clone() }
                 EditTrip { trip: trip.clone(), on_saved: move |_| trip_resource.restart() }
                 TripTags { id }
-                TrackSection { id, markers: photos::photo_markers(&base_url(), &photos) }
+                TrackSection {
+                    id,
+                    markers: photos::photo_markers(&base_url(), photos.as_deref().unwrap_or(&[])),
+                }
                 PhotoGallery {
                     photos: photos.clone(),
                     base_url: base_url(),
                     error: photos_error.clone(),
                 }
                 AddPhotos { id, on_added: move |_| photo_list.restart() }
+                p {
+                    a { href: api::original_gpx_url(&base_url(), id), "Download original GPX" }
+                }
+                DeleteTrip { id }
             },
         }
     }
@@ -328,6 +339,84 @@ mod tests {
 
         assert!(html.contains(r#"id="edit-trip""#), "{html}");
         assert!(html.contains("Edit name / activity"), "{html}");
+    }
+
+    // The empty states are claims about the trip, and neither may be made
+    // while the archive is still answering. This watches every intermediate
+    // render, not just the last one — the defect it guards against is
+    // invisible in the final HTML.
+    #[tokio::test]
+    async fn no_empty_state_is_claimed_while_the_archive_is_still_answering() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+        crate::test_support::tag_trip(&base_url, id, "alpine").await;
+        api::add_photos(
+            &base_url,
+            id,
+            vec![crate::api::PhotoUpload {
+                file_name: "later.jpg".to_string(),
+                content_type: Some("image/jpeg".to_string()),
+                bytes: b"\xFF\xD8\xFF-fake-jpeg".to_vec(),
+            }],
+        )
+        .await
+        .expect("upload");
+
+        let claimed_empty = std::cell::Cell::new(false);
+        render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| {
+                if html.contains("No tags yet") || html.contains("No photos yet") {
+                    claimed_empty.set(true);
+                }
+                html.contains("alpine") && html.contains("later.jpg")
+            },
+        )
+        .await;
+
+        assert!(
+            !claimed_empty.get(),
+            "a trip with tags and photos must never be shown as having none"
+        );
+    }
+
+    // US-21: the original bytes are one link away from the trip they were
+    // imported for, addressed at the archive that stored them.
+    #[tokio::test]
+    async fn the_screen_links_to_the_original_gpx() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains("Oslo Hills Walk"),
+        )
+        .await;
+
+        assert!(
+            html.contains(&format!("{base_url}/api/trips/{id}/gpx")),
+            "{html}"
+        );
+        assert!(html.contains("Download original GPX"), "{html}");
+    }
+
+    // US-9: the screen offers the delete. That it asks first, and where it
+    // goes afterwards, are `delete::`'s own tests and the browser layer's.
+    #[tokio::test]
+    async fn the_screen_offers_to_delete_the_trip() {
+        let (base_url, _dir) = serve_test_archive().await;
+        let id = import_sample(&base_url, &[]).await;
+
+        let html = render_against_archive(
+            &base_url,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains("Oslo Hills Walk"),
+        )
+        .await;
+
+        assert!(html.contains(r#"id="delete-trip""#), "{html}");
     }
 
     // US-33: the trip's tags, and the field that adds one.

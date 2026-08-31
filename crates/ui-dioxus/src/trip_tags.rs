@@ -76,14 +76,17 @@ pub fn TripTags(id: i64) -> Element {
     // The tags last read, kept with the trip they belong to: a re-read after
     // adding or removing one can fail, and blanking the chips would be a
     // second, invented loss on top of it.
-    let mut cached = use_signal(|| (id, Vec::<Tag>::new()));
+    // Nothing is cached until something has been read: seeding it with this
+    // trip and an empty list would make the screen claim the trip has no tags
+    // for as long as the first read takes.
+    let mut cached = use_signal(|| (None::<i64>, Vec::<Tag>::new()));
     use_effect(move || {
-        if let Some(Ok(latest)) = &*on_trip.read() {
-            cached.set(latest.clone());
+        if let Some(Ok((read_for, tags))) = &*on_trip.read() {
+            cached.set((Some(*read_for), tags.clone()));
         }
     });
     let on_this_trip = match cached() {
-        (cached_id, tags) if cached_id == id => Some(tags),
+        (Some(cached_id), tags) if cached_id == id => Some(tags),
         _ => None,
     };
     let load_error = match &*on_trip.read_unchecked() {

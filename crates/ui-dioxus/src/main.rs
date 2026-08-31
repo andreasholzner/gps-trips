@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 
 mod api;
 mod bulk_tag;
+mod delete;
 mod detail;
 mod edit;
 mod filters;
