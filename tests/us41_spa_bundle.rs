@@ -61,6 +61,19 @@ async fn the_archives_home_sends_the_owner_to_the_spa() {
 }
 
 #[tokio::test]
+async fn an_old_bookmark_to_a_trip_leads_to_its_screen_in_the_spa() {
+    // US-42 deleted the server-rendered detail page. `/` got a redirect when
+    // its page went (US-52) so old bookmarks kept working; a bookmarked or
+    // shared trip is the same kind of URL and gets the same treatment.
+    let (app, _db_dir) = common::test_app().await;
+
+    let response = common::get(&app, "/trips/42").await;
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers()["location"], "/app/trips/42");
+}
+
+#[tokio::test]
 async fn a_deep_link_into_the_spa_falls_back_to_its_index() {
     // The SPA routes paths like `/app/trips/:id` client-side, so opening or
     // reloading such a URL must still hand the browser the app shell rather

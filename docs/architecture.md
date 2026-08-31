@@ -13,13 +13,15 @@ that the architecture must not preclude, not part of v1.
 **Target vs. current UI:** the Web UI container and its components show the *target* stack
 ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md): a client-side-rendered Dioxus SPA served as
 static files, plus an Android app from the same source). That SPA now exists as
-`crates/ui-dioxus` and is served at `/app`, with the **trip-list screen** complete — browsing,
-filtering, tagging and the region map (US-41, US-52). `/` redirects to it: the server-rendered
-list page has been deleted, its acceptance assertions having moved to the SPA and the JSON API
-under [ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
+`crates/ui-dioxus` and is served at `/app`, with the **whole read path** complete — the trip
+list, browsing, filtering, tagging and the region map (US-41, US-52), and the trip detail screen
+with its map, elevation profile, gallery, editing, tagging and delete (US-42). `/` redirects to
+it. The server-rendered list and detail pages have been deleted, their acceptance assertions
+having moved to the SPA, its browser layer and the JSON API under
+[ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
 
-What remains of the intentionally throwaway proof-of-concept is the trip detail, import and
-Komoot-sync pages, still reachable and still how the owner does that work until US-42/43/44
+What remains of the intentionally throwaway proof-of-concept is the import form and the
+Komoot-sync page, still reachable and still how the owner does that work until US-43 and US-44
 replace them; the SPA links out to them. They are retired the same way, page by page.
 
 ---
@@ -139,7 +141,7 @@ C4Component
     Container_Boundary(server, "Application Server") {
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, optional shared-password auth middleware [planned, US-19].")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
-        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
+        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
         Component(komootc, "Komoot Client", "reqwest (blocking) + rate limiter", "Reverse-engineered komoot API: auth, tour listing/GPX download, photo fetch, edit/delete pushes; throttled with 429 backoff.")
@@ -200,7 +202,7 @@ C4Component
     Container_Boundary(spa, "Web UI") {
         Component(approuter, "App Router", "dioxus_router", "Client-side routing between pages.")
         Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
-        Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; inline edit of name + activity type; tag chips with add/remove + autocomplete.")
+        Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, downloading the original GPX, and deleting the trip.")
         Component(importform, "Import Form", "Dioxus", "GPX + photos upload, activity type, date-prefixed name.")
         Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
         Component(elev, "Elevation Chart", "Dioxus + uPlot", "Elevation vs distance/time, drawn through `document::eval`.")
@@ -216,8 +218,9 @@ C4Component
     Rel(detail, gallery, "Embeds")
 
     Rel(list, server, "GET /api/trips (+filters)", "JSON")
-    Rel(detail, server, "GET detail, track.geojson; PATCH/DELETE", "JSON")
+    Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
+    Rel(gallery, server, "GET /media/* (thumbnails)", "HTTPS")
     Rel(map, osm, "Fetch tiles", "HTTPS")
     Rel(list, osm, "Fetch tiles (region-select map, US-14)", "HTTPS")
 
@@ -227,14 +230,25 @@ C4Component
 **Notes**
 - Map and chart are thin Dioxus wrappers over vendored JS (Leaflet, uPlot), driven through
   `document::eval` so the same code runs on the web and in the Android WebView; map/chart code
-  runs client-side only ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)).
+  runs client-side only ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)). Both libraries
+  live in the SPA crate's own `assets/` and are bundled with `asset!`, so they ship inside the
+  APK too; the second copy under `public/vendor` that ADR noted went with the server-rendered
+  detail page (US-42). What the scripts draw is prepared in Rust — a polyline, a pair of chart
+  series, a marker per photo that has a position — so the decisions stay unit-testable and only
+  the drawing call is opaque.
+- What only a browser can show is covered by one: that the libraries load and actually draw, and
+  that clicking, typing and choosing a file do what they should
+  ([ADR-0012](./adr/0012-tdd-test-strategy.md)'s 2026-08-26b amendment). Everything assertable
+  from a rendered string stays on the host target, where it runs in milliseconds.
 - The same components build for Android ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)); the
   shared data models live in their own crate (`crates/types`, free of server dependencies — the
   SQLite mappings sit behind a feature only the server enables) so server and UI describe trips
   with one set of types rather than mirroring shapes by hand
   ([ADR-0015](./adr/0015-db-model-response-type-separation.md)).
-- **Built so far:** the App Router and the Trip List — filter bar, tag filter, bulk-tagging and
-  the region-select map (US-41, US-52). The remaining components arrive with US-42/43/44.
+- **Built so far:** the App Router, the Trip List — filter bar, tag filter, bulk-tagging and the
+  region-select map (US-41, US-52) — and the Trip Detail screen with its Map, Elevation Chart and
+  Photo Gallery (US-42). The Import Form arrives with US-43, and a Komoot review screen with
+  US-44.
 - The list screen's filters live in the SPA's own URL query, so a narrowed list is bookmarkable
   and survives a reload, and the region rectangle can be restored onto the map (US-52). The map
   reports each dragged rectangle back into Rust state over `document::eval`'s channel — the
