@@ -70,12 +70,7 @@ that works identically on the web and on Android. Specifically:
   it is a deliberate trade for portability rather than an oversight.
 - The Rust-side data preparation (parsing the GeoJSON `properties` arrays, unit conversion) is
   ordinary Rust and testable on the host target; only the drawing call is opaque.
-- **The vendored libraries exist in two copies** — one bundled with the UI crate, one served to
-  the PoC UI — because `asset!` refuses paths outside its own crate, symlinks included. This
-  resolves itself when the PoC UI is retired.
 - Switching tile provider, or self-hosting tiles, remains a change inside one script.
-- Photo map markers (US-3/US-4) are not yet in the SPA. When they arrive they follow these rules:
-  markers are added to the same map instance from prepared Rust values.
 - **Revisit if a widget needs sustained two-way interaction.** `eval`'s send-and-forget shape
   suits "draw this"; a map that must continuously report clicks, drags and viewport changes back
   into Rust state would strain it. The map↔chart hover-sync ADR-0006 anticipated is exactly such
