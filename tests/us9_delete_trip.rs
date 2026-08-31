@@ -17,7 +17,7 @@ async fn us9_delete_returns_204_and_the_trip_row_is_gone() {
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     assert_eq!(
-        get(&app, &format!("/trips/{id}")).await.status(),
+        get(&app, &format!("/api/trips/{id}")).await.status(),
         StatusCode::NOT_FOUND
     );
     assert_eq!(
@@ -95,17 +95,4 @@ async fn us9_deleting_one_trip_does_not_affect_another_trips_photos() {
     let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
     let url = json[0]["url"].as_str().expect("photo must have a url");
     assert_eq!(get(&app, url).await.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn us9_detail_page_offers_a_delete_control() {
-    let (app, _dir) = test_app().await;
-    let id = import_sample(&app).await;
-
-    let response = get(&app, &format!("/trips/{id}")).await;
-    let body = body_string(response).await;
-    assert!(
-        body.contains(r#"id="delete-trip""#),
-        "detail page must offer a delete control"
-    );
 }

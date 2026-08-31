@@ -7,6 +7,7 @@ use serde::Serialize;
 use trip_archive_types::PhotoResponse;
 
 use crate::api::{self, PhotoUpload};
+use crate::interop;
 
 /// A photo the map draws: where it is, what to show in its popup, and what
 /// to call it. Prepared here rather than in the drawing script — the script
@@ -103,11 +104,6 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
     let base_url = use_context::<Signal<String>>();
     let mut chosen = use_signal(Vec::<PhotoUpload>::new);
     let mut status = use_signal(|| None::<String>);
-    // Bumped after a successful upload to rebuild the file input. Nothing can
-    // clear one in place, and an input still naming files that are no longer
-    // staged contradicts the button, which would answer "choose one or more
-    // photos first".
-    let mut picker = use_signal(|| 0_u32);
 
     rsx! {
         form {
@@ -122,7 +118,10 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                 match api::add_photos(&base_url(), id, photos).await {
                     Ok(()) => {
                         chosen.take();
-                        picker += 1;
+                        // Nothing else can empty a file input, and one still
+                        // naming uploaded files contradicts the button, which
+                        // would answer "choose one or more photos first".
+                        interop::clear_photo_picker().await;
                         status.set(None);
                         on_added.call(());
                     }
@@ -133,7 +132,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                 }
             },
             input {
-                key: "photos-{picker}",
+                id: "add-photos-input",
                 r#type: "file",
                 accept: "image/*",
                 multiple: true,

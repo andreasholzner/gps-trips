@@ -109,13 +109,16 @@ async fn us35_editing_the_privacy_shows_up_on_the_list() {
 }
 
 #[tokio::test]
-async fn us35_the_detail_page_preselects_the_current_privacy() {
+async fn us35_the_trip_carries_its_linked_tours_privacy() {
+    // What the picker opens on: the screen that renders it is the SPA's, and
+    // is tested there (`ui-dioxus`'s `edit` module). What has to be true here
+    // is that the link and its privacy reach the client at all.
     let (app, _mock, trip_id, _dir) = app_with_a_synced_tour("public").await;
 
-    let html = body_string(get(&app, &format!("/trips/{trip_id}")).await).await;
+    let trip = body_string(get(&app, &format!("/api/trips/{trip_id}")).await).await;
 
-    assert!(html.contains("id=\"edit-privacy_status\""));
-    assert!(html.contains("value=\"public\" selected"));
+    assert!(trip.contains(r#""privacy":"public""#), "got: {trip}");
+    assert!(trip.contains(r#""tour_id":"111""#), "got: {trip}");
 }
 
 #[tokio::test]
@@ -153,9 +156,11 @@ async fn us35_a_privacy_komoot_reports_unmappably_is_shown_as_unknown_and_can_be
         "got: {list}"
     );
 
-    let detail = body_string(get(&app, &format!("/trips/{trip_id}")).await).await;
-    assert!(detail.contains("<option value=\"\" selected"));
-    assert!(!detail.contains("value=\"private\" selected"));
+    // The trip carries the unmappable privacy as such, so the screen can
+    // show it without claiming the owner chose it (the picker's placeholder
+    // is `ui-dioxus`'s `edit` module's business, and tested there).
+    let detail = body_string(get(&app, &format!("/api/trips/{trip_id}")).await).await;
+    assert!(detail.contains(r#""privacy":"unknown""#), "got: {detail}");
 
     let response = send(
         &app,

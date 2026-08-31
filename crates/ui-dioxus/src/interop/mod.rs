@@ -26,3 +26,30 @@ mod track;
 
 pub use region::{bbox_corners, bbox_param, start_region_map};
 pub use track::{start_elevation_chart, start_track_map};
+
+use dioxus::prelude::*;
+
+/// Empty the add-photos file picker (US-2), by its id.
+///
+/// Not a widget, and the only thing here that is not: a file input cannot be
+/// cleared from Rust — its value is not a prop the framework owns, and
+/// rebuilding the element with a `key` does not reach it, because a key is
+/// only honoured on a template's root. Leaving it naming files that are no
+/// longer staged makes the button contradict the control above it.
+///
+/// The id is a constant in the script rather than a value spliced into it,
+/// for the same reason every payload here crosses the channel instead
+/// (ADR-0025). Awaiting the acknowledgement keeps the handle — and so the
+/// script — alive until the reset has happened.
+pub async fn clear_photo_picker() {
+    let mut eval = document::eval(
+        r#"
+        const el = document.getElementById("add-photos-input");
+        if (el) el.value = "";
+        dioxus.send(true);
+        "#,
+    );
+    if let Err(err) = eval.recv::<bool>().await {
+        dioxus::logger::tracing::error!("could not clear the photo picker: {err}");
+    }
+}

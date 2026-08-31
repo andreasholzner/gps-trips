@@ -2,10 +2,10 @@
 //!
 //! Acceptance criteria: tags are simple strings (no spaces); using a new tag
 //! creates the tag on-demand after confirmation. The "confirmation" step is
-//! client-side UI (`public/js/trip_detail.js`); at the HTTP boundary this
-//! translates to: creating via a tag name that doesn't exist yet succeeds
-//! and creates it, an existing name is reused, and a name containing
-//! whitespace is rejected.
+//! the screen's (the SPA's `trip_tags` module, US-42, where it is tested); at
+//! the HTTP boundary this translates to: creating via a tag name that doesn't
+//! exist yet succeeds and creates it, an existing name is reused, and a name
+//! containing whitespace is rejected.
 
 mod common;
 
@@ -184,15 +184,4 @@ async fn us33_api_tags_lists_every_tag_that_exists() {
     let all_tags = body_string(get(&app, "/api/tags").await).await;
     assert!(all_tags.contains("\"name\":\"alps\""));
     assert!(all_tags.contains("\"name\":\"coastal\""));
-}
-
-#[tokio::test]
-async fn us33_the_trip_detail_page_renders_the_tags_section() {
-    let (app, _dir) = test_app().await;
-    let id = import_sample(&app).await;
-
-    let detail_html = body_string(get(&app, &format!("/trips/{id}")).await).await;
-    assert!(detail_html.contains("id=\"tags\""));
-    assert!(detail_html.contains("id=\"tag-input\""));
-    assert!(detail_html.contains("id=\"tag-suggestions\""));
 }

@@ -9,6 +9,32 @@ use axum::http::StatusCode;
 use common::{add_photos_request, body_string, import_sample_with_photos, send, test_app};
 use trip_archive::server::location::fixtures::geotagged_bytes;
 
+/// The committed `geotagged.jpg` fixture — a real JPEG carrying the same
+/// EXIF GPS these tests build in memory — is what the browser layer uploads,
+/// since it cannot call this crate's builder. If the two ever disagree, the
+/// browser test is placing a photo this pipeline would not.
+#[tokio::test]
+async fn us3_the_committed_geotagged_fixture_is_placed_from_its_exif() {
+    let (app, _dir) = test_app().await;
+    let photo = std::fs::read("tests/fixtures/geotagged.jpg").expect("the fixture");
+    let id = import_sample_with_photos(&app, &[("geotagged.jpg", &photo)]).await;
+
+    let response = common::get(&app, &format!("/api/trips/{id}/photos")).await;
+    let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+
+    assert_eq!(json[0]["location_source"], "exif", "got: {json}");
+    assert!(
+        (json[0]["lat"].as_f64().unwrap() - 59.9139).abs() < 1e-3,
+        "got: {json}"
+    );
+    // A real image, not just an EXIF blob: the browser layer shows it, so the
+    // thumbnail step (US-5) has to be able to decode it too.
+    assert!(
+        json[0]["thumbnail_url"] != json[0]["url"],
+        "a thumbnail must have been generated: {json}"
+    );
+}
+
 #[tokio::test]
 async fn us3_geotagged_photo_appears_in_photos_json_with_exif_location_source_and_coordinates() {
     let (app, _dir) = test_app().await;
