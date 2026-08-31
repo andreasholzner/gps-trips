@@ -112,6 +112,16 @@ jobs:
           cp -r target/dx/ui-dioxus/release/web/public public/app
 
       - uses: actions/setup-node@v4
+      # Not left to the `cargo run` Playwright starts below: that runs under a
+      # timeout which would then have to cover compiling as well as booting,
+      # and on a cold cache — every toolchain bump invalidates one, since
+      # rust-toolchain.toml floats on stable — a release build from scratch
+      # does not fit inside it. The job would fail as a web-server timeout
+      # rather than as whatever actually went wrong. No extra time on a warm
+      # cache: this is the same build, moved to where it reports itself.
+      - name: Build the server the browser tests drive
+        run: cargo build --release --bin trip-archive
+
         with:
           node-version: 20
           cache: npm
@@ -123,8 +133,9 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      # Playwright starts the server itself, on a fresh temporary data
-      # directory, and refuses to run at all if the bundle above is missing.
+      # Playwright starts the server itself — already built above — on a fresh
+      # temporary data directory, and refuses to run at all if the bundle is
+      # missing.
       - name: Run the browser tests
         working-directory: tests/browser
         run: npm test
