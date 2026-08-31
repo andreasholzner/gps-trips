@@ -29,7 +29,7 @@ jobs:
     name: Rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The runner image ships a current stable toolchain; this only adds the
       # wasm target, which the SPA and the shared crate are checked against
@@ -78,7 +78,7 @@ jobs:
       # (ADR-0024); the crate is pinned in crates/ui-dioxus/Cargo.toml.
       DX_VERSION: 0.7.10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Prepare the toolchain
         run: rustup target add wasm32-unknown-unknown
@@ -111,7 +111,6 @@ jobs:
           (cd crates/ui-dioxus && dx build --release --platform web)
           cp -r target/dx/ui-dioxus/release/web/public public/app
 
-      - uses: actions/setup-node@v4
       # Not left to the `cargo run` Playwright starts below: that runs under a
       # timeout which would then have to cover compiling as well as booting,
       # and on a cold cache — every toolchain bump invalidates one, since
@@ -122,8 +121,14 @@ jobs:
       - name: Build the server the browser tests drive
         run: cargo build --release --bin trip-archive
 
+      # Two Node versions, easily confused. The action's own runtime is
+      # node24 from `@v5` onwards; `@v4` still ran on the deprecated node20.
+      # `node-version` below is the separate one — what *Playwright* runs on.
+      # It asks for `>=20`, so this tracks a Node release that is still
+      # supported rather than the oldest that works.
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: tests/browser/package-lock.json
 
@@ -144,7 +149,7 @@ jobs:
       # them diagnosable after the fact.
       - name: Keep the traces of a failed run
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-traces
           path: tests/browser/test-results/
