@@ -20,9 +20,11 @@ it. The server-rendered list and detail pages have been deleted, their acceptanc
 having moved to the SPA, its browser layer and the JSON API under
 [ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
 
-What remains of the intentionally throwaway proof-of-concept is the import form and the
-Komoot-sync page, still reachable and still how the owner does that work until US-43 and US-44
-replace them; the SPA links out to them. They are retired the same way, page by page.
+Importing joined them with US-43/US-12, as a two-step screen: the GPX is uploaded first so the
+archive can suggest a `YYYY-mm-dd`-prefixed name, then the trip is confirmed and its photos
+follow. What remains of the intentionally throwaway proof-of-concept is the Komoot-sync page
+alone, still reachable and still how the owner does that work until US-44 replaces it; the SPA
+links out to it.
 
 ---
 
@@ -143,6 +145,7 @@ C4Component
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
+        Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX and parks it in import_staging; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
         Component(komootc, "Komoot Client", "reqwest (blocking) + rate limiter", "Reverse-engineered komoot API: auth, tour listing/GPX download, photo fetch, edit/delete pushes; throttled with 429 backoff.")
         Component(gpx, "GPX Parser & Stats", "gpx + geo", "Parse track; compute distance, ascent/descent, duration, bbox, start/end.")
@@ -203,7 +206,7 @@ C4Component
         Component(approuter, "App Router", "dioxus_router", "Client-side routing between pages.")
         Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
         Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, downloading the original GPX, and deleting the trip.")
-        Component(importform, "Import Form", "Dioxus", "GPX + photos upload, activity type, date-prefixed name.")
+        Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): upload the GPX, then confirm the suggested date-prefixed name, activity type and kind; photos follow in batches with a progress count.")
         Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
         Component(elev, "Elevation Chart", "Dioxus + uPlot", "Elevation vs distance/time, drawn through `document::eval`.")
         Component(gallery, "Photo Gallery", "Dioxus", "Thumbnails; links markers ↔ photos.")
@@ -247,8 +250,9 @@ C4Component
   ([ADR-0015](./adr/0015-db-model-response-type-separation.md)).
 - **Built so far:** the App Router, the Trip List — filter bar, tag filter, bulk-tagging and the
   region-select map (US-41, US-52) — and the Trip Detail screen with its Map, Elevation Chart and
-  Photo Gallery (US-42). The Import Form arrives with US-43, and a Komoot review screen with
-  US-44.
+  Photo Gallery (US-42), and the two-step Import screen (US-43/US-12) — choose a GPX, confirm the
+  suggested name, activity type and kind, then watch the photos upload in batches. A Komoot
+  review screen arrives with US-44.
 - The list screen's filters live in the SPA's own URL query, so a narrowed list is bookmarkable
   and survives a reload, and the region rectangle can be restored onto the map (US-52). The map
   reports each dragged rectangle back into Rust state over `document::eval`'s channel — the

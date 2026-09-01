@@ -43,8 +43,8 @@ TRIP_ARCHIVE_DATA_DIR=./data cargo run --bin trip-archive
 ```
 
 Serves the API on `http://127.0.0.1:3000`, with `/` redirecting to the SPA at `/app/` (which
-has to be built first — see below). The remaining proof-of-concept pages (`/import`,
-`/komoot/sync`) are served from here too, until US-43/44 replace them. See
+has to be built first — see below). The last proof-of-concept page (`/komoot/sync`) is served
+from here too, until US-44 replaces it; `/import` now redirects to the SPA's own screen. See
 [`deployment.md`](./deployment.md) for every environment variable.
 
 ### The SPA, while working on it
