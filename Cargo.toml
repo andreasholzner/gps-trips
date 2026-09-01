@@ -25,7 +25,10 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 # Domain: GPX parsing, geodesic stats, time
 gpx  = "0.10"
 geo  = "0.28"
-time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
+# `serde-well-known` is what lets `TrackStats` travel as RFC-3339 JSON in
+# `import_staging.derived` (US-12), the same representation ADR-0009 stores
+# timestamps in everywhere else.
+time = { version = "0.3", features = ["formatting", "macros", "parsing", "serde-well-known"] }
 # EXIF GPS extraction (US-3, ADR-0017)
 kamadak-exif = "0.6"
 # Timezone lookup for photo-timestamp interpolation (US-4, ADR-0019)

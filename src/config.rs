@@ -28,11 +28,18 @@ pub mod server {
     /// Address the HTTP server binds to.
     pub const BIND_ADDR: &str = "127.0.0.1:3000";
 
-    /// Request-body cap for the multipart upload routes (`/api/import` and
-    /// `/api/trips/:id/photos`, ADR-0004). Axum's 2 MB default is far too
-    /// small for a GPX plus a batch of camera photos; every other route
-    /// keeps the default.
+    /// Request-body cap for the multipart upload routes (`/api/import`,
+    /// `/api/import/staged` and `/api/trips/:id/photos`, ADR-0004). Axum's
+    /// 2 MB default is far too small for a GPX plus a batch of camera photos
+    /// — or, on the staging route, for a recorded track of tens of thousands
+    /// of points on its own; every other route keeps the default.
     pub const PHOTO_IMPORT_BODY_LIMIT: usize = 256 * 1024 * 1024;
+
+    /// How long a two-phase import's parked parse survives unconfirmed
+    /// (US-12, migration 0014). Long enough that a distracted owner can come
+    /// back to a half-finished import, short enough that abandoned ones do
+    /// not accumulate. Swept on the way into the next staging request.
+    pub const STAGED_IMPORT_TTL: time::Duration = time::Duration::hours(24);
 }
 
 /// Komoot sync (US-27, ADR-0021). Auth details: `docs/komoot-api.md`.

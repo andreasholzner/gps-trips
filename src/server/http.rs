@@ -23,6 +23,7 @@ use crate::server::{
     paths,
     render::{render_import_form, render_sync_candidates},
     repo,
+    staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
     tags::{
         handle_add_trip_tag, handle_bulk_add_trip_tags, handle_list_all_tags,
@@ -44,6 +45,24 @@ pub fn router(state: AppState) -> Router {
             post(handle_import).layer(DefaultBodyLimit::max(
                 config::server::PHOTO_IMPORT_BODY_LIMIT,
             )),
+        )
+        // US-12: the two-phase import the SPA's screen drives — stage the
+        // GPX (parsed once, no trip yet), then confirm the name, activity
+        // type, kind and timezone, or cancel. Same body cap as the one-shot
+        // route: a recorded track alone can exceed axum's 2 MB default.
+        .route(
+            "/api/import/staged",
+            post(handle_stage_import).layer(DefaultBodyLimit::max(
+                config::server::PHOTO_IMPORT_BODY_LIMIT,
+            )),
+        )
+        .route(
+            "/api/import/staged/:id/confirm",
+            post(handle_confirm_import),
+        )
+        .route(
+            "/api/import/staged/:id",
+            axum::routing::delete(handle_cancel_staged_import),
         )
         // US-13: filtered list as JSON (same query params as `/`, ADR-0008/0011).
         .route("/api/trips", get(list_trips_api))

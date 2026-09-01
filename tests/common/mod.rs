@@ -9,11 +9,12 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    http::{Method, Request},
+    http::{Method, Request, StatusCode},
     response::Response,
     Router,
 };
 use tower::ServiceExt; // .oneshot()
+use trip_archive::models::StagedImport;
 use trip_archive::server::{
     db, http,
     state::AppState,
@@ -22,6 +23,8 @@ use trip_archive::server::{
 
 pub const SAMPLE_GPX: &[u8] = include_bytes!("../fixtures/sample.gpx");
 pub const NO_TRACKS_GPX: &[u8] = include_bytes!("../fixtures/no_tracks.gpx");
+/// A track with timestamps but no `<name>` — US-12's bare-date-prefix case.
+pub const UNNAMED_GPX: &[u8] = include_bytes!("../fixtures/unnamed.gpx");
 /// A track in the Alps — far from `SAMPLE_GPX`'s Oslo coordinates, so the
 /// US-14 region filter can be tested on a list holding trips in two places.
 pub const REGION_ALPS_GPX: &[u8] = include_bytes!("../fixtures/region_alps.gpx");
@@ -181,6 +184,34 @@ pub fn import_request_with_fields(
     append_photo_parts(&mut body, photos);
     body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
     multipart_request("/api/import", body)
+}
+
+/// A `multipart/form-data` POST to `/api/import/staged` carrying the `gpx`
+/// file alone (US-12, phase one of the two-phase import).
+pub fn stage_import_request(gpx: &[u8]) -> Request<Body> {
+    let mut body = Vec::new();
+    append_file_part(&mut body, "gpx", "track.gpx", "application/gpx+xml", gpx);
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+    multipart_request("/api/import/staged", body)
+}
+
+/// Stage `gpx` and return the parsed suggestions — the happy path every
+/// confirm test starts from.
+pub async fn stage_import(app: &Router, gpx: &[u8]) -> StagedImport {
+    let response = send(app, stage_import_request(gpx)).await;
+    let status = response.status();
+    let body = body_string(response).await;
+    assert_eq!(status, StatusCode::OK, "staging failed: {body}");
+    serde_json::from_str(&body).expect("staged import JSON")
+}
+
+/// `POST /api/import/staged/:id/confirm` with a JSON body (US-12, phase two).
+pub fn confirm_import_request(staging_id: i64, body: &str) -> Request<Body> {
+    json_request(
+        Method::POST,
+        &format!("/api/import/staged/{staging_id}/confirm"),
+        body,
+    )
 }
 
 /// A `POST /api/trips/:id/photos` carrying `(filename, bytes)` photo parts

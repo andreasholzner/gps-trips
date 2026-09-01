@@ -209,6 +209,26 @@ async fn resolve_photo_context(
     Ok((timed_points, tz_name))
 }
 
+/// Read the `gpx` file field out of a multipart body, ignoring everything
+/// else — the staging route's whole payload (US-12), where the owner's
+/// choices have not been made yet and arrive with the confirmation instead.
+pub(crate) async fn read_gpx_field(mut multipart: Multipart) -> Result<Vec<u8>, AppError> {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?
+    {
+        if field.name() == Some("gpx") {
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::BadRequest(e.to_string()))?;
+            return Ok(bytes.to_vec());
+        }
+    }
+    Err(AppError::BadRequest("Missing 'gpx' field".to_string()))
+}
+
 async fn read_text(field: Field<'_>) -> Result<String, AppError> {
     field
         .text()
@@ -240,7 +260,7 @@ async fn read_photo_field(field: Field<'_>) -> Result<Option<UploadedPhoto>, App
 /// Choose the trip name (US-12): an explicit form value wins; otherwise fall back
 /// to the GPX track name; otherwise a `YYYY-MM-DD`-prefixed default derived from
 /// the track's start time.
-fn resolve_name(
+pub(crate) fn resolve_name(
     form_name: Option<String>,
     gpx_name: Option<String>,
     start_time: Option<OffsetDateTime>,
@@ -251,13 +271,22 @@ fn resolve_name(
     if let Some(name) = gpx_name.filter(|n| !n.trim().is_empty()) {
         return name;
     }
-    let prefix = start_time
-        .map(|t| {
-            let d = t.date();
-            format!("{:04}-{:02}-{:02}", d.year(), d.month() as u8, d.day())
-        })
-        .unwrap_or_else(|| "Unknown date".to_string());
+    let prefix = date_prefix(start_time).unwrap_or_else(|| "Unknown date".to_string());
     format!("{prefix} Imported Trip")
+}
+
+/// The track's start date as `YYYY-MM-DD`, or `None` for a GPX with no
+/// timestamps.
+///
+/// Shared with the two-phase import's name suggestion (US-12,
+/// `staged_import::suggest_name`), which puts the same prefix in front of the
+/// owner's cursor — the two must not disagree about what date a track starts
+/// on.
+pub(crate) fn date_prefix(start_time: Option<OffsetDateTime>) -> Option<String> {
+    start_time.map(|t| {
+        let d = t.date();
+        format!("{:04}-{:02}-{:02}", d.year(), d.month() as u8, d.day())
+    })
 }
 
 /// Resolve an `activity_type` field into an `ActivityType` (ADR-0018): a
@@ -286,7 +315,7 @@ pub(crate) fn resolve_activity_type(
 /// defaults to `Recorded` (matches every existing trip-creating path, and the
 /// list page's own Recorded default, US-32); any other value must be one of
 /// the known variants, or the request is rejected as a 400.
-fn resolve_trip_kind(form_kind: Option<String>) -> Result<TripKind, AppError> {
+pub(crate) fn resolve_trip_kind(form_kind: Option<String>) -> Result<TripKind, AppError> {
     match form_kind.as_deref().map(str::trim) {
         None | Some("") => Ok(TripKind::Recorded),
         Some(trimmed) => trimmed.parse().map_err(AppError::BadRequest),
@@ -297,7 +326,10 @@ fn resolve_trip_kind(form_kind: Option<String>) -> Result<TripKind, AppError> {
 /// ADR-0009/0019): a blank or missing field uses `guessed` (auto-detected
 /// from the track's start coordinate); an explicit value must be a
 /// recognized IANA name, or the request is rejected as a 400.
-fn resolve_timezone(form_timezone: Option<String>, guessed: String) -> Result<String, AppError> {
+pub(crate) fn resolve_timezone(
+    form_timezone: Option<String>,
+    guessed: String,
+) -> Result<String, AppError> {
     match form_timezone.filter(|t| !t.trim().is_empty()) {
         None => Ok(guessed),
         Some(value) if timezone::is_known_timezone(&value) => Ok(value),
