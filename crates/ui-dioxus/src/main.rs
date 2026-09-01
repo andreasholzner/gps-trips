@@ -13,6 +13,7 @@ mod detail;
 mod edit;
 mod filters;
 mod format;
+mod import;
 mod interop;
 mod list;
 mod photos;
@@ -25,6 +26,7 @@ mod trip_tags;
 
 use detail::TripDetail;
 use filters::Filters;
+use import::ImportTrip;
 use list::TripList;
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
@@ -66,6 +68,10 @@ enum Route {
     /// One trip, by id (US-42) — the target of every row in the list.
     #[route("/trips/:id")]
     TripDetail { id: i64 },
+    /// Importing a trip (US-43/US-12). Where the server-rendered `/import`
+    /// page used to be, and where it now redirects.
+    #[route("/import")]
+    ImportTrip {},
 }
 
 fn main() {
