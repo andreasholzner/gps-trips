@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use crate::server::error::ImportError;
@@ -20,13 +21,20 @@ pub struct ParsedTrack {
 
 /// Derived statistics computed from the raw track points.
 /// All distance/elevation values are in metres; times are UTC offset datetimes.
-#[derive(Debug)]
+///
+/// `Serialize`/`Deserialize` because a two-phase import (US-12) parks this
+/// between the two requests, as JSON in `import_staging.derived` — so the GPX
+/// is parsed once rather than again at confirmation time. The timestamps go
+/// as RFC-3339, matching how they are stored on the `trip` row (ADR-0009).
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TrackStats {
     pub distance_m: f64,
     pub ascent_m: f64,
     pub descent_m: f64,
     pub duration_secs: Option<i64>,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub start_time: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub end_time: Option<OffsetDateTime>,
     pub min_lat: f64,
     pub min_lon: f64,

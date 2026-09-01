@@ -24,6 +24,13 @@ pub enum AppError {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
+    /// A bug rather than a bad request: state the archive itself wrote and
+    /// then could not read back (US-12's parked parse is the only such state
+    /// today). Reported as a 500 because nothing the caller does differently
+    /// would help.
+    #[error("{0}")]
+    Internal(String),
+
     #[error("Storage error: {0}")]
     Storage(#[from] std::io::Error),
 
@@ -39,6 +46,7 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Import(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             AppError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             AppError::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::Komoot(e) => (StatusCode::BAD_GATEWAY, e.to_string()),
         };

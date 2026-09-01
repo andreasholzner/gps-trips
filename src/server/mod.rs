@@ -17,6 +17,7 @@ pub mod placement;
 pub mod qmapshack;
 pub mod render;
 pub mod repo;
+pub mod staged_import;
 pub mod state;
 pub mod storage;
 pub mod tags;
