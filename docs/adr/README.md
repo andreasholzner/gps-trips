@@ -9,7 +9,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0001](./0001-rust-leptos-fullstack.md)              | Rust full-stack with Leptos (SSR + hydration on Axum)                       | Superseded by 0024            |
 | [0002](./0002-sqlite-local-disk.md)                  | SQLite (sqlx), local disk only                                              | Accepted                      |
 | [0003](./0003-track-as-geojson-blob-in-sqlite.md)    | Track geometry as a GeoJSON blob in SQLite                                  | Accepted                      |
-| [0004](./0004-import-via-axum-multipart.md)          | Import via native Axum multipart handler                                    | Accepted                      |
+| [0004](./0004-import-via-axum-multipart.md)          | Import via native Axum multipart handler                                    | Accepted (amended 2026-09-01) |
 | [0005](./0005-leaflet-osm-via-wasm-interop.md)       | Leaflet + OSM raster tiles via wasm-bindgen interop                         | Superseded by 0025            |
 | [0006](./0006-uplot-elevation-chart.md)              | uPlot for the elevation chart                                               | Superseded by 0025            |
 | [0007](./0007-blobstore-abstraction.md)              | `BlobStore` storage abstraction (local now, ownCloud later)                 | Accepted                      |
