@@ -217,7 +217,10 @@ and [ADR-0022](./adr/0022-qmapshack-export.md) for the resulting design.
 - **Data ownership & portability:** all state under one data dir; SQLite DB is a single-file backup.
 - **Performance at personal scale:** designed for one user's trips (hundreds), each track up to
   tens of thousands of points; list views must not load track geometry.
-- **Reliability:** imports are transactional (a failed import leaves no partial trip).
+- **Reliability:** imports are transactional — a failed import leaves no partial trip. The trip and
+  its track always commit together; the photos the import screen uploads in batches after that
+  (US-43) can partly land, which is reported as such and repaired by adding the rest to the trip
+  that exists (US-2).
 - **Maintainability:** server-only code isolated from the WASM client; small JS surface for maps/charts.
 
 ## Permanently de-scoped
