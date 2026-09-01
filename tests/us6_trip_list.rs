@@ -44,15 +44,15 @@ async fn us6_the_list_carries_every_summary_field_and_no_geometry() {
 }
 
 #[tokio::test]
-async fn us6_import_form_is_available_at_import() {
+async fn us6_the_old_import_page_leads_to_the_screen_that_replaced_it() {
+    // The server-rendered form that used to be served here is gone
+    // (US-43/US-12), its acceptance assertions having moved to the SPA's own
+    // screen — ADR-0012's migration rule. A bookmark to it still lands
+    // somewhere useful, as `/` and `/trips/:id` already do.
     let (app, _dir) = test_app().await;
 
     let response = get(&app, "/import").await;
-    assert_eq!(response.status(), StatusCode::OK);
 
-    let html = body_string(response).await;
-    assert!(
-        html.contains(r#"action="/api/import""#),
-        "import form should be served at /import; got: {html}"
-    );
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers()["location"], "/app/import");
 }

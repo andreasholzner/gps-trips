@@ -1,115 +1,15 @@
-//! HTML page rendering (import form, Komoot review) — kept
-//! separate from `http.rs`'s routing/handlers, mirroring how
-//! `delete.rs`/`edit.rs`/`import.rs` already isolate their own concerns
-//! rather than folding everything into one file.
+//! HTML page rendering (the Komoot review page) — kept separate from
+//! `http.rs`'s routing/handlers, mirroring how `delete.rs`/`edit.rs`/
+//! `import.rs` already isolate their own concerns rather than folding
+//! everything into one file.
 //!
-//! These are the remains of the proof-of-concept UI. The trip-list page was
-//! deleted by US-52 and the trip detail page by US-42, each once the SPA
-//! carried its acceptance assertions
+//! This is the last of the proof-of-concept UI. The trip-list page was
+//! deleted by US-52, the trip detail page by US-42 and the import form by
+//! US-43, each once the SPA carried its acceptance assertions
 //! ([ADR-0012](../../../docs/adr/0012-tdd-test-strategy.md)'s migration
-//! rule); the import form and the Komoot review page go with US-43 and US-44.
+//! rule); the Komoot review page goes with US-44.
 
-use crate::models::{ActivityType, TripKind};
 use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
-
-/// GET `/import` — the import form (US-1: the owner uploads a GPX file).
-/// The `{options}` placeholder is filled via `format!`, not a runtime
-/// string-replace: if a future edit ever drops the placeholder from the
-/// template while `options` is still passed, the build fails immediately
-/// (an unused named argument is a compile error) instead of silently
-/// shipping a `<select>` with the literal text `{options}` in it.
-pub fn render_import_form() -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trip Archive — Import</title>
-</head>
-<body>
-  <h1>Import a Trip</h1>
-  <form method="post" action="/api/import" enctype="multipart/form-data">
-    <p>
-      <label for="name">Trip name (optional)</label><br>
-      <input type="text" id="name" name="name"
-             placeholder="leave blank to use the GPX track name">
-    </p>
-    <p>
-      <label for="activity_type">Activity (optional)</label><br>
-      <select id="activity_type" name="activity_type">
-        {options}
-      </select>
-    </p>
-    <p>
-      <label>Trip kind</label><br>
-      {kind_radios}
-    </p>
-    <p>
-      <label for="timezone">Photo timezone override (optional)</label><br>
-      <input type="text" id="timezone" name="timezone"
-             placeholder="auto-detected from the track's start location if left blank, e.g. Europe/Oslo">
-    </p>
-    <p>
-      <label for="gpx">GPX file</label><br>
-      <input type="file" id="gpx" name="gpx" accept=".gpx,application/gpx+xml" required>
-    </p>
-    <p>
-      <label for="photos">Photos (optional)</label><br>
-      <input type="file" id="photos" name="photos" accept="image/*" multiple>
-    </p>
-    <button type="submit">Import</button>
-  </form>
-  <p><a href="/">← All trips</a></p>
-</body>
-</html>"#,
-        options = activity_type_options(""),
-        kind_radios = trip_kind_radios(TripKind::Recorded)
-    )
-}
-
-/// The Recorded/Planned radio pair for the import form (US-31), `selected`
-/// pre-checked. Iterates `TripKind::ALL`/`.label()` — the single canonical
-/// variant list in `models::trip_kind` — the same pattern
-/// `activity_type_options` uses for `ActivityType`, so the form can't drift
-/// out of sync with `TripKind`'s actual variants.
-fn trip_kind_radios(selected: TripKind) -> String {
-    TripKind::ALL
-        .iter()
-        .map(|&kind| {
-            format!(
-                "<label><input type=\"radio\" name=\"kind\" value=\"{value}\"{checked}> {label}</label>",
-                value = kind.as_str(),
-                checked = if kind == selected { " checked" } else { "" },
-                label = kind.label(),
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n      ")
-}
-
-/// Build the `<option>` list for an activity-type `<select>`, marking
-/// `selected` as chosen. Shared by the import form and the trip detail edit
-/// form (US-15). Iterates `ActivityType::SELECTABLE`/`label()` — the single
-/// canonical variant list in `models::activity_type` — instead of a second,
-/// hand-maintained copy here, so the two forms can't drift out of sync with
-/// `ActivityType`'s actual variants.
-fn activity_type_options(selected: &str) -> String {
-    let mut options = format!(
-        "<option value=\"\"{sel}>{label}</option>\n",
-        sel = if selected.is_empty() { " selected" } else { "" },
-        label = ActivityType::Unknown.label(),
-    );
-    for activity in ActivityType::SELECTABLE {
-        let value = activity.as_str();
-        let sel = if value == selected { " selected" } else { "" };
-        options.push_str(&format!(
-            "<option value=\"{value}\"{sel}>{label}</option>\n",
-            label = activity.label()
-        ));
-    }
-    options
-}
 
 /// GET `/komoot/sync` — the "Sync now" review page (US-20/US-22): every
 /// Komoot tour not yet in `trip_komoot_link`, each unchecked by default so
@@ -251,6 +151,7 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::TripKind;
 
     fn a_candidate(tour_id: &str, name: &str, kind: TripKind) -> SyncCandidate {
         SyncCandidate {

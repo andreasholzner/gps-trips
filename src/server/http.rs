@@ -21,7 +21,7 @@ use crate::server::{
     komoot::KomootClient,
     komoot_sync::{self, SyncResultQuery},
     paths,
-    render::{render_import_form, render_sync_candidates},
+    render::render_sync_candidates,
     repo,
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
@@ -36,7 +36,7 @@ use crate::server::{
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(home))
-        .route("/import", get(import_form))
+        .route("/import", get(import_page_moved))
         // Multipart uploads carry a GPX plus whole photo batches, so this
         // route (and the add-photos one below) raises axum's 2 MB default
         // body limit; every other route keeps the default.
@@ -134,8 +134,8 @@ fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
 /// acceptance assertions had moved to the SPA and its API
 /// ([ADR-0012](../../docs/adr/0012-tdd-test-strategy.md)'s migration rule).
 /// The redirect keeps old bookmarks working, and keeps `/` meaning "the
-/// archive" while the remaining proof-of-concept pages (import, Komoot
-/// review) live on until US-43 and US-44 replace them.
+/// archive" while the last proof-of-concept page — the Komoot review — lives
+/// on until US-44 replaces it.
 async fn home() -> Redirect {
     // `Redirect::to` is axum's 303 See Other.
     Redirect::to("/app/")
@@ -160,9 +160,12 @@ async fn list_trips_api(
     Ok(Json(repo::list_trips(&state.pool, &filter).await?))
 }
 
-/// GET `/import` — the import form (US-1: the owner uploads a GPX file).
-async fn import_form() -> Html<String> {
-    Html(render_import_form())
+/// GET `/import` — where the server-rendered import form used to be
+/// (US-43/US-12), on the same terms as `/` and `/trips/:id`: a bookmark made
+/// before the page was deleted should reach the screen that replaced it, not
+/// a 404.
+async fn import_page_moved() -> Redirect {
+    Redirect::to("/app/import")
 }
 
 /// The `POST /api/komoot/sync` request body (ADR-0008): the tours the owner
