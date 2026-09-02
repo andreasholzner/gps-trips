@@ -30,13 +30,13 @@ directory, so this pair can be copied anywhere and started from any directory
 
 ## Configuration (environment variables)
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `TRIP_ARCHIVE_DATA_DIR` | `./data` | Where the SQLite DB and photo blobs are stored. Set this to a persistent, backed-up location. |
+| Variable                  | Default                      | Purpose                                                                                                                      |
+|---------------------------|------------------------------|------------------------------------------------------------------------------------------------------------------------------|
+| `TRIP_ARCHIVE_DATA_DIR`   | `./data`                     | Where the SQLite DB and photo blobs are stored. Set this to a persistent, backed-up location.                                |
 | `TRIP_ARCHIVE_ASSETS_DIR` | `public/` next to the binary | Override the static assets location (e.g. if packaging into `/usr/share/trip-archive` while the binary lives in `/usr/bin`). |
-| `RUST_LOG` | `trip_archive=info` | Standard `tracing-subscriber` env filter. |
-| `KOMOOT_EMAIL` | unset | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below. |
-| `KOMOOT_PASSWORD` | unset | Komoot account password. Optional — see below. |
+| `RUST_LOG`                | `trip_archive=info`          | Standard `tracing-subscriber` env filter.                                                                                    |
+| `KOMOOT_EMAIL`            | unset                        | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below.        |
+| `KOMOOT_PASSWORD`         | unset                        | Komoot account password. Optional — see below.                                                                               |
 
 ### Komoot sync (optional)
 

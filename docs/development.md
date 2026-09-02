@@ -5,12 +5,12 @@ serve it, see [`deployment.md`](./deployment.md) instead.
 
 ## Toolchain
 
-| Piece | Version | Needed for |
-|-------|---------|------------|
-| Rust | stable (`rust-toolchain.toml`) | everything |
-| `dx` (Dioxus CLI) | **0.7.10** | building/serving the SPA |
-| `wasm32-unknown-unknown` target | — | building the SPA (`rustup target add wasm32-unknown-unknown`) |
-| Node.js | 20+ | the browser test layer only — nothing that ships |
+| Piece                           | Version                        | Needed for                                                    |
+|---------------------------------|--------------------------------|---------------------------------------------------------------|
+| Rust                            | stable (`rust-toolchain.toml`) | everything                                                    |
+| `dx` (Dioxus CLI)               | **0.7.10**                     | building/serving the SPA                                      |
+| `wasm32-unknown-unknown` target | —                              | building the SPA (`rustup target add wasm32-unknown-unknown`) |
+| Node.js                         | 20+                            | the browser test layer only — nothing that ships              |
 
 The `dx` CLI and the `dioxus` crate are pinned together and **must match**
 ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)); the crate is pinned to `=0.7.10` in
@@ -26,11 +26,11 @@ building the app (US-16).
 
 A Cargo workspace of three crates:
 
-| Path | What it is |
-|------|------------|
-| `.` (`trip-archive`) | the Axum server, plus the `komoot_check`, `komoot_backfill` and `qmapshack_export` CLI binaries under `src/bin/` |
+| Path                                  | What it is                                                                                                                                                                            |
+|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `.` (`trip-archive`)                  | the Axum server, plus the `komoot_check`, `komoot_backfill` and `qmapshack_export` CLI binaries under `src/bin/`                                                                      |
 | `crates/types` (`trip-archive-types`) | the data models shared by the server and the UI. Compiles for the server, for wasm and for Android; the SQLite mappings sit behind an optional `sqlx` feature only the server enables |
-| `crates/ui-dioxus` | the Dioxus SPA ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)) |
+| `crates/ui-dioxus`                    | the Dioxus SPA ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md))                                                                                                                  |
 
 `tests/` holds the server's integration tests and, under `tests/browser/`, the browser layer.
 
