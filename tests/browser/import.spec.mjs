@@ -11,7 +11,7 @@
 //
 // These are the assertions that moved off the server-rendered import form
 // when US-43 deleted it: coverage transferred, it did not evaporate.
-import { test, expect } from "@playwright/test";
+import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +36,13 @@ const TRACK_DATE = "2024-06-01";
 /// away again. The suite shares one archive: a trip left behind is a row the
 /// list spec did not seed and does not expect.
 const created = [];
+
+// US-19: the archive is gated, so the browser needs a session before any of
+// this can run. The seeding `request` fixture arrives with one already
+// (`session.mjs`).
+test.beforeEach(async ({ page }) => {
+  await signIn(page.request);
+});
 
 test.afterAll(async ({ request }) => {
   for (const id of created.splice(0)) {

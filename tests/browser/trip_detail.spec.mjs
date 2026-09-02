@@ -9,7 +9,7 @@
 //
 // These assertions are the ones that moved off the server-rendered detail
 // page when US-42 deleted it: coverage transferred, it did not evaporate.
-import { test, expect } from "@playwright/test";
+import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -48,6 +48,13 @@ async function ownTrip(request, label) {
   created.push(id);
   return id;
 }
+
+// US-19: the archive is gated, so the browser needs a session before any of
+// this can run. The seeding `request` fixture arrives with one already
+// (`session.mjs`).
+test.beforeEach(async ({ page }) => {
+  await signIn(page.request);
+});
 
 test.afterAll(async ({ request }) => {
   // Best effort, and 404 is a fine outcome — the delete test removes its own.

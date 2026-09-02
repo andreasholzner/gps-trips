@@ -11,6 +11,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PASSWORD } from "./session.mjs";
 
 // The bundle is an input to this suite, not something it builds: without it
 // the server answers 404 at /app and every test fails for a reason that has
@@ -43,8 +44,17 @@ export default defineConfig({
   webServer: {
     command: "cargo run --quiet --release --bin trip-archive",
     cwd: "../..",
-    url: "http://127.0.0.1:3000/api/trips",
-    env: { TRIP_ARCHIVE_DATA_DIR: dataDir },
+    // `/` rather than an API route: since US-19 the API answers 401 until
+    // something signs in, and "is the server up?" is a different question
+    // from "am I signed in?". The redirect to the SPA is allowlisted and
+    // always answers.
+    url: "http://127.0.0.1:3000/",
+    env: {
+      TRIP_ARCHIVE_DATA_DIR: dataDir,
+      // The archive refuses to boot without one (US-19); `session.mjs` signs
+      // in with the same value.
+      TRIP_ARCHIVE_PASSWORD: PASSWORD,
+    },
     reuseExistingServer: false,
     timeout: 180_000,
   },

@@ -5,7 +5,7 @@
 // tests cannot reach — real user events. Anything assertable by rendering a
 // component to a string belongs in `crates/ui-dioxus`, where it runs in
 // milliseconds without a browser. Each test below names the event it needs.
-import { test, expect } from "@playwright/test";
+import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +39,13 @@ async function importTrip(request, fields) {
 /// A tag no archive can already hold, so the confirm-before-create step
 /// (US-33) is genuinely exercised however often this file runs.
 const NEW_TAG = `summer-${Math.random().toString(36).slice(2, 8)}`;
+
+// US-19: the archive is gated, so the browser needs a session before any of
+// this can run. The seeding `request` fixture arrives with one already
+// (`session.mjs`).
+test.beforeEach(async ({ page }) => {
+  await signIn(page.request);
+});
 
 test.beforeAll(async ({ request }) => {
   // Playwright restarts its worker after a failed test, which re-runs this
