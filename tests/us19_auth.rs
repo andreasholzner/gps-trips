@@ -163,6 +163,8 @@ async fn us19_a_refusal_is_json_and_carries_no_data() {
             .await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
+    // The raw body, deliberately: this test is the one that asserts the
+    // *shape* every other test now reads through `common::error_message`.
     let body = common::body_string(response).await;
     assert!(
         !body.contains("Oslo"),

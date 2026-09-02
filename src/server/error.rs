@@ -52,41 +52,46 @@ pub enum AppError {
     Komoot(#[from] crate::server::komoot::KomootError),
 }
 
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        // US-19's two statuses answer with JSON; the rest still answer with
-        // the plain sentence they always have. The inconsistency is real and
-        // is cleaned up right after this story — see `ErrorResponse`.
-        if let AppError::Unauthorized = self {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse::new(self.to_string())),
-            )
-                .into_response();
-        }
-        if let AppError::RateLimited { retry_after } = self {
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                [(header::RETRY_AFTER, retry_after.as_secs().to_string())],
-                Json(ErrorResponse::new(self.to_string())),
-            )
-                .into_response();
-        }
-
-        let (status, body) = match &self {
+impl AppError {
+    /// The status this is reported as, and the archive's own account of it.
+    ///
+    /// The sentence is what the owner reads — the screens show it verbatim —
+    /// so it is the message each variant was already answering with, not its
+    /// `Display` form: `Display` prefixes some variants for a log line's
+    /// benefit ("Database error: …"), which is a different audience.
+    fn status_and_message(&self) -> (StatusCode, String) {
+        match self {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
-            // Both answered above; matched here so a new variant cannot be
-            // forgotten.
-            AppError::Unauthorized | AppError::RateLimited { .. } => unreachable!(),
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()),
+            AppError::RateLimited { .. } => (StatusCode::TOO_MANY_REQUESTS, self.to_string()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Import(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             AppError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             AppError::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::Komoot(e) => (StatusCode::BAD_GATEWAY, e.to_string()),
-        };
-        (status, body).into_response()
+        }
+    }
+}
+
+impl IntoResponse for AppError {
+    /// Every refusal answers as JSON, like everything else the API says
+    /// (ADR-0008). The status is the machine-readable half and the only
+    /// thing a client branches on; the body carries the sentence.
+    fn into_response(self) -> Response {
+        let (status, message) = self.status_and_message();
+        let body = Json(ErrorResponse::new(message));
+        match self {
+            // The one refusal that says when to come back (US-19).
+            AppError::RateLimited { retry_after } => (
+                status,
+                [(header::RETRY_AFTER, retry_after.as_secs().to_string())],
+                body,
+            )
+                .into_response(),
+            _ => (status, body).into_response(),
+        }
     }
 }
 

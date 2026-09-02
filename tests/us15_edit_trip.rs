@@ -6,7 +6,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{body_string, get, import_sample, json_request, send, test_app};
+use common::{body_string, error_message, get, import_sample, json_request, send, test_app};
 
 fn patch_request(id: i64, body: &str) -> axum::http::Request<axum::body::Body> {
     json_request(Method::PATCH, &format!("/api/trips/{id}"), body)
@@ -76,7 +76,7 @@ async fn us15_an_unrecognized_activity_type_is_rejected_with_400() {
 
     let response = send(&app, patch_request(id, r#"{"activity_type":"unicycling"}"#)).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = body_string(response).await;
+    let body = error_message(response).await;
     assert!(
         body.contains("unknown activity type"),
         "400 should be the activity-type-specific rejection; got: {body}"

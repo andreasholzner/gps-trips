@@ -18,8 +18,8 @@ mod common;
 
 use axum::http::{Method, StatusCode};
 use common::{
-    body_string, confirm_import_request, delete, get, json_request, send, stage_import,
-    stage_import_request, test_app, LATE_EVENING_GPX, SAMPLE_GPX, UNNAMED_GPX,
+    body_string, confirm_import_request, delete, error_message, get, json_request, send,
+    stage_import, stage_import_request, test_app, LATE_EVENING_GPX, SAMPLE_GPX, UNNAMED_GPX,
 };
 use serde_json::Value;
 use trip_archive::models::TripDetail;
@@ -131,7 +131,7 @@ async fn us12_a_gpx_the_archive_cannot_use_is_refused_at_the_staging_step() {
     let response = send(&app, stage_import_request(b"not xml at all")).await;
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(!body_string(response).await.is_empty(), "it says why");
+    assert!(!error_message(response).await.is_empty(), "it says why");
 }
 
 #[tokio::test]
@@ -257,7 +257,7 @@ async fn us12_an_unrecognized_kind_is_refused_at_confirmation() {
     let response = confirm(&app, staged.staging_id, r#"{"kind":"scheduled"}"#).await;
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert!(body_string(response).await.contains("kind"));
+    assert!(error_message(response).await.contains("kind"));
 }
 
 // ── Abandoning ───────────────────────────────────────────────────────────────

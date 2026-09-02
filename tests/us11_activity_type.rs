@@ -7,7 +7,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{
-    body_string, get, import_request_with_fields, send, test_app, trip_id_from_redirect, SAMPLE_GPX,
+    body_string, error_message, get, import_request_with_fields, send, test_app,
+    trip_id_from_redirect, SAMPLE_GPX,
 };
 
 #[tokio::test]
@@ -43,7 +44,7 @@ async fn us11_an_unrecognized_activity_type_is_rejected_with_400() {
     let request = import_request_with_fields(SAMPLE_GPX, &[("activity_type", "unicycling")], &[]);
     let response = send(&app, request).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = body_string(response).await;
+    let body = error_message(response).await;
     assert!(
         body.contains("unknown activity type"),
         "400 should be the activity-type-specific rejection, not some other bad request; got: {body}"

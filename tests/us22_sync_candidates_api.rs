@@ -21,7 +21,9 @@ mod common;
 use std::sync::Arc;
 
 use axum::http::{Method, StatusCode};
-use common::{body_string, delete, get, json_request, send, test_app, test_app_with_komoot};
+use common::{
+    body_string, delete, error_message, get, json_request, send, test_app, test_app_with_komoot,
+};
 use trip_archive::server::komoot::testing::{a_tour, MockKomootClient};
 
 /// The candidates endpoint's answer, parsed.
@@ -176,7 +178,7 @@ async fn us22_an_archive_without_komoot_credentials_says_so() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(
-        body_string(response).await.contains("KOMOOT_EMAIL"),
+        error_message(response).await.contains("KOMOOT_EMAIL"),
         "the message should name what is missing"
     );
 }
