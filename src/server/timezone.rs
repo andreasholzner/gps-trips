@@ -5,7 +5,7 @@
 use std::sync::OnceLock;
 
 use time::{OffsetDateTime, PrimitiveDateTime};
-use time_tz::PrimitiveDateTimeExt;
+use time_tz::{OffsetDateTimeExt, PrimitiveDateTimeExt};
 
 use crate::server::gpx::{TimedPoint, TrackPoint};
 
@@ -59,6 +59,20 @@ pub fn is_known_timezone(name: &str) -> bool {
     time_tz::timezones::get_by_name(name).is_some()
 }
 
+/// The calendar date an instant falls on in `tz_name` — the date the owner
+/// would call that day, rather than the one UTC happens to be on.
+///
+/// Timestamps are stored and computed in UTC (ADR-0009), which is right for
+/// ordering and arithmetic and wrong for naming: a ride that starts at half
+/// past midnight in Oslo began the previous day in UTC, and an evening ride
+/// west of Greenwich began the next one. `None` for a timezone this build's
+/// tzdata does not recognize, which `guess_timezone` already prevents by
+/// falling back to `"UTC"`.
+pub fn local_date(tz_name: &str, instant: OffsetDateTime) -> Option<time::Date> {
+    let tz = time_tz::timezones::get_by_name(tz_name)?;
+    Some(instant.to_timezone(tz).date())
+}
+
 /// Resolve a wall-clock capture time to UTC using the named timezone,
 /// DST-aware. `None` if `tz_name` is unrecognized, or the wall-clock time
 /// falls in a DST "spring-forward" gap with no valid interpretation. An
@@ -75,6 +89,36 @@ pub fn resolve_to_utc(tz_name: &str, naive: PrimitiveDateTime) -> Option<OffsetD
 mod tests {
     use super::*;
     use time::macros::datetime;
+
+    #[test]
+    fn local_date_is_the_date_where_the_track_is_not_where_utc_is() {
+        // US-12: the suggested name leads with this date, so getting it from
+        // UTC would offer the owner the wrong day for anything near midnight.
+        assert_eq!(
+            local_date("Europe/Oslo", datetime!(2024-06-01 22:30 UTC)),
+            Some(time::macros::date!(2024 - 06 - 02)),
+            "half past midnight in Oslo is still the 1st in UTC"
+        );
+        assert_eq!(
+            local_date("America/New_York", datetime!(2024-06-02 01:30 UTC)),
+            Some(time::macros::date!(2024 - 06 - 01)),
+            "an evening ride in New York is already tomorrow in UTC"
+        );
+        // A same-day instant is unaffected, which is why the fixtures never
+        // caught this.
+        assert_eq!(
+            local_date("Europe/Oslo", datetime!(2024-06-01 08:00 UTC)),
+            Some(time::macros::date!(2024 - 06 - 01))
+        );
+    }
+
+    #[test]
+    fn local_date_declines_a_timezone_this_build_does_not_know() {
+        assert_eq!(
+            local_date("Not/A_Zone", datetime!(2024-06-01 08:00 UTC)),
+            None
+        );
+    }
 
     #[test]
     fn guess_timezone_resolves_oslo() {

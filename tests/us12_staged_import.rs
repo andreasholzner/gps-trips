@@ -19,7 +19,7 @@ mod common;
 use axum::http::{Method, StatusCode};
 use common::{
     body_string, confirm_import_request, delete, get, json_request, send, stage_import,
-    stage_import_request, test_app, SAMPLE_GPX, UNNAMED_GPX,
+    stage_import_request, test_app, LATE_EVENING_GPX, SAMPLE_GPX, UNNAMED_GPX,
 };
 use serde_json::Value;
 use trip_archive::models::TripDetail;
@@ -78,6 +78,21 @@ async fn us12_a_track_without_a_name_suggests_the_bare_date_prefix() {
     assert_eq!(staged.suggested_name, format!("{TRACK_DATE} "));
     assert_eq!(staged.start_date.as_deref(), Some(TRACK_DATE));
     assert_eq!(staged.gpx_name, None);
+}
+
+#[tokio::test]
+async fn us12_the_suggested_date_is_the_day_the_track_was_ridden() {
+    // The track starts 22:30 UTC, which is 00:30 the next day in Europe/Oslo
+    // where it was recorded. The owner names the trip after the day they were
+    // out on it, so the prefix has to be read in the track's own timezone —
+    // otherwise the one field this story exists to prefill arrives wrong.
+    let (app, _dir) = test_app().await;
+
+    let staged = stage_import(&app, LATE_EVENING_GPX).await;
+
+    assert_eq!(staged.suggested_name, "2024-06-02 Midnight Ride");
+    assert_eq!(staged.start_date.as_deref(), Some("2024-06-02"));
+    assert_eq!(staged.timezone, "Europe/Oslo");
 }
 
 #[tokio::test]

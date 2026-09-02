@@ -25,6 +25,10 @@ pub const SAMPLE_GPX: &[u8] = include_bytes!("../fixtures/sample.gpx");
 pub const NO_TRACKS_GPX: &[u8] = include_bytes!("../fixtures/no_tracks.gpx");
 /// A track with timestamps but no `<name>` — US-12's bare-date-prefix case.
 pub const UNNAMED_GPX: &[u8] = include_bytes!("../fixtures/unnamed.gpx");
+/// A track starting 22:30 UTC near Oslo — half past midnight the *next* day
+/// where it was ridden, so the suggested date has to come from the track's
+/// own timezone rather than from UTC.
+pub const LATE_EVENING_GPX: &[u8] = include_bytes!("../fixtures/late_evening.gpx");
 /// A track in the Alps — far from `SAMPLE_GPX`'s Oslo coordinates, so the
 /// US-14 region filter can be tested on a list holding trips in two places.
 pub const REGION_ALPS_GPX: &[u8] = include_bytes!("../fixtures/region_alps.gpx");

@@ -77,8 +77,14 @@ pub async fn handle_stage_import(
     let now = OffsetDateTime::now_utc();
     repo::sweep_staged_imports(&state.pool, now - config::server::STAGED_IMPORT_TTL).await?;
 
-    let suggested_name = suggest_name(derived.name.as_deref(), derived.stats.start_time);
-    let start_date = date_prefix(derived.stats.start_time);
+    // Both read the start date in the track's own timezone, so the prefix the
+    // owner is handed is the day they were out on.
+    let suggested_name = suggest_name(
+        derived.name.as_deref(),
+        derived.stats.start_time,
+        &derived.guessed_tz,
+    );
+    let start_date = date_prefix(derived.stats.start_time, &derived.guessed_tz);
     let staged = StagedTrack {
         gpx_name: derived.name,
         stats: derived.stats,
@@ -136,10 +142,17 @@ pub async fn handle_confirm_import(
     let staged: StagedTrack = serde_json::from_str(&row.derived)
         .map_err(|e| AppError::Internal(format!("could not read the parked track: {e}")))?;
 
-    let name = resolve_name(confirm.name, staged.gpx_name, staged.stats.start_time);
     let activity = resolve_activity_type(confirm.activity_type)?;
     let kind = resolve_trip_kind(confirm.kind)?;
+    // Resolved before the name, which reads the track's start *date* in it —
+    // and the owner may have overridden the zone on this very form.
     let tz_name = resolve_timezone(confirm.timezone, staged.guessed_tz)?;
+    let name = resolve_name(
+        confirm.name,
+        staged.gpx_name,
+        staged.stats.start_time,
+        &tz_name,
+    );
 
     let trip_id = insert_trip_in_tx(
         &mut tx,
@@ -187,9 +200,13 @@ pub async fn handle_cancel_staged_import(
 /// This is a *suggestion*, not the fallback `resolve_name` applies when the
 /// field arrives empty; that precedence is unchanged and still decides what
 /// an unanswered confirm stores.
-fn suggest_name(gpx_name: Option<&str>, start_time: Option<OffsetDateTime>) -> String {
+fn suggest_name(
+    gpx_name: Option<&str>,
+    start_time: Option<OffsetDateTime>,
+    tz_name: &str,
+) -> String {
     let name = gpx_name.map(str::trim).filter(|n| !n.is_empty());
-    match (date_prefix(start_time), name) {
+    match (date_prefix(start_time, tz_name), name) {
         (Some(prefix), Some(name)) => format!("{prefix} {name}"),
         (Some(prefix), None) => format!("{prefix} "),
         (None, Some(name)) => name.to_string(),
@@ -209,7 +226,8 @@ mod tests {
         assert_eq!(
             suggest_name(
                 Some("Oslo Hills Walk"),
-                Some(datetime!(2024-06-01 08:00 UTC))
+                Some(datetime!(2024-06-01 08:00 UTC)),
+                "Europe/Oslo",
             ),
             "2024-06-01 Oslo Hills Walk"
         );
@@ -218,7 +236,7 @@ mod tests {
     #[test]
     fn us12_an_unnamed_track_suggests_the_bare_prefix_to_type_after() {
         assert_eq!(
-            suggest_name(None, Some(datetime!(2024-06-01 08:00 UTC))),
+            suggest_name(None, Some(datetime!(2024-06-01 08:00 UTC)), "Europe/Oslo"),
             "2024-06-01 "
         );
     }
@@ -226,8 +244,26 @@ mod tests {
     #[test]
     fn us12_a_blank_track_name_counts_as_none() {
         assert_eq!(
-            suggest_name(Some("   "), Some(datetime!(2024-06-01 08:00 UTC))),
+            suggest_name(
+                Some("   "),
+                Some(datetime!(2024-06-01 08:00 UTC)),
+                "Europe/Oslo"
+            ),
             "2024-06-01 "
+        );
+    }
+
+    #[test]
+    fn us12_the_suggested_date_is_the_one_where_the_track_is() {
+        // The field US-12 exists to prefill must not offer the wrong day for
+        // a ride that started after midnight local time.
+        assert_eq!(
+            suggest_name(
+                Some("Midnight Ride"),
+                Some(datetime!(2024-06-01 22:30 UTC)),
+                "Europe/Oslo",
+            ),
+            "2024-06-02 Midnight Ride"
         );
     }
 
@@ -236,9 +272,9 @@ mod tests {
         // Not "Unknown date …": a prefill is something the owner keeps and
         // types after, and no one wants to delete that first.
         assert_eq!(
-            suggest_name(Some("Oslo Hills Walk"), None),
+            suggest_name(Some("Oslo Hills Walk"), None, "Europe/Oslo"),
             "Oslo Hills Walk"
         );
-        assert_eq!(suggest_name(None, None), "");
+        assert_eq!(suggest_name(None, None, "Europe/Oslo"), "");
     }
 }

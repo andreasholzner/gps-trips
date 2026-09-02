@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A track that starts late in the evening local time, near Oslo: 22:30 UTC
+     on 1 June is 00:30 on 2 June in Europe/Oslo. The date the owner would
+     call this trip's is the local one, so this fixture is what keeps the
+     suggested name (US-12) from offering yesterday's date. -->
+<gpx version="1.1" creator="trip-archive-test"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Midnight Ride</name>
+    <trkseg>
+      <trkpt lat="59.9139" lon="10.7522">
+        <ele>10.0</ele>
+        <time>2024-06-01T22:30:00Z</time>
+      </trkpt>
+      <trkpt lat="59.9200" lon="10.7600">
+        <ele>50.0</ele>
+        <time>2024-06-01T23:15:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
