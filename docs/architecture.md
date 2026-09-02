@@ -267,24 +267,24 @@ C4Component
 
 ## Diagram ↔ decision map
 
-| C4 element | Backing decision |
-|------------|------------------|
-| OSM tiles, Map component | [ADR-0005](./adr/0005-leaflet-osm-via-wasm-interop.md) |
-| Elevation Chart | [ADR-0006](./adr/0006-uplot-elevation-chart.md) |
-| Database container; track blob | [ADR-0002](./adr/0002-sqlite-local-disk.md), [ADR-0003](./adr/0003-track-as-geojson-blob-in-sqlite.md) |
-| Photo Store / BlobStore | [ADR-0007](./adr/0007-blobstore-abstraction.md) |
-| Import Handler / Photo Ingestion | [ADR-0004](./adr/0004-import-via-axum-multipart.md) |
-| Trip API Handlers (JSON) | [ADR-0008](./adr/0008-json-first-api.md) |
-| Clock seam (UTC) | [ADR-0009](./adr/0009-utc-timestamp-normalization.md) |
-| Auth middleware | [ADR-0010](./adr/0010-single-user-optional-auth.md) |
-| Filter/region queries in Repositories | [ADR-0011](./adr/0011-filtering-search-geo-queries.md) |
-| Trait seams as test mocks | [ADR-0012](./adr/0012-tdd-test-strategy.md) |
-| Static assets served next to the binary | [ADR-0016](./adr/0016-assets-relative-to-executable.md) |
-| Photo Ingestion — EXIF GPS extraction | [ADR-0017](./adr/0017-kamadak-exif-for-gps-extraction.md) |
-| Activity/kind wire values in API + forms | [ADR-0018](./adr/0018-enums-for-closed-string-sets.md) |
-| Photo Ingestion — timezone lookup | [ADR-0019](./adr/0019-tzf-rs-time-tz-for-timezone-lookup.md) |
-| Photo Ingestion — thumbnails | [ADR-0020](./adr/0020-image-crate-for-thumbnails.md) |
-| Komoot Client + Komoot Sync; backfill/check CLIs | [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md) |
-| qmapshack_export CLI; QMapShack database | [ADR-0022](./adr/0022-qmapshack-export.md) |
+| C4 element                                       | Backing decision                                                                                       |
+|--------------------------------------------------|--------------------------------------------------------------------------------------------------------|
+| OSM tiles, Map component                         | [ADR-0005](./adr/0005-leaflet-osm-via-wasm-interop.md)                                                 |
+| Elevation Chart                                  | [ADR-0006](./adr/0006-uplot-elevation-chart.md)                                                        |
+| Database container; track blob                   | [ADR-0002](./adr/0002-sqlite-local-disk.md), [ADR-0003](./adr/0003-track-as-geojson-blob-in-sqlite.md) |
+| Photo Store / BlobStore                          | [ADR-0007](./adr/0007-blobstore-abstraction.md)                                                        |
+| Import Handler / Photo Ingestion                 | [ADR-0004](./adr/0004-import-via-axum-multipart.md)                                                    |
+| Trip API Handlers (JSON)                         | [ADR-0008](./adr/0008-json-first-api.md)                                                               |
+| Clock seam (UTC)                                 | [ADR-0009](./adr/0009-utc-timestamp-normalization.md)                                                  |
+| Auth middleware                                  | [ADR-0010](./adr/0010-single-user-optional-auth.md)                                                    |
+| Filter/region queries in Repositories            | [ADR-0011](./adr/0011-filtering-search-geo-queries.md)                                                 |
+| Trait seams as test mocks                        | [ADR-0012](./adr/0012-tdd-test-strategy.md)                                                            |
+| Static assets served next to the binary          | [ADR-0016](./adr/0016-assets-relative-to-executable.md)                                                |
+| Photo Ingestion — EXIF GPS extraction            | [ADR-0017](./adr/0017-kamadak-exif-for-gps-extraction.md)                                              |
+| Activity/kind wire values in API + forms         | [ADR-0018](./adr/0018-enums-for-closed-string-sets.md)                                                 |
+| Photo Ingestion — timezone lookup                | [ADR-0019](./adr/0019-tzf-rs-time-tz-for-timezone-lookup.md)                                           |
+| Photo Ingestion — thumbnails                     | [ADR-0020](./adr/0020-image-crate-for-thumbnails.md)                                                   |
+| Komoot Client + Komoot Sync; backfill/check CLIs | [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)                                             |
+| qmapshack_export CLI; QMapShack database         | [ADR-0022](./adr/0022-qmapshack-export.md)                                                             |
 
 See [`deployment.md`](./deployment.md) for how to build and run a self-hosted instance (US-10).
