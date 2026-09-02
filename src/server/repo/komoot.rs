@@ -169,6 +169,16 @@ pub async fn list_delete_pending(pool: &SqlitePool) -> Result<Vec<String>, sqlx:
         .await
 }
 
+/// How many tours are still waiting to be deleted on Komoot (US-24) — the
+/// delete-phase counterpart of [`count_edit_pending`], and the same reason:
+/// the review screen says how much the push phases will send without
+/// fetching the ids just to count them.
+pub async fn count_delete_pending(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT COUNT(*) FROM trip_komoot_link WHERE delete_pending = 1")
+        .fetch_one(pool)
+        .await
+}
+
 /// Remove a `trip_komoot_link` row after `push_pending_deletes` has
 /// successfully called Komoot's delete-tour API for it (US-24) — the tour is
 /// now gone from both sides, so nothing is left to dedup a future pull
@@ -409,6 +419,16 @@ mod tests {
             list_delete_pending(&db.pool).await.unwrap(),
             vec!["123456".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn count_delete_pending_counts_only_pending_rows() {
+        let db = TestDb::new().await;
+        let a = a_linked_trip(&db.pool, "111").await;
+        a_linked_trip(&db.pool, "222").await;
+        mark_delete_pending(&db.pool, a).await;
+
+        assert_eq!(count_delete_pending(&db.pool).await.unwrap(), 1);
     }
 
     #[tokio::test]
