@@ -188,13 +188,18 @@ async fn us35_a_privacy_komoot_reports_unmappably_is_shown_as_unknown_and_can_be
 #[tokio::test]
 async fn us35_a_caught_up_archive_still_picks_up_a_privacy_changed_inside_komoot() {
     // Nothing left to import, so a sync imports nothing and its pull lists
-    // nothing. Visiting the review page lists the account anyway — that is
+    // nothing. Opening the review screen lists the account anyway — that is
     // what keeps the archive's copy fresh, at no extra API cost.
     let (app, mock, _trip_id, _dir) = app_with_a_synced_tour("private").await;
 
     mock.set_tour_status("111", "public");
-    let review = body_string(get(&app, "/komoot/sync").await).await;
-    assert!(review.contains("No new tours to sync"));
+    let review: serde_json::Value =
+        serde_json::from_str(&body_string(get(&app, "/api/komoot/sync").await).await).unwrap();
+    assert_eq!(
+        review["candidates"].as_array().unwrap().len(),
+        0,
+        "{review}"
+    );
 
     let list = body_string(get(&app, "/api/trips").await).await;
     assert!(list.contains(r#""privacy_status":"public""#), "{list}");

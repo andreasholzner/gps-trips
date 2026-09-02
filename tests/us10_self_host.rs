@@ -9,6 +9,11 @@
 //! process's current working directory (ADR-0016), not hardcoded to a `public/` folder in
 //! the CWD. `src/server/paths.rs` unit-tests the pure resolution logic; this proves
 //! the real router serves from wherever `TRIP_ARCHIVE_ASSETS_DIR` points.
+//!
+//! Those assets are reached under `/app` since US-44. The `/static` mount they used to
+//! answer at was the proof-of-concept UI's, and went with the last page that needed it —
+//! `public/` holds nothing but the SPA bundle now. The property being asserted is unchanged:
+//! the same configured directory, the same resolution, a different prefix.
 
 mod common;
 
@@ -24,16 +29,16 @@ async fn us10_serves_static_assets_from_a_configured_dir_independent_of_cwd() {
 
     // A stand-in assets dir that is emphatically not the crate's `public/`.
     let assets = tempfile::tempdir().expect("assets dir");
-    std::fs::create_dir_all(assets.path().join("vendor")).unwrap();
+    std::fs::create_dir_all(assets.path().join("app/assets")).unwrap();
     std::fs::write(
-        assets.path().join("vendor/leaflet.css"),
+        assets.path().join("app/assets/app.css"),
         b"/* fixture css */",
     )
     .unwrap();
 
     std::env::set_var("TRIP_ARCHIVE_ASSETS_DIR", assets.path());
     let (app, _db_dir) = common::test_app().await;
-    let response = common::get(&app, "/static/vendor/leaflet.css").await;
+    let response = common::get(&app, "/app/assets/app.css").await;
     std::env::remove_var("TRIP_ARCHIVE_ASSETS_DIR");
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -50,7 +55,7 @@ async fn us10_missing_assets_dir_yields_404_not_a_panic() {
     let nonexistent = parent.path().join("does-not-exist");
     std::env::set_var("TRIP_ARCHIVE_ASSETS_DIR", &nonexistent);
     let (app, _db_dir) = common::test_app().await;
-    let response = common::get(&app, "/static/vendor/leaflet.css").await;
+    let response = common::get(&app, "/app/assets/app.css").await;
     std::env::remove_var("TRIP_ARCHIVE_ASSETS_DIR");
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);

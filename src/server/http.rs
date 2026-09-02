@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, StatusCode},
-    response::{Html, IntoResponse, Redirect, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -20,10 +20,7 @@ use crate::server::{
     filter::{parse_filter, TripFilterQuery},
     import::{handle_add_photos, handle_import},
     komoot::KomootClient,
-    komoot_sync::{self, SyncResultQuery},
-    paths,
-    render::render_sync_candidates,
-    repo,
+    komoot_sync, paths, repo,
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
     tags::{
@@ -100,8 +97,9 @@ pub fn router(state: AppState) -> Router {
         // US-34: bulk-tag trips selected on the list page, in one request.
         .route("/api/trips/tags", post(handle_bulk_add_trip_tags))
         .route("/api/tags", get(handle_list_all_tags))
+        // US-44: what a bookmark to the old review page now means.
+        .route("/komoot/sync", get(sync_page_moved))
         // US-22: review + trigger a Komoot "Sync now" pull.
-        .route("/komoot/sync", get(sync_candidates_page))
         .route(
             "/api/komoot/sync",
             get(sync_candidates_api).post(handle_sync),
@@ -109,17 +107,14 @@ pub fn router(state: AppState) -> Router {
         // US-7: serve photo blobs stored by the BlobStore (ADR-0007).
         // The wildcard captures the blob key so any backend's url_for works here.
         .route("/media/*path", get(serve_media))
-        // The remaining proof-of-concept pages' own script, self-hosted
-        // (US-10). Resolved relative to the executable, not the CWD, so
-        // "binary + adjacent public/ folder" is a deployable unit startable
-        // from anywhere (ADR-0016). The vendored map and chart libraries left
-        // with the detail page (US-42); the SPA bundles its own (ADR-0025).
-        .nest_service("/static", ServeDir::new(paths::assets_dir()))
         // The Dioxus SPA's built bundle (US-41, ADR-0024), if one has been
-        // built into `public/app`. Unknown paths under it fall back to the
-        // app shell so the SPA's own routes survive a reload or a shared
-        // link; the server-rendered pages at `/` are untouched until their
-        // screens' stories complete (ADR-0012's migration rule).
+        // built into `public/app` — the whole of the UI since US-44 retired
+        // the last server-rendered page, and so the only thing `public/`
+        // holds. Resolved relative to the executable, not the CWD, so
+        // "binary + adjacent public/ folder" is a deployable unit startable
+        // from anywhere (ADR-0016). Unknown paths under it fall back to the
+        // app shell, so the SPA's own routes survive a reload or a shared
+        // link.
         .nest_service("/app", spa_service(paths::spa_dir()))
         .with_state(state)
 }
@@ -137,9 +132,9 @@ fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
 /// The server-rendered trip list that lived here was deleted once its
 /// acceptance assertions had moved to the SPA and its API
 /// ([ADR-0012](../../docs/adr/0012-tdd-test-strategy.md)'s migration rule).
-/// The redirect keeps old bookmarks working, and keeps `/` meaning "the
-/// archive" while the last proof-of-concept page — the Komoot review — lives
-/// on until US-44 replaces it.
+/// The redirect keeps old bookmarks working and keeps `/` meaning "the
+/// archive". Since US-44 took the Komoot review page too, there is no
+/// server-rendered page left for it to be an exception to.
 async fn home() -> Redirect {
     // `Redirect::to` is axum's 303 See Other.
     Redirect::to("/app/")
@@ -172,6 +167,14 @@ async fn import_page_moved() -> Redirect {
     Redirect::to("/app/import")
 }
 
+/// GET `/komoot/sync` — where the server-rendered review page used to be
+/// (US-44), on the same terms as `/`, `/trips/:id` and `/import`. The last
+/// of them: with this page gone the SPA is the whole UI, and no route here
+/// answers with HTML the server built.
+async fn sync_page_moved() -> Redirect {
+    Redirect::to("/app/komoot/sync")
+}
+
 /// `state.komoot`, or a clear 400 if the app booted without
 /// `KOMOOT_EMAIL`/`KOMOOT_PASSWORD` set (`main.rs`: an optional integration,
 /// not a hard startup requirement).
@@ -181,23 +184,6 @@ fn require_komoot(state: &AppState) -> Result<Arc<dyn KomootClient>, AppError> {
             "Komoot sync is not configured (set KOMOOT_EMAIL/KOMOOT_PASSWORD)".to_string(),
         )
     })
-}
-
-/// GET `/komoot/sync` — the "Sync now" review page (US-20/US-22): lists every
-/// Komoot tour not yet imported, for the owner to select from, plus how many
-/// trips have an edit pending to push.
-async fn sync_candidates_page(
-    State(state): State<AppState>,
-    Query(result): Query<SyncResultQuery>,
-) -> Result<Html<String>, AppError> {
-    let client = require_komoot(&state)?;
-    let candidates = komoot_sync::list_sync_candidates(&state.pool, client).await?;
-    let pending_edit_count = repo::komoot::count_edit_pending(&state.pool).await?;
-    Ok(Html(render_sync_candidates(
-        &candidates,
-        pending_edit_count,
-        &result,
-    )))
 }
 
 /// GET `/api/komoot/sync` — what a "Sync now" run would do right now
