@@ -12,3 +12,8 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"], optional = tru
 
 [features]
 sqlx = ["dep:sqlx"]
+
+[dev-dependencies]
+# The wire shapes these types define are asserted as JSON (ADR-0012); nothing
+# in the crate itself serializes on its own.
+serde_json = "1"

@@ -7,11 +7,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
-use crate::models::{PhotoResponse, TripDetail, TripSummary};
+use crate::models::{PhotoResponse, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
@@ -168,31 +167,6 @@ async fn import_page_moved() -> Redirect {
     Redirect::to("/app/import")
 }
 
-/// The `POST /api/komoot/sync` request body (ADR-0008): the tours the owner
-/// checked on the review page, in submission order — each carrying the `kind`
-/// the page knew it was (US-29), so the pull lists only the endpoint(s) the
-/// selection spans.
-#[derive(Deserialize)]
-struct SyncRequest {
-    tours: Vec<komoot_sync::SelectedTour>,
-}
-
-/// The `POST /api/komoot/sync` response: how many pending edits/deletes were
-/// pushed and tours were pulled/imported, and which trip/tour (if any)
-/// halted the run and in which phase — the client redirects to the review
-/// page with these as query params (US-20/US-22/US-24, no session/flash
-/// mechanism here).
-#[derive(Serialize)]
-struct SyncResponse {
-    pushed: usize,
-    /// US-24: tours deleted on Komoot this run.
-    deleted: usize,
-    imported: usize,
-    failed_tour: Option<String>,
-    failed_msg: Option<String>,
-    failed_phase: Option<&'static str>,
-}
-
 /// `state.komoot`, or a clear 400 if the app booted without
 /// `KOMOOT_EMAIL`/`KOMOOT_PASSWORD` set (`main.rs`: an optional integration,
 /// not a hard startup requirement).
@@ -251,7 +225,7 @@ async fn handle_sync(
             imported: 0,
             failed_tour: Some(tour_id),
             failed_msg: Some(msg),
-            failed_phase: Some("push"),
+            failed_phase: Some(SyncPhase::Push),
         }));
     }
 
@@ -264,13 +238,13 @@ async fn handle_sync(
             imported: 0,
             failed_tour: Some(tour_id),
             failed_msg: Some(msg),
-            failed_phase: Some("push"),
+            failed_phase: Some(SyncPhase::Push),
         }));
     }
 
     let summary =
         komoot_sync::sync_selected_tours(&state.pool, &state.store, client, &body.tours).await?;
-    let failed_phase = summary.failed.is_some().then_some("pull");
+    let failed_phase = summary.failed.is_some().then_some(SyncPhase::Pull);
     Ok(Json(SyncResponse {
         pushed: push_summary.pushed.len(),
         deleted: delete_summary.deleted.len(),
