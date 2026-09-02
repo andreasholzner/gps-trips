@@ -21,7 +21,8 @@ if (!existsSync(bundle)) {
     "The web bundle is missing from public/app.\n" +
       "Build and install it first:\n" +
       "  (cd crates/ui-dioxus && dx build --release --platform web)\n" +
-      "  rm -rf public/app && cp -r target/dx/ui-dioxus/release/web/public public/app",
+      "  rm -rf public/app && mkdir -p public\n" +
+      "  cp -r target/dx/ui-dioxus/release/web/public public/app",
   );
 }
 

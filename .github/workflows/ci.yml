@@ -104,11 +104,15 @@ jobs:
       # The deployed shape: the bundle served by Axum itself from public/app.
       # target/dx is wiped first because dx keeps previously built,
       # content-hashed artifacts there and copying would carry orphans along.
+      # `public/` itself is created here: since US-44 deleted the last
+      # server-rendered page it holds nothing but this bundle, so it does not
+      # exist in a fresh clone at all.
       - name: Build the web bundle
         run: |
           set -euo pipefail
           rm -rf target/dx/ui-dioxus public/app
           (cd crates/ui-dioxus && dx build --release --platform web)
+          mkdir -p public
           cp -r target/dx/ui-dioxus/release/web/public public/app
 
       # Not left to the `cargo run` Playwright starts below: that runs under a
