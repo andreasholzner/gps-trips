@@ -444,9 +444,12 @@ pub async fn confirm_import(
     Ok(imported.id)
 }
 
-/// `DELETE /api/import/staged/:id` — the owner picked a different file, or
-/// left the screen (US-12). Saying so now keeps the archive from holding an
-/// upload nobody wants until the sweeper gets to it.
+/// `DELETE /api/import/staged/:id` — the owner picked a different file
+/// (US-12). Saying so now keeps the archive from holding an upload nobody
+/// wants until the sweeper gets to it.
+///
+/// Navigating away sends nothing: there is no hook that reliably runs on the
+/// way out, so those parses wait for the sweeper.
 pub async fn cancel_staged_import(base_url: &str, staging_id: i64) -> Result<(), ApiError> {
     let url = format!("{base_url}/api/import/staged/{staging_id}");
     let response = reqwest::Client::new()
