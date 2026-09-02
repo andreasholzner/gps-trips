@@ -15,7 +15,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0007](./0007-blobstore-abstraction.md)              | `BlobStore` storage abstraction (local now, ownCloud later)                 | Accepted                      |
 | [0008](./0008-json-first-api.md)                     | JSON-first API                                                              | Accepted                      |
 | [0009](./0009-utc-timestamp-normalization.md)        | Normalize timestamps to UTC; document EXIF-offset assumption                | Accepted                      |
-| [0010](./0010-single-user-optional-auth.md)          | Single-user; optional shared-password auth                                  | Accepted                      |
+| [0010](./0010-single-user-optional-auth.md)          | Single-user; optional shared-password auth                                  | Accepted (amended 2026-09-02) |
 | [0011](./0011-filtering-search-geo-queries.md)       | Filtering, search & geographic queries on SQLite (no PostGIS)               | Accepted                      |
 | [0012](./0012-tdd-test-strategy.md)                  | TDD; requirement-covering tests, mock only externals                        | Accepted (amended 2026-08-26) |
 | [0013](./0013-integer-surrogate-keys.md)             | Integer surrogate primary keys (revisit only for offline-first replication) | Accepted                      |
