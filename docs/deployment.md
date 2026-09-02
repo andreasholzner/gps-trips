@@ -34,9 +34,30 @@ directory, so this pair can be copied anywhere and started from any directory
 |---------------------------|------------------------------|------------------------------------------------------------------------------------------------------------------------------|
 | `TRIP_ARCHIVE_DATA_DIR`   | `./data`                     | Where the SQLite DB and photo blobs are stored. Set this to a persistent, backed-up location.                                |
 | `TRIP_ARCHIVE_ASSETS_DIR` | `public/` next to the binary | Override the static assets location (e.g. if packaging into `/usr/share/trip-archive` while the binary lives in `/usr/bin`). |
+| `TRIP_ARCHIVE_PASSWORD`   | **none — required**          | The one shared password (US-19, [ADR-0010](./adr/0010-single-user-optional-auth.md)). Missing or empty and the server refuses to start — see below.                        |
 | `RUST_LOG`                | `trip_archive=info`          | Standard `tracing-subscriber` env filter.                                                                                    |
 | `KOMOOT_EMAIL`            | unset                        | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below.        |
 | `KOMOOT_PASSWORD`         | unset                        | Komoot account password. Optional — see below.                                                                               |
+
+### The shared password (required)
+
+The archive has one secret and no user accounts. Set `TRIP_ARCHIVE_PASSWORD` and the server
+gates every route behind it; leave it unset or empty and **the server refuses to start** rather
+than serving trips to whoever asks. That is deliberate and has no development exemption: an
+exemption reachable in production would defeat the story it exists for.
+
+```sh
+TRIP_ARCHIVE_PASSWORD='…' TRIP_ARCHIVE_DATA_DIR=/path/to/data ./trip-archive
+```
+
+Signing in sets a cookie that lasts 90 days and slides forward with use, so a phone stays signed
+in. Changing the password ends every session that exists — the sessions are signed with a key
+derived from it, so there is nothing else to revoke. Five consecutive failed sign-ins stop logins
+being answered at all for fifteen minutes.
+
+The cookie is `Secure`, so the archive is reachable over HTTPS or over loopback (which browsers
+treat as a secure context) — not over plain HTTP from another machine. The deployed instance is
+HTTPS-only anyway ([ADR-0023](./adr/0023-managed-scale-to-zero-hosting.md), US-49).
 
 ### Komoot sync (optional)
 
@@ -53,7 +74,7 @@ KOMOOT_EMAIL=you@example.com KOMOOT_PASSWORD='...' TRIP_ARCHIVE_DATA_DIR=/path/t
 ## Running
 
 ```sh
-TRIP_ARCHIVE_DATA_DIR=/path/to/persistent/data ./trip-archive
+TRIP_ARCHIVE_PASSWORD='…' TRIP_ARCHIVE_DATA_DIR=/path/to/persistent/data ./trip-archive
 ```
 
 The server listens on `127.0.0.1:3000` (laptop-local, on demand — ADR-0014). Start it when

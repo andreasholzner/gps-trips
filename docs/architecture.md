@@ -141,7 +141,8 @@ C4Component
     Container(blobs, "Photo Store", "filesystem")
 
     Container_Boundary(server, "Application Server") {
-        Component(router, "HTTP Router", "Axum", "Routing, request-body limit, optional shared-password auth middleware [planned, US-19].")
+        Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the shared-password gate: resolves a principal from the session cookie or a Bearer token onto every request, and refuses anything outside its allowlist.")
+        Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password, so nothing is stored and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
@@ -279,7 +280,7 @@ C4Component
 | Import Handler / Photo Ingestion                 | [ADR-0004](./adr/0004-import-via-axum-multipart.md)                                                    |
 | Trip API Handlers (JSON)                         | [ADR-0008](./adr/0008-json-first-api.md)                                                               |
 | Clock seam (UTC)                                 | [ADR-0009](./adr/0009-utc-timestamp-normalization.md)                                                  |
-| Auth middleware                                  | [ADR-0010](./adr/0010-single-user-optional-auth.md)                                                    |
+| Session Gate / auth middleware                   | [ADR-0010](./adr/0010-single-user-optional-auth.md) + its 2026-09-02 amendment                          |
 | Filter/region queries in Repositories            | [ADR-0011](./adr/0011-filtering-search-geo-queries.md)                                                 |
 | Trait seams as test mocks                        | [ADR-0012](./adr/0012-tdd-test-strategy.md)                                                            |
 | Static assets served next to the binary          | [ADR-0016](./adr/0016-assets-relative-to-executable.md)                                                |

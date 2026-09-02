@@ -39,8 +39,11 @@ A Cargo workspace of three crates:
 ### The server
 
 ```sh
-TRIP_ARCHIVE_DATA_DIR=./data cargo run --bin trip-archive
+TRIP_ARCHIVE_PASSWORD=dev TRIP_ARCHIVE_DATA_DIR=./data cargo run --bin trip-archive
 ```
+
+`TRIP_ARCHIVE_PASSWORD` is required and has no development exemption (US-19): without it the
+server refuses to start, here exactly as in production. Any non-empty value will do locally.
 
 Serves the API on `http://127.0.0.1:3000`, with `/` redirecting to the SPA at `/app/` (which
 has to be built first — see below). Nothing else is served: US-44 retired the last
@@ -53,14 +56,15 @@ Two terminals — the API, and the SPA's own dev server with hot reload:
 
 ```sh
 # Terminal 1 — the API
-cargo run --bin trip-archive
+TRIP_ARCHIVE_PASSWORD=dev cargo run --bin trip-archive
 
 # Terminal 2 — the SPA at http://127.0.0.1:8080/app/
 cd crates/ui-dioxus && dx serve --platform web
 ```
 
 `Dioxus.toml` proxies `/api` and `/media` from the dev server to the API on port 3000, so the
-SPA talks to a real server rather than a mock. Editing RSX hot-reloads in about a second;
+SPA talks to a real server rather than a mock. The session cookie works across the two ports —
+cookies ignore the port — so signing in on the dev server signs you in to the proxied API. Editing RSX hot-reloads in about a second;
 anything touching Rust logic triggers a rebuild.
 
 ### The SPA, as it is actually served
@@ -114,8 +118,11 @@ npm test
 
 Run them from `tests/browser`: Playwright resolves its config relative to the working
 directory, and from anywhere else the run fails with a bare "No tests found". The config starts
-its own server on a fresh temporary data directory — your own `./data` is never touched — and
-refuses to start with an explanatory message if `public/app` is missing.
+its own server on a fresh temporary data directory — your own `./data` is never touched — with
+its own shared password (US-19), and refuses to start with an explanatory message if
+`public/app` is missing. `session.mjs` signs both the browser and the seeding client in; the
+browser keeps the cookie, and the seeding client carries a `Bearer` token because Playwright's
+API client will not send a `Secure` cookie over plain http.
 
 Traces are retained for failures; `npx playwright show-trace test-results/<test>/trace.zip`
 replays one. `test-results/` and `playwright-report/` are git-ignored.

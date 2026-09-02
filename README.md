@@ -37,9 +37,12 @@ documents above supersede it.
 
 ```sh
 cargo build --release
-TRIP_ARCHIVE_DATA_DIR=./data cargo run --bin trip-archive
-# → http://127.0.0.1:3000
+TRIP_ARCHIVE_PASSWORD=dev TRIP_ARCHIVE_DATA_DIR=./data cargo run --bin trip-archive
+# → http://127.0.0.1:3000, behind that password (US-19)
 ```
+
+The archive has one shared password and no accounts; it refuses to start without one, locally as
+in production.
 
 [`docs/development.md`](./docs/development.md) covers the SPA's build and the test layers;
 [`docs/deployment.md`](./docs/deployment.md) covers configuration and self-hosting.
