@@ -10,8 +10,8 @@ hardware the owner controls.
 
 - **Server:** Axum + SQLite (`sqlx`), a JSON API, and a set of CLI binaries for the Komoot sync
   and the QMapShack export.
-- **UI:** a Dioxus SPA, built from one crate for the web and for Android. The server-rendered
-  UI still serving `/` is a proof of concept being retired screen by screen.
+- **UI:** a Dioxus SPA, built from one crate for the web and for Android — the whole UI. The
+  server-rendered proof of concept it replaced screen by screen is gone; `/` redirects to it.
 
 ## Documentation
 

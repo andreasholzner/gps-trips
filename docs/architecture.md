@@ -10,21 +10,21 @@ Diagrams are written in Mermaid C4 syntax (renders on GitHub). Companion docs:
 Legend: solid = v1; elements/relationships marked **[planned]** are future extensions
 that the architecture must not preclude, not part of v1.
 
-**Target vs. current UI:** the Web UI container and its components show the *target* stack
+**The UI:** the Web UI container and its components show the stack
 ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md): a client-side-rendered Dioxus SPA served as
 static files, plus an Android app from the same source). That SPA now exists as
-`crates/ui-dioxus` and is served at `/app`, with the **whole read path** complete — the trip
-list, browsing, filtering, tagging and the region map (US-41, US-52), and the trip detail screen
-with its map, elevation profile, gallery, editing, tagging and delete (US-42). `/` redirects to
-it. The server-rendered list and detail pages have been deleted, their acceptance assertions
-having moved to the SPA, its browser layer and the JSON API under
-[ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule.
+`crates/ui-dioxus`, is served at `/app`, and is **the whole UI** — the trip list, browsing,
+filtering, tagging and the region map (US-41, US-52); the trip detail screen with its map,
+elevation profile, gallery, editing, tagging and delete (US-42); the two-step import, which
+uploads the GPX first so the archive can suggest a `YYYY-mm-dd`-prefixed name (US-43/US-12);
+and the Komoot sync review (US-44).
 
-Importing joined them with US-43/US-12, as a two-step screen: the GPX is uploaded first so the
-archive can suggest a `YYYY-mm-dd`-prefixed name, then the trip is confirmed and its photos
-follow. What remains of the intentionally throwaway proof-of-concept is the Komoot-sync page
-alone, still reachable and still how the owner does that work until US-44 replaces it; the SPA
-links out to it.
+The intentionally throwaway proof-of-concept is gone with the last of those. No route renders
+HTML the server built; every path one of its pages answered — `/`, `/trips/:id`, `/import`,
+`/komoot/sync` — redirects to the screen that replaced it, so bookmarks made before the move
+still land. Their acceptance assertions moved to the SPA, its browser layer and the JSON API
+under [ADR-0012](./adr/0012-tdd-test-strategy.md)'s migration rule, which is what allowed each
+deletion.
 
 ---
 
@@ -82,8 +82,8 @@ C4Container
     Person(owner, "Owner", "Single user, via a web browser")
 
     System_Boundary(ta, "Trip Archive (self-hosted)") {
-        Container(spa, "Web UI", "Rust → WASM (Dioxus, client-side rendered) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import & filter UI. Runs in the browser.")
-        Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files; handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
+        Container(spa, "Web UI", "Rust → WASM (Dioxus, client-side rendered) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import, filter and komoot-sync UI — the entire UI. Runs in the browser.")
+        Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files, and nothing else — no server-rendered pages since US-44. Handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
         ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
         Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "One-way reconcile of every trip into a QMapShack database; run manually or from cron, never from inside the app. TOML config for target path + folder mapping; rolling backups; version gate.")
@@ -160,7 +160,7 @@ C4Component
     Rel(router, api, "Trip CRUD + filter requests")
     Rel(router, import, "Multipart upload requests")
 
-    Rel(router, sync, "Sync review page + POST /api/komoot/sync")
+    Rel(router, sync, "GET + POST /api/komoot/sync")
     Rel(import, gpx, "Parse + derive stats")
     Rel(import, photo, "Process photos")
     Rel(import, geojson, "Build track blob")
@@ -207,6 +207,7 @@ C4Component
         Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
         Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, downloading the original GPX, and deleting the trip.")
         Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): upload the GPX, then confirm the suggested date-prefixed name, activity type and kind; photos follow in batches with a progress count.")
+        Component(komootsync, "Komoot Sync Screen", "Dioxus", "US-44: lists the tours Komoot has that the archive does not, labeled by kind, none ticked; says how many edits/deletes the run will push first; reports the run, naming the tour that halted it (US-25).")
         Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
         Component(elev, "Elevation Chart", "Dioxus + uPlot", "Elevation vs distance/time, drawn through `document::eval`.")
         Component(gallery, "Photo Gallery", "Dioxus", "Thumbnails; links markers ↔ photos.")
@@ -216,6 +217,7 @@ C4Component
     Rel(approuter, list, "Route")
     Rel(approuter, detail, "Route")
     Rel(approuter, importform, "Route")
+    Rel(approuter, komootsync, "Route")
     Rel(detail, map, "Embeds")
     Rel(detail, elev, "Embeds")
     Rel(detail, gallery, "Embeds")
@@ -223,6 +225,7 @@ C4Component
     Rel(list, server, "GET /api/trips (+filters)", "JSON")
     Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
+    Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")
     Rel(gallery, server, "GET /media/* (thumbnails)", "HTTPS")
     Rel(map, osm, "Fetch tiles", "HTTPS")
     Rel(list, osm, "Fetch tiles (region-select map, US-14)", "HTTPS")
