@@ -9,7 +9,8 @@
 //! ([ADR-0012](../../../docs/adr/0012-tdd-test-strategy.md)'s migration
 //! rule); the Komoot review page goes with US-44.
 
-use crate::server::komoot_sync::{SyncCandidate, SyncResultQuery};
+use crate::models::SyncCandidate;
+use crate::server::komoot_sync::SyncResultQuery;
 
 /// GET `/komoot/sync` — the "Sync now" review page (US-20/US-22): every
 /// Komoot tour not yet in `trip_komoot_link`, each unchecked by default so

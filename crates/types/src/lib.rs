@@ -9,15 +9,16 @@
 //! keeps this from becoming an undifferentiated module
 //! ([ADR-0015](../../../docs/adr/0015-db-model-response-type-separation.md)'s
 //! 2026-08-28 amendment): **stored records**, which never grow a
-//! response-only field, and **response types** such as [`PhotoResponse`],
-//! which receive computed values as plain data and carry no server
-//! dependency. A record serves as its own response type where the shapes
-//! genuinely coincide.
+//! response-only field, and **the API's own request and response shapes**,
+//! such as [`PhotoResponse`] and [`SyncRequest`], which receive computed
+//! values as plain data and carry no server dependency. A record serves as
+//! its own response type where the shapes genuinely coincide.
 
 mod activity_type;
 mod bounding_box;
 mod komoot_link;
 mod komoot_privacy;
+mod komoot_sync;
 mod location_source;
 mod photo;
 mod photo_response;
@@ -31,6 +32,9 @@ pub use activity_type::ActivityType;
 pub use bounding_box::BoundingBox;
 pub use komoot_link::KomootLink;
 pub use komoot_privacy::KomootPrivacy;
+pub use komoot_sync::{
+    SelectedTour, SyncCandidate, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
+};
 pub use location_source::LocationSource;
 pub use photo::Photo;
 pub use photo_response::PhotoResponse;

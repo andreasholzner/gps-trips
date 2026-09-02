@@ -21,7 +21,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::config::komoot::PAGE_SIZE;
-use crate::models::{KomootPrivacy, TripKind};
+use crate::models::{KomootPrivacy, SelectedTour, SyncCandidate, TripKind};
 use crate::server::{
     error::AppError,
     import::derive_track,
@@ -33,20 +33,6 @@ use crate::server::{
     storage::BlobStore,
     thumbnail,
 };
-
-/// A not-yet-synced Komoot tour, as offered to the owner on the "Sync now"
-/// review page.
-pub struct SyncCandidate {
-    pub tour_id: String,
-    pub name: String,
-    pub sport: String,
-    pub date: String,
-    pub distance_m: f64,
-    /// Recorded or planned (US-29) — decides which list tab the imported
-    /// trip lands on and is shown on the review page so the owner knows
-    /// which kind they're pulling.
-    pub kind: TripKind,
-}
 
 /// The result of a `sync_selected_tours` run: every tour successfully
 /// imported, plus the first failure (if any) that halted the run before
@@ -239,17 +225,6 @@ fn tag_by_kind(
         .into_iter()
         .map(|t| (t, TripKind::Recorded))
         .chain(planned.into_iter().map(|t| (t, TripKind::Planned)))
-}
-
-/// One tour the owner ticked on the review page: its id plus the `kind` the
-/// page already knew it was (US-29). Carrying the kind in the request lets
-/// [`sync_selected_tours`] list only the endpoint(s) the selection actually
-/// spans, instead of always paging both — the review page's flat id list used
-/// to drop this, forcing a redundant fetch of the other endpoint every sync.
-#[derive(Debug, Clone, Deserialize)]
-pub struct SelectedTour {
-    pub tour_id: String,
-    pub kind: TripKind,
 }
 
 /// Import the owner's selected tours, in the given order, halting on the
