@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, Tag, TripKind};
 
-use crate::api;
+use crate::api::{self, ApiClient};
 use crate::bulk_tag::BulkTagPanel;
 use crate::filters::Filters;
 use crate::region::RegionFilter;
@@ -20,7 +20,7 @@ use crate::Route;
 #[component]
 pub fn TripList(#[props(default)] filters: Filters) -> Element {
     let filters = use_signal(move || filters.clone());
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     // Keep the address bar in step with the live filters. `replace`, not
     // `push`: filtering as you type would otherwise leave one history entry
     // per keystroke between the owner and wherever they came from.
@@ -34,12 +34,12 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // Re-runs whenever the filters or the configured archive change —
     // reading the signals inside the closure is the whole subscription.
     let mut trips = use_resource(move || async move {
-        api::list_trips(&base_url(), filters.read().to_query()).await
+        api::list_trips(&archive(), filters.read().to_query()).await
     });
     // The known tags: the tag filter's choices (US-38) and the bulk-tag
     // suggestions (US-34). A failure here costs those choices, not the list
     // — hence the separate resource and the fallback to none.
-    let mut tag_resource = use_resource(move || async move { api::list_tags(&base_url()).await });
+    let mut tag_resource = use_resource(move || async move { api::list_tags(&archive()).await });
     let all_tags = tag_resource
         .read_unchecked()
         .as_ref()
@@ -268,12 +268,12 @@ mod tests {
     // so a planned trip stays off it.
     #[tokio::test]
     async fn the_list_screen_defaults_to_the_recorded_tab() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
-        import_sample(&base_url, &[("name", "Dream Route"), ("kind", "planned")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&archive, &[("name", "Dream Route"), ("kind", "planned")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || rsx! { TripList {} },
             |html| html.contains("Oslo Hills Walk"),
         )
@@ -285,12 +285,12 @@ mod tests {
     // US-32: the Planned tab shows exactly the other partition.
     #[tokio::test]
     async fn the_planned_tab_shows_only_planned_trips() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
-        import_sample(&base_url, &[("name", "Dream Route"), ("kind", "planned")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&archive, &[("name", "Dream Route"), ("kind", "planned")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
             },
@@ -304,11 +304,11 @@ mod tests {
     // US-32: an empty Planned tab says so, not "no trips yet".
     #[tokio::test]
     async fn an_empty_planned_tab_reports_no_planned_trips() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
             },
@@ -343,12 +343,12 @@ mod tests {
     // matching trips.
     #[tokio::test]
     async fn the_list_screen_narrows_to_matching_trips() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
-        import_sample(&base_url, &[("name", "Inn Valley Ride")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters { q: "inn".to_string(), ..Default::default() } } }
             },
@@ -363,11 +363,11 @@ mod tests {
     // with nothing in it.
     #[tokio::test]
     async fn a_filter_matching_nothing_says_so() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters { q: "nomatch".to_string(), ..Default::default() } } }
             },
@@ -411,15 +411,15 @@ mod tests {
     // listed, and the known tags show up as filter choices.
     #[tokio::test]
     async fn the_list_screen_narrows_to_trips_with_all_chosen_tags() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let tagged = import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
-        let partly = import_sample(&base_url, &[("name", "Inn Valley Ride")]).await;
-        tag_trip(&base_url, tagged, "alpine").await;
-        tag_trip(&base_url, tagged, "summer").await;
-        tag_trip(&base_url, partly, "alpine").await;
+        let (archive, _dir) = serve_test_archive().await;
+        let tagged = import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        let partly = import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
+        tag_trip(&archive, tagged, "alpine").await;
+        tag_trip(&archive, tagged, "summer").await;
+        tag_trip(&archive, partly, "alpine").await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters {
                     tags: vec!["alpine".to_string(), "summer".to_string()],
@@ -445,12 +445,12 @@ mod tests {
 
     #[tokio::test]
     async fn the_list_screen_narrows_to_trips_in_the_chosen_region() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
-        import_gpx(&base_url, ALPS_GPX, &[("name", "Inn Valley Ride")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_gpx(&archive, ALPS_GPX, &[("name", "Inn Valley Ride")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters {
                     bbox: "10.5,59.8,11.0,60.0".to_string(),
@@ -466,12 +466,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_different_region_shows_the_other_trip() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
-        import_gpx(&base_url, ALPS_GPX, &[("name", "Inn Valley Ride")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_gpx(&archive, ALPS_GPX, &[("name", "Inn Valley Ride")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters {
                     bbox: "11.2,47.1,11.6,47.4".to_string(),
@@ -488,11 +488,11 @@ mod tests {
     #[tokio::test]
     async fn a_region_containing_no_trips_shows_the_filtered_empty_state() {
         // Not "No trips yet": the archive has trips, this region has none.
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters {
                     bbox: "-30.0,30.0,-20.0,40.0".to_string(),
@@ -510,11 +510,11 @@ mod tests {
     #[tokio::test]
     async fn the_region_combines_with_the_other_filters_as_and() {
         // A trip inside the region but failing another filter is not listed.
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("name", "Oslo Hills Walk")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || {
                 rsx! { TripList { filters: Filters {
                     bbox: "10.5,59.8,11.0,60.0".to_string(),
@@ -535,11 +535,11 @@ mod tests {
     // import API.
     #[tokio::test]
     async fn the_list_screen_shows_an_imported_trip() {
-        let (base_url, _dir) = serve_test_archive().await;
-        import_sample(&base_url, &[("activity_type", "hiking")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("activity_type", "hiking")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || rsx! { TripList {} },
             |html| !html.contains("Loading"),
         )
@@ -559,10 +559,10 @@ mod tests {
     // nothing is mocked.
     #[tokio::test]
     async fn the_list_screen_reports_an_empty_archive() {
-        let (base_url, _dir) = serve_test_archive().await;
+        let (archive, _dir) = serve_test_archive().await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || rsx! { TripList {} },
             |html| !html.contains("Loading"),
         )

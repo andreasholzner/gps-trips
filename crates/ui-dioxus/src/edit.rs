@@ -9,7 +9,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, KomootLink, KomootPrivacy, TripDetail as Trip};
 
-use crate::api::{self, TripEdit};
+use crate::api::{self, ApiClient, TripEdit};
 
 /// The form's fields, as strings, exactly as the inputs hold them.
 #[derive(Clone, Debug, PartialEq)]
@@ -112,7 +112,7 @@ pub fn EditTrip(trip: Trip, on_saved: EventHandler<()>) -> Element {
 /// which is how the rules below are tested without a browser.
 #[component]
 fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<()>) -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     let mut form = use_signal(|| EditForm::of(&trip));
     let mut error = use_signal(|| None::<String>);
     let id = trip.id;
@@ -140,7 +140,7 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                             on_cancel.call(());
                             return;
                         }
-                        match api::edit_trip(&base_url(), id, &edit).await {
+                        match api::edit_trip(&archive(), id, &edit).await {
                             Ok(()) => {
                                 error.set(None);
                                 on_saved.call(());

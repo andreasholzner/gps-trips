@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 // keeps both readable in one file.
 use trip_archive_types::TripDetail as Trip;
 
-use crate::api;
+use crate::api::{self, ApiClient};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
 use crate::filters::Filters;
@@ -23,7 +23,7 @@ use trip_archive_types::PhotoResponse;
 /// bookmark and a reload all land on the same trip.
 #[component]
 pub fn TripDetail(id: i64) -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     // `id` is a plain prop, not a signal: navigating from one trip to
     // another reuses this component's scope, and a resource that only
     // watched signals would keep showing the trip it first fetched.
@@ -33,7 +33,7 @@ pub fn TripDetail(id: i64) -> Element {
     // another would otherwise render this trip's name and stats above
     // controls — delete among them — already aimed at the next trip's id.
     let mut trip_resource = use_resource(use_reactive!(|id| async move {
-        (id, api::get_trip(&base_url(), id).await)
+        (id, api::get_trip(&archive(), id).await)
     }));
     // Fetched once for the two things that show them: the gallery, and the
     // markers on the track map (US-3/US-4). Adding photos restarts this, so
@@ -44,7 +44,7 @@ pub fn TripDetail(id: i64) -> Element {
     // the id from this scope instead would stamp one trip's photos — or one
     // trip's failure — with another trip's id.
     let mut photo_list = use_resource(use_reactive!(|id| async move {
-        (id, api::list_photos(&base_url(), id).await)
+        (id, api::list_photos(&archive(), id).await)
     }));
     // The photos last read successfully, and which trip they belong to. A
     // restarted resource reads as pending, and showing that as "no photos"
@@ -102,16 +102,16 @@ pub fn TripDetail(id: i64) -> Element {
                 TripTags { id }
                 TrackSection {
                     id,
-                    markers: photos::photo_markers(&base_url(), photos.as_deref().unwrap_or(&[])),
+                    markers: photos::photo_markers(archive().base_url(), photos.as_deref().unwrap_or(&[])),
                 }
                 PhotoGallery {
                     photos: photos.clone(),
-                    base_url: base_url(),
+                    base_url: archive().base_url().to_string(),
                     error: photos_error.clone(),
                 }
                 AddPhotos { id, on_added: move |_| photo_list.restart() }
                 p {
-                    a { href: api::original_gpx_url(&base_url(), id), "Download original GPX" }
+                    a { href: api::original_gpx_url(&archive(), id), "Download original GPX" }
                 }
                 DeleteTrip { id }
             },
@@ -126,9 +126,9 @@ pub fn TripDetail(id: i64) -> Element {
 /// the stats, the gallery and the edit controls around it are unaffected.
 #[component]
 fn TrackSection(id: i64, markers: Vec<PhotoMarker>) -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     let track = use_resource(use_reactive!(|id| async move {
-        api::get_track(&base_url(), id).await
+        api::get_track(&archive(), id).await
     }));
 
     rsx! {
@@ -290,11 +290,11 @@ mod tests {
     // The whole screen against a real archive: nothing mocked (ADR-0012).
     #[tokio::test]
     async fn the_screen_loads_a_trip_from_the_archive() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[("activity_type", "hiking")]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[("activity_type", "hiking")]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("Oslo Hills Walk"),
         )
@@ -312,11 +312,11 @@ mod tests {
     // draw is the browser layer's business (ADR-0012's 2026-08-26b rule).
     #[tokio::test]
     async fn the_screen_gives_the_map_and_the_chart_a_container_of_their_own() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("track-map"),
         )
@@ -337,11 +337,11 @@ mod tests {
     // reachable from the screen at all is this one's.
     #[tokio::test]
     async fn the_screen_offers_the_edit_form() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("Oslo Hills Walk"),
         )
@@ -357,11 +357,11 @@ mod tests {
     // invisible in the final HTML.
     #[tokio::test]
     async fn no_empty_state_is_claimed_while_the_archive_is_still_answering() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
-        crate::test_support::tag_trip(&base_url, id, "alpine").await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+        crate::test_support::tag_trip(&archive, id, "alpine").await;
         api::add_photos(
-            &base_url,
+            &archive,
             id,
             vec![crate::api::PhotoUpload {
                 file_name: "later.jpg".to_string(),
@@ -374,7 +374,7 @@ mod tests {
 
         let claimed_empty = std::cell::Cell::new(false);
         render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| {
                 if html.contains("No tags yet") || html.contains("No photos yet") {
@@ -395,18 +395,18 @@ mod tests {
     // imported for, addressed at the archive that stored them.
     #[tokio::test]
     async fn the_screen_links_to_the_original_gpx() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("Oslo Hills Walk"),
         )
         .await;
 
         assert!(
-            html.contains(&format!("{base_url}/api/trips/{id}/gpx")),
+            html.contains(&format!("{}/api/trips/{id}/gpx", archive.base_url())),
             "{html}"
         );
         assert!(html.contains("Download original GPX"), "{html}");
@@ -416,11 +416,11 @@ mod tests {
     // goes afterwards, are `delete::`'s own tests and the browser layer's.
     #[tokio::test]
     async fn the_screen_offers_to_delete_the_trip() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("Oslo Hills Walk"),
         )
@@ -432,12 +432,12 @@ mod tests {
     // US-33: the trip's tags, and the field that adds one.
     #[tokio::test]
     async fn the_screen_shows_the_trips_tags() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
-        crate::test_support::tag_trip(&base_url, id, "alpine").await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+        crate::test_support::tag_trip(&archive, id, "alpine").await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("alpine"),
         )
@@ -454,10 +454,10 @@ mod tests {
     // test — a marker is invisible to a rendered string.
     #[tokio::test]
     async fn the_screen_shows_the_trips_photos_and_offers_to_add_more() {
-        let (base_url, _dir) = serve_test_archive().await;
-        let id = import_sample(&base_url, &[]).await;
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
         api::add_photos(
-            &base_url,
+            &archive,
             id,
             vec![crate::api::PhotoUpload {
                 file_name: "later.jpg".to_string(),
@@ -469,14 +469,14 @@ mod tests {
         .expect("upload");
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             move || rsx! { TripDetail { id } },
             |html| html.contains("later.jpg"),
         )
         .await;
 
         assert!(
-            html.contains(&format!("{base_url}/media/")),
+            html.contains(&format!("{}/media/", archive.base_url())),
             "the gallery fetches the image from the archive it read: {html}"
         );
         assert!(html.contains("Add photos"), "{html}");
@@ -486,10 +486,10 @@ mod tests {
     async fn a_trip_that_no_longer_exists_says_so_rather_than_loading_forever() {
         // A stale bookmark, or the Back button after a delete (US-9): the
         // screen must resolve to a readable message, not sit on "Loading…".
-        let (base_url, _dir) = serve_test_archive().await;
+        let (archive, _dir) = serve_test_archive().await;
 
         let html = render_against_archive(
-            &base_url,
+            &archive,
             || rsx! { TripDetail { id: 9_999 } },
             |html| !html.contains("Loading"),
         )

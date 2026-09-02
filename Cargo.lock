@@ -6609,6 +6609,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "time",
  "tokio",
  "trip-archive",
  "trip-archive-types",

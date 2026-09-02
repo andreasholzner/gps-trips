@@ -17,6 +17,7 @@ mod import;
 mod interop;
 mod komoot;
 mod list;
+mod login;
 mod photos;
 mod region;
 #[cfg(test)]
@@ -25,11 +26,13 @@ mod track;
 mod trip_table;
 mod trip_tags;
 
+use api::ApiClient;
 use detail::TripDetail;
 use filters::Filters;
 use import::ImportTrip;
 use komoot::KomootSync;
 use list::TripList;
+use login::Login;
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -85,20 +88,85 @@ fn main() {
     dioxus::launch(App);
 }
 
-/// Resolves the API base URL before anything can query it, and hands it to
-/// every screen as context (the test harness provides the same context, so
-/// screens fetch from wherever a test put the server).
+/// Whether there is a session, which is what the app renders around
+/// (US-19). `Resolving` is the moment before the archive has answered: the
+/// screens must not fetch yet — they would fetch from an unresolved origin —
+/// and showing a login screen the owner may not need would be a flicker,
+/// not information.
+#[derive(Clone, PartialEq)]
+enum Access {
+    Resolving,
+    /// No session. `notice` carries a failure that was *not* a refusal — an
+    /// archive that could not be reached at all — so it is not disguised as
+    /// a password prompt.
+    SignedOut {
+        notice: Option<String>,
+    },
+    SignedIn,
+}
+
+/// Resolves the API base URL and asks the archive who we are, before
+/// anything can query it, and hands the resulting client to every screen as
+/// context (the test harness provides the same context, so screens fetch
+/// from wherever a test put the server, already signed in).
 #[component]
 fn App() -> Element {
-    let mut base_url = use_signal(String::new);
-    let mut loaded = use_signal(|| false);
+    let mut archive = use_signal(ApiClient::default);
+    let mut access = use_signal(|| Access::Resolving);
 
     use_future(move || async move {
-        base_url.set(resolve_origin().await);
-        loaded.set(true);
+        let client = ApiClient::new(resolve_origin().await);
+        // One request answers both questions: a session, or the gate's 401
+        // saying there is none (US-19).
+        let resolved = match api::session(&client).await {
+            Ok(_) => Access::SignedIn,
+            Err(err) if err.is_unauthorized() => Access::SignedOut { notice: None },
+            Err(err) => Access::SignedOut {
+                notice: Some(err.to_string()),
+            },
+        };
+        archive.set(client);
+        access.set(resolved);
     });
 
-    use_context_provider(|| base_url);
+    use_context_provider(|| archive);
+
+    let body = match access() {
+        Access::Resolving => rsx! { p { "Starting…" } },
+        Access::SignedOut { notice } => rsx! {
+            Login {
+                archive: archive(),
+                notice,
+                // The token matters only where no cookie store does the
+                // carrying — Android (US-16), and the host target. In a
+                // browser the archive's own cookie is already the credential
+                // and this is a spare copy.
+                on_signed_in: move |token: String| {
+                    archive.set(archive().with_token(token));
+                    access.set(Access::SignedIn);
+                },
+            }
+        },
+        Access::SignedIn => rsx! {
+            nav { class: "session",
+                button {
+                    r#type: "button",
+                    id: "sign-out",
+                    onclick: move |_| async move {
+                        let client = archive();
+                        // Whether the archive heard or not, this client is
+                        // done with the session: clearing it locally is what
+                        // signing out means here.
+                        let _ = api::logout(&client).await;
+                        archive.set(ApiClient::new(client.base_url()));
+                        access.set(Access::SignedOut { notice: None });
+                    },
+                    "Sign out"
+                }
+            }
+            Router::<Route> {}
+        },
+    };
 
     rsx! {
         document::Link { rel: "stylesheet", href: PICO_CSS }
@@ -110,13 +178,7 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: UPLOT_CSS }
         document::Script { src: UPLOT_JS }
 
-        main {
-            if loaded() {
-                Router::<Route> {}
-            } else {
-                p { "Starting…" }
-            }
-        }
+        main { {body} }
     }
 }
 

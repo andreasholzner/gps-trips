@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use dioxus::prelude::*;
 use trip_archive_types::{normalize_tag_name, Tag};
 
-use crate::api;
+use crate::api::{self, ApiClient};
 
 /// What typing a tag name into the panel should do.
 #[derive(Debug, Clone, PartialEq)]
@@ -61,7 +61,7 @@ pub fn BulkTagPanel(
     // A new tag waiting for the owner's go-ahead (US-33).
     let mut awaiting_confirmation = use_signal(|| None::<String>);
     let mut message = use_signal(|| None::<String>);
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
 
     let count = selected.read().len();
     if count == 0 {
@@ -150,7 +150,7 @@ pub fn BulkTagPanel(
                     let trip_ids: Vec<i64> = selected.read().iter().copied().collect();
                     let names = staged.read().clone();
                     spawn(async move {
-                        match api::bulk_add_tags(&base_url(), &trip_ids, &names).await {
+                        match api::bulk_add_tags(&archive(), &trip_ids, &names).await {
                             Ok(_) => {
                                 staged.write().clear();
                                 selected.write().clear();
