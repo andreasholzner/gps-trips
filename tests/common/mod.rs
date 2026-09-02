@@ -321,6 +321,17 @@ pub async fn body_bytes(response: Response) -> Vec<u8> {
         .to_vec()
 }
 
+/// The archive's own sentence out of a refusal's JSON body (ADR-0008: every
+/// error answers `{"error": "…"}`). Panics if the body is not that, which is
+/// itself the assertion — a route answering an error in some other shape is
+/// a route no client can read.
+pub async fn error_message(response: Response) -> String {
+    let body = body_string(response).await;
+    let error: trip_archive::models::ErrorResponse = serde_json::from_str(&body)
+        .unwrap_or_else(|e| panic!("an error must answer with JSON: {e}; got {body}"));
+    error.error
+}
+
 pub async fn body_string(response: Response) -> String {
     String::from_utf8(body_bytes(response).await).unwrap()
 }

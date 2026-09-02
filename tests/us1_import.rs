@@ -14,7 +14,10 @@ use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
 };
-use common::{body_string, get, import, import_sample, send, test_app, NO_TRACKS_GPX, SAMPLE_GPX};
+use common::{
+    body_string, error_message, get, import, import_sample, send, test_app, NO_TRACKS_GPX,
+    SAMPLE_GPX,
+};
 
 // ── Acceptance: a valid GPX creates a trip and redirects to its detail page ──
 
@@ -78,7 +81,7 @@ async fn us1_missing_gpx_field_is_rejected_with_400() {
 
     let response = send(&app, request).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert!(body_string(response).await.contains("gpx"));
+    assert!(error_message(response).await.contains("gpx"));
 }
 
 #[tokio::test]
@@ -86,7 +89,10 @@ async fn us1_gpx_without_tracks_is_rejected_with_422() {
     let (app, _dir) = test_app().await;
     let response = import(&app, NO_TRACKS_GPX).await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(body_string(response).await.to_lowercase().contains("track"));
+    assert!(error_message(response)
+        .await
+        .to_lowercase()
+        .contains("track"));
 }
 
 #[tokio::test]
