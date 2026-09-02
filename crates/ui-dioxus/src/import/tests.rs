@@ -134,6 +134,7 @@ fn the_confirm_step_offers_every_field_the_trip_is_stored_with() {
             ConfirmImportStep {
                 staged: a_suggestion("2024-06-01 Oslo Hills Walk"),
                 on_confirm: move |_| {},
+                on_start_over: move |_| {},
             }
         }
     });
@@ -164,6 +165,7 @@ fn the_confirm_step_starts_on_recorded() {
             ConfirmImportStep {
                 staged: a_suggestion("2024-06-01 "),
                 on_confirm: move |_| {},
+                on_start_over: move |_| {},
             }
         }
     });
@@ -177,6 +179,25 @@ fn the_confirm_step_starts_on_recorded() {
     // The checked attribute belongs to the recorded input, which comes first.
     let checked = html.find("checked").expect("something is chosen");
     assert!(checked > recorded && checked < planned, "{html}");
+}
+
+#[test]
+fn the_confirm_step_offers_a_way_back_to_the_picker() {
+    // Without one there is no way to reach `cancel_staged_import` at all, and
+    // an upload the owner thought better of sits in `import_staging` with its
+    // whole GPX in it until the sweeper gets to it a day later.
+    let html = render(|| {
+        rsx! {
+            ConfirmImportStep {
+                staged: a_suggestion("2024-06-01 "),
+                on_confirm: move |_| {},
+                on_start_over: move |_| {},
+            }
+        }
+    });
+
+    assert!(html.contains(r#"id="import-start-over""#), "{html}");
+    assert!(html.contains("different file"), "{html}");
 }
 
 #[test]
@@ -262,11 +283,129 @@ async fn an_expired_upload_is_re_sent_rather_than_asked_for_again() {
         Some(("track.gpx".to_string(), gpx)),
     )
     .await
+    .result
     .expect("the import goes through anyway");
 
     assert_eq!(
         api::get_trip(&base_url, id).await.expect("trip").name,
         "Recovered"
+    );
+}
+
+#[tokio::test]
+async fn a_refused_retry_after_a_re_stage_hands_back_the_parse_that_is_live() {
+    // The recovery path replaces the parked parse, so the screen's handle has
+    // to follow it. Holding the old, already-spent id would make the owner's
+    // next try 404, re-upload the whole file again, and leak another
+    // `import_staging` row — once per corrected field.
+    let (base_url, _dir) = serve_test_archive().await;
+    let gpx = crate::test_support::SAMPLE_GPX.to_vec();
+    let staged = api::stage_gpx(&base_url, "track.gpx", gpx.clone())
+        .await
+        .expect("stage");
+    // A parse staged *after* it and left parked, so cancelling the one above
+    // does not hand its id straight back to the re-staged row: SQLite gives a
+    // new row `max(rowid) + 1`, so without something above it a stale handle
+    // would keep working here and hide the very bug under test.
+    api::stage_gpx(&base_url, "decoy.gpx", gpx.clone())
+        .await
+        .expect("stage a decoy");
+    api::cancel_staged_import(&base_url, staged.staging_id)
+        .await
+        .expect("the parse is gone, as the sweeper would leave it");
+
+    let outcome = confirm_or_restage(
+        &base_url,
+        &staged,
+        &ConfirmImport {
+            activity_type: Some("teleportation".to_string()),
+            ..Default::default()
+        },
+        Some(("track.gpx".to_string(), gpx)),
+    )
+    .await;
+
+    outcome
+        .result
+        .expect_err("the archive knows no such activity");
+    let parked = outcome
+        .parked
+        .expect("the re-staged parse is still waiting to be confirmed");
+    assert_ne!(
+        parked.staging_id, staged.staging_id,
+        "the handle must be the live one, not the spent one"
+    );
+
+    // The owner corrects the field: one more confirmation, no third upload.
+    let id = api::confirm_import(
+        &base_url,
+        parked.staging_id,
+        &ConfirmImport {
+            activity_type: Some("cycling".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("the corrected retry lands");
+    assert_eq!(
+        api::list_trips(&base_url, String::new())
+            .await
+            .expect("list")
+            .len(),
+        1,
+        "exactly one trip, however many times it took"
+    );
+    let _ = id;
+}
+
+#[tokio::test]
+async fn a_refused_confirmation_keeps_the_parse_the_screen_already_had() {
+    // The ordinary refusal: nothing expired, so nothing is re-staged and the
+    // handle the screen holds is still the right one.
+    let (base_url, _dir) = serve_test_archive().await;
+    let staged = api::stage_gpx(
+        &base_url,
+        "track.gpx",
+        crate::test_support::SAMPLE_GPX.to_vec(),
+    )
+    .await
+    .expect("stage");
+
+    let outcome = confirm_or_restage(
+        &base_url,
+        &staged,
+        &ConfirmImport {
+            kind: Some("scheduled".to_string()),
+            ..Default::default()
+        },
+        None,
+    )
+    .await;
+
+    outcome.result.expect_err("no such kind");
+    assert_eq!(
+        outcome.parked.expect("still parked").staging_id,
+        staged.staging_id
+    );
+}
+
+#[tokio::test]
+async fn a_confirmed_import_leaves_nothing_parked() {
+    let (base_url, _dir) = serve_test_archive().await;
+    let staged = api::stage_gpx(
+        &base_url,
+        "track.gpx",
+        crate::test_support::SAMPLE_GPX.to_vec(),
+    )
+    .await
+    .expect("stage");
+
+    let outcome = confirm_or_restage(&base_url, &staged, &ConfirmImport::default(), None).await;
+
+    outcome.result.expect("confirm");
+    assert!(
+        outcome.parked.is_none(),
+        "a spent parse must not be offered for confirmation again"
     );
 }
 
@@ -286,6 +425,7 @@ async fn an_expired_upload_with_no_bytes_in_hand_says_what_to_do() {
 
     let err = confirm_or_restage(&base_url, &staged, &ConfirmImport::default(), None)
         .await
+        .result
         .expect_err("there is nothing left to send");
 
     assert!(err.to_string().contains("choose the file again"), "{err}");

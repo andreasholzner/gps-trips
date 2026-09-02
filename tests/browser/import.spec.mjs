@@ -121,6 +121,55 @@ test("importing a GPX with photos creates the trip and lands on it (US-43)", asy
   expect(photos.length).toBe(2);
 });
 
+// Submitting twice must not make two trips — a property worth pinning
+// because the screen's recovery path would turn the second confirmation's
+// 404 into a whole second import.
+//
+// Read this for what it is: it pins the observable behaviour, and it does
+// *not* isolate the state guard in `import.rs`. It passes with that guard
+// removed, because the button disables itself and because two submits in one
+// tick do not reach the handler twice anyway. It would only catch a much
+// grosser regression than the one the guard is written against.
+test("submitting twice imports one trip, not two (US-43)", async ({ page, request }) => {
+  await page.goto("/app/import");
+  await chooseGpx(page, "track.gpx", SAMPLE_GPX);
+
+  const name = `Double Submit ${Math.random().toString(36).slice(2, 8)}`;
+  await page.locator("#import-name").fill(name);
+
+  // Underneath the button's own disabled state, the way a re-fired event
+  // would arrive.
+  await page.evaluate(() => {
+    const form = document.getElementById("confirm-import");
+    form.requestSubmit();
+    form.requestSubmit();
+  });
+
+  await page.waitForURL(/\/app\/trips\/\d+/);
+  created.push(Number(page.url().match(/\/trips\/(\d+)/)[1]));
+
+  const matching = await (await request.get(`/api/trips?q=${encodeURIComponent(name)}`)).json();
+  expect(matching.length, "one trip, however many times Import was pressed").toBe(1);
+});
+
+// Changing your mind about the file. The archive is holding the first GPX,
+// and this is the only path that hands it back — reachable only from step
+// two, and only by a real click.
+test("choosing a different file returns to the picker (US-12)", async ({ page }) => {
+  await page.goto("/app/import");
+  await chooseGpx(page, "track.gpx", SAMPLE_GPX);
+
+  await page.locator("#import-start-over").click();
+
+  await expect(page.locator("#import-gpx")).toBeVisible();
+  await expect(page.locator("#confirm-import")).toHaveCount(0);
+
+  // And the screen is usable again: a second choice reaches step two with the
+  // new file's own suggestion.
+  await chooseGpx(page, "unnamed.gpx", UNNAMED_GPX);
+  await expect(page.locator("#import-name")).toHaveValue(`${TRACK_DATE} `);
+});
+
 // US-1's "invalid/empty GPX is rejected with a clear error", where the owner
 // now meets it: at the picker, before naming anything. The rejection arrives
 // as a response to the same real event.

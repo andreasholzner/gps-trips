@@ -141,10 +141,22 @@ pub fn ImportTrip() -> Element {
     let mut error = use_signal(|| None::<String>);
     let mut progress = use_signal(|| None::<Progress>);
     let mut partial = use_signal(|| None::<PartialImport>);
+    // One confirmation at a time, set before the first `await`.
+    //
+    // The hazard it closes is in this file's own logic rather than in any
+    // path reachable today: `staged` stays set across the confirm request, so
+    // two overlapping confirmations would both post the same parse — and the
+    // second, answered 404 because the first spent it, would be taken for an
+    // expired upload by `confirm_or_restage` and re-imported as a *second
+    // trip*. Nothing produces two of them at present (the button disables
+    // itself, and neither a double click nor two synchronous `requestSubmit`
+    // calls reach the handler twice), which is precisely why this is written
+    // down rather than left to hold by accident.
+    let mut submitting = use_signal(|| false);
 
-    // Choosing a file — or choosing a different one — starts over: whatever
-    // the archive is holding for the previous pick is handed back rather
-    // than left for the sweeper.
+    // This step shows only while nothing is parked, so there is never a
+    // previous parse to hand back here — `start_over` below is what does
+    // that, and what makes it reachable at all.
     let choose = move |event: FormEvent| async move {
         let Some(file) = event.files().into_iter().next() else {
             return;
@@ -152,9 +164,6 @@ pub fn ImportTrip() -> Element {
         reading.set(true);
         error.set(None);
         partial.set(None);
-        if let Some(previous) = staged.take() {
-            let _ = api::cancel_staged_import(&base_url(), previous.staging_id).await;
-        }
         let name = file.name();
         let bytes = match file.read_bytes().await {
             Ok(bytes) => bytes.to_vec(),
@@ -180,20 +189,26 @@ pub fn ImportTrip() -> Element {
     };
 
     let confirm = move |(form, photos): (ConfirmForm, Vec<PhotoUpload>)| async move {
+        if submitting() {
+            return;
+        }
         let Some(current) = staged() else { return };
+        submitting.set(true);
         error.set(None);
         partial.set(None);
 
-        let id = match confirm_or_restage(&base_url(), &current, &form.to_confirm(), gpx()).await {
+        let outcome = confirm_or_restage(&base_url(), &current, &form.to_confirm(), gpx()).await;
+        // Whichever parse is live now — the one we came in with, a re-staged
+        // one, or none at all — is what the screen holds from here.
+        staged.set(outcome.parked);
+        let id = match outcome.result {
             Ok(id) => id,
             Err(err) => {
                 error.set(Some(format!("Could not import this trip: {err}")));
+                submitting.set(false);
                 return;
             }
         };
-        // The parse is spent either way now, so the screen must not offer to
-        // confirm it a second time.
-        staged.set(None);
 
         let total = photos.len();
         let mut uploaded = 0;
@@ -208,6 +223,7 @@ pub fn ImportTrip() -> Element {
                     total,
                     error: err.to_string(),
                 }));
+                submitting.set(false);
                 return;
             }
             uploaded += sending;
@@ -217,7 +233,19 @@ pub fn ImportTrip() -> Element {
             }));
         }
         progress.set(None);
+        submitting.set(false);
         navigator().push(Route::TripDetail { id });
+    };
+
+    // The only way the archive is ever told about an upload the owner thought
+    // better of: picking a different file is reachable from step one alone,
+    // which shows only while nothing is parked.
+    let start_over = move |_| async move {
+        if let Some(current) = staged.take() {
+            let _ = api::cancel_staged_import(&base_url(), current.staging_id).await;
+        }
+        gpx.set(None);
+        error.set(None);
     };
 
     rsx! {
@@ -239,12 +267,30 @@ pub fn ImportTrip() -> Element {
                     ConfirmImportStep {
                         staged: suggestion,
                         error: error(),
+                        submitting: submitting(),
                         on_confirm: confirm,
+                        on_start_over: start_over,
                     }
                 },
             }
         }
     }
+}
+
+/// What a confirmation left behind: the new trip, or why there isn't one,
+/// and which parked parse the screen should be holding afterwards.
+///
+/// The handle can change under the screen, so it is returned rather than
+/// assumed. Holding a spent one would make the owner's next try 404, re-send
+/// the whole file again, and leave another `import_staging` row behind —
+/// once per corrected field.
+struct Confirmation {
+    result: Result<i64, ApiError>,
+    /// The parse still waiting to be confirmed: the one the screen came in
+    /// with when a field was refused, the re-staged one when the original had
+    /// expired and the retry was refused too, and `None` both when a trip was
+    /// made and when there is nothing left to retry with.
+    parked: Option<StagedImport>,
 }
 
 /// Confirm the parse the screen has, re-staging first if the archive no
@@ -261,15 +307,57 @@ async fn confirm_or_restage(
     staged: &StagedImport,
     confirm: &ConfirmImport,
     gpx: Option<(String, Vec<u8>)>,
-) -> Result<i64, ApiError> {
+) -> Confirmation {
     match api::confirm_import(base_url, staged.staging_id, confirm).await {
-        Err(err) if err.is_not_found() => {
-            let (name, bytes) = gpx
-                .ok_or_else(|| ApiError::new("that upload has expired — choose the file again"))?;
-            let restaged = api::stage_gpx(base_url, &name, bytes).await?;
-            api::confirm_import(base_url, restaged.staging_id, confirm).await
+        Ok(id) => Confirmation {
+            result: Ok(id),
+            parked: None,
+        },
+        // Refused on its merits: the parse is untouched and still the one to
+        // retry against once the owner has fixed the field.
+        Err(err) if !err.is_not_found() => Confirmation {
+            result: Err(err),
+            parked: Some(staged.clone()),
+        },
+        // Gone: swept after a long pause on the form, or lost to a restart.
+        Err(_) => match gpx {
+            None => Confirmation {
+                result: Err(ApiError::new(
+                    "that upload has expired — choose the file again",
+                )),
+                parked: None,
+            },
+            Some((name, bytes)) => restage_and_confirm(base_url, &name, bytes, confirm).await,
+        },
+    }
+}
+
+/// Send the file again and confirm against the parse that makes, keeping
+/// whichever handle is live afterwards.
+async fn restage_and_confirm(
+    base_url: &str,
+    name: &str,
+    bytes: Vec<u8>,
+    confirm: &ConfirmImport,
+) -> Confirmation {
+    let restaged = match api::stage_gpx(base_url, name, bytes).await {
+        Ok(restaged) => restaged,
+        Err(err) => {
+            return Confirmation {
+                result: Err(err),
+                parked: None,
+            }
         }
-        other => other,
+    };
+    match api::confirm_import(base_url, restaged.staging_id, confirm).await {
+        Ok(id) => Confirmation {
+            result: Ok(id),
+            parked: None,
+        },
+        Err(err) => Confirmation {
+            result: Err(err),
+            parked: Some(restaged),
+        },
     }
 }
 
@@ -308,7 +396,12 @@ fn ChooseGpx(
 fn ConfirmImportStep(
     staged: StagedImport,
     #[props(default)] error: Option<String>,
+    /// Whether a confirmation is already on its way; the button says so and
+    /// declines to start a second.
+    #[props(default)]
+    submitting: bool,
     on_confirm: EventHandler<(ConfirmForm, Vec<PhotoUpload>)>,
+    on_start_over: EventHandler<()>,
 ) -> Element {
     let mut form = use_signal(|| ConfirmForm::of(&staged));
     let mut photos = use_signal(Vec::<PhotoUpload>::new);
@@ -418,8 +511,15 @@ fn ConfirmImportStep(
             button {
                 id: "import-confirm",
                 r#type: "submit",
-                disabled: reading_photos(),
-                "Import"
+                disabled: reading_photos() || submitting,
+                if submitting { "Importing…" } else { "Import" }
+            }
+            button {
+                id: "import-start-over",
+                r#type: "button",
+                disabled: submitting,
+                onclick: move |_| on_start_over.call(()),
+                "Choose a different file"
             }
         }
 
