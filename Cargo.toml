@@ -69,3 +69,17 @@ test-support = []
 tempfile = "3"
 tower    = { version = "0.4", features = ["util"] } # ServiceExt::oneshot in tests
 trip-archive = { path = ".", features = ["test-support"] }
+
+# `dx build --platform web` builds under its own `wasm-release` profile, and
+# turns debug info on in it — so the `.wasm` carries about 1.4 MB of DWARF
+# that nothing consumes, a release bundle being no place to read debug info
+# from. Worse, `wasm-opt` cannot parse it: it aborts with "compile unit size
+# was incorrect (this may be an unsupported version of DWARF)", which `dx`
+# reports and then continues past, shipping the *unoptimized* module. The
+# stripped bundle is 1.5 MB against 2.8 MB, and is actually optimized.
+#
+# `debug = false` does not do it — `dx` sets that itself and its setting wins.
+# Stripping at link time is downstream of that and is what takes effect.
+[profile.wasm-release]
+inherits = "release"
+strip = "debuginfo"
