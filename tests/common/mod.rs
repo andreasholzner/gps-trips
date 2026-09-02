@@ -16,10 +16,30 @@ use axum::{
 use tower::ServiceExt; // .oneshot()
 use trip_archive::models::StagedImport;
 use trip_archive::server::{
+    auth::Auth,
     db, http,
     state::AppState,
     storage::{BlobStore, LocalDisk},
 };
+
+/// The shared password every test server is configured with (US-19). The
+/// archive refuses to start without one, so there is no such thing as an
+/// ungated router to test against — the harness sets a known one in this
+/// single place and [`send`] signs every request with it, which is why the
+/// story's arrival left the other test files unchanged.
+pub const TEST_PASSWORD: &str = "a test password";
+
+/// The gate the test servers are built with.
+pub fn test_auth() -> Auth {
+    Auth::new(TEST_PASSWORD).expect("a non-empty test password")
+}
+
+/// A valid session token for [`TEST_PASSWORD`]. Any `Auth` built from the
+/// same password signs interchangeably — the key is derived from the secret,
+/// not generated per instance — so this needs no handle on the router's own.
+pub fn test_token() -> String {
+    test_auth().mint(time::OffsetDateTime::now_utc()).token
+}
 
 pub const SAMPLE_GPX: &[u8] = include_bytes!("../fixtures/sample.gpx");
 pub const NO_TRACKS_GPX: &[u8] = include_bytes!("../fixtures/no_tracks.gpx");
@@ -42,7 +62,22 @@ pub async fn test_app() -> (Router, tempfile::TempDir) {
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    (http::router(AppState::new(pool, store, None)), dir)
+    (
+        http::router(AppState::new(pool, store, None, test_auth())),
+        dir,
+    )
+}
+
+/// As [`test_app`], with a different shared password — for US-19's
+/// assertion that rotating the secret ends every session that exists.
+pub async fn test_app_with_password(password: &str) -> (Router, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let pool = db::create_pool(&dir.path().join("test.db"))
+        .await
+        .expect("create pool");
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let auth = Auth::new(password).expect("a non-empty password");
+    (http::router(AppState::new(pool, store, None, auth)), dir)
 }
 
 /// As [`test_app`], but with `state.komoot` set — for the Komoot sync
@@ -55,7 +90,10 @@ pub async fn test_app_with_komoot(
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    (http::router(AppState::new(pool, store, Some(client))), dir)
+    (
+        http::router(AppState::new(pool, store, Some(client), test_auth())),
+        dir,
+    )
 }
 
 /// As [`test_app`]/[`test_app_with_komoot`], but also returns the
@@ -71,12 +109,30 @@ pub async fn test_app_with_state(
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    let state = AppState::new(pool, store, komoot);
+    let state = AppState::new(pool, store, komoot, test_auth());
     (http::router(state.clone()), state, dir)
 }
 
-/// Drive a single request through the router.
+/// Drive a single request through the router, signed in as the owner
+/// (US-19).
+///
+/// The token goes on as `Authorization: Bearer` rather than as a cookie
+/// because it is the same token either way and a header is one line to
+/// build. Every helper below funnels through here, which is what keeps the
+/// gate invisible to tests that are about something else — the ones that are
+/// *about* the gate use [`send_unauthenticated`].
 pub async fn send(app: &Router, request: Request<Body>) -> Response {
+    let mut request = request;
+    request.headers_mut().insert(
+        axum::http::header::AUTHORIZATION,
+        format!("Bearer {}", test_token()).parse().unwrap(),
+    );
+    send_unauthenticated(app, request).await
+}
+
+/// Drive a single request through the router exactly as given — no session,
+/// unless the request carries one it built itself (US-19).
+pub async fn send_unauthenticated(app: &Router, request: Request<Body>) -> Response {
     app.clone().oneshot(request).await.unwrap()
 }
 

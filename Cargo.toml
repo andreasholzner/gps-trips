@@ -52,6 +52,13 @@ toml   = "0.8"
 flate2 = "1"
 md-5   = "0.10"
 
+# US-19 auth (ADR-0010's 2026-09-02 amendment): the session token is an
+# HMAC-SHA256 signature over its own expiry, and the shared password is
+# checked by comparing derived keys in constant time.
+hmac   = "0.12"
+sha2   = "0.10"
+subtle = "2"
+
 # Errors & logging
 anyhow             = "1"
 thiserror          = "2"

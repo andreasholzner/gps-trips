@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod db;
 pub mod delete;
 pub mod edit;
@@ -16,6 +17,7 @@ pub mod photos;
 pub mod placement;
 pub mod qmapshack;
 pub mod repo;
+pub mod session;
 pub mod staged_import;
 pub mod state;
 pub mod storage;

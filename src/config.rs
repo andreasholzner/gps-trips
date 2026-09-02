@@ -43,6 +43,51 @@ pub mod server {
     pub const STAGED_IMPORT_TTL: time::Duration = time::Duration::hours(24);
 }
 
+/// The shared-password gate (US-19, [ADR-0010]'s 2026-09-02 amendment).
+///
+/// [ADR-0010]: ../../docs/adr/0010-single-user-optional-auth.md
+pub mod auth {
+    /// Env var holding the one shared password. Unlike the Komoot
+    /// credentials above, this one is **required**: a missing or empty value
+    /// makes the server refuse to start rather than serve the archive
+    /// unauthenticated (US-19/US-48). There is deliberately no local-
+    /// development exemption — an exemption reachable in production would
+    /// defeat the story.
+    pub const PASSWORD_ENV_VAR: &str = "TRIP_ARCHIVE_PASSWORD";
+
+    /// Name of the session cookie the browser attaches by itself — which is
+    /// the whole reason the session is a cookie: photos load as `<img src>`
+    /// and the GPX download is an `<a href>`, plain URL loads that can carry
+    /// no `Authorization` header.
+    pub const COOKIE_NAME: &str = "trip_archive_session";
+
+    /// How long a session lasts. Long, and slid forward by
+    /// [`SESSION_REFRESH_AFTER`], because the phone is the primary client
+    /// and a login screen there is friction, not security.
+    pub const SESSION_TTL: time::Duration = time::Duration::days(90);
+
+    /// Once more than this much of a session's life has passed, the next
+    /// authenticated request re-issues the cookie for a fresh
+    /// [`SESSION_TTL`]. Half the lifetime: an archive opened at any interval
+    /// shorter than 45 days never sees a login screen, and one left alone
+    /// dies within 90 days of its last use.
+    pub const SESSION_REFRESH_AFTER: time::Duration =
+        time::Duration::seconds(SESSION_TTL.whole_seconds() / 2);
+
+    /// How many consecutive failed logins are tolerated before the archive
+    /// stops answering them for [`LOGIN_LOCKOUT`]. One secret on the public
+    /// internet, and on a scale-to-zero machine (ADR-0023) each attempt is
+    /// also a wake-up the owner pays for.
+    pub const LOGIN_FAILURE_LIMIT: u32 = 5;
+
+    /// How long logins are refused once [`LOGIN_FAILURE_LIMIT`] consecutive
+    /// attempts have failed. Counted for the instance as a whole, not per
+    /// client address: there is one user, so a global counter locks nobody
+    /// else out, and it needs no decision about trusting a proxy's
+    /// `X-Forwarded-For`.
+    pub const LOGIN_LOCKOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+}
+
 /// Komoot sync (US-27, ADR-0021). Auth details: `docs/komoot-api.md`.
 pub mod komoot {
     /// Env var holding the Komoot account email, read by the `komoot_check`

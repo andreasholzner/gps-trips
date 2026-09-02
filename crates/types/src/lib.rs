@@ -16,12 +16,14 @@
 
 mod activity_type;
 mod bounding_box;
+mod error_response;
 mod komoot_link;
 mod komoot_privacy;
 mod komoot_sync;
 mod location_source;
 mod photo;
 mod photo_response;
+mod session;
 mod staged_import;
 mod tag;
 mod trip_detail;
@@ -30,6 +32,7 @@ mod trip_summary;
 
 pub use activity_type::ActivityType;
 pub use bounding_box::BoundingBox;
+pub use error_response::ErrorResponse;
 pub use komoot_link::KomootLink;
 pub use komoot_privacy::KomootPrivacy;
 pub use komoot_sync::{
@@ -38,6 +41,7 @@ pub use komoot_sync::{
 pub use location_source::LocationSource;
 pub use photo::Photo;
 pub use photo_response::PhotoResponse;
+pub use session::{Identity, Login, Principal, Session};
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};
 pub use tag::{normalize_tag_name, Tag};
 pub use trip_detail::TripDetail;

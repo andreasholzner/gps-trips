@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use sqlx::SqlitePool;
 
+use crate::server::auth::Auth;
 use crate::server::komoot::KomootClient;
 use crate::server::storage::BlobStore;
 
@@ -18,6 +19,11 @@ pub struct AppState {
     /// everything except the "Sync now" routes, which report a clear 400
     /// instead of the app refusing to start over an optional integration.
     pub komoot: Option<Arc<dyn KomootClient>>,
+    /// The shared-password gate (US-19, ADR-0010's 2026-09-02 amendment).
+    /// Not optional the way `komoot` is: the archive refuses to start
+    /// without a password, so every request — in production and in the
+    /// tests, which build the same router — passes through the same gate.
+    pub auth: Auth,
     /// US-26/ADR-0021: true while a "Sync now" run is in flight — guards
     /// `PATCH`/`DELETE /api/trips/:id` and a second concurrent sync against
     /// racing the push phase's read of `edit_pending`/`delete_pending`. A
@@ -42,11 +48,13 @@ impl AppState {
         pool: SqlitePool,
         store: Arc<dyn BlobStore>,
         komoot: Option<Arc<dyn KomootClient>>,
+        auth: Auth,
     ) -> Self {
         Self {
             pool,
             store,
             komoot,
+            auth,
             sync_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -107,7 +115,8 @@ mod tests {
         let db = TestDb::new().await;
         let dir = tempfile::tempdir().expect("temp dir");
         let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-        (AppState::new(db.pool, store, None), dir)
+        let auth = Auth::new("a test password").expect("a non-empty password");
+        (AppState::new(db.pool, store, None, auth), dir)
     }
 
     #[tokio::test]
