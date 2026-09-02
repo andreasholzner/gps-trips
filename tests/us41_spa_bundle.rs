@@ -2,9 +2,10 @@
 //! a client-side-rendered SPA served as static files by Axum, mounted at
 //! `/app` from an `app/` folder inside the assets directory, so the
 //! deployable unit stays "binary + adjacent `public/`" (ADR-0016) with
-//! nothing new to configure. The server-rendered pages at `/` are untouched
-//! and keep their own tests until US-52 retires the list page (ADR-0012's
-//! migration rule).
+//! nothing new to configure. Since US-44 there are no server-rendered pages
+//! left beside it: every path one of them answered is a redirect into the
+//! SPA, so a bookmark made before it went still reaches the screen that
+//! replaced it.
 
 mod common;
 
@@ -45,9 +46,8 @@ async fn the_spa_bundle_is_served_at_app() {
 async fn the_archives_home_sends_the_owner_to_the_spa() {
     // US-52 retired the server-rendered trip list, which was `/`. The SPA is
     // the archive's home now, so an old bookmark lands on it rather than on
-    // a 404. The remaining proof-of-concept pages — the trip detail, the
-    // import form, the Komoot review — are untouched and stay reachable
-    // until US-42/43/44 replace them.
+    // a 404 — and since US-44 took the last of the other pages, it is the
+    // only UI there is.
     let (app, _db_dir) = common::test_app().await;
 
     let response = common::get(&app, "/").await;
@@ -71,6 +71,19 @@ async fn an_old_bookmark_to_a_trip_leads_to_its_screen_in_the_spa() {
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert_eq!(response.headers()["location"], "/app/trips/42");
+}
+
+#[tokio::test]
+async fn an_old_bookmark_to_the_komoot_review_leads_to_its_screen_in_the_spa() {
+    // US-44 deleted the last server-rendered page. Same treatment as the
+    // three before it, and the path is unchanged under `/app`, so a
+    // bookmark is one prefix away from where it always went.
+    let (app, _db_dir) = common::test_app().await;
+
+    let response = common::get(&app, "/komoot/sync").await;
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers()["location"], "/app/komoot/sync");
 }
 
 #[tokio::test]

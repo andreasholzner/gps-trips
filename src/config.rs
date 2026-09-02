@@ -13,7 +13,8 @@ pub mod storage {
     /// Default data directory when `DATA_DIR_ENV_VAR` isn't set (the `cargo
     /// run` dev workflow).
     pub const DEFAULT_DATA_DIR: &str = "./data";
-    /// Env var overriding the vendored static-assets directory. See
+    /// Env var overriding the static-assets directory — since US-44 that is
+    /// the SPA's built bundle and nothing else. See
     /// `server::paths::assets_dir`.
     pub const ASSETS_DIR_ENV_VAR: &str = "TRIP_ARCHIVE_ASSETS_DIR";
     /// SQLite database filename, under the data directory.

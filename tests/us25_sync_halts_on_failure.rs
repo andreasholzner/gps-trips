@@ -11,6 +11,12 @@
 //! `handle_sync` — which sequences push-edits -> push-deletes -> pull —
 //! actually stops the *whole run* on an earlier phase's failure, exercised
 //! through the real router the owner's browser talks to.
+//!
+//! The halt is asserted here; the *visible* half of the criterion moved to
+//! the SPA's sync screen with the review page it used to be rendered on
+//! (`crates/ui-dioxus/src/komoot/tests.rs`, US-44). What this file checks is
+//! that the run names the tour and the phase at all — without which the
+//! screen would have nothing to show.
 
 mod common;
 
@@ -178,36 +184,4 @@ async fn us25_push_delete_failure_halts_before_the_pull_phase_even_starts() {
         !calls.contains(&RecordedCall::GetTourGpx("222".to_string())),
         "the pull phase must never have started: {calls:?}"
     );
-}
-
-#[tokio::test]
-async fn us25_failure_banner_names_the_specific_failed_tour() {
-    let mock = Arc::new(MockKomootClient {
-        tours: vec![a_tour("111", "Fails to pull", "hike")],
-        fail_get_tour_gpx_for: HashSet::from(["111".to_string()]),
-        ..Default::default()
-    });
-    let client: Arc<dyn KomootClient> = mock;
-    let (app, _dir) = test_app_with_komoot(client).await;
-
-    let response = send(&app, sync_request(&["111"])).await;
-    let body: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
-    let params = format!(
-        "failed_tour={}&failed_msg={}&failed_phase={}",
-        body["failed_tour"].as_str().unwrap(),
-        urlencoding_stub(body["failed_msg"].as_str().unwrap()),
-        body["failed_phase"].as_str().unwrap(),
-    );
-    let page = body_string(get(&app, &format!("/komoot/sync?{params}")).await).await;
-    assert!(
-        page.contains("111"),
-        "the review page banner must name the failed tour: {page}"
-    );
-}
-
-/// Minimal query-string escaping for the one banner test above — no need
-/// for a real percent-encoding crate dependency for a handful of ASCII
-/// words in a test-only fixture message.
-fn urlencoding_stub(s: &str) -> String {
-    s.replace(' ', "%20").replace(':', "%3A")
 }

@@ -17,7 +17,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::config::komoot::PAGE_SIZE;
@@ -63,23 +62,6 @@ pub struct PushSummary {
 pub struct PushDeleteSummary {
     pub deleted: Vec<String>,
     pub failed: Option<(String, String)>,
-}
-
-/// Query params on the "Sync now" review page's redirect after a run: how
-/// many pending edits/deletes were pushed and tours imported, and which
-/// trip/tour (if any) halted the run and in which phase — echoed back into
-/// the page as a one-line result banner (no session/flash mechanism in this
-/// app; matches how every other server-rendered page here carries its own
-/// state via the query string).
-#[derive(Debug, Default, Deserialize)]
-pub struct SyncResultQuery {
-    pub pushed: Option<usize>,
-    /// US-24: tours deleted on Komoot this run.
-    pub deleted: Option<usize>,
-    pub synced: Option<usize>,
-    pub failed_tour: Option<String>,
-    pub failed_msg: Option<String>,
-    pub failed_phase: Option<String>,
 }
 
 /// Run `f` on the blocking pool — every `KomootClient` call goes through

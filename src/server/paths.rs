@@ -3,7 +3,8 @@
 //! Two independent concerns:
 //! - the **data directory** (DB + photo blobs, ADR-0002): explicit config only, defaulting
 //!   to `./data` for the `cargo run` dev workflow.
-//! - the **assets directory** (vendored map/chart JS/CSS, ADR-0005/0006): resolved relative
+//! - the **assets directory** (the SPA's built bundle, ADR-0024 — all that is left of
+//!   `public/` since US-44 retired the last server-rendered page): resolved relative
 //!   to the running binary, not the process's current working directory, so the deployable
 //!   unit is "binary + adjacent `public/` folder" that can be started from anywhere
 //!   (ADR-0016).
@@ -26,7 +27,9 @@ pub fn spa_dir() -> PathBuf {
     assets_dir().join("app")
 }
 
-/// Where the vendored static assets (`public/`) live.
+/// Where the static assets (`public/`) live. Its only content is the SPA
+/// bundle [`spa_dir`] points into, but the two stay separate: ADR-0016's
+/// resolution rule is about the folder, not about what happens to be in it.
 pub fn assets_dir() -> PathBuf {
     resolve_assets_dir(
         std::env::var(ASSETS_DIR_ENV_VAR).ok(),
