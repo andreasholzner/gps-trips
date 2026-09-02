@@ -40,10 +40,11 @@ directory, so this pair can be copied anywhere and started from any directory
 
 ### Komoot sync (optional)
 
-`KOMOOT_EMAIL`/`KOMOOT_PASSWORD` are only needed for the Komoot integration (`/komoot/sync`, and
-the `komoot_check` CLI binary). Leaving either unset does not stop the server
-from starting — every other page and API works normally; `/komoot/sync` itself returns a `400`
-explaining the sync isn't configured. Set both to enable it:
+`KOMOOT_EMAIL`/`KOMOOT_PASSWORD` are only needed for the Komoot integration (the SPA's sync
+screen at `/app/komoot/sync`, and the `komoot_check` CLI binary). Leaving either unset does not
+stop the server from starting — every other screen and API works normally; the sync endpoints
+themselves return a `400` explaining the sync isn't configured, which the screen shows as it is.
+Set both to enable it:
 
 ```sh
 KOMOOT_EMAIL=you@example.com KOMOOT_PASSWORD='...' TRIP_ARCHIVE_DATA_DIR=/path/to/data ./trip-archive
