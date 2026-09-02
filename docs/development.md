@@ -70,13 +70,16 @@ The deployed shape is the built bundle served by Axum itself at `/app`, from `pu
 ```sh
 rm -rf target/dx/ui-dioxus public/app
 (cd crates/ui-dioxus && dx build --release --platform web)
+mkdir -p public
 cp -r target/dx/ui-dioxus/release/web/public public/app
 # → http://127.0.0.1:3000/app/
 ```
 
 Wipe `target/dx/ui-dioxus` first, as above: `dx` keeps previously built, content-hashed
 artifacts there, and copying without clearing it leaves orphaned `.wasm`/`.js` files in
-`public/app`. `public/app` is generated and git-ignored.
+`public/app`. Both `public/` and `public/app` are generated and git-ignored — since US-44
+deleted the last server-rendered page, the bundle is all `public/` holds, so a fresh clone
+has no `public/` at all and the `mkdir` is what creates it.
 
 ## Tests
 
