@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use trip_archive::config;
 use trip_archive::server;
+use trip_archive::server::auth::Auth;
 use trip_archive::server::komoot::{KomootClient, KomootHttpClient};
 use trip_archive::server::storage::{BlobStore, LocalDisk};
 
@@ -15,6 +16,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    // Before anything else: an archive on the public internet (ADR-0023)
+    // that boots without its shared password is the failure US-19 exists to
+    // prevent, so a missing or empty one stops the boot here rather than
+    // opening the archive (US-48). There is no development exemption.
+    let auth = Auth::from_env()?;
+
     let data_dir = server::paths::data_dir();
     std::fs::create_dir_all(&data_dir)?;
 
@@ -22,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();
-    let app = server::http::router(server::state::AppState::new(pool, store, komoot));
+    let app = server::http::router(server::state::AppState::new(pool, store, komoot, auth));
 
     let addr = config::server::BIND_ADDR;
     let listener = TcpListener::bind(addr).await?;

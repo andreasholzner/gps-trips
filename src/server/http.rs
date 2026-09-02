@@ -14,13 +14,14 @@ use crate::models::{
     PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary,
 };
 use crate::server::{
-    delete,
+    auth, delete,
     edit::handle_edit_trip,
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
     import::{handle_add_photos, handle_import},
     komoot::KomootClient,
     komoot_sync, paths, repo,
+    session::{handle_login, handle_logout, handle_session},
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
     tags::{
@@ -33,6 +34,12 @@ use crate::server::{
 /// both exercise the exact same routing (ADR-0012).
 pub fn router(state: AppState) -> Router {
     Router::new()
+        // US-19: sign in, ask who you are, sign out. One resource in three
+        // methods (ADR-0008); only the `POST` goes without a session.
+        .route(
+            "/api/session",
+            post(handle_login).get(handle_session).delete(handle_logout),
+        )
         .route("/", get(home))
         .route("/import", get(import_page_moved))
         // Multipart uploads carry a GPX plus whole photo batches, so this
@@ -116,6 +123,15 @@ pub fn router(state: AppState) -> Router {
         // app shell, so the SPA's own routes survive a reload or a shared
         // link.
         .nest_service("/app", spa_service(paths::spa_dir()))
+        // US-19's gate, over the whole router rather than over a list of
+        // protected routes: a route added below is protected by default, and
+        // reaching the archive without a session takes an entry in the
+        // allowlist `auth::is_public` holds — a deliberate act, not an
+        // oversight (ADR-0010's 2026-09-02 amendment).
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth::gate,
+        ))
         .with_state(state)
 }
 
