@@ -15,7 +15,8 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{
-    ConfirmImport, ImportedTrip, PhotoResponse, StagedImport, Tag, TripDetail, TripSummary,
+    ConfirmImport, ImportedTrip, PhotoResponse, StagedImport, SyncCandidates, SyncRequest,
+    SyncResponse, Tag, TripDetail, TripSummary,
 };
 
 use crate::track::Track;
@@ -55,6 +56,13 @@ impl ApiError {
     pub fn is_not_found(&self) -> bool {
         self.status == Some(reqwest::StatusCode::NOT_FOUND.as_u16())
     }
+
+    /// Whether the archive answered "not now": a sync is already running, so
+    /// this one was refused rather than allowed to race it (US-26). A "try
+    /// again shortly", not a failure, and the sync screen says it that way.
+    pub fn is_conflict(&self) -> bool {
+        self.status == Some(reqwest::StatusCode::CONFLICT.as_u16())
+    }
 }
 
 impl std::fmt::Display for ApiError {
@@ -67,14 +75,12 @@ async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
     let response = reqwest::get(&url)
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::from_status(
-            status,
-            format!("{url} returned {status}"),
-        ));
-    }
-    response
+
+    // Through `ok_or_error` like every write, so a refusal arrives as the
+    // archive's own sentence rather than as a status code: the sync screen's
+    // "not configured" (US-44) is a 400 whose whole value is its wording.
+    ok_or_error(&url, response)
+        .await?
         .json::<T>()
         .await
         .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
@@ -460,6 +466,41 @@ pub async fn cancel_staged_import(base_url: &str, staging_id: i64) -> Result<(),
 
     ok_or_error(&url, response).await?;
     Ok(())
+}
+
+/// `GET /api/komoot/sync` — what a "Sync now" run would do right now
+/// (US-22/US-29): the Komoot tours not yet in the archive, each labeled by
+/// kind, plus how many pending edits and deletes the push phases would send.
+///
+/// Slow by nature — the archive logs into Komoot and pages both listings to
+/// answer it — so the screen fetches it once on arrival and again after a
+/// run, not on every keystroke.
+pub async fn list_sync_candidates(base_url: &str) -> Result<SyncCandidates, ApiError> {
+    get_json(format!("{base_url}/api/komoot/sync")).await
+}
+
+/// `POST /api/komoot/sync` — run a sync (US-22): push the pending edits
+/// (US-20) and deletes (US-24), then pull the tours the owner ticked.
+///
+/// A halted run is a `200` carrying `failed_tour` (US-25), not an error
+/// status: the phases before the halt did real work and the owner needs both
+/// halves of that story. The one refusal that does arrive as an error is the
+/// `409` of a second sync while one is in flight (US-26), which
+/// [`ApiError::is_conflict`] tells apart from a real failure.
+pub async fn sync_now(base_url: &str, request: &SyncRequest) -> Result<SyncResponse, ApiError> {
+    let url = format!("{base_url}/api/komoot/sync");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .json(request)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    ok_or_error(&url, response)
+        .await?
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

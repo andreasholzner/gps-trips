@@ -52,12 +52,12 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     rsx! {
         h1 { "Trips" }
         // The server-rendered list page used to be the way to these; it is
-        // gone (US-52) and the SPA is the archive's home now. Importing is a
-        // screen here since US-43; the Komoot review page is still
-        // server-rendered, and stays a plain link until US-44.
+        // gone (US-52) and the SPA is the archive's home now. Both are
+        // screens in this app since US-43 and US-44, so both are router
+        // links: no page load, and the href picks up the bundle's base path.
         nav { class: "elsewhere",
             Link { to: Route::ImportTrip {}, "Import a trip" }
-            a { href: "/komoot/sync", "Sync with Komoot" }
+            Link { to: Route::KomootSync {}, "Sync with Komoot" }
         }
         KindTabs { filters }
         FilterPanel { filters }

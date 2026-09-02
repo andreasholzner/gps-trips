@@ -73,8 +73,9 @@ nav.tabs button:not(:disabled) {
   gap: 0.25rem;
 }
 
-/* Eight columns do not fit a phone. The table scrolls inside its own box so
-   the page itself never scrolls sideways. */
+/* Neither the trip list's eight columns nor the sync review's six fit a
+   phone. The table scrolls inside its own box so the page itself never
+   scrolls sideways. */
 .table-scroll {
   overflow-x: auto;
 }
@@ -83,8 +84,9 @@ nav.tabs button:not(:disabled) {
   margin-bottom: 0;
 }
 
-/* A trip name is the row's anchor; on a phone it may wrap, but it must not
-   be squeezed to a sliver by the numeric columns beside it. */
+/* The name — of a trip, or of the Komoot tour a sync would pull — is the
+   row's anchor; on a phone it may wrap, but it must not be squeezed to a
+   sliver by the numeric columns beside it. */
 .table-scroll td:nth-child(2) {
   min-width: 12ch;
 }
