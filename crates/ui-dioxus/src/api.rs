@@ -2,11 +2,8 @@
 //! `trip-archive-types` (ADR-0015's 2026-08-28 amendment), so nothing is
 //! described twice.
 //!
-//! Every call takes a `base_url`: the page's own origin on the web (the SPA
-//! is served by the server it queries, but `reqwest` — unlike a browser
-//! `fetch` wrapper — rejects relative URLs outright), and later the address
-//! the owner configured on Android (US-16), where there is no origin to be
-//! relative to.
+//! Every call takes an [`ApiClient`]: where the archive is, and what proves
+//! who is asking (US-19).
 //!
 //! `reqwest` rather than a browser-only client: it compiles to `fetch` under
 //! wasm and to a native client on Android, which is the whole reason the two
@@ -15,11 +12,84 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{
-    ConfirmImport, ImportedTrip, PhotoResponse, StagedImport, SyncCandidates, SyncRequest,
-    SyncResponse, Tag, TripDetail, TripSummary,
+    ConfirmImport, ErrorResponse, Identity, ImportedTrip, Login, PhotoResponse, Session,
+    StagedImport, SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
 };
 
 use crate::track::Track;
+
+/// Where the archive is, and what proves who is asking (US-19).
+///
+/// The **base URL** is the page's own origin on the web — the SPA is served
+/// by the server it queries, but `reqwest`, unlike a browser `fetch`
+/// wrapper, rejects relative URLs outright — and on Android the address the
+/// owner configured (US-16), where there is no origin to be relative to.
+///
+/// The **token** is `None` in the browser, where the session travels as an
+/// `HttpOnly` cookie the page cannot read and has no need to: the browser
+/// attaches it by itself, which is the whole reason ADR-0010's amendment
+/// made the session a cookie. It is `Some` where there is no cookie store —
+/// the Android app's native client, and the host-target tests that stand in
+/// for it — and then rides every request as `Authorization: Bearer`, the
+/// second form of the same token.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ApiClient {
+    base_url: String,
+    token: Option<String>,
+}
+
+impl ApiClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+            token: None,
+        }
+    }
+
+    /// The same archive, reached with a token in hand.
+    pub fn with_token(self, token: impl Into<String>) -> Self {
+        Self {
+            token: Some(token.into()),
+            ..self
+        }
+    }
+
+    /// The archive's origin, for the two things handed to the browser as a
+    /// URL rather than fetched: the GPX download `<a href>` and a photo's
+    /// `<img src>`.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.base_url)
+    }
+
+    /// A request already carrying the session, where this client holds one.
+    fn request(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
+        let request = reqwest::Client::new().request(method, url);
+        match &self.token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        }
+    }
+
+    fn get(&self, url: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::GET, url)
+    }
+
+    fn post(&self, url: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::POST, url)
+    }
+
+    fn patch(&self, url: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::PATCH, url)
+    }
+
+    fn delete(&self, url: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::DELETE, url)
+    }
+}
 
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]
@@ -57,6 +127,12 @@ impl ApiError {
         self.status == Some(reqwest::StatusCode::NOT_FOUND.as_u16())
     }
 
+    /// Whether the archive refused for want of a session (US-19) — the
+    /// answer that means "show the login screen", not "something broke".
+    pub fn is_unauthorized(&self) -> bool {
+        self.status == Some(reqwest::StatusCode::UNAUTHORIZED.as_u16())
+    }
+
     /// Whether the archive answered "not now": a sync is already running, so
     /// this one was refused rather than allowed to race it (US-26). A "try
     /// again shortly", not a failure, and the sync screen says it that way.
@@ -71,8 +147,10 @@ impl std::fmt::Display for ApiError {
     }
 }
 
-async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
-    let response = reqwest::get(&url)
+async fn get_json<T: DeserializeOwned>(archive: &ApiClient, url: String) -> Result<T, ApiError> {
+    let response = archive
+        .get(&url)
+        .send()
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
@@ -89,36 +167,44 @@ async fn get_json<T: DeserializeOwned>(url: String) -> Result<T, ApiError> {
 /// `GET /api/trips` — the filtered list (US-6/US-13). `query` is
 /// `Filters::to_query`'s output, without a leading `?` (the same string the
 /// SPA carries in its own URL); empty means the unfiltered list.
-pub async fn list_trips(base_url: &str, query: String) -> Result<Vec<TripSummary>, ApiError> {
+pub async fn list_trips(archive: &ApiClient, query: String) -> Result<Vec<TripSummary>, ApiError> {
     let separator = if query.is_empty() { "" } else { "?" };
-    get_json(format!("{base_url}/api/trips{separator}{query}")).await
+    get_json(
+        archive,
+        archive.url(&format!("/api/trips{separator}{query}")),
+    )
+    .await
 }
 
 /// `GET /api/trips/:id` — one trip's metadata for the detail screen (US-7).
 /// A 404 travels back as such (`ApiError::is_not_found`), because a trip the
 /// owner has deleted is an ordinary thing to ask for and the screen says so
 /// in its own words.
-pub async fn get_trip(base_url: &str, id: i64) -> Result<TripDetail, ApiError> {
-    get_json(format!("{base_url}/api/trips/{id}")).await
+pub async fn get_trip(archive: &ApiClient, id: i64) -> Result<TripDetail, ApiError> {
+    get_json(archive, archive.url(&format!("/api/trips/{id}"))).await
 }
 
 /// `GET /api/trips/:id/track.geojson` — the track geometry (ADR-0003). One
 /// fetch feeds both the map and the elevation chart: the geometry and the
 /// chart's series travel together in the same blob (ADR-0025).
-pub async fn get_track(base_url: &str, id: i64) -> Result<Track, ApiError> {
-    get_json(format!("{base_url}/api/trips/{id}/track.geojson")).await
+pub async fn get_track(archive: &ApiClient, id: i64) -> Result<Track, ApiError> {
+    get_json(
+        archive,
+        archive.url(&format!("/api/trips/{id}/track.geojson")),
+    )
+    .await
 }
 
 /// `GET /api/tags` — every known tag, for the tag filter's choices (US-38)
 /// and the bulk-tag suggestions (US-34).
-pub async fn list_tags(base_url: &str) -> Result<Vec<Tag>, ApiError> {
-    get_json(format!("{base_url}/api/tags")).await
+pub async fn list_tags(archive: &ApiClient) -> Result<Vec<Tag>, ApiError> {
+    get_json(archive, archive.url("/api/tags")).await
 }
 
 /// `GET /api/trips/:id/photos` — the trip's photos (US-2/US-7), each already
 /// carrying the URLs to fetch its image and its thumbnail (US-5).
-pub async fn list_photos(base_url: &str, id: i64) -> Result<Vec<PhotoResponse>, ApiError> {
-    get_json(format!("{base_url}/api/trips/{id}/photos")).await
+pub async fn list_photos(archive: &ApiClient, id: i64) -> Result<Vec<PhotoResponse>, ApiError> {
+    get_json(archive, archive.url(&format!("/api/trips/{id}/photos"))).await
 }
 
 /// One photo on its way to the archive: the name the file was chosen under,
@@ -147,8 +233,12 @@ pub struct PhotoUpload {
 /// that page's status instead — a browser `fetch` gives no way to decline a
 /// redirect — and would have started reporting 404 the moment US-42 retired
 /// the page. US-43's import wants the same treatment.
-pub async fn add_photos(base_url: &str, id: i64, photos: Vec<PhotoUpload>) -> Result<(), ApiError> {
-    let url = format!("{base_url}/api/trips/{id}/photos");
+pub async fn add_photos(
+    archive: &ApiClient,
+    id: i64,
+    photos: Vec<PhotoUpload>,
+) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/trips/{id}/photos"));
     let mut form = reqwest::multipart::Form::new();
     for photo in photos {
         let name = photo.file_name.clone();
@@ -162,7 +252,7 @@ pub async fn add_photos(base_url: &str, id: i64, photos: Vec<PhotoUpload>) -> Re
         form = form.part("photos", part);
     }
 
-    let response = reqwest::Client::new()
+    let response = archive
         .post(&url)
         .multipart(form)
         .send()
@@ -216,11 +306,20 @@ fn usable_content_type(content_type: Option<&str>) -> Option<&str> {
     (is_token(kind) && is_token(subtype)).then_some(content_type)
 }
 
-/// The server's own words, where it answered with words. The API's own
-/// errors are a plain sentence the owner can act on; a redirect that landed
-/// on an error *page* answers in HTML, which belongs in no error line.
+/// The server's own words, where it answered with words.
+///
+/// The archive's refusals are one worded sentence in a JSON [`ErrorResponse`]
+/// — unwrapped here, because `{"error":"…"}` in a screen's error line is the
+/// archive talking to a programmer, not to the owner. A body that is not
+/// that is taken verbatim if it reads like a sentence: an error *page* from
+/// a proxy or a platform answers in HTML, which belongs in no error line,
+/// and the caller falls back to naming the request and its status.
 fn readable_body(body: String) -> Option<String> {
     let body = body.trim();
+    if let Ok(error) = serde_json::from_str::<ErrorResponse>(body) {
+        let message = error.error.trim().to_string();
+        return (!message.is_empty()).then_some(message);
+    }
     (!body.is_empty() && !body.starts_with('<')).then(|| body.to_string())
 }
 
@@ -230,9 +329,9 @@ fn readable_body(body: String) -> Option<String> {
 ///
 /// The archive's own words come back for a refusal — notably the 409 while a
 /// "Sync now" run is in flight (US-26), which is a "not now", not a failure.
-pub async fn delete_trip(base_url: &str, id: i64) -> Result<(), ApiError> {
-    let url = format!("{base_url}/api/trips/{id}");
-    let response = reqwest::Client::new()
+pub async fn delete_trip(archive: &ApiClient, id: i64) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/trips/{id}"));
+    let response = archive
         .delete(&url)
         .send()
         .await
@@ -246,8 +345,8 @@ pub async fn delete_trip(base_url: &str, id: i64) -> Result<(), ApiError> {
 /// link, not a fetch: the archive answers with the bytes it stored and a
 /// `Content-Disposition` naming the file, so the browser saves it — reading
 /// it into wasm first would only take a detour through memory.
-pub fn original_gpx_url(base_url: &str, id: i64) -> String {
-    format!("{base_url}/api/trips/{id}/gpx")
+pub fn original_gpx_url(archive: &ApiClient, id: i64) -> String {
+    archive.url(&format!("/api/trips/{id}/gpx"))
 }
 
 /// The `PATCH /api/trips/:id` body (US-15/US-35). Every field is optional and
@@ -283,9 +382,9 @@ impl TripEdit {
 /// activity, a privacy on a trip that never came from Komoot), so the owner
 /// reads what is wrong rather than a status code — and for a 409 while a
 /// "Sync now" run is in flight (US-26).
-pub async fn edit_trip(base_url: &str, id: i64, edit: &TripEdit) -> Result<(), ApiError> {
-    let url = format!("{base_url}/api/trips/{id}");
-    let response = reqwest::Client::new()
+pub async fn edit_trip(archive: &ApiClient, id: i64, edit: &TripEdit) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/trips/{id}"));
+    let response = archive
         .patch(&url)
         .json(edit)
         .send()
@@ -297,8 +396,8 @@ pub async fn edit_trip(base_url: &str, id: i64, edit: &TripEdit) -> Result<(), A
 }
 
 /// `GET /api/trips/:id/tags` — the tags on one trip (US-33).
-pub async fn list_trip_tags(base_url: &str, id: i64) -> Result<Vec<Tag>, ApiError> {
-    get_json(format!("{base_url}/api/trips/{id}/tags")).await
+pub async fn list_trip_tags(archive: &ApiClient, id: i64) -> Result<Vec<Tag>, ApiError> {
+    get_json(archive, archive.url(&format!("/api/trips/{id}/tags"))).await
 }
 
 /// The `POST /api/trips/:id/tags` body (US-33): the name as typed. The
@@ -313,9 +412,9 @@ struct AddTag<'a> {
 /// first use of the name (US-33). The archive's own words come back for a
 /// name it refuses (one with a space or a comma), so the owner reads the rule
 /// rather than a status code.
-pub async fn add_trip_tag(base_url: &str, id: i64, name: &str) -> Result<Tag, ApiError> {
-    let url = format!("{base_url}/api/trips/{id}/tags");
-    let response = reqwest::Client::new()
+pub async fn add_trip_tag(archive: &ApiClient, id: i64, name: &str) -> Result<Tag, ApiError> {
+    let url = archive.url(&format!("/api/trips/{id}/tags"));
+    let response = archive
         .post(&url)
         .json(&AddTag { name })
         .send()
@@ -331,9 +430,9 @@ pub async fn add_trip_tag(base_url: &str, id: i64, name: &str) -> Result<Tag, Ap
 
 /// `DELETE /api/trips/:id/tags/:tag_id` — take a tag off a trip (US-33). The
 /// tag itself stays in the archive, unused but suggestible again later.
-pub async fn remove_trip_tag(base_url: &str, id: i64, tag_id: i64) -> Result<(), ApiError> {
-    let url = format!("{base_url}/api/trips/{id}/tags/{tag_id}");
-    let response = reqwest::Client::new()
+pub async fn remove_trip_tag(archive: &ApiClient, id: i64, tag_id: i64) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/trips/{id}/tags/{tag_id}"));
+    let response = archive
         .delete(&url)
         .send()
         .await
@@ -357,12 +456,12 @@ struct BulkAddTags<'a> {
 /// failures carry the server's own message (an invalid name, US-33's rules)
 /// so the owner reads what is wrong instead of a status code.
 pub async fn bulk_add_tags(
-    base_url: &str,
+    archive: &ApiClient,
     trip_ids: &[i64],
     names: &[String],
 ) -> Result<Vec<Tag>, ApiError> {
-    let url = format!("{base_url}/api/trips/tags");
-    let response = reqwest::Client::new()
+    let url = archive.url("/api/trips/tags");
+    let response = archive
         .post(&url)
         .json(&BulkAddTags { trip_ids, names })
         .send()
@@ -395,17 +494,17 @@ pub async fn bulk_add_tags(
 /// (`add_photos`), the archive reads this field's bytes as GPX whatever the
 /// picker called it, and a browser reports nothing useful for `.gpx` anyway.
 pub async fn stage_gpx(
-    base_url: &str,
+    archive: &ApiClient,
     file_name: &str,
     bytes: Vec<u8>,
 ) -> Result<StagedImport, ApiError> {
-    let url = format!("{base_url}/api/import/staged");
+    let url = archive.url("/api/import/staged");
     let part = reqwest::multipart::Part::bytes(bytes)
         .file_name(file_name.to_string())
         .mime_str("application/gpx+xml")
         .map_err(|err| ApiError::new(format!("{file_name} could not be sent: {err}")))?;
 
-    let response = reqwest::Client::new()
+    let response = archive
         .post(&url)
         .multipart(reqwest::multipart::Form::new().part("gpx", part))
         .send()
@@ -430,12 +529,12 @@ pub async fn stage_gpx(
 /// would not take, reported in its own words with the parse still waiting, so
 /// the owner fixes the field instead of repeating the upload.
 pub async fn confirm_import(
-    base_url: &str,
+    archive: &ApiClient,
     staging_id: i64,
     confirm: &ConfirmImport,
 ) -> Result<i64, ApiError> {
-    let url = format!("{base_url}/api/import/staged/{staging_id}/confirm");
-    let response = reqwest::Client::new()
+    let url = archive.url(&format!("/api/import/staged/{staging_id}/confirm"));
+    let response = archive
         .post(&url)
         .json(confirm)
         .send()
@@ -456,9 +555,9 @@ pub async fn confirm_import(
 ///
 /// Navigating away sends nothing: there is no hook that reliably runs on the
 /// way out, so those parses wait for the sweeper.
-pub async fn cancel_staged_import(base_url: &str, staging_id: i64) -> Result<(), ApiError> {
-    let url = format!("{base_url}/api/import/staged/{staging_id}");
-    let response = reqwest::Client::new()
+pub async fn cancel_staged_import(archive: &ApiClient, staging_id: i64) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/import/staged/{staging_id}"));
+    let response = archive
         .delete(&url)
         .send()
         .await
@@ -475,8 +574,8 @@ pub async fn cancel_staged_import(base_url: &str, staging_id: i64) -> Result<(),
 /// Slow by nature — the archive logs into Komoot and pages both listings to
 /// answer it — so the screen fetches it once on arrival and again after a
 /// run, not on every keystroke.
-pub async fn list_sync_candidates(base_url: &str) -> Result<SyncCandidates, ApiError> {
-    get_json(format!("{base_url}/api/komoot/sync")).await
+pub async fn list_sync_candidates(archive: &ApiClient) -> Result<SyncCandidates, ApiError> {
+    get_json(archive, archive.url("/api/komoot/sync")).await
 }
 
 /// `POST /api/komoot/sync` — run a sync (US-22): push the pending edits
@@ -487,9 +586,12 @@ pub async fn list_sync_candidates(base_url: &str) -> Result<SyncCandidates, ApiE
 /// halves of that story. The one refusal that does arrive as an error is the
 /// `409` of a second sync while one is in flight (US-26), which
 /// [`ApiError::is_conflict`] tells apart from a real failure.
-pub async fn sync_now(base_url: &str, request: &SyncRequest) -> Result<SyncResponse, ApiError> {
-    let url = format!("{base_url}/api/komoot/sync");
-    let response = reqwest::Client::new()
+pub async fn sync_now(
+    archive: &ApiClient,
+    request: &SyncRequest,
+) -> Result<SyncResponse, ApiError> {
+    let url = archive.url("/api/komoot/sync");
+    let response = archive
         .post(&url)
         .json(request)
         .send()
@@ -501,6 +603,62 @@ pub async fn sync_now(base_url: &str, request: &SyncRequest) -> Result<SyncRespo
         .json()
         .await
         .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `POST /api/session` — sign in with the one shared password (US-19).
+///
+/// The archive answers with the session *and* sets it as a cookie. On the
+/// web the cookie is the credential and the returned token is spare; off it,
+/// where there is no cookie store, the token is the only copy — so it is
+/// what [`ApiClient::with_token`] is given.
+///
+/// A wrong password comes back as a `401` and too many wrong ones as a
+/// `429`, both carrying the archive's own sentence, which is what the login
+/// screen shows: "that is not the password" and "wait a quarter of an hour"
+/// are different things to be told.
+pub async fn login(archive: &ApiClient, password: &str) -> Result<Session, ApiError> {
+    let url = archive.url("/api/session");
+    let body = Login {
+        password: password.to_string(),
+    };
+    let response = archive
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    ok_or_error(&url, response)
+        .await?
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `GET /api/session` — who the archive takes this client to be (US-19).
+///
+/// The one call whose *failure* is the ordinary answer: a `401` here means
+/// nobody is signed in, which is what [`ApiError::is_unauthorized`] is read
+/// for. The gate answers it, so asking costs one request either way.
+pub async fn session(archive: &ApiClient) -> Result<Identity, ApiError> {
+    get_json(archive, archive.url("/api/session")).await
+}
+
+/// `DELETE /api/session` — sign out (US-19).
+///
+/// Clears the cookie on the archive's side. The client forgets its own token
+/// separately: there is no server-side session to end, only a signature to
+/// stop presenting.
+pub async fn logout(archive: &ApiClient) -> Result<(), ApiError> {
+    let url = archive.url("/api/session");
+    let response = archive
+        .delete(&url)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    ok_or_error(&url, response).await?;
+    Ok(())
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

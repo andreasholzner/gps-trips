@@ -20,6 +20,9 @@ dioxus = { version = "=0.7.10", features = ["router", "asset"] }
 trip-archive-types = { path = "../types" }
 
 serde = { version = "1", features = ["derive"] }
+# The archive's refusals arrive as JSON like everything else it says
+# (ADR-0008), and are unwrapped into the sentence a screen shows.
+serde_json = "1"
 # Works on both targets: `fetch` under wasm, a native client on Android —
 # the reason the two platforms can share one API client (ADR-0024).
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
@@ -38,9 +41,11 @@ reqwest = { version = "0.12", default-features = false, features = [
 dioxus-ssr = "0.7"
 dioxus-core = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
-serde_json = "1"
 tempfile = "3"
 axum = "0.7"
+# US-19: the harness mints a session token for the gated test server, the
+# way the Android app will have to (there is no cookie store off the web).
+time = "0.3"
 # The real server for whole-screen tests: the database and the blob store
 # are real, and `test-support` exposes the one seam ADR-0012 does mock — the
 # `KomootClient` double the sync screen's tests drive (US-44).

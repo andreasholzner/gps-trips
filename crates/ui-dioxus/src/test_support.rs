@@ -24,6 +24,8 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
+use crate::api::ApiClient;
+
 /// A view to render, as a closure — so a test can pass a component with
 /// whatever props it likes without the harness knowing their type.
 ///
@@ -56,20 +58,21 @@ fn Subject() -> Element {
 }
 
 #[component]
-fn Harness(view: View, base_url: String) -> Element {
+fn Harness(view: View, archive: ApiClient) -> Element {
     use_context_provider(|| view.clone());
     // The same context the real `App` provides, so screens fetch from
-    // wherever the test put the server.
-    use_context_provider(|| Signal::new(base_url.clone()));
+    // wherever the test put the server — and, since US-19, with the session
+    // the test signed in with.
+    use_context_provider(|| Signal::new(archive.clone()));
     rsx! { Router::<HarnessRoute> {} }
 }
 
-fn harness(view: impl Fn() -> Element + 'static, base_url: &str) -> VirtualDom {
+fn harness(view: impl Fn() -> Element + 'static, archive: &ApiClient) -> VirtualDom {
     VirtualDom::new_with_props(
         Harness,
         HarnessProps {
             view: View::new(view),
-            base_url: base_url.to_string(),
+            archive: archive.clone(),
         },
     )
 }
@@ -77,7 +80,7 @@ fn harness(view: impl Fn() -> Element + 'static, base_url: &str) -> VirtualDom {
 /// Render a view once, synchronously. For components that take their data as
 /// props and fetch nothing.
 pub fn render(view: impl Fn() -> Element + 'static) -> String {
-    let mut dom = harness(view, "");
+    let mut dom = harness(view, &ApiClient::default());
     dom.rebuild_in_place();
     dioxus_ssr::render(&dom)
 }
@@ -86,11 +89,11 @@ pub fn render(view: impl Fn() -> Element + 'static) -> String {
 /// `done` accepts the HTML. Panics with the last HTML rendered if that never
 /// happens — a screen stuck on "Loading…" is otherwise a silent timeout.
 pub async fn render_against_archive(
-    base_url: &str,
+    archive: &ApiClient,
     view: impl Fn() -> Element + 'static,
     done: impl Fn(&str) -> bool,
 ) -> String {
-    let mut dom = harness(view, base_url);
+    let mut dom = harness(view, archive);
     dom.rebuild_in_place();
 
     let mut html = dioxus_ssr::render(&dom);
@@ -123,12 +126,12 @@ const BOUNDARY: &str = "UiDioxusTestBoundary";
 /// path the owner's own uploads take — no direct database writes. `fields`
 /// are the import form's text fields (`name`, `activity_type`, `kind`, …);
 /// returns the new trip's id, parsed from the import's redirect.
-pub async fn import_sample(base_url: &str, fields: &[(&str, &str)]) -> i64 {
-    import_gpx(base_url, SAMPLE_GPX, fields).await
+pub async fn import_sample(archive: &ApiClient, fields: &[(&str, &str)]) -> i64 {
+    import_gpx(archive, SAMPLE_GPX, fields).await
 }
 
 /// As [`import_sample`], for a caller that needs a particular track.
-pub async fn import_gpx(base_url: &str, gpx: &[u8], fields: &[(&str, &str)]) -> i64 {
+pub async fn import_gpx(archive: &ApiClient, gpx: &[u8], fields: &[(&str, &str)]) -> i64 {
     let mut body = Vec::new();
     body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
     body.extend_from_slice(
@@ -152,7 +155,8 @@ pub async fn import_gpx(base_url: &str, gpx: &[u8], fields: &[(&str, &str)]) -> 
         .build()
         .expect("client");
     let response = client
-        .post(format!("{base_url}/api/import"))
+        .post(format!("{}/api/import", archive.base_url()))
+        .bearer_auth(token())
         .header(
             "content-type",
             format!("multipart/form-data; boundary={BOUNDARY}"),
@@ -177,9 +181,10 @@ pub async fn import_gpx(base_url: &str, gpx: &[u8], fields: &[(&str, &str)]) -> 
 
 /// Tag a trip through the real API (`POST /api/trips/:id/tags`, US-33) —
 /// the seeding path for tag-filter and bulk-tag tests.
-pub async fn tag_trip(base_url: &str, trip_id: i64, name: &str) {
+pub async fn tag_trip(archive: &ApiClient, trip_id: i64, name: &str) {
     let response = reqwest::Client::new()
-        .post(format!("{base_url}/api/trips/{trip_id}/tags"))
+        .post(format!("{}/api/trips/{trip_id}/tags", archive.base_url()))
+        .bearer_auth(token())
         .json(&serde_json::json!({ "name": name }))
         .send()
         .await
@@ -197,9 +202,9 @@ pub async fn tag_trip(base_url: &str, trip_id: i64, name: &str) {
 ///
 /// Keep the returned `TempDir` alive for the whole test: dropping it deletes
 /// the database out from under the running server.
-pub async fn serve_test_archive() -> (String, tempfile::TempDir) {
-    let (base_url, _state, dir) = serve_archive(None).await;
-    (base_url, dir)
+pub async fn serve_test_archive() -> (ApiClient, tempfile::TempDir) {
+    let (archive, _state, dir) = serve_archive(None).await;
+    (archive, dir)
 }
 
 /// As [`serve_test_archive`], with Komoot configured — for the sync screen
@@ -216,22 +221,44 @@ pub async fn serve_test_archive() -> (String, tempfile::TempDir) {
 pub async fn serve_test_archive_with_komoot(
     client: Arc<dyn trip_archive::server::komoot::KomootClient>,
 ) -> (
-    String,
+    ApiClient,
     trip_archive::server::state::AppState,
     tempfile::TempDir,
 ) {
-    let (base_url, state, dir) = serve_archive(Some(client)).await;
-    (base_url, state, dir)
+    serve_archive(Some(client)).await
+}
+
+/// The password every test server is configured with (US-19). The archive
+/// refuses to start without one, so there is no ungated server to render a
+/// screen against; the harness sets a known one here and hands every screen
+/// a client already holding a session.
+pub const TEST_PASSWORD: &str = "a test password";
+
+/// A session token for [`TEST_PASSWORD`] — the credential the host target
+/// has to carry by hand, having no cookie store to keep one in (the same
+/// position the Android app is in, US-16).
+fn token() -> String {
+    trip_archive::server::auth::Auth::new(TEST_PASSWORD)
+        .expect("a non-empty test password")
+        .mint(time::OffsetDateTime::now_utc())
+        .token
+}
+
+/// A client for an archive nobody has signed in to — for the screens that
+/// are *about* being signed out (US-19's login screen).
+pub fn anonymous(archive: &ApiClient) -> ApiClient {
+    ApiClient::new(archive.base_url())
 }
 
 async fn serve_archive(
     komoot: Option<Arc<dyn trip_archive::server::komoot::KomootClient>>,
 ) -> (
-    String,
+    ApiClient,
     trip_archive::server::state::AppState,
     tempfile::TempDir,
 ) {
     use trip_archive::server::{
+        auth::Auth,
         db, http,
         state::AppState,
         storage::{BlobStore, LocalDisk},
@@ -242,7 +269,8 @@ async fn serve_archive(
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    let state = AppState::new(pool, store, komoot);
+    let auth = Auth::new(TEST_PASSWORD).expect("a non-empty test password");
+    let state = AppState::new(pool, store, komoot, auth);
     let router = http::router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -253,5 +281,5 @@ async fn serve_archive(
         axum::serve(listener, router).await.expect("serve");
     });
 
-    (base_url, state, dir)
+    (ApiClient::new(base_url).with_token(token()), state, dir)
 }

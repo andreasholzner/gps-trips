@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 use dioxus::prelude::*;
 use trip_archive_types::{SelectedTour, SyncCandidate, SyncCandidates, SyncRequest, SyncResponse};
 
-use crate::api::{self, ApiError};
+use crate::api::{self, ApiClient, ApiError};
 use crate::filters::Filters;
 use crate::format;
 use crate::Route;
@@ -115,11 +115,11 @@ pub fn refusal(err: &ApiError) -> String {
 /// The screen (US-44).
 #[component]
 pub fn KomootSync() -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     // Slow: the archive logs into Komoot and pages both listings to answer
     // it. Fetched on arrival and again after a run, never on a keystroke.
     let mut listing =
-        use_resource(move || async move { api::list_sync_candidates(&base_url()).await });
+        use_resource(move || async move { api::list_sync_candidates(&archive()).await });
     let selected = use_signal(BTreeSet::<String>::new);
     let mut running = use_signal(|| false);
     let mut report = use_signal(|| None::<String>);
@@ -163,7 +163,7 @@ pub fn KomootSync() -> Element {
                                 // Built before the first await, so no borrow
                                 // of the tick set is held across it.
                                 let request = selection_request(&candidates, &selected.read());
-                                match api::sync_now(&base_url(), &request).await {
+                                match api::sync_now(&archive(), &request).await {
                                     Ok(result) => {
                                         report.set(Some(run_report(&result)));
                                         // What was pulled is no longer on

@@ -187,3 +187,19 @@ nav.tabs button:not(:disabled) {
 .error {
   color: var(--pico-del-color);
 }
+
+/* Signing in (US-19). Narrow, because it holds one field: a password box
+   stretched across a laptop reads as a form with something missing. */
+.login {
+  max-width: 22rem;
+  margin: 3rem auto;
+}
+
+/* Signing out, above every screen — the only control that belongs to the
+   session rather than to what is on the page, hence its own row rather than
+   a place in any screen's own nav. */
+nav.session {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}

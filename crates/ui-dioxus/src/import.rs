@@ -18,7 +18,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, ConfirmImport, StagedImport, TripKind};
 
-use crate::api::{self, ApiError, PhotoUpload};
+use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::filters::Filters;
 use crate::Route;
 
@@ -131,7 +131,7 @@ struct PartialImport {
 /// whether the archive has a parse waiting.
 #[component]
 pub fn ImportTrip() -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     // The chosen file, kept after staging: the archive holds these bytes too,
     // but its copy expires, and re-sending them silently beats asking the
     // owner to find the file again.
@@ -173,7 +173,7 @@ pub fn ImportTrip() -> Element {
                 return;
             }
         };
-        match api::stage_gpx(&base_url(), &name, bytes.clone()).await {
+        match api::stage_gpx(&archive(), &name, bytes.clone()).await {
             Ok(suggestion) => {
                 gpx.set(Some((name, bytes)));
                 staged.set(Some(suggestion));
@@ -197,7 +197,7 @@ pub fn ImportTrip() -> Element {
         error.set(None);
         partial.set(None);
 
-        let outcome = confirm_or_restage(&base_url(), &current, &form.to_confirm(), gpx()).await;
+        let outcome = confirm_or_restage(&archive(), &current, &form.to_confirm(), gpx()).await;
         // Whichever parse is live now — the one we came in with, a re-staged
         // one, or none at all — is what the screen holds from here.
         staged.set(outcome.parked);
@@ -215,7 +215,7 @@ pub fn ImportTrip() -> Element {
         progress.set(Some(Progress { done: 0, total }));
         for batch in batches(photos) {
             let sending = batch.len();
-            if let Err(err) = api::add_photos(&base_url(), id, batch).await {
+            if let Err(err) = api::add_photos(&archive(), id, batch).await {
                 progress.set(None);
                 partial.set(Some(PartialImport {
                     trip_id: id,
@@ -242,7 +242,7 @@ pub fn ImportTrip() -> Element {
     // which shows only while nothing is parked.
     let start_over = move |_| async move {
         if let Some(current) = staged.take() {
-            let _ = api::cancel_staged_import(&base_url(), current.staging_id).await;
+            let _ = api::cancel_staged_import(&archive(), current.staging_id).await;
         }
         gpx.set(None);
         error.set(None);
@@ -303,12 +303,12 @@ struct Confirmation {
 /// rather than reporting a failure the owner can only fix by picking the
 /// same file again.
 async fn confirm_or_restage(
-    base_url: &str,
+    archive: &ApiClient,
     staged: &StagedImport,
     confirm: &ConfirmImport,
     gpx: Option<(String, Vec<u8>)>,
 ) -> Confirmation {
-    match api::confirm_import(base_url, staged.staging_id, confirm).await {
+    match api::confirm_import(archive, staged.staging_id, confirm).await {
         Ok(id) => Confirmation {
             result: Ok(id),
             parked: None,
@@ -327,7 +327,7 @@ async fn confirm_or_restage(
                 )),
                 parked: None,
             },
-            Some((name, bytes)) => restage_and_confirm(base_url, &name, bytes, confirm).await,
+            Some((name, bytes)) => restage_and_confirm(archive, &name, bytes, confirm).await,
         },
     }
 }
@@ -335,12 +335,12 @@ async fn confirm_or_restage(
 /// Send the file again and confirm against the parse that makes, keeping
 /// whichever handle is live afterwards.
 async fn restage_and_confirm(
-    base_url: &str,
+    archive: &ApiClient,
     name: &str,
     bytes: Vec<u8>,
     confirm: &ConfirmImport,
 ) -> Confirmation {
-    let restaged = match api::stage_gpx(base_url, name, bytes).await {
+    let restaged = match api::stage_gpx(archive, name, bytes).await {
         Ok(restaged) => restaged,
         Err(err) => {
             return Confirmation {
@@ -349,7 +349,7 @@ async fn restage_and_confirm(
             }
         }
     };
-    match api::confirm_import(base_url, restaged.staging_id, confirm).await {
+    match api::confirm_import(archive, restaged.staging_id, confirm).await {
         Ok(id) => Confirmation {
             result: Ok(id),
             parked: None,

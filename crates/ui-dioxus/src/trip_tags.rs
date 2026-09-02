@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{normalize_tag_name, Tag};
 
-use crate::api;
+use crate::api::{self, ApiClient};
 
 /// Whether using this name would create a tag that does not exist yet — the
 /// question US-33 wants confirmed before it happens.
@@ -23,19 +23,19 @@ pub fn is_new_name(known: &[Tag], typed: &str) -> bool {
 /// The tags section: what the trip carries, and a way to add more.
 #[component]
 pub fn TripTags(id: i64) -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     // The trip's id travels back with its tags: a resource keeps its last
     // value while a new fetch is pending, so reading the id from this scope
     // instead would let one trip's tags be cached under another's.
     let mut on_trip = use_resource(use_reactive!(|id| async move {
-        api::list_trip_tags(&base_url(), id)
+        api::list_trip_tags(&archive(), id)
             .await
             .map(|tags| (id, tags))
     }));
     // Every tag the archive knows: the suggestions, and what decides whether
     // a typed name is new. Restarted with the trip's own tags, because using
     // a new name adds to both.
-    let mut known = use_resource(move || async move { api::list_tags(&base_url()).await });
+    let mut known = use_resource(move || async move { api::list_tags(&archive()).await });
     // Held across refreshes: adding a tag restarts this, and treating the gap
     // as "the archive knows no tags" would ask the owner to confirm creating
     // one that already exists — the very claim `is_new_name` exists to avoid.
@@ -64,7 +64,7 @@ pub fn TripTags(id: i64) -> Element {
     // click handler, which would drop a future rather than run it.
     let add = use_callback(move |name: String| {
         spawn(async move {
-            match api::add_trip_tag(&base_url(), id, &name).await {
+            match api::add_trip_tag(&archive(), id, &name).await {
                 Ok(_) => {
                     typed.set(String::new());
                     error.set(None);
@@ -109,7 +109,7 @@ pub fn TripTags(id: i64) -> Element {
                 TagChips {
                     tags,
                     on_remove: move |tag_id| async move {
-                        match api::remove_trip_tag(&base_url(), id, tag_id).await {
+                        match api::remove_trip_tag(&archive(), id, tag_id).await {
                             Ok(()) => {
                                 error.set(None);
                                 on_trip.restart();

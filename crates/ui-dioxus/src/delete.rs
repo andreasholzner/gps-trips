@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api;
+use crate::api::{self, ApiClient};
 use crate::filters::Filters;
 use crate::Route;
 
@@ -14,7 +14,7 @@ use crate::Route;
 /// confirmed first, and the confirmation says what goes.
 #[component]
 pub fn DeleteTrip(id: i64) -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     let mut arming = use_signal(|| false);
     let mut deleting = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
@@ -38,7 +38,7 @@ pub fn DeleteTrip(id: i64) -> Element {
                         return;
                     }
                     deleting.set(true);
-                    match api::delete_trip(&base_url(), id).await {
+                    match api::delete_trip(&archive(), id).await {
                         Ok(()) => {
                             // Replaced, not pushed: the screen behind this one
                             // is the trip that no longer exists, and Back

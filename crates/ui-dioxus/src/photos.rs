@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 use serde::Serialize;
 use trip_archive_types::PhotoResponse;
 
-use crate::api::{self, PhotoUpload};
+use crate::api::{self, ApiClient, PhotoUpload};
 use crate::interop;
 
 /// A photo the map draws: where it is, what to show in its popup, and what
@@ -101,7 +101,7 @@ pub fn PhotoGallery(
 /// (ADR-0004); `on_added` tells the screen to re-read its photos.
 #[component]
 pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
-    let base_url = use_context::<Signal<String>>();
+    let archive = use_context::<Signal<ApiClient>>();
     let mut chosen = use_signal(Vec::<PhotoUpload>::new);
     let mut status = use_signal(|| None::<String>);
 
@@ -115,7 +115,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                     status.set(Some("Choose one or more photos first.".to_string()));
                     return;
                 }
-                match api::add_photos(&base_url(), id, photos).await {
+                match api::add_photos(&archive(), id, photos).await {
                     Ok(()) => {
                         chosen.take();
                         // Nothing else can empty a file input, and one still
