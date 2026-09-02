@@ -10,7 +10,9 @@ use axum::{
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
-use crate::models::{PhotoResponse, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary};
+use crate::models::{
+    PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary,
+};
 use crate::server::{
     delete,
     edit::handle_edit_trip,
@@ -100,7 +102,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/tags", get(handle_list_all_tags))
         // US-22: review + trigger a Komoot "Sync now" pull.
         .route("/komoot/sync", get(sync_candidates_page))
-        .route("/api/komoot/sync", post(handle_sync))
+        .route(
+            "/api/komoot/sync",
+            get(sync_candidates_api).post(handle_sync),
+        )
         // US-7: serve photo blobs stored by the BlobStore (ADR-0007).
         // The wildcard captures the blob key so any backend's url_for works here.
         .route("/media/*path", get(serve_media))
@@ -193,6 +198,28 @@ async fn sync_candidates_page(
         pending_edit_count,
         &result,
     )))
+}
+
+/// GET `/api/komoot/sync` — what a "Sync now" run would do right now
+/// (US-22/US-29), for the SPA's review screen: every Komoot tour not yet in
+/// `trip_komoot_link`, each labeled by kind, plus how many pending edits
+/// (US-20) and deletes (US-24) the push phases would send. Those run before
+/// the pull whether or not a tour is ticked, so the screen can say what is
+/// about to leave the archive as well as what is about to arrive.
+///
+/// Deliberately the same path as the POST that acts on it: one resource,
+/// read and then written (ADR-0008). 400 rather than an empty list when the
+/// archive booted without Komoot credentials — "cannot sync" and "nothing to
+/// sync" are different answers, and the screen says so differently.
+async fn sync_candidates_api(
+    State(state): State<AppState>,
+) -> Result<Json<SyncCandidates>, AppError> {
+    let client = require_komoot(&state)?;
+    Ok(Json(SyncCandidates {
+        candidates: komoot_sync::list_sync_candidates(&state.pool, client).await?,
+        pending_edits: repo::komoot::count_edit_pending(&state.pool).await?,
+        pending_deletes: repo::komoot::count_delete_pending(&state.pool).await?,
+    }))
 }
 
 /// POST `/api/komoot/sync` — push pending edits, then push pending deletes,
