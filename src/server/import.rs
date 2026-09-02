@@ -102,10 +102,11 @@ pub async fn handle_import(
 
     let derived = derive_track(&raw)?;
 
-    let name = resolve_name(form_name, derived.name, derived.stats.start_time);
     let activity = resolve_activity_type(form_activity)?;
     let kind = resolve_trip_kind(form_kind)?;
+    // Resolved before the name, which reads the track's start *date* in it.
     let tz_name = resolve_timezone(form_timezone, derived.guessed_tz)?;
+    let name = resolve_name(form_name, derived.name, derived.stats.start_time, &tz_name);
 
     // Trip, track and photos commit in one transaction, so a failed import
     // leaves no trip behind (reliability NFR; ADR-0004).
@@ -259,11 +260,13 @@ async fn read_photo_field(field: Field<'_>) -> Result<Option<UploadedPhoto>, App
 
 /// Choose the trip name (US-12): an explicit form value wins; otherwise fall back
 /// to the GPX track name; otherwise a `YYYY-MM-DD`-prefixed default derived from
-/// the track's start time.
+/// the track's start time, read in `tz_name` — the day the owner was out on it,
+/// not the day UTC was on.
 pub(crate) fn resolve_name(
     form_name: Option<String>,
     gpx_name: Option<String>,
     start_time: Option<OffsetDateTime>,
+    tz_name: &str,
 ) -> String {
     if let Some(name) = form_name.filter(|n| !n.trim().is_empty()) {
         return name;
@@ -271,22 +274,33 @@ pub(crate) fn resolve_name(
     if let Some(name) = gpx_name.filter(|n| !n.trim().is_empty()) {
         return name;
     }
-    let prefix = date_prefix(start_time).unwrap_or_else(|| "Unknown date".to_string());
+    let prefix = date_prefix(start_time, tz_name).unwrap_or_else(|| "Unknown date".to_string());
     format!("{prefix} Imported Trip")
 }
 
-/// The track's start date as `YYYY-MM-DD`, or `None` for a GPX with no
-/// timestamps.
+/// The track's start date as `YYYY-MM-DD`, read in the trip's own timezone.
+///
+/// Timestamps are stored in UTC (ADR-0009), but a date is a claim about a
+/// day someone spent outdoors: a ride starting half past midnight in Oslo
+/// belongs to that day, though UTC is still on the previous one. `tz_name` is
+/// the trip's — guessed from the track's start coordinate or overridden by
+/// the owner (US-4, ADR-0019) — and an unrecognized one falls back to UTC's
+/// own date rather than dropping the prefix, since `guess_timezone` validates
+/// and this path is defensive.
 ///
 /// Shared with the two-phase import's name suggestion (US-12,
 /// `staged_import::suggest_name`), which puts the same prefix in front of the
 /// owner's cursor — the two must not disagree about what date a track starts
 /// on.
-pub(crate) fn date_prefix(start_time: Option<OffsetDateTime>) -> Option<String> {
-    start_time.map(|t| {
-        let d = t.date();
-        format!("{:04}-{:02}-{:02}", d.year(), d.month() as u8, d.day())
-    })
+pub(crate) fn date_prefix(start_time: Option<OffsetDateTime>, tz_name: &str) -> Option<String> {
+    let start_time = start_time?;
+    let date = timezone::local_date(tz_name, start_time).unwrap_or_else(|| start_time.date());
+    Some(format!(
+        "{:04}-{:02}-{:02}",
+        date.year(),
+        date.month() as u8,
+        date.day()
+    ))
 }
 
 /// Resolve an `activity_type` field into an `ActivityType` (ADR-0018): a
@@ -353,6 +367,7 @@ mod tests {
             Some("Morning Ride".to_string()),
             Some("GPX Track Name".to_string()),
             Some(datetime!(2024-06-01 08:00 UTC)),
+            "Europe/Oslo",
         );
         assert_eq!(name, "Morning Ride");
     }
@@ -363,20 +378,52 @@ mod tests {
             Some("   ".to_string()),
             Some("GPX Track Name".to_string()),
             None,
+            "Europe/Oslo",
         );
         assert_eq!(name, "GPX Track Name");
     }
 
     #[test]
     fn us12_without_any_name_uses_date_prefixed_default() {
-        let name = resolve_name(None, None, Some(datetime!(2024-06-01 08:00 UTC)));
+        let name = resolve_name(
+            None,
+            None,
+            Some(datetime!(2024-06-01 08:00 UTC)),
+            "Europe/Oslo",
+        );
         assert_eq!(name, "2024-06-01 Imported Trip");
     }
 
     #[test]
     fn us12_without_name_or_start_time_uses_unknown_date() {
-        let name = resolve_name(None, None, None);
+        let name = resolve_name(None, None, None, "Europe/Oslo");
         assert_eq!(name, "Unknown date Imported Trip");
+    }
+
+    #[test]
+    fn us12_the_date_is_the_one_where_the_track_is() {
+        // Half past midnight in Oslo, which UTC still calls the previous day.
+        // The owner names the trip after the day they were out on it.
+        let name = resolve_name(
+            None,
+            None,
+            Some(datetime!(2024-06-01 22:30 UTC)),
+            "Europe/Oslo",
+        );
+        assert_eq!(name, "2024-06-02 Imported Trip");
+    }
+
+    #[test]
+    fn us12_an_unrecognized_timezone_falls_back_to_utcs_own_date() {
+        // `guess_timezone` never yields one (it validates), so this is the
+        // defensive path only — a date is still better than no name.
+        let name = resolve_name(
+            None,
+            None,
+            Some(datetime!(2024-06-01 22:30 UTC)),
+            "Not/A_Zone",
+        );
+        assert_eq!(name, "2024-06-01 Imported Trip");
     }
 
     // ADR-0018: activity_type as a closed enum, not a free-form string.
