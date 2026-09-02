@@ -176,9 +176,13 @@ pub async fn handle_confirm_import(
     ))
 }
 
-/// `DELETE /api/import/staged/:id` — the owner left the screen, or picked a
-/// different file. Dropping the parse now rather than leaving it to the
-/// sweeper keeps the table as short-lived as the flow it serves.
+/// `DELETE /api/import/staged/:id` — the owner picked a different file.
+/// Dropping the parse now rather than leaving it to the sweeper keeps the
+/// table as short-lived as the flow it serves.
+///
+/// Not called when the owner simply navigates away: nothing reliably runs on
+/// the way out of a page, so the sweeper is what bounds this table and this
+/// only spares it the wait in the case the screen can actually see.
 pub async fn handle_cancel_staged_import(
     State(state): State<AppState>,
     Path(staging_id): Path<i64>,

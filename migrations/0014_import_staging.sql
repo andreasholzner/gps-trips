@@ -14,8 +14,10 @@
 --
 -- A row here is not a trip and never becomes visible as one: it is deleted in
 -- the same transaction that inserts the trip, deleted outright when the owner
--- abandons the screen, and swept after `config::server::STAGED_IMPORT_TTL`
--- otherwise.
+-- picks a different file, and swept after `config::server::STAGED_IMPORT_TTL`
+-- otherwise. Navigating away does not delete it — nothing reliably runs on
+-- the way out of a page — so the sweeper is what bounds this table, not the
+-- cancel.
 
 CREATE TABLE IF NOT EXISTS import_staging (
     id         INTEGER PRIMARY KEY,
