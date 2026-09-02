@@ -15,6 +15,7 @@ mod filters;
 mod format;
 mod import;
 mod interop;
+mod komoot;
 mod list;
 mod photos;
 mod region;
@@ -27,6 +28,7 @@ mod trip_tags;
 use detail::TripDetail;
 use filters::Filters;
 use import::ImportTrip;
+use komoot::KomootSync;
 use list::TripList;
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
@@ -72,6 +74,11 @@ enum Route {
     /// page used to be, and where it now redirects.
     #[route("/import")]
     ImportTrip {},
+    /// Reviewing and running a Komoot sync (US-44) — the last screen the
+    /// proof-of-concept UI still owned. Same path it had there, so its
+    /// redirect is a straight move under `/app`.
+    #[route("/komoot/sync")]
+    KomootSync {},
 }
 
 fn main() {
@@ -180,6 +187,20 @@ mod route_tests {
             panic!("a trip URL must parse back to the detail screen; url was {url:?}")
         };
         assert_eq!(id, 42);
+    }
+
+    #[test]
+    fn the_komoot_url_round_trips_and_keeps_the_path_the_page_had() {
+        // The server redirects `/komoot/sync` here, so this path is part of
+        // that contract rather than an internal detail (US-44).
+        let url = Route::KomootSync {}.to_string();
+        assert_eq!(url, "/komoot/sync");
+
+        let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+        assert!(
+            matches!(parsed, Route::KomootSync {}),
+            "a komoot URL must parse back to the sync screen; url was {url:?}"
+        );
     }
 
     #[test]

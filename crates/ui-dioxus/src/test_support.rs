@@ -5,8 +5,10 @@
 //!
 //! * [`render`] renders a view to HTML and hands back the string to assert on.
 //! * [`render_against_archive`] does the same with a **real Axum server**
-//!   behind it — a temporary SQLite database and blob store, no mocks —
-//!   polling until the screen's `use_resource` fetches have resolved.
+//!   behind it — a temporary SQLite database and blob store — polling until
+//!   the screen's `use_resource` fetches have resolved. Nothing internal is
+//!   mocked; [`serve_test_archive_with_komoot`] adds the one external
+//!   collaborator ADR-0012 does mock, the network.
 //!
 //! Both wrap the view in a `Router`: `Link` panics without one, so any
 //! component that navigates can only render inside a router context.
@@ -196,6 +198,39 @@ pub async fn tag_trip(base_url: &str, trip_id: i64, name: &str) {
 /// Keep the returned `TempDir` alive for the whole test: dropping it deletes
 /// the database out from under the running server.
 pub async fn serve_test_archive() -> (String, tempfile::TempDir) {
+    let (base_url, _state, dir) = serve_archive(None).await;
+    (base_url, dir)
+}
+
+/// As [`serve_test_archive`], with Komoot configured — for the sync screen
+/// (US-44), whose every fetch goes through this client.
+///
+/// The network is the one collaborator ADR-0012 does mock, and
+/// `KomootClient` is the seam it named for it. Everything on this side of it
+/// is still real: the router, the database, the blob store and the import
+/// pipeline a pulled tour travels through.
+///
+/// The `AppState` comes back too, so a test can say "a sync is already in
+/// flight" (`set_sync_in_progress_for_test`) and get US-26's `409` out of
+/// the real router rather than constructing one by hand.
+pub async fn serve_test_archive_with_komoot(
+    client: Arc<dyn trip_archive::server::komoot::KomootClient>,
+) -> (
+    String,
+    trip_archive::server::state::AppState,
+    tempfile::TempDir,
+) {
+    let (base_url, state, dir) = serve_archive(Some(client)).await;
+    (base_url, state, dir)
+}
+
+async fn serve_archive(
+    komoot: Option<Arc<dyn trip_archive::server::komoot::KomootClient>>,
+) -> (
+    String,
+    trip_archive::server::state::AppState,
+    tempfile::TempDir,
+) {
     use trip_archive::server::{
         db, http,
         state::AppState,
@@ -207,7 +242,8 @@ pub async fn serve_test_archive() -> (String, tempfile::TempDir) {
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    let router = http::router(AppState::new(pool, store, None));
+    let state = AppState::new(pool, store, komoot);
+    let router = http::router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -217,5 +253,5 @@ pub async fn serve_test_archive() -> (String, tempfile::TempDir) {
         axum::serve(listener, router).await.expect("serve");
     });
 
-    (base_url, dir)
+    (base_url, state, dir)
 }

@@ -41,5 +41,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"]
 serde_json = "1"
 tempfile = "3"
 axum = "0.7"
-# The real server for whole-screen tests: nothing is mocked (ADR-0012).
-trip-archive = { path = "../.." }
+# The real server for whole-screen tests: the database and the blob store
+# are real, and `test-support` exposes the one seam ADR-0012 does mock — the
+# `KomootClient` double the sync screen's tests drive (US-44).
+trip-archive = { path = "../..", features = ["test-support"] }
