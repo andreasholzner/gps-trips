@@ -81,6 +81,14 @@ People the archive *knows* remain the multi-user case that supersedes this ADR.
   route's unauthenticated response.
 - `SameSite=Lax` covers CSRF without a token: the multipart import and photo `POST`s are what a
   cross-site form would target, and `Lax` withholds the cookie there.
-- Rotating the password logs the phone out. Accepted.
+- **Signing out ends a browser's session, not a token.** The `DELETE` endpoint clears the cookie
+  and the SPA drops the copy it holds, so a browser is left carrying no credential at all — which
+  is the whole of the web case. A token a client has stored survives until it expires: the session
+  is a signature over its own expiry, so there is no row to strike off.
+- **Rotating the password is therefore the only revocation, and a blunt one** — every device signs
+  in again, the phone included. Accepted: the alternative is the sessions table this decision does
+  without, and on a phone the case revocation exists for is a lost or stolen one, where no button
+  on that phone could be pressed anyway. US-16 ships no sign-out for that reason; the control is
+  web-only, where "leave this machine clean while I am still holding it" is a real situation.
 - `architecture.md`'s HTTP Router component ("optional shared-password auth middleware [planned,
   US-19]") understates this; it is updated when US-19 lands.
