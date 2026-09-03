@@ -12,84 +12,17 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{
-    ConfirmImport, ErrorResponse, Identity, ImportedTrip, Login, PhotoResponse, Session,
-    StagedImport, SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
+    ConfirmImport, ErrorResponse, ImportedTrip, PhotoResponse, StagedImport, SyncCandidates,
+    SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
 };
 
 use crate::track::Track;
 
-/// Where the archive is, and what proves who is asking (US-19).
-///
-/// The **base URL** is the page's own origin on the web — the SPA is served
-/// by the server it queries, but `reqwest`, unlike a browser `fetch`
-/// wrapper, rejects relative URLs outright — and on Android the address the
-/// owner configured (US-16), where there is no origin to be relative to.
-///
-/// The **token** is `None` in the browser, where the session travels as an
-/// `HttpOnly` cookie the page cannot read and has no need to: the browser
-/// attaches it by itself, which is the whole reason ADR-0010's amendment
-/// made the session a cookie. It is `Some` where there is no cookie store —
-/// the Android app's native client, and the host-target tests that stand in
-/// for it — and then rides every request as `Authorization: Bearer`, the
-/// second form of the same token.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ApiClient {
-    base_url: String,
-    token: Option<String>,
-}
+mod client;
+mod session;
 
-impl ApiClient {
-    pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            base_url: base_url.into(),
-            token: None,
-        }
-    }
-
-    /// The same archive, reached with a token in hand.
-    pub fn with_token(self, token: impl Into<String>) -> Self {
-        Self {
-            token: Some(token.into()),
-            ..self
-        }
-    }
-
-    /// The archive's origin, for the two things handed to the browser as a
-    /// URL rather than fetched: the GPX download `<a href>` and a photo's
-    /// `<img src>`.
-    pub fn base_url(&self) -> &str {
-        &self.base_url
-    }
-
-    fn url(&self, path: &str) -> String {
-        format!("{}{path}", self.base_url)
-    }
-
-    /// A request already carrying the session, where this client holds one.
-    fn request(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
-        let request = reqwest::Client::new().request(method, url);
-        match &self.token {
-            Some(token) => request.bearer_auth(token),
-            None => request,
-        }
-    }
-
-    fn get(&self, url: &str) -> reqwest::RequestBuilder {
-        self.request(reqwest::Method::GET, url)
-    }
-
-    fn post(&self, url: &str) -> reqwest::RequestBuilder {
-        self.request(reqwest::Method::POST, url)
-    }
-
-    fn patch(&self, url: &str) -> reqwest::RequestBuilder {
-        self.request(reqwest::Method::PATCH, url)
-    }
-
-    fn delete(&self, url: &str) -> reqwest::RequestBuilder {
-        self.request(reqwest::Method::DELETE, url)
-    }
-}
+pub use client::ApiClient;
+pub use session::{login, logout, session};
 
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]
@@ -603,62 +536,6 @@ pub async fn sync_now(
         .json()
         .await
         .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
-}
-
-/// `POST /api/session` — sign in with the one shared password (US-19).
-///
-/// The archive answers with the session *and* sets it as a cookie. On the
-/// web the cookie is the credential and the returned token is spare; off it,
-/// where there is no cookie store, the token is the only copy — so it is
-/// what [`ApiClient::with_token`] is given.
-///
-/// A wrong password comes back as a `401` and too many wrong ones as a
-/// `429`, both carrying the archive's own sentence, which is what the login
-/// screen shows: "that is not the password" and "wait a quarter of an hour"
-/// are different things to be told.
-pub async fn login(archive: &ApiClient, password: &str) -> Result<Session, ApiError> {
-    let url = archive.url("/api/session");
-    let body = Login {
-        password: password.to_string(),
-    };
-    let response = archive
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
-
-    ok_or_error(&url, response)
-        .await?
-        .json()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
-}
-
-/// `GET /api/session` — who the archive takes this client to be (US-19).
-///
-/// The one call whose *failure* is the ordinary answer: a `401` here means
-/// nobody is signed in, which is what [`ApiError::is_unauthorized`] is read
-/// for. The gate answers it, so asking costs one request either way.
-pub async fn session(archive: &ApiClient) -> Result<Identity, ApiError> {
-    get_json(archive, archive.url("/api/session")).await
-}
-
-/// `DELETE /api/session` — sign out (US-19).
-///
-/// Clears the cookie on the archive's side. The client forgets its own token
-/// separately: there is no server-side session to end, only a signature to
-/// stop presenting.
-pub async fn logout(archive: &ApiClient) -> Result<(), ApiError> {
-    let url = archive.url("/api/session");
-    let response = archive
-        .delete(&url)
-        .send()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
-
-    ok_or_error(&url, response).await?;
-    Ok(())
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

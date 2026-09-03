@@ -7,9 +7,20 @@ use serde::{Deserialize, Serialize};
 /// under the single secret, not the secret's singularity.
 ///
 /// [ADR-0010]: ../../../docs/adr/0010-single-user-optional-auth.md
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Login {
     pub password: String,
+}
+
+/// Redacted, deliberately: this type exists to carry the archive's one
+/// secret, and `{:?}` is a single `tracing::debug!` away from putting it in a
+/// log file. Nothing prints it today; this is what keeps that true.
+impl std::fmt::Debug for Login {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Login")
+            .field("password", &"<redacted>")
+            .finish()
+    }
 }
 
 /// What `POST /api/session` answers with (US-19): the session, described.
@@ -20,7 +31,7 @@ pub struct Login {
 /// the client that has no cookie store to put it in: the Android app's
 /// native `reqwest` (US-16), and the host-target screen tests that stand in
 /// for it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     pub token: String,
     /// When the session stops being accepted, as RFC-3339 UTC (ADR-0009).
@@ -28,6 +39,19 @@ pub struct Session {
     /// on every request, so a client that ignores this field is wrong about
     /// nothing except when to log in again.
     pub expires_at: String,
+}
+
+/// Redacted for the same reason as [`Login`]: the token is a bearer
+/// credential good for the session's whole life, so a debug line carrying it
+/// is a credential in a log. The expiry is safe to show and is the half worth
+/// seeing.
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("token", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 /// Who the archive takes a request to be from — the amendment's *principal*,
@@ -59,6 +83,33 @@ pub struct Identity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_login_never_prints_the_password() {
+        // `{:?}` is one `tracing::debug!` away from putting the archive's one
+        // secret in a log file, and this type exists to carry it.
+        let printed = format!(
+            "{:?}",
+            Login {
+                password: "correct horse battery staple".to_string(),
+            }
+        );
+        assert!(!printed.contains("correct horse"), "got {printed}");
+    }
+
+    #[test]
+    fn a_session_never_prints_its_token() {
+        // The token is a bearer credential good for the session's whole life;
+        // it belongs in the cookie and in the body, not in a debug line.
+        let printed = format!(
+            "{:?}",
+            Session {
+                token: "1796164467.deadbeef".to_string(),
+                expires_at: "2026-12-01T10:00:00Z".to_string(),
+            }
+        );
+        assert!(!printed.contains("deadbeef"), "got {printed}");
+    }
 
     #[test]
     fn a_login_is_just_the_password() {

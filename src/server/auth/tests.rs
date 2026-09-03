@@ -276,6 +276,9 @@ fn us19_the_allowlist_holds_exactly_what_it_must() {
         (Method::GET, "/import"),
         (Method::GET, "/komoot/sync"),
         (Method::GET, "/trips/42"),
+        // The same routes, asked the other way axum answers them.
+        (Method::HEAD, "/"),
+        (Method::HEAD, "/app/"),
     ];
     for (method, path) in public {
         assert!(
@@ -303,6 +306,10 @@ fn us19_everything_else_is_private() {
         // The login endpoint is public for POST only.
         (Method::GET, "/api/sessions"),
         (Method::PATCH, "/api/session"),
+        (Method::HEAD, "/api/trips"),
+        // `HEAD` is only the bodyless `GET`; it is not a way to reach a route
+        // that is not public for `GET` either.
+        (Method::HEAD, "/media/trips/1/photo.jpg"),
     ];
     for (method, path) in private {
         assert!(!is_public(&method, path), "{method} {path} must be gated");

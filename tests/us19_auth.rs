@@ -96,8 +96,12 @@ async fn sign_in(app: &axum::Router) -> Session {
 // ── Deny by default ──────────────────────────────────────────────────────────
 
 /// Every route the router answers, with the response an anonymous request
-/// gets. Mirrors `src/server/http.rs`'s route list; a route added there
-/// without a line here is a route nobody decided the auth story for.
+/// gets. Hand-mirrored from `src/server/http.rs` — axum publishes no list of
+/// its routes to iterate — so this is a checklist, not an enforcement: a new
+/// route left out of it is still *protected* (that is what deny-by-default
+/// buys, and `us19_an_unknown_api_route_is_gated_too` holds the line), but a
+/// new *public* one would go unasserted. Add the line when you add the
+/// route.
 const ROUTES: &[(Method, &str, bool)] = &[
     // (method, path, reachable without a session)
     (Method::POST, "/api/session", true),
@@ -467,4 +471,88 @@ async fn us19_a_success_clears_the_failures_behind_it() {
         let response = common::send_unauthenticated(&app, login_request("guess")).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+}
+
+#[tokio::test]
+async fn us19_signing_out_of_a_long_lived_session_still_ends_it() {
+    // The gate renews a cookie past its halfway mark — including on the way
+    // out. Both headers reach the browser, the later one wins, and the owner
+    // who pressed "Sign out" stays signed in. A session older than 45 days is
+    // exactly the one most worth being able to end.
+    let (app, _dir) = common::test_app().await;
+    let ageing = common::test_auth()
+        .mint(
+            time::OffsetDateTime::now_utc()
+                - config::auth::SESSION_REFRESH_AFTER
+                - time::Duration::days(1),
+        )
+        .token;
+
+    let response =
+        common::send_unauthenticated(&app, with_cookie(Method::DELETE, "/api/session", &ageing))
+            .await;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let cookies = set_cookies(&response);
+    assert!(
+        cookies.iter().all(|c| c.contains("Max-Age=0")),
+        "signing out must leave no live session cookie behind; got {cookies:?}"
+    );
+}
+
+#[tokio::test]
+async fn us19_signing_in_again_over_a_long_lived_session_issues_one_cookie() {
+    // Same root cause from the other side: the login's own cookie must not be
+    // followed by the gate's renewal of the one it replaces.
+    let (app, _dir) = common::test_app().await;
+    let ageing = common::test_auth()
+        .mint(
+            time::OffsetDateTime::now_utc()
+                - config::auth::SESSION_REFRESH_AFTER
+                - time::Duration::days(1),
+        )
+        .token;
+    let mut request = login_request(common::TEST_PASSWORD);
+    request.headers_mut().insert(
+        header::COOKIE,
+        format!("{}={ageing}", config::auth::COOKIE_NAME)
+            .parse()
+            .unwrap(),
+    );
+
+    let response = common::send_unauthenticated(&app, request).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        set_cookies(&response).len(),
+        1,
+        "the handler already said what the session is; the gate must not say it again"
+    );
+}
+
+// ── Methods ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn us19_a_head_request_reaches_the_public_routes_too() {
+    // A browser, a link preview, and a platform health check (US-45) all ask
+    // this way. `HEAD` is a `GET` without the body, and axum answers it from
+    // the same handler, so the gate must read it the same way — otherwise the
+    // archive's front door refuses to say it is there.
+    let (app, _dir) = common::test_app().await;
+
+    for path in ["/", "/app/", "/import"] {
+        let response = common::send_unauthenticated(&app, anonymous(Method::HEAD, path)).await;
+        assert_ne!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "HEAD {path} is the same public route as GET {path}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn us19_a_head_request_to_a_private_route_is_still_refused() {
+    let (app, _dir) = common::test_app().await;
+    let response = common::send_unauthenticated(&app, anonymous(Method::HEAD, "/api/trips")).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

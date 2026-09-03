@@ -318,7 +318,11 @@ fn is_public(method: &Method, path: &str) -> bool {
     if method == Method::POST {
         return path == "/api/session";
     }
-    if method != Method::GET {
+    // `HEAD` is a `GET` without the body, and axum answers it from the same
+    // handler — so a route reachable one way is reachable the other, and the
+    // browsers, link previews and platform health checks that ask this way
+    // reach the front door rather than a 401.
+    if method != Method::GET && method != Method::HEAD {
         return false;
     }
     match path {
@@ -357,7 +361,13 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
     // back renewed, so a phone in any kind of regular use never meets the
     // login screen. A `Bearer` client keeps its own token and gets a fresh
     // one by logging in again.
-    if source == Some(Credential::Cookie) {
+    //
+    // Never over a handler that has already spoken about the session, which
+    // is the whole of `/api/session`: appending a renewal after signing out
+    // hands the browser a clear *and* a fresh cookie, and the later one wins
+    // — so pressing "Sign out" on a session old enough to be renewed would
+    // silently keep the owner signed in.
+    if source == Some(Credential::Cookie) && !sets_session_cookie(&response) {
         if let Some(expires_at) = expires_at {
             if expires_at - now < config::auth::SESSION_REFRESH_AFTER {
                 let renewed = state.auth.mint(now);
@@ -370,6 +380,16 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
         }
     }
     response
+}
+
+/// Whether a response already carries a session cookie of its own.
+fn sets_session_cookie(response: &Response) -> bool {
+    let prefix = format!("{}=", config::auth::COOKIE_NAME);
+    response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .any(|value| value.as_bytes().starts_with(prefix.as_bytes()))
 }
 
 /// The principal a request's headers establish: the cookie first, then
