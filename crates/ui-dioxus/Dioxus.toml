@@ -22,8 +22,14 @@ identifier = "org.triparchive.app"
 publisher = "Trip Archive"
 
 [android.application]
-# On the LAN the archive is reached over plain HTTP, and Android has blocked
-# cleartext by default since API 28. The Rust side opens its own sockets and
-# is unaffected, but the webview is not. A deployed HTTPS instance (ADR-0023)
-# does not need this.
+# Android has blocked cleartext by default since API 28. The Rust side opens
+# its own sockets and is unaffected, but the webview is not.
+#
+# Since US-19 this no longer buys a working LAN setup on its own: the session
+# cookie is `Secure`, and a browser keeps such a cookie only from a secure
+# origin — HTTPS, or the loopback exception. Over plain HTTP to another
+# machine the login succeeds and the cookie is silently dropped, so the next
+# request is a 401 and the login screen returns. The deployed instance is
+# HTTPS (ADR-0023, US-49), which is the configuration US-16 is built against;
+# a plain-HTTP LAN instance would need US-16 to carry the token itself.
 uses_cleartext_traffic = true

@@ -82,9 +82,17 @@ pub mod auth {
 
     /// How long logins are refused once [`LOGIN_FAILURE_LIMIT`] consecutive
     /// attempts have failed. Counted for the instance as a whole, not per
-    /// client address: there is one user, so a global counter locks nobody
-    /// else out, and it needs no decision about trusting a proxy's
-    /// `X-Forwarded-For`.
+    /// client address: there is one user, so there is no other legitimate
+    /// caller to lock out, and it needs no decision about whether to trust a
+    /// proxy's `X-Forwarded-For`.
+    ///
+    /// The accepted cost is that **anyone** can lock the owner out for this
+    /// long with five wrong guesses — an availability attack that per-IP
+    /// counting would blunt and that this deliberately does not. The trade
+    /// was made knowingly: guessing the secret is the risk worth stopping,
+    /// the owner can wait fifteen minutes, and on a scale-to-zero machine
+    /// (ADR-0023) an attacker who is being answered at all is one the owner
+    /// is paying to wake.
     pub const LOGIN_LOCKOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 }
 
