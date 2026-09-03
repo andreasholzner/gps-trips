@@ -1,6 +1,8 @@
 //! Where the archive is, and what proves who is asking (US-19) — the handle
 //! every call in [`super`] takes, and the one place a request is built.
 
+use dioxus::prelude::*;
+
 /// Where the archive is, and what proves who is asking (US-19).
 ///
 /// The **base URL** is the page's own origin on the web — the SPA is served
@@ -19,6 +21,20 @@
 pub struct ApiClient {
     base_url: String,
     token: Option<String>,
+    /// Set when the archive stops recognising this client (US-19).
+    ///
+    /// Rotating the password is the only revocation the design has
+    /// (ADR-0010's amendment: the session is signed, not stored), so a
+    /// session ending *mid-use* is an ordinary event, not an edge case. It
+    /// arrives as a `401` on whatever the current screen happened to fetch
+    /// next — so it is noticed here, where every response already passes,
+    /// rather than by each screen remembering to look. The one that forgot
+    /// would strand the owner on an error line with no way back to the login
+    /// screen, and an Android app (US-16) has no reload to fall back on.
+    ///
+    /// `None` for a client nobody is watching, which is every client in a
+    /// test that is about something else.
+    refused: Option<Signal<bool>>,
 }
 
 /// The token is redacted: this client is held for the life of the app and
@@ -39,7 +55,36 @@ impl ApiClient {
         Self {
             base_url: base_url.into(),
             token: None,
+            refused: None,
         }
+    }
+
+    /// The same archive, reporting to `refused` when it stops recognising
+    /// this client. Set once by the app that owns the login screen.
+    pub fn reporting_refusals_to(self, refused: Signal<bool>) -> Self {
+        Self {
+            refused: Some(refused),
+            ..self
+        }
+    }
+
+    /// Note what the archive answered, so a lost session is seen by whoever
+    /// can act on it. Only a refusal counts: a trip that is simply gone
+    /// (404), or an edit refused while a sync runs (409), are ordinary
+    /// outcomes and must not send the owner back to the login screen.
+    pub(super) fn note(&self, status: reqwest::StatusCode) {
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            if let Some(mut refused) = self.refused {
+                refused.set(true);
+            }
+        }
+    }
+
+    /// The token this client carries, for a test that needs to build a second
+    /// client against the same session.
+    #[cfg(test)]
+    pub fn token_for_test(&self) -> Option<String> {
+        self.token.clone()
     }
 
     /// The same archive, reached with a token in hand.

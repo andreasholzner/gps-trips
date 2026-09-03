@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::test_support::{anonymous, import_sample, serve_test_archive, TEST_PASSWORD};
+use dioxus::prelude::*;
 use trip_archive_types::ActivityType;
 
 #[tokio::test]
@@ -592,4 +593,73 @@ async fn us19_signing_out_ends_the_session_the_client_holds() {
         .await
         .expect_err("a client with nothing to present is nobody");
     assert!(err.is_unauthorized(), "{err}");
+}
+
+#[tokio::test]
+async fn us19_a_session_the_archive_stops_recognising_is_reported_once() {
+    // Rotating the password is the archive's only revocation (ADR-0010's
+    // amendment), so it is a thing that happens *mid-use*: the next fetch any
+    // screen makes comes back 401. Every call goes through one place, and
+    // that place tells the app — otherwise each screen would have to remember
+    // to, and the one that forgot would sit on an error line forever with no
+    // way back to the login screen. In an Android app there is not even a
+    // reload to fall back on (US-16).
+    let (archive, _dir) = serve_test_archive().await;
+    let base_url = archive.base_url().to_string();
+
+    let html = crate::test_support::render_against_archive(
+        &archive,
+        move || {
+            let refused = use_signal(|| false);
+            // A token the archive will not accept — what every client holds
+            // the moment the password is rotated.
+            let stale = ApiClient::new(base_url.clone())
+                .with_token("1799999999.not-a-signature-this-archive-wrote")
+                .reporting_refusals_to(refused);
+            let outcome = use_resource(move || {
+                let stale = stale.clone();
+                async move { list_trips(&stale, String::new()).await.is_err() }
+            });
+            rsx! {
+                p { "refused: {refused()}" }
+                p { "failed: {outcome.read().unwrap_or(false)}" }
+            }
+        },
+        |html| html.contains("refused: true"),
+    )
+    .await;
+
+    assert!(html.contains("failed: true"), "got {html}");
+}
+
+#[tokio::test]
+async fn us19_an_ordinary_failure_is_not_mistaken_for_a_lost_session() {
+    // A trip that is simply gone is a 404 and an ordinary outcome; sending
+    // the owner back to the login screen over it would be a bug with a very
+    // confusing symptom.
+    let (archive, _dir) = serve_test_archive().await;
+    let base_url = archive.base_url().to_string();
+    let token = archive.token_for_test().expect("the harness signs in");
+
+    let html = crate::test_support::render_against_archive(
+        &archive,
+        move || {
+            let refused = use_signal(|| false);
+            let client = ApiClient::new(base_url.clone())
+                .with_token(token.clone())
+                .reporting_refusals_to(refused);
+            let outcome = use_resource(move || {
+                let client = client.clone();
+                async move { get_trip(&client, 999_999).await.is_err() }
+            });
+            rsx! {
+                p { "refused: {refused()}" }
+                p { "missing: {outcome.read().unwrap_or(false)}" }
+            }
+        },
+        |html| html.contains("missing: true"),
+    )
+    .await;
+
+    assert!(html.contains("refused: false"), "got {html}");
 }

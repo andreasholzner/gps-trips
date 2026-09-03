@@ -28,7 +28,7 @@ pub async fn login(archive: &ApiClient, password: &str) -> Result<Session, ApiEr
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response)
+    ok_or_error(archive, &url, response)
         .await?
         .json()
         .await
@@ -57,6 +57,6 @@ pub async fn logout(archive: &ApiClient) -> Result<(), ApiError> {
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response).await?;
+    ok_or_error(archive, &url, response).await?;
     Ok(())
 }

@@ -52,8 +52,15 @@ TRIP_ARCHIVE_PASSWORD='…' TRIP_ARCHIVE_DATA_DIR=/path/to/data ./trip-archive
 
 Signing in sets a cookie that lasts 90 days and slides forward with use, so a phone stays signed
 in. Changing the password ends every session that exists — the sessions are signed with a key
-derived from it, so there is nothing else to revoke. Five consecutive failed sign-ins stop logins
-being answered at all for fifteen minutes.
+derived from it, so there is nothing else to revoke; every other device shows its login screen
+again the next time it fetches anything. Five consecutive failed sign-ins stop logins being
+answered at all for fifteen minutes, for the instance as a whole.
+
+Signing out on the web clears that browser's session and leaves nothing behind. It is deliberately
+a web-only control: signing out is for a device you are walking away from but still holding, and
+the case where a phone's access should be withdrawn — a lost or stolen one — is exactly the case
+where no button on that phone can be reached. **Rotating the password is the answer there**, and
+it is the answer whether or not a button exists (US-16).
 
 The cookie is `Secure`, so the archive is reachable over HTTPS or over loopback (which browsers
 treat as a secure context) — not over plain HTTP from another machine. The deployed instance is
