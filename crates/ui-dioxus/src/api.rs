@@ -90,7 +90,7 @@ async fn get_json<T: DeserializeOwned>(archive: &ApiClient, url: String) -> Resu
     // Through `ok_or_error` like every write, so a refusal arrives as the
     // archive's own sentence rather than as a status code: the sync screen's
     // "not configured" (US-44) is a 400 whose whole value is its wording.
-    ok_or_error(&url, response)
+    ok_or_error(archive, &url, response)
         .await?
         .json::<T>()
         .await
@@ -192,7 +192,7 @@ pub async fn add_photos(
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response).await?;
+    ok_or_error(archive, &url, response).await?;
     Ok(())
 }
 
@@ -204,6 +204,7 @@ pub async fn add_photos(
 /// keeps the code for the screens that read it: a 404 that means "already
 /// gone", a 409 that means "not now" (US-26).
 async fn ok_or_error(
+    archive: &ApiClient,
     url: &str,
     response: reqwest::Response,
 ) -> Result<reqwest::Response, ApiError> {
@@ -211,6 +212,9 @@ async fn ok_or_error(
     if status.is_success() {
         return Ok(response);
     }
+    // Every response the archive gives passes here, which is what makes this
+    // the place to notice a session that has stopped being accepted (US-19).
+    archive.note(status);
     let body = response.text().await.unwrap_or_default();
     Err(ApiError::from_status(
         status,
@@ -270,7 +274,7 @@ pub async fn delete_trip(archive: &ApiClient, id: i64) -> Result<(), ApiError> {
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response).await?;
+    ok_or_error(archive, &url, response).await?;
     Ok(())
 }
 
@@ -324,7 +328,7 @@ pub async fn edit_trip(archive: &ApiClient, id: i64, edit: &TripEdit) -> Result<
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response).await?;
+    ok_or_error(archive, &url, response).await?;
     Ok(())
 }
 
@@ -354,7 +358,7 @@ pub async fn add_trip_tag(archive: &ApiClient, id: i64, name: &str) -> Result<Ta
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response)
+    ok_or_error(archive, &url, response)
         .await?
         .json()
         .await
@@ -371,7 +375,7 @@ pub async fn remove_trip_tag(archive: &ApiClient, id: i64, tag_id: i64) -> Resul
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response).await?;
+    ok_or_error(archive, &url, response).await?;
     Ok(())
 }
 
@@ -408,7 +412,7 @@ pub async fn bulk_add_tags(
             "one or more selected trips no longer exist; nothing was tagged",
         ));
     }
-    ok_or_error(&url, response)
+    ok_or_error(archive, &url, response)
         .await?
         .json()
         .await
@@ -444,7 +448,7 @@ pub async fn stage_gpx(
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response)
+    ok_or_error(archive, &url, response)
         .await?
         .json()
         .await
@@ -474,7 +478,7 @@ pub async fn confirm_import(
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    let imported: ImportedTrip = ok_or_error(&url, response)
+    let imported: ImportedTrip = ok_or_error(archive, &url, response)
         .await?
         .json()
         .await
@@ -496,7 +500,7 @@ pub async fn cancel_staged_import(archive: &ApiClient, staging_id: i64) -> Resul
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response).await?;
+    ok_or_error(archive, &url, response).await?;
     Ok(())
 }
 
@@ -531,7 +535,7 @@ pub async fn sync_now(
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
-    ok_or_error(&url, response)
+    ok_or_error(archive, &url, response)
         .await?
         .json()
         .await

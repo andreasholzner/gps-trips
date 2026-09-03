@@ -96,14 +96,21 @@ fn main() {
 #[derive(Clone, PartialEq)]
 enum Access {
     Resolving,
-    /// No session. `notice` carries a failure that was *not* a refusal — an
-    /// archive that could not be reached at all — so it is not disguised as
-    /// a password prompt.
+    /// No session. `notice` carries what the owner should know about how
+    /// they got here: an archive that could not be reached at all, so it is
+    /// not disguised as a password prompt, or a session that ended under
+    /// them.
     SignedOut {
         notice: Option<String>,
     },
     SignedIn,
 }
+
+/// What the login screen says when a session ends mid-use. Rotating the
+/// password is the archive's only revocation (ADR-0010's amendment), so this
+/// is what the owner meets on every other device after doing it — and being
+/// told beats a screen that simply asks for the password again.
+const SESSION_ENDED: &str = "Your session has ended. Sign in again.";
 
 /// Resolves the API base URL and asks the archive who we are, before
 /// anything can query it, and hands the resulting client to every screen as
@@ -113,9 +120,29 @@ enum Access {
 fn App() -> Element {
     let mut archive = use_signal(ApiClient::default);
     let mut access = use_signal(|| Access::Resolving);
+    // Set by the API client when the archive stops recognising us — a
+    // rotated password, or a session that finally ran out. It arrives on
+    // whatever a screen fetched next, so it is watched here rather than
+    // handled screen by screen.
+    let mut refused = use_signal(|| false);
+
+    use_effect(move || {
+        if refused() {
+            refused.set(false);
+            // `peek`, not a read: this is about what the app is showing, not
+            // something to re-run the effect for. And only while signed *in*
+            // — a refused sign-in is the login screen's own business, and its
+            // "that is not the password" must not be overwritten by this.
+            if *access.peek() == Access::SignedIn {
+                access.set(Access::SignedOut {
+                    notice: Some(SESSION_ENDED.to_string()),
+                });
+            }
+        }
+    });
 
     use_future(move || async move {
-        let client = ApiClient::new(resolve_origin().await);
+        let client = ApiClient::new(resolve_origin().await).reporting_refusals_to(refused);
         // One request answers both questions: a session, or the gate's 401
         // saying there is none (US-19).
         let resolved = match api::session(&client).await {
@@ -142,26 +169,38 @@ fn App() -> Element {
                 // browser the archive's own cookie is already the credential
                 // and this is a spare copy.
                 on_signed_in: move |token: String| {
-                    archive.set(archive().with_token(token));
+                    archive.set(archive().with_token(token).reporting_refusals_to(refused));
                     access.set(Access::SignedIn);
                 },
             }
         },
         Access::SignedIn => rsx! {
-            nav { class: "session",
-                button {
-                    r#type: "button",
-                    id: "sign-out",
-                    onclick: move |_| async move {
-                        let client = archive();
-                        // Whether the archive heard or not, this client is
-                        // done with the session: clearing it locally is what
-                        // signing out means here.
-                        let _ = api::logout(&client).await;
-                        archive.set(ApiClient::new(client.base_url()));
-                        access.set(Access::SignedOut { notice: None });
-                    },
-                    "Sign out"
+            // Web only, deliberately. Signing out is a "leave this device
+            // clean while I am still holding it" action, which is a browser
+            // situation: the archive can be opened in one you are about to
+            // walk away from. The Android app cannot be, and the case where
+            // its access *should* be revoked — a lost or stolen phone — is
+            // the one case where no button on that phone can be reached.
+            // Rotating the password is the answer there, and it is the answer
+            // whether or not this exists (US-16).
+            if cfg!(feature = "web") {
+                nav { class: "session",
+                    button {
+                        r#type: "button",
+                        id: "sign-out",
+                        onclick: move |_| async move {
+                            let client = archive();
+                            // Whether the archive heard or not, this client is
+                            // done with the session: clearing it locally is what
+                            // signing out means here.
+                            let _ = api::logout(&client).await;
+                            archive.set(
+                                ApiClient::new(client.base_url()).reporting_refusals_to(refused),
+                            );
+                            access.set(Access::SignedOut { notice: None });
+                        },
+                        "Sign out"
+                    }
                 }
             }
             Router::<Route> {}
