@@ -1,0 +1,59 @@
+# The deployed archive on Fly.io (ADR-0023; US-45 to US-49).
+#
+# No `app = …` here: the repository is public and the app name is the
+# hostname, which is kept unguessable. `scripts/deploy.sh` passes it from
+# `FLY_APP` instead — see docs/deployment.md.
+
+primary_region = "arn"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# One machine on one volume (see docs/deployment.md): `rolling` stops the old
+# machine, starts the new one and waits for the TCP check. `immediate` would skip
+# that check; `canary` and `bluegreen` need a second machine, which cannot share
+# the volume. No `release_command` either: it runs without the volume mounted, so
+# migrations stay on boot. High availability has no key here; it is off via
+# `--ha=false` in scripts/deploy.sh.
+[deploy]
+  strategy = "rolling"
+
+# The SQLite database and the photo blobs (US-46; ADR-0002, ADR-0007).
+# Grows by itself as it fills. The limit is provisional until US-50, when the
+# first fill shows what the archive needs.
+[mounts]
+  source = "data"
+  destination = "/data"
+  initial_size = "1gb"
+  auto_extend_size_threshold = 95
+  auto_extend_size_increment = "1gb"
+  auto_extend_size_limit = "5gb"
+
+# `[[services]]` rather than `[http_service]` for the TCP check: the server
+# binds only after the password check and the migrations, so an open port
+# means a finished boot, and `fly deploy` fails a release that never gets there.
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # Plain HTTP only ever answers with a redirect to HTTPS (US-49).
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

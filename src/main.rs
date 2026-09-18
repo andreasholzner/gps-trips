@@ -21,6 +21,7 @@ async fn main() -> anyhow::Result<()> {
     // prevent, so a missing or empty one stops the boot here rather than
     // opening the archive (US-48). There is no development exemption.
     let auth = Auth::from_env()?;
+    let addr = server::paths::bind_addr()?;
 
     let data_dir = server::paths::data_dir();
     std::fs::create_dir_all(&data_dir)?;
@@ -31,7 +32,6 @@ async fn main() -> anyhow::Result<()> {
     let komoot = komoot_client_from_env();
     let app = server::http::router(server::state::AppState::new(pool, store, komoot, auth));
 
-    let addr = config::server::BIND_ADDR;
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("Trip Archive listening on http://{addr}");
     axum::serve(listener, app).await?;
