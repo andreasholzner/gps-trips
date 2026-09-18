@@ -6,6 +6,15 @@
 
 primary_region = "arn"
 
+# How the machine is stopped (US-47): SIGTERM rather than the platform's SIGINT
+# default (the server handles both), then up to 30 s for the requests in flight
+# to finish and the database to close before it is killed. Auto-stop only acts
+# on an idle machine, so this wait matters on deploys and host maintenance —
+# enough for a large photo upload, not so long that a hung request stalls a
+# deployment.
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
 [build]
   dockerfile = "Dockerfile"
 

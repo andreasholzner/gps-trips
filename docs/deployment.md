@@ -99,7 +99,11 @@ The deployed archive is the same binary in a container ([ADR-0023](./adr/0023-ma
   at the volume. It is built on Fly's remote builder with a pinned Rust version, so the laptop
   needs `flyctl` and nothing else.
 - **Machine** (`fly.toml`): one `shared-cpu-1x` machine with 1 GB in `arn` (Stockholm). It is
-  stopped when idle and started by the next request, which then takes about a second.
+  stopped when idle and started by the next request, which then takes about a second. Stopping
+  sends `SIGTERM`: the server finishes the requests in flight and closes the database, so the
+  SQLite WAL is checkpointed rather than recovered on the next boot (US-47). After 30 s it is
+  killed regardless — which only a deployment or host maintenance can hit, since auto-stop waits for
+  an idle machine.
 - **Volume**: `/data`, holding the database and the photos (`TRIP_ARCHIVE_DATA_DIR=/data`). It
   starts at 1 GB and grows by itself up to a limit that is provisional until US-50.
 - **Address**: `https://<app>.fly.dev` with Fly's certificate. Plain HTTP is answered with a
@@ -177,6 +181,14 @@ Checked by hand; this is platform configuration no test reaches (US-49):
 curl -sI "http://$FLY_APP.fly.dev/" | head -3             # 301 to https://
 curl -sI "https://$FLY_APP.fly.dev/app/" | head -1         # 200: the SPA loads
 curl -s  "https://$FLY_APP.fly.dev/api/trips"              # 401 JSON: nothing without a session
+```
+
+And that a stopped machine stops cleanly and wakes on the next request (US-47):
+
+```sh
+fly machine stop "$(fly machines list --app "$FLY_APP" --quiet)" --app "$FLY_APP"
+fly logs --app "$FLY_APP" --no-tail | tail -3                 # "Trip Archive stopped"
+curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "https://$FLY_APP.fly.dev/app/"   # 200, ~1 s
 ```
 
 ### Changing a secret

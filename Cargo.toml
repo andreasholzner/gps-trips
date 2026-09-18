@@ -15,7 +15,7 @@ trip-archive-types = { path = "crates/types", features = ["sqlx"] }
 
 # Web server
 axum  = { version = "0.7", features = ["multipart"] }
-tokio = { version = "1",   features = ["rt-multi-thread", "macros", "net"] }
+tokio = { version = "1",   features = ["rt-multi-thread", "macros", "net", "signal"] }
 # Serving the vendored, self-hosted map/chart assets under public/ (ADR-0005/0006)
 tower-http = { version = "0.5", features = ["fs"] }
 

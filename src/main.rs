@@ -30,12 +30,44 @@ async fn main() -> anyhow::Result<()> {
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();
-    let app = server::http::router(server::state::AppState::new(pool, store, komoot, auth));
+    let app = server::http::router(server::state::AppState::new(
+        pool.clone(),
+        store,
+        komoot,
+        auth,
+    ));
 
     let listener = TcpListener::bind(addr).await?;
-    tracing::info!("Trip Archive listening on http://{addr}");
-    axum::serve(listener, app).await?;
+    // The bound address rather than the configured one: they differ for port 0.
+    tracing::info!(
+        "Trip Archive listening on http://{}",
+        listener.local_addr()?
+    );
+    axum::serve(listener, app)
+        .with_graceful_shutdown(stop_signal())
+        .await?;
+
+    // Every request has finished. Closing the last connection is what makes
+    // SQLite checkpoint the WAL into the database file and remove it (US-47).
+    pool.close().await;
+    tracing::info!("Trip Archive stopped");
     Ok(())
+}
+
+/// Resolves on SIGTERM or SIGINT (US-47): the first is what the platform
+/// sends when it stops the machine (`kill_signal` in fly.toml), the second
+/// is Ctrl-C on the laptop. Either stops the server from accepting, lets the
+/// requests in flight finish, and then lets `main` close the database.
+async fn stop_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    let mut terminate = signal(SignalKind::terminate()).expect("SIGTERM handler");
+    let mut interrupt = signal(SignalKind::interrupt()).expect("SIGINT handler");
+    tokio::select! {
+        _ = terminate.recv() => {}
+        _ = interrupt.recv() => {}
+    }
+    tracing::info!("Stop signal received; finishing requests in flight");
 }
 
 /// Build the Komoot client (US-22, ADR-0021) from `KOMOOT_EMAIL`/
