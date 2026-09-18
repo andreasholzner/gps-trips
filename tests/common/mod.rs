@@ -53,6 +53,20 @@ pub const LATE_EVENING_GPX: &[u8] = include_bytes!("../fixtures/late_evening.gpx
 /// US-14 region filter can be tested on a list holding trips in two places.
 pub const REGION_ALPS_GPX: &[u8] = include_bytes!("../fixtures/region_alps.gpx");
 
+/// Where [`test_app`] and its siblings keep the photo blobs, under their `TempDir`.
+pub const TEST_BLOBS_SUBDIR: &str = "blobs";
+
+/// A router over an existing data directory laid out as `main` lays it out
+/// (`TRIP_ARCHIVE_DATA_DIR`) — for US-40's restore, run on a backup.
+pub async fn test_app_on(data_dir: &std::path::Path) -> Router {
+    use trip_archive::config::storage::{BLOBS_SUBDIR, DB_FILENAME};
+    let pool = db::create_pool(&data_dir.join(DB_FILENAME))
+        .await
+        .expect("create pool");
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(data_dir.join(BLOBS_SUBDIR)));
+    http::router(AppState::new(pool, store, None, test_auth()))
+}
+
 /// A router backed by a fresh temp database and a `LocalDisk` blob store, both
 /// under one `TempDir`. Keep the returned `TempDir` alive for the whole test —
 /// dropping it deletes the database and the stored photos.
@@ -61,7 +75,7 @@ pub async fn test_app() -> (Router, tempfile::TempDir) {
     let pool = db::create_pool(&dir.path().join("test.db"))
         .await
         .expect("create pool");
-    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
     (
         http::router(AppState::new(pool, store, None, test_auth())),
         dir,
@@ -75,7 +89,7 @@ pub async fn test_app_with_password(password: &str) -> (Router, tempfile::TempDi
     let pool = db::create_pool(&dir.path().join("test.db"))
         .await
         .expect("create pool");
-    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
     let auth = Auth::new(password).expect("a non-empty password");
     (http::router(AppState::new(pool, store, None, auth)), dir)
 }
@@ -89,7 +103,7 @@ pub async fn test_app_with_komoot(
     let pool = db::create_pool(&dir.path().join("test.db"))
         .await
         .expect("create pool");
-    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
     (
         http::router(AppState::new(pool, store, Some(client), test_auth())),
         dir,
@@ -108,7 +122,7 @@ pub async fn test_app_with_state(
     let pool = db::create_pool(&dir.path().join("test.db"))
         .await
         .expect("create pool");
-    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
     let state = AppState::new(pool, store, komoot, test_auth());
     (http::router(state.clone()), state, dir)
 }

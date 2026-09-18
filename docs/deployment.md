@@ -205,3 +205,43 @@ sqlite3 /data/trip-archive.db
 ```
 
 `fly ssh console` needs a running machine; any request wakes it.
+
+### Backups
+
+The volume is a single copy on one host, so the archive is pulled onto the laptop for the borg
+jobs (US-40). Once, configure it in `~/.config/trip-archive/backup.toml` (or under
+`$XDG_CONFIG_HOME`):
+
+```toml
+url = "https://<the app name>.fly.dev"
+target = "/path/to/backup-disk/trip-archive"                      # absolute
+password_command = "kwallet-query -r trip-archive kdewallet"      # optional
+```
+
+Without `password_command` it asks for the archive password on every run. With it, the
+command's output is the password — for KWallet, store it once with
+`kwallet-query -w trip-archive kdewallet`, which reads the value from standard input. Any
+command that prints the password works the same way; the file itself never holds it.
+
+Then, with the backup disk mounted, before the borg job:
+
+```sh
+cargo build --release --bin backup      # once, and after updates
+target/release/backup                   # or: backup --config <path>
+```
+
+The backup directory is laid out like a data directory — `trip-archive.db` plus `photos/`:
+
+- **Consistent.** The database is a snapshot the server takes with `VACUUM INTO`, and the photos
+  are exactly those it names, even if the archive changes during the run.
+- **Incremental.** Photos never change once stored, so the first run fetches them all and later
+  runs only the new ones. Photos of deleted trips are removed; borg's history keeps them.
+- **Safe to interrupt.** A run that fails at any point leaves the previous backup complete; at
+  most, photos already fetched for the next one wait beside it.
+- **Never on the wrong disk.** The directory must exist — create it once. If the disk is not
+  mounted, the run fails instead of writing a backup onto the laptop's own disk.
+
+**Restoring**: the directory is a data directory. Run the archive on a *copy* of it with
+`TRIP_ARCHIVE_DATA_DIR` pointing there to look at it; putting it onto a fresh volume is part of
+US-50's procedure.
+

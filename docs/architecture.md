@@ -89,12 +89,14 @@ C4Container
         Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "One-way reconcile of every trip into a QMapShack database; run manually or from cron, never from inside the app. TOML config for target path + folder mapping; rolling backups; version gate.")
         Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23).")
         Container(check, "komoot_check CLI", "Rust binary, same crate", "Standalone probe that the reverse-engineered komoot API still works (US-27). No DB or blob store.")
+        Container(backup, "backup CLI", "Rust binary, same crate", "Runs on the laptop: pulls a database snapshot and the photos it names into a data-directory-shaped backup, fetching only photos it lacks (US-40).")
     }
 
     System_Ext(osm, "OpenStreetMap tiles", "Public raster tiles")
     System_Ext(komoot, "komoot", "GPX export source + sync API")
     System_Ext(qms, "QMapShack", "Desktop app; owns the exported SQLite trip database")
     System_Ext(owncloud, "ownCloud [planned]", "Photo blob backend")
+    System_Ext(backupdisk, "Backup disk", "External disk the owner's borg jobs archive")
 
     Rel(owner, spa, "Uses", "HTTPS")
     Rel(owner, komoot, "Exports GPX from")
@@ -109,6 +111,8 @@ C4Container
     Rel(backfill, db, "Imports tours transactionally", "sqlx (SQL)")
     Rel(backfill, blobs, "Stores pulled photos", "file IO")
     Rel(check, komoot, "Probes the API", "HTTPS")
+    Rel(backup, server, "Fetches the VACUUM INTO snapshot and missing photos", "HTTPS")
+    Rel(backup, backupdisk, "Writes trip-archive.db + photos/", "file IO")
     Rel(blobs, owncloud, "Backed by [planned]", "WebDAV")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

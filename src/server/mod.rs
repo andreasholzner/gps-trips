@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod backup;
 pub mod db;
 pub mod delete;
 pub mod edit;
