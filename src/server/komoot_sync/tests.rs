@@ -566,3 +566,8 @@ mod backfill;
 // Split out into tests/privacy.rs to keep this file under the repo's 500-line cap.
 
 mod privacy;
+
+// ── Downscaled photos (US-54) ───────────────────────────────────────────
+// Split out into tests/downscale.rs to keep this file under the repo's 500-line cap.
+
+mod downscale;
