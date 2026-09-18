@@ -14,7 +14,7 @@ use crate::models::{
     PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary,
 };
 use crate::server::{
-    auth, delete,
+    auth, backup, delete,
     edit::handle_edit_trip,
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
@@ -104,6 +104,12 @@ pub fn router(state: AppState) -> Router {
         // US-34: bulk-tag trips selected on the list page, in one request.
         .route("/api/trips/tags", post(handle_bulk_add_trip_tags))
         .route("/api/tags", get(handle_list_all_tags))
+        // US-40: a consistent snapshot of the database, for the laptop's
+        // `backup` command; the photos it names come from `/media/*path`.
+        .route(
+            "/api/backup/database",
+            get(backup::handle_database_snapshot),
+        )
         // US-44: what a bookmark to the old review page now means.
         .route("/komoot/sync", get(sync_page_moved))
         // US-22: review + trigger a Komoot "Sync now" pull.

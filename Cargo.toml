@@ -15,7 +15,9 @@ trip-archive-types = { path = "crates/types", features = ["sqlx"] }
 
 # Web server
 axum  = { version = "0.7", features = ["multipart"] }
-tokio = { version = "1",   features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio = { version = "1",   features = ["rt-multi-thread", "macros", "net", "signal", "fs", "io-util"] }
+# US-40: streaming the database snapshot from its (already unlinked) temp file.
+tokio-util = { version = "0.7", features = ["io"] }
 # Serving the vendored, self-hosted map/chart assets under public/ (ADR-0005/0006)
 tower-http = { version = "0.5", features = ["fs"] }
 
@@ -59,6 +61,11 @@ hmac   = "0.12"
 sha2   = "0.10"
 subtle = "2"
 
+# US-40: the snapshot's temp directory on the server; the `backup`
+# command's password prompt, which must not echo.
+tempfile  = "3"
+rpassword = "7"
+
 # Errors & logging
 anyhow             = "1"
 thiserror          = "2"
@@ -73,7 +80,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 test-support = []
 
 [dev-dependencies]
-tempfile = "3"
 tower    = { version = "0.4", features = ["util"] } # ServiceExt::oneshot in tests
 trip-archive = { path = ".", features = ["test-support"] }
 
