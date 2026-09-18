@@ -36,13 +36,43 @@ pub struct UploadedPhoto {
     pub known_location: Option<(f64, f64)>,
 }
 
-/// Store each photo in the `BlobStore` — scaled down to the size bound when it
-/// exceeds it (ADR-0026) — and insert its association row on
-/// the caller's transaction (so an import commits trip + track + photos as one
-/// unit). Photos are keyed per trip with a running ordinal, continuing past any
-/// already attached, so adding photos later never collides with earlier keys.
-/// Consumes the uploads — each photo's bytes are moved to the store, not copied.
-/// Returns the new photo ids in upload order.
+/// A photo ready to store: its EXIF read from the upload, and its bytes
+/// already the size-bounded copy when the upload exceeded the bound (US-54,
+/// ADR-0026). Holding these rather than [`UploadedPhoto`]s is what keeps a
+/// batch from holding every full-size upload at once.
+pub struct PreparedPhoto {
+    original_name: String,
+    content_type: Option<String>,
+    bytes: Vec<u8>,
+    /// `bytes` is a re-encoded JPEG rather than the upload itself.
+    reencoded: bool,
+    thumbnail: Option<Vec<u8>>,
+    metadata: location::PhotoMetadata,
+    known_location: Option<(f64, f64)>,
+}
+
+/// Read a photo's EXIF from the upload itself, then derive the copy to store
+/// and the thumbnail from it (US-3, US-4, US-5, US-54) — best-effort
+/// throughout, never a failed import. The full-size upload is dropped here
+/// whenever a smaller copy replaces it.
+pub async fn prepare_photo(photo: UploadedPhoto) -> PreparedPhoto {
+    let (upload, metadata, processed) = extract_photo_metadata(photo.bytes).await;
+    let (bytes, content_type, reencoded) = match processed.stored {
+        Some(copy) => (copy, Some("image/jpeg".to_string()), true),
+        None => (upload, photo.content_type, false),
+    };
+    PreparedPhoto {
+        original_name: photo.original_name,
+        content_type,
+        bytes,
+        reencoded,
+        thumbnail: processed.thumbnail,
+        metadata,
+        known_location: photo.known_location,
+    }
+}
+
+/// [`prepare_photo`] each upload, then [`store_photos`] them.
 pub async fn ingest_photos(
     tx: &mut Transaction<'_, Sqlite>,
     store: &Arc<dyn BlobStore>,
@@ -50,43 +80,53 @@ pub async fn ingest_photos(
     ctx: &TripPhotoContext<'_>,
     photos: Vec<UploadedPhoto>,
 ) -> Result<Vec<i64>, AppError> {
+    let mut prepared = Vec::with_capacity(photos.len());
+    for photo in photos {
+        prepared.push(prepare_photo(photo).await);
+    }
+    store_photos(tx, store, trip_id, ctx, prepared).await
+}
+
+/// Store each prepared photo in the `BlobStore` and insert its association row
+/// on the caller's transaction (so an import commits trip + track + photos as
+/// one unit), placing it on the map as it goes (US-3, US-4). Photos are keyed
+/// per trip with a running ordinal, continuing past any already attached, so
+/// adding photos later never collides with earlier keys. Consumes the photos —
+/// each one's bytes are moved to the store, not copied. Returns the new photo
+/// ids in order.
+pub async fn store_photos(
+    tx: &mut Transaction<'_, Sqlite>,
+    store: &Arc<dyn BlobStore>,
+    trip_id: i64,
+    ctx: &TripPhotoContext<'_>,
+    photos: Vec<PreparedPhoto>,
+) -> Result<Vec<i64>, AppError> {
     let mut ordinal = repo::count_photos(tx, trip_id).await?;
     let mut ids = Vec::with_capacity(photos.len());
 
     for photo in photos {
-        // Extract EXIF metadata from the upload itself, derive the stored copy
-        // and the thumbnail from it, then decide where the photo goes (US-3,
-        // US-4, US-54) — best-effort throughout, never a failed import.
-        let known_location = photo.known_location;
-        let (upload, metadata, processed) = extract_photo_metadata(photo.bytes).await;
-        let (lat, lon, location_source) = resolve_placement(metadata, ctx, known_location);
+        let (lat, lon, location_source) =
+            resolve_placement(photo.metadata, ctx, photo.known_location);
         // A re-encoded copy is a JPEG whatever the upload was, and its key's
         // extension is what `content_type_from_path` (`http.rs`) serves it by.
-        let (bytes, key, content_type) = match processed.stored {
-            Some(copy) => (
-                copy,
-                blob_key(trip_id, ordinal, &jpg_name(&photo.original_name)),
-                Some("image/jpeg".to_string()),
-            ),
-            None => (
-                upload,
-                blob_key(trip_id, ordinal, &photo.original_name),
-                photo.content_type,
-            ),
+        let key = if photo.reencoded {
+            blob_key(trip_id, ordinal, &jpg_name(&photo.original_name))
+        } else {
+            blob_key(trip_id, ordinal, &photo.original_name)
         };
-        let byte_len = bytes.len() as i64;
+        let byte_len = photo.bytes.len() as i64;
         if location_source == LocationSource::None {
             tracing::debug!(
                 photo = %photo.original_name,
                 "no usable EXIF GPS or timestamp; location_source = none"
             );
         }
-        put_blob(store, key.clone(), bytes).await?;
+        put_blob(store, key.clone(), photo.bytes).await?;
 
         // Storing the thumbnail is best-effort too (US-5, ADR-0020): a
         // storage failure here must not fail the whole import when the
         // original photo and its metadata already succeeded.
-        let thumb_key = match processed.thumbnail {
+        let thumb_key = match photo.thumbnail {
             Some(thumb_bytes) => {
                 let thumb_key = thumbnail_key(trip_id, ordinal, &photo.original_name);
                 match put_blob(store, thumb_key.clone(), thumb_bytes).await {
@@ -115,7 +155,7 @@ pub async fn ingest_photos(
             trip_id,
             &NewPhoto {
                 original_name: &photo.original_name,
-                content_type: content_type.as_deref(),
+                content_type: photo.content_type.as_deref(),
                 byte_len,
                 blob_key: &key,
                 thumbnail_key: thumb_key.as_deref(),

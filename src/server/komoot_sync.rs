@@ -6,7 +6,7 @@
 //! yet in `trip_komoot_link`), and [`sync_selected_tours`] (imports the
 //! owner's chosen subset). Each tour's GPX + photos land in the **same**
 //! transaction as its `trip_komoot_link` row (ADR-0021) — reusing
-//! `repo::insert_trip_in_tx`, `photos::ingest_photos`, and
+//! `repo::insert_trip_in_tx`, `photos::prepare_photo`/`store_photos`, and
 //! `import::derive_track`, the exact same pipeline `import.rs`'s
 //! `handle_import` uses to turn GPX bytes into a trip's stats/GeoJSON/
 //! timezone guess. `KomootClient` is blocking
@@ -26,7 +26,7 @@ use crate::server::{
     import::derive_track,
     komoot::{KomootClient, KomootError, KomootPhoto, KomootTourSummary, TourUpdate},
     komoot_sport,
-    photos::{ingest_photos, UploadedPhoto},
+    photos::{prepare_photo, store_photos, UploadedPhoto},
     placement::TripPhotoContext,
     repo,
     storage::BlobStore,
@@ -362,7 +362,7 @@ async fn sync_one_tour(
 
     let komoot_photos = list_all_tour_photos(client, &tour.id).await?;
 
-    let mut uploaded_photos = Vec::with_capacity(komoot_photos.len());
+    let mut prepared_photos = Vec::with_capacity(komoot_photos.len());
     for photo in komoot_photos {
         let url = crate::server::komoot::resolve_photo_url(
             &photo.src,
@@ -383,12 +383,17 @@ async fn sync_one_tour(
         // assuming JPEG (the same trap `thumbnail_key`'s doc comment
         // describes for the generated thumbnail).
         let (ext, content_type) = thumbnail::guess_image_format(&bytes);
-        uploaded_photos.push(UploadedPhoto {
-            original_name: format!("komoot-{}.{ext}", photo.id),
-            content_type: Some(content_type.to_string()),
-            bytes,
-            known_location: photo.location.map(|l| (l.lat, l.lng)),
-        });
+        // Prepared before the next one is fetched, so only one full-size
+        // photo is in memory at a time however many the tour has (US-54).
+        prepared_photos.push(
+            prepare_photo(UploadedPhoto {
+                original_name: format!("komoot-{}.{ext}", photo.id),
+                content_type: Some(content_type.to_string()),
+                bytes,
+                known_location: photo.location.map(|l| (l.lat, l.lng)),
+            })
+            .await,
+        );
     }
 
     let ctx = TripPhotoContext {
@@ -415,7 +420,7 @@ async fn sync_one_tour(
     .await?;
     // The link row is inserted (and can fail on its `komoot_tour_id`
     // UNIQUE constraint if a concurrent sync linked this tour first)
-    // *before* photos are ingested: `ingest_photos` writes blob files to
+    // *before* photos are stored: `store_photos` writes blob files to
     // the (non-transactional) `BlobStore`, so failing here first means
     // that race never leaves orphaned blobs behind.
     repo::komoot::insert_link_in_tx(&mut tx, trip_id, &tour.id).await?;
@@ -428,7 +433,7 @@ async fn sync_one_tour(
         KomootPrivacy::from_komoot_status(&tour.status),
     )
     .await?;
-    ingest_photos(&mut tx, store, trip_id, &ctx, uploaded_photos).await?;
+    store_photos(&mut tx, store, trip_id, &ctx, prepared_photos).await?;
     tx.commit().await?;
 
     Ok(trip_id)
