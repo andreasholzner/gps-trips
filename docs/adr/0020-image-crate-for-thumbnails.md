@@ -35,6 +35,6 @@ the file's EXIF container a third time.
 - Thumbnail generation is best-effort: a photo `image` cannot decode (corrupt bytes, or a format
   outside the 4 compiled in) simply gets no thumbnail (`thumbnail_key = NULL`), never fails the
   import — the same non-fatal pattern ADR-0017 established for EXIF extraction.
-- Thumbnails are always re-encoded as JPEG (quality 80) at a 400px long edge regardless of source
-  format — this project's photos are effectively always opaque camera JPEGs, so no
-  format-preservation branch is needed.
+- Thumbnails are always re-encoded as JPEG regardless of source format — this project's photos are
+  effectively always opaque camera JPEGs, so no format-preservation branch is needed. Their size
+  and quality are configuration (`config::thumbnail`).
