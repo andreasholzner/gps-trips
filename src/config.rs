@@ -125,10 +125,25 @@ pub mod komoot {
     pub const PAGE_SIZE: u32 = 200;
 }
 
+/// The stored copy of each photo (US-54, ADR-0026).
+pub mod photo {
+    /// Maximum long-edge dimension of the stored copy, in pixels. A photo
+    /// within it is stored as uploaded.
+    pub const MAX_DIMENSION: u32 = 2048;
+    /// JPEG quality (0-100) for a photo re-encoded to fit the bound.
+    pub const JPEG_QUALITY: u8 = 80;
+    /// Largest decoded pixel buffer, in bytes, an import may allocate for one
+    /// photo — a 48 MP camera photo is 144 MB as RGB. Well inside the
+    /// deployed machine's memory next to a full upload request
+    /// (`server::PHOTO_IMPORT_BODY_LIMIT`); a photo beyond it is stored as
+    /// uploaded.
+    pub const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
+}
+
 /// Thumbnail generation (US-5, ADR-0020).
 pub mod thumbnail {
     /// Maximum long-edge dimension of a generated thumbnail, in pixels.
-    pub const MAX_DIMENSION: u32 = 400;
+    pub const MAX_DIMENSION: u32 = 200;
     /// JPEG quality (0-100) for the re-encoded thumbnail.
     pub const JPEG_QUALITY: u8 = 80;
 }

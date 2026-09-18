@@ -1,45 +1,128 @@
-//! Thumbnail generation (US-5, ADR-0020). Sole owner of the `image` crate
+//! Thumbnail generation (US-5, ADR-0020) and the size-bounded copy each
+//! photo is stored as (US-54, ADR-0026). Sole owner of the `image` crate
 //! dependency, mirroring how `location.rs`/`timezone.rs` isolate
 //! `kamadak-exif`/`tzf-rs` behind a narrow module surface.
 
 use std::io::Cursor;
 
 use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, ImageReader};
+use image::imageops::FilterType;
+use image::{DynamicImage, ImageDecoder, ImageEncoder, ImageReader};
 
-use crate::config::thumbnail::{JPEG_QUALITY, MAX_DIMENSION};
+use crate::config::{photo, thumbnail};
 
-/// Generate a thumbnail from a photo's original bytes, honoring EXIF
-/// orientation (`orientation`, the raw tag value from
-/// `location::PhotoMetadata`). Always re-encoded as JPEG regardless of the
-/// source format (ADR-0020). `None` if the bytes can't be decoded as an
-/// image `image` understands — never fatal to the import, the same
-/// best-effort stance `location.rs` takes for EXIF extraction.
-pub fn generate_thumbnail(bytes: &[u8], orientation: Option<u16>) -> Option<Vec<u8>> {
-    let img = ImageReader::new(Cursor::new(bytes))
+/// What one decode of an uploaded photo yields. Both halves are
+/// best-effort: `None` never fails the import.
+#[derive(Debug, Default)]
+pub struct ProcessedPhoto {
+    /// The JPEG to store instead of the upload, when the upload exceeds the
+    /// size bound. `None` means store the upload itself: it is within the
+    /// bound, or it could not be decoded (ADR-0026).
+    pub stored: Option<Vec<u8>>,
+    /// The thumbnail, already turned upright (US-5).
+    pub thumbnail: Option<Vec<u8>>,
+}
+
+/// Decode a photo once and derive from it both the copy to store and the
+/// thumbnail. `orientation` is the raw EXIF tag from
+/// `location::PhotoMetadata`; it is applied to the thumbnail only, since the
+/// stored copy keeps the original's EXIF, Orientation tag included.
+pub fn process_photo(bytes: &[u8], orientation: Option<u16>) -> ProcessedPhoto {
+    process_photo_within(bytes, orientation, photo::MAX_DECODE_BYTES)
+}
+
+/// [`process_photo`] with the decode allocation limit as a parameter, so a
+/// test can exceed it without a gigantic fixture.
+fn process_photo_within(bytes: &[u8], orientation: Option<u16>, max_decode: u64) -> ProcessedPhoto {
+    let Some(decoded) = decode(bytes, max_decode) else {
+        return ProcessedPhoto::default();
+    };
+    let (image, stored) = if exceeds(&decoded.image, photo::MAX_DIMENSION) {
+        let bound = photo::MAX_DIMENSION;
+        // Triangle averages over the whole footprint of each output pixel,
+        // which keeps a large downscale free of aliasing at a fraction of
+        // Lanczos's cost on a shared CPU.
+        let smaller = decoded.image.resize(bound, bound, FilterType::Triangle);
+        let stored = encode_jpeg(&smaller, photo::JPEG_QUALITY, decoded.exif, decoded.icc);
+        (smaller, stored)
+    } else {
+        (decoded.image, None)
+    };
+    ProcessedPhoto {
+        stored,
+        thumbnail: make_thumbnail(image, orientation),
+    }
+}
+
+/// A decoded photo and the metadata the stored copy carries over.
+struct Decoded {
+    image: DynamicImage,
+    exif: Option<Vec<u8>>,
+    icc: Option<Vec<u8>>,
+}
+
+/// `None` if the bytes are no image `image` understands, or if decoding
+/// them would allocate more than `max_decode` bytes.
+fn decode(bytes: &[u8], max_decode: u64) -> Option<Decoded> {
+    let mut decoder = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .ok()?
-        .decode()
+        .into_decoder()
         .ok()?;
+    if decoder.total_bytes() > max_decode {
+        tracing::warn!(
+            bytes = decoder.total_bytes(),
+            "photo too large to decode; storing it as uploaded"
+        );
+        return None;
+    }
+    let exif = decoder.exif_metadata().ok().flatten();
+    let icc = decoder.icc_profile().ok().flatten();
+    let image = DynamicImage::from_decoder(decoder).ok()?;
+    Some(Decoded { image, exif, icc })
+}
+
+fn exceeds(image: &DynamicImage, bound: u32) -> bool {
+    image.width() > bound || image.height() > bound
+}
+
+/// Encode as JPEG, carrying over the source's EXIF and colour profile when
+/// it had them.
+fn encode_jpeg(
+    image: &DynamicImage,
+    quality: u8,
+    exif: Option<Vec<u8>>,
+    icc: Option<Vec<u8>>,
+) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut encoder = JpegEncoder::new_with_quality(&mut out, quality);
+    if let Some(exif) = exif {
+        encoder.set_exif_metadata(exif).ok()?;
+    }
+    if let Some(icc) = icc {
+        encoder.set_icc_profile(icc).ok()?;
+    }
+    encoder.encode_image(image).ok()?;
+    Some(out)
+}
+
+/// The thumbnail of an already-decoded photo, turned upright. Always a JPEG
+/// regardless of the source format (ADR-0020).
+fn make_thumbnail(image: DynamicImage, orientation: Option<u16>) -> Option<Vec<u8>> {
     // `.thumbnail()` scales to fit the box on *either* side, upscaling a
     // smaller source — the opposite of "loads fast". Only shrink; a photo
     // already within bounds keeps its own (smaller) dimensions.
-    let resized = if img.width() > MAX_DIMENSION || img.height() > MAX_DIMENSION {
-        img.thumbnail(MAX_DIMENSION, MAX_DIMENSION)
+    let bound = thumbnail::MAX_DIMENSION;
+    let resized = if exceeds(&image, bound) {
+        image.thumbnail(bound, bound)
     } else {
-        img
+        image
     };
     // Orient *after* resizing, not before: the target box is square, so a
     // rotate/flip commutes with fitting into it — resizing first means the
-    // rotate/flip touches at most a 400x400 buffer instead of the original
-    // full-resolution photo (often 10x+ larger on each axis).
+    // rotate/flip touches only a thumbnail-sized buffer.
     let thumb = apply_orientation(resized, orientation.unwrap_or(1));
-
-    let mut out = Vec::new();
-    JpegEncoder::new_with_quality(&mut out, JPEG_QUALITY)
-        .encode_image(&thumb)
-        .ok()?;
-    Some(out)
+    encode_jpeg(&thumb, thumbnail::JPEG_QUALITY, None, None)
 }
 
 /// Guess an image's real format from its magic bytes, returning
@@ -96,6 +179,21 @@ pub mod fixtures {
         out
     }
 
+    /// A solid-color JPEG carrying `tiff` (a raw TIFF/EXIF stream, e.g. from
+    /// `location::fixtures`) as its EXIF APP1 segment — what a camera writes.
+    pub fn jpeg_with_exif(width: u32, height: u32, tiff: &[u8]) -> Vec<u8> {
+        let jpeg = valid_jpeg_bytes(width, height);
+        // Marker, big-endian length (counting itself), "Exif\0\0", payload.
+        let len = u16::try_from(2 + 6 + tiff.len()).expect("fixture EXIF fits a segment");
+        let mut out = jpeg[0..2].to_vec(); // SOI
+        out.extend_from_slice(&[0xFF, 0xE1]);
+        out.extend_from_slice(&len.to_be_bytes());
+        out.extend_from_slice(b"Exif\0\0");
+        out.extend_from_slice(tiff);
+        out.extend_from_slice(&jpeg[2..]);
+        out
+    }
+
     /// A solid-color PNG at the given dimensions — a non-JPEG fixture for
     /// exercising format detection (`guess_image_format`).
     pub fn valid_png_bytes(width: u32, height: u32) -> Vec<u8> {
@@ -109,142 +207,7 @@ pub mod fixtures {
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+// Split into thumbnail/tests.rs to keep this file under the repo's 500-line cap.
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use fixtures::{valid_jpeg_bytes, valid_png_bytes};
-    use image::{GenericImageView, Pixel, Rgb, RgbImage};
-
-    // US-22: `guess_image_format` — a photo's real extension/content-type
-    // from its bytes, since Komoot's photo CDN response carries neither.
-
-    #[test]
-    fn guess_image_format_detects_jpeg() {
-        assert_eq!(
-            guess_image_format(&valid_jpeg_bytes(20, 10)),
-            ("jpg", "image/jpeg")
-        );
-    }
-
-    #[test]
-    fn guess_image_format_detects_png() {
-        assert_eq!(
-            guess_image_format(&valid_png_bytes(20, 10)),
-            ("png", "image/png")
-        );
-    }
-
-    #[test]
-    fn guess_image_format_falls_back_to_jpeg_for_undecodable_bytes() {
-        assert_eq!(guess_image_format(b"not an image"), ("jpg", "image/jpeg"));
-    }
-
-    fn decode(bytes: &[u8]) -> DynamicImage {
-        image::load_from_memory(bytes).expect("thumbnail must be a valid, decodable image")
-    }
-
-    /// A small, lossless (no JPEG round-trip) in-memory image with a
-    /// distinctive red pixel in the top-left corner and the rest blue —
-    /// enough to tell `apply_orientation`'s transforms apart exactly, by
-    /// checking where the red pixel ends up.
-    fn marked_image(width: u32, height: u32) -> DynamicImage {
-        let mut img = RgbImage::from_pixel(width, height, Rgb([0, 0, 255]));
-        img.put_pixel(0, 0, Rgb([255, 0, 0]));
-        DynamicImage::ImageRgb8(img)
-    }
-
-    #[test]
-    fn us5_generate_thumbnail_never_upscales_a_smaller_image() {
-        // Regression guard: `.thumbnail()` scales to fit the box on either
-        // side, which upscales a source already smaller than 400px on both
-        // axes — the opposite of "loads fast" (US-5).
-        let bytes = valid_jpeg_bytes(300, 200);
-        let thumb = generate_thumbnail(&bytes, None).expect("must decode a valid JPEG");
-        let decoded = decode(&thumb);
-        assert_eq!(decoded.width(), 300);
-        assert_eq!(decoded.height(), 200);
-    }
-
-    #[test]
-    fn us5_generate_thumbnail_shrinks_a_larger_image_to_the_max_dimension() {
-        let bytes = valid_jpeg_bytes(800, 600);
-        let thumb = generate_thumbnail(&bytes, None).expect("must decode a valid JPEG");
-        let decoded = decode(&thumb);
-        assert!(decoded.width() <= 400 && decoded.height() <= 400);
-        // Aspect ratio (4:3) preserved: long edge is width.
-        assert_eq!(decoded.width(), 400);
-        assert_eq!(decoded.height(), 300);
-    }
-
-    #[test]
-    fn us5_generate_thumbnail_returns_none_for_undecodable_bytes() {
-        assert!(generate_thumbnail(b"not an image at all", None).is_none());
-    }
-
-    #[test]
-    fn us5_apply_orientation_1_or_absent_is_a_no_op() {
-        let img = marked_image(10, 20);
-        let out = apply_orientation(img.clone(), 1);
-        assert_eq!(out.get_pixel(0, 0), img.get_pixel(0, 0));
-        assert_eq!(out.width(), 10);
-        assert_eq!(out.height(), 20);
-    }
-
-    #[test]
-    fn us5_apply_orientation_3_rotates_180_degrees() {
-        let img = marked_image(10, 20);
-        let out = apply_orientation(img, 3);
-        // The top-left marker must now be at the bottom-right corner.
-        assert_eq!(out.get_pixel(9, 19), Rgb([255, 0, 0]).to_rgba());
-    }
-
-    #[test]
-    fn us5_apply_orientation_6_rotates_90_degrees_clockwise() {
-        let img = marked_image(10, 20);
-        let out = apply_orientation(img, 6);
-        // A 90 deg CW rotation swaps dimensions; the top-left marker moves
-        // to the top-right corner.
-        assert_eq!(out.width(), 20);
-        assert_eq!(out.height(), 10);
-        assert_eq!(out.get_pixel(19, 0), Rgb([255, 0, 0]).to_rgba());
-    }
-
-    #[test]
-    fn us5_apply_orientation_8_rotates_90_degrees_counterclockwise() {
-        let img = marked_image(10, 20);
-        let out = apply_orientation(img, 8);
-        assert_eq!(out.width(), 20);
-        assert_eq!(out.height(), 10);
-        // A 90 deg CCW rotation moves the top-left marker to the bottom-left corner.
-        assert_eq!(out.get_pixel(0, 9), Rgb([255, 0, 0]).to_rgba());
-    }
-
-    #[test]
-    fn us5_apply_orientation_2_flips_horizontally() {
-        let img = marked_image(10, 20);
-        let out = apply_orientation(img, 2);
-        assert_eq!(out.get_pixel(9, 0), Rgb([255, 0, 0]).to_rgba());
-    }
-
-    #[test]
-    fn us5_apply_orientation_4_flips_vertically() {
-        let img = marked_image(10, 20);
-        let out = apply_orientation(img, 4);
-        assert_eq!(out.get_pixel(0, 19), Rgb([255, 0, 0]).to_rgba());
-    }
-
-    #[test]
-    fn us5_generate_thumbnail_honors_orientation_end_to_end() {
-        // A large enough source that `.thumbnail()` always shrinks (never
-        // upscales) after the orientation swap, so the resulting dimensions
-        // are deterministic: a 6 (90 deg CW) reorientation of an 800x600
-        // source swaps the aspect ratio before resizing.
-        let bytes = valid_jpeg_bytes(800, 600);
-        let thumb = generate_thumbnail(&bytes, Some(6)).expect("must decode a valid JPEG");
-        let decoded = decode(&thumb);
-        // Post-rotation source is 600x800 (portrait); long edge (height) is 400.
-        assert_eq!(decoded.width(), 300);
-        assert_eq!(decoded.height(), 400);
-    }
-}
+mod tests;

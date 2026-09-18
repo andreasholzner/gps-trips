@@ -11,12 +11,13 @@
 // output through correctly.
 
 use super::*;
+use crate::models::Photo;
 use crate::models::{ActivityType, TripKind};
 use crate::server::db::testing::TestDb;
 use crate::server::gpx::TrackStats;
 use crate::server::repo::{insert_trip, list_photos, NewTrip};
 use crate::server::storage::LocalDisk;
-use crate::server::thumbnail::fixtures::valid_jpeg_bytes;
+use crate::server::thumbnail::fixtures::{valid_jpeg_bytes, valid_png_bytes};
 
 fn no_track_ctx() -> TripPhotoContext<'static> {
     TripPhotoContext {
@@ -325,4 +326,71 @@ fn thumbnail_key_appends_jpg_when_the_original_has_no_extension() {
         thumbnail_key(7, 0, "photo"),
         "trips/7/thumbs/0000-photo.jpg"
     );
+}
+
+// ── US-54: what is stored is the size-bounded copy (ADR-0026) ─────────
+
+/// Ingest one photo into a fresh trip and return its row.
+async fn ingest_one(db: &TestDb, store: &Arc<dyn BlobStore>, upload: UploadedPhoto) -> Photo {
+    let trip_id = a_trip(&db.pool).await;
+    let mut tx = db.pool.begin().await.unwrap();
+    ingest_photos(&mut tx, store, trip_id, &no_track_ctx(), vec![upload])
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    list_photos(&db.pool, trip_id).await.unwrap().remove(0)
+}
+
+#[tokio::test]
+async fn us54_an_oversized_photo_is_stored_as_its_bounded_jpeg_copy() {
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+    let bound = crate::config::photo::MAX_DIMENSION;
+    let upload = UploadedPhoto {
+        content_type: Some("image/png".to_string()),
+        ..photo("Big Scan.png", &valid_png_bytes(bound + 100, bound / 2))
+    };
+
+    let row = ingest_one(&db, &store, upload).await;
+
+    let stored = store.get(&row.blob_key).unwrap();
+    let image = image::load_from_memory(&stored).expect("stored copy decodes");
+    assert_eq!(image.width(), bound);
+    // Everything about the row describes the stored copy, not the upload —
+    // except the name the owner gave it.
+    assert_eq!(row.byte_len, stored.len() as i64);
+    assert_eq!(row.content_type.as_deref(), Some("image/jpeg"));
+    assert!(row.blob_key.ends_with("-Big_Scan.jpg"), "{}", row.blob_key);
+    assert_eq!(row.original_name, "Big Scan.png");
+}
+
+#[tokio::test]
+async fn us54_a_photo_within_the_bound_is_stored_byte_for_byte() {
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+    let bytes = valid_jpeg_bytes(800, 600);
+
+    let row = ingest_one(&db, &store, photo("a.jpeg", &bytes)).await;
+
+    assert_eq!(store.get(&row.blob_key).unwrap(), bytes);
+    assert!(row.blob_key.ends_with("-a.jpeg"), "{}", row.blob_key);
+}
+
+#[tokio::test]
+async fn us54_placement_is_read_from_the_upload_before_it_is_downscaled() {
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+    let bound = crate::config::photo::MAX_DIMENSION;
+    let geotagged = crate::server::thumbnail::fixtures::jpeg_with_exif(
+        bound + 100,
+        bound / 2,
+        &location::fixtures::geotagged_bytes(45.5, 10.26),
+    );
+
+    let row = ingest_one(&db, &store, photo("a.jpg", &geotagged)).await;
+
+    assert_ne!(store.get(&row.blob_key).unwrap(), geotagged, "downscaled");
+    assert_eq!(row.location_source, LocationSource::Exif);
+    assert_eq!(row.lat, Some(45.5));
+    assert_eq!(row.lon, Some(10.26));
 }

@@ -20,6 +20,7 @@ use trip_archive_types::{ActivityType, ConfirmImport, StagedImport, TripKind};
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::filters::Filters;
+use crate::photos::{upload_in_batches, PartialUpload};
 use crate::Route;
 
 /// Photos per request. Small enough that the count moves often on a big
@@ -211,28 +212,22 @@ pub fn ImportTrip() -> Element {
         };
 
         let total = photos.len();
-        let mut uploaded = 0;
         progress.set(Some(Progress { done: 0, total }));
-        for batch in batches(photos) {
-            let sending = batch.len();
-            if let Err(err) = api::add_photos(&archive(), id, batch).await {
-                progress.set(None);
-                partial.set(Some(PartialImport {
-                    trip_id: id,
-                    uploaded,
-                    total,
-                    error: err.to_string(),
-                }));
-                submitting.set(false);
-                return;
-            }
-            uploaded += sending;
-            progress.set(Some(Progress {
-                done: uploaded,
-                total,
-            }));
-        }
+        let uploaded = upload_in_batches(&archive(), id, photos, |done| {
+            progress.set(Some(Progress { done, total }));
+        })
+        .await;
         progress.set(None);
+        if let Err(PartialUpload { uploaded, error }) = uploaded {
+            partial.set(Some(PartialImport {
+                trip_id: id,
+                uploaded,
+                total,
+                error: error.to_string(),
+            }));
+            submitting.set(false);
+            return;
+        }
         submitting.set(false);
         navigator().push(Route::TripDetail { id });
     };

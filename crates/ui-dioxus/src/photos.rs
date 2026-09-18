@@ -6,7 +6,8 @@ use dioxus::prelude::*;
 use serde::Serialize;
 use trip_archive_types::PhotoResponse;
 
-use crate::api::{self, ApiClient, PhotoUpload};
+use crate::api::{self, ApiClient, ApiError, PhotoUpload};
+use crate::import::batches;
 use crate::interop;
 
 /// A photo the map draws: where it is, what to show in its popup, and what
@@ -96,6 +97,36 @@ pub fn PhotoGallery(
     }
 }
 
+/// An upload that stopped part-way: how many photos the archive already
+/// holds, and why the rest did not arrive.
+#[derive(Debug)]
+pub struct PartialUpload {
+    pub uploaded: usize,
+    pub error: ApiError,
+}
+
+/// Add `photos` to trip `id` a batch at a time ([`batches`]), reporting the
+/// running count after each request. Every screen that uploads photos goes
+/// through here, so none sends them all at once: the archive holds a whole
+/// request in memory while it stores the photos (US-54).
+pub async fn upload_in_batches(
+    archive: &ApiClient,
+    id: i64,
+    photos: Vec<PhotoUpload>,
+    mut on_batch: impl FnMut(usize),
+) -> Result<(), PartialUpload> {
+    let mut uploaded = 0;
+    for batch in batches(photos) {
+        let sending = batch.len();
+        api::add_photos(archive, id, batch)
+            .await
+            .map_err(|error| PartialUpload { uploaded, error })?;
+        uploaded += sending;
+        on_batch(uploaded);
+    }
+    Ok(())
+}
+
 /// Adding photos to a trip that already exists (US-2). The files are read in
 /// the browser and posted to the same multipart endpoint the import form uses
 /// (ADR-0004); `on_added` tells the screen to re-read its photos.
@@ -115,7 +146,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                     status.set(Some("Choose one or more photos first.".to_string()));
                     return;
                 }
-                match api::add_photos(&archive(), id, photos).await {
+                match upload_in_batches(&archive(), id, photos, |_| {}).await {
                     Ok(()) => {
                         chosen.take();
                         // Nothing else can empty a file input, and one still
@@ -125,10 +156,16 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                         status.set(None);
                         on_added.call(());
                     }
-                    // The selection is kept on purpose: the owner presses the
-                    // button again rather than picking every file a second
-                    // time.
-                    Err(err) => status.set(Some(format!("Could not add the photos: {err}"))),
+                    // What did not arrive stays selected on purpose: the owner
+                    // presses the button again rather than picking every file a
+                    // second time — and what did arrive must not go up twice.
+                    Err(PartialUpload { uploaded, error }) => {
+                        chosen.write().drain(..uploaded);
+                        if uploaded > 0 {
+                            on_added.call(());
+                        }
+                        status.set(Some(format!("Could not add the photos: {error}")));
+                    }
                 }
             },
             input {
@@ -173,7 +210,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::render;
+    use crate::test_support::{import_sample, render, serve_test_archive};
     use trip_archive_types::LocationSource;
 
     fn a_photo(id: i64, name: &str, at: Option<(f64, f64)>) -> PhotoResponse {
@@ -320,6 +357,47 @@ mod tests {
 
         assert!(!html.contains("No photos yet"), "{html}");
         assert!(html.contains("Loading"), "{html}");
+    }
+
+    // ── US-54: no single request carries every chosen photo ────────────
+
+    fn uploads(count: usize) -> Vec<PhotoUpload> {
+        (0..count)
+            .map(|i| PhotoUpload {
+                file_name: format!("{i}.jpg"),
+                content_type: Some("image/jpeg".to_string()),
+                bytes: b"\xFF\xD8\xFF-fake-jpeg".to_vec(),
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn photos_added_to_a_trip_travel_in_batches_and_all_arrive() {
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+        let mut reported = Vec::new();
+
+        upload_in_batches(&archive, id, uploads(20), |done| reported.push(done))
+            .await
+            .expect("upload");
+
+        // One report per request: 20 photos, `import::batches`' 8 to a request.
+        assert_eq!(reported, vec![8, 16, 20]);
+        assert_eq!(
+            api::list_photos(&archive, id).await.expect("photos").len(),
+            20
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_batch_says_how_many_photos_made_it_before_it() {
+        let (archive, _dir) = serve_test_archive().await;
+
+        let failed = upload_in_batches(&archive, 9_999, uploads(3), |_| {})
+            .await
+            .expect_err("there is no such trip to add to");
+
+        assert_eq!(failed.uploaded, 0);
     }
 
     #[test]

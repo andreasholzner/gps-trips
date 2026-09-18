@@ -81,7 +81,8 @@ async fn us5_a_valid_photo_gets_a_thumbnail_url_distinct_from_the_original() {
     assert_eq!(thumb_response.status(), StatusCode::OK);
     let thumb_bytes = body_bytes(thumb_response).await;
     let thumb = image::load_from_memory(&thumb_bytes).expect("thumbnail must be decodable");
-    assert!(thumb.width() <= 400 && thumb.height() <= 400);
+    let bound = trip_archive::config::thumbnail::MAX_DIMENSION;
+    assert!(thumb.width() <= bound && thumb.height() <= bound);
 }
 
 #[tokio::test]
