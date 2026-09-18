@@ -1,9 +1,11 @@
-# Deployment — self-hosting Trip Archive (US-10)
+# Deployment — running Trip Archive (US-10, US-45…US-49)
 
-Trip Archive is a single Axum binary plus a folder of vendored static assets (map/chart
-JS+CSS, ADR-0005/0006). The SQLite DB and photo blobs live under one configurable data
-directory. No external services (no separate DB server, no cloud dependency) are required —
-see [ADR-0002](./adr/0002-sqlite-local-disk.md), [ADR-0014](./adr/0014-defer-deployment-topology.md).
+Trip Archive is a single Axum binary plus a `public/` folder holding the SPA's built bundle.
+The SQLite DB and photo blobs live under one configurable data directory; no external services
+are required ([ADR-0002](./adr/0002-sqlite-local-disk.md)). It runs in two places: on a laptop,
+started on demand (the sections below), and as the deployed archive on Fly.io
+([ADR-0023](./adr/0023-managed-scale-to-zero-hosting.md); see
+[Deployed on Fly.io](#deployed-on-flyio)).
 
 ## Build a release binary
 
@@ -30,14 +32,15 @@ directory, so this pair can be copied anywhere and started from any directory
 
 ## Configuration (environment variables)
 
-| Variable                  | Default                      | Purpose                                                                                                                      |
-|---------------------------|------------------------------|------------------------------------------------------------------------------------------------------------------------------|
-| `TRIP_ARCHIVE_DATA_DIR`   | `./data`                     | Where the SQLite DB and photo blobs are stored. Set this to a persistent, backed-up location.                                |
-| `TRIP_ARCHIVE_ASSETS_DIR` | `public/` next to the binary | Override the static assets location (e.g. if packaging into `/usr/share/trip-archive` while the binary lives in `/usr/bin`). |
-| `TRIP_ARCHIVE_PASSWORD`   | **none — required**          | The one shared password (US-19, [ADR-0010](./adr/0010-single-user-optional-auth.md)). Missing or empty and the server refuses to start — see below.                        |
-| `RUST_LOG`                | `trip_archive=info`          | Standard `tracing-subscriber` env filter.                                                                                    |
-| `KOMOOT_EMAIL`            | unset                        | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below.        |
-| `KOMOOT_PASSWORD`         | unset                        | Komoot account password. Optional — see below.                                                                               |
+| Variable                  | Default                      | Purpose                                                                                                                                                                                                                    |
+|---------------------------|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `TRIP_ARCHIVE_DATA_DIR`   | `./data`                     | Where the SQLite DB and photo blobs are stored. Set this to a persistent, backed-up location.                                                                                                                              |
+| `TRIP_ARCHIVE_ASSETS_DIR` | `public/` next to the binary | Override the static assets location (e.g. if packaging into `/usr/share/trip-archive` while the binary lives in `/usr/bin`).                                                                                               |
+| `TRIP_ARCHIVE_BIND_ADDR`  | `127.0.0.1:3000`             | The address to listen on, as `IP:port` (US-45). Loopback unless set, so a laptop run is never reachable from the network by accident; the container sets `0.0.0.0:3000`. Anything else than an `IP:port` refuses the boot. |
+| `TRIP_ARCHIVE_PASSWORD`   | **none — required**          | The one shared password (US-19, [ADR-0010](./adr/0010-single-user-optional-auth.md)). Missing or empty and the server refuses to start — see below.                                                                        |
+| `RUST_LOG`                | `trip_archive=info`          | Standard `tracing-subscriber` env filter.                                                                                                                                                                                  |
+| `KOMOOT_EMAIL`            | unset                        | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below.                                                                                                      |
+| `KOMOOT_PASSWORD`         | unset                        | Komoot account password. Optional — see below.                                                                                                                                                                             |
 
 ### The shared password (required)
 
@@ -84,11 +87,103 @@ KOMOOT_EMAIL=you@example.com KOMOOT_PASSWORD='...' TRIP_ARCHIVE_DATA_DIR=/path/t
 TRIP_ARCHIVE_PASSWORD='…' TRIP_ARCHIVE_DATA_DIR=/path/to/persistent/data ./trip-archive
 ```
 
-The server listens on `127.0.0.1:3000` (laptop-local, on demand — ADR-0014). Start it when
-organizing trips, stop it afterwards; there is no daemon/service setup required.
+The server listens on `127.0.0.1:3000` unless `TRIP_ARCHIVE_BIND_ADDR` says otherwise. Start it
+when organizing trips, stop it afterwards; there is no daemon/service setup required.
 
-## Auth
+## Deployed on Fly.io
 
-None yet. The instance is unauthenticated (fine on a private network/VPN or `localhost`-only
-use); a shared-password middleware is planned separately (US-19, ADR-0010) before exposing it
-more broadly.
+The deployed archive is the same binary in a container ([ADR-0023](./adr/0023-managed-scale-to-zero-hosting.md)):
+
+- **Image** (`Dockerfile`): the static musl `trip-archive` and `komoot_check` binaries and the
+  SPA bundle beside them, on Alpine — which adds only a shell and the `sqlite3` CLI for looking
+  at the volume. It is built on Fly's remote builder with a pinned Rust version, so the laptop
+  needs `flyctl` and nothing else.
+- **Machine** (`fly.toml`): one `shared-cpu-1x` machine with 1 GB in `arn` (Stockholm). It is
+  stopped when idle and started by the next request, which then takes about a second.
+- **Volume**: `/data`, holding the database and the photos (`TRIP_ARCHIVE_DATA_DIR=/data`). It
+  starts at 1 GB and grows by itself up to a limit that is provisional until US-50.
+- **Address**: `https://<app>.fly.dev` with Fly's certificate. Plain HTTP is answered with a
+  redirect to HTTPS by Fly's edge and never reaches the app.
+- **Health check**: a TCP check on port 3000. The server binds only after the password check and
+  the migrations, so a release that cannot boot fails the deployment.
+
+### Exactly one machine
+
+SQLite on a volume allows one writer, and a volume belongs to one machine. A second machine
+would get a volume of its own: two archives, drifting apart, behind one address. Fly creates
+two machines by default, so `scripts/deploy.sh` always deploys with `--ha=false` and refuses to
+run when the app has more than one machine. Consequences, accepted:
+
+- a deployment stops the old machine before the new one starts — a few seconds of downtime;
+- there is no failover: if the volume's host fails, the archive is down until it returns or a
+  snapshot is restored onto a new volume.
+
+### The app name
+
+The app name is the hostname. It is kept unguessable and **out of this repository**, which is
+public: `fly.toml` has no `app` line, and the deployment script takes the name from `FLY_APP`. Set
+it in your shell before any command below:
+
+```sh
+export FLY_APP=<the app name>
+```
+
+### First-time setup
+
+```sh
+curl -L https://fly.io/install.sh | sh    # flyctl
+fly auth login
+fly apps create "$FLY_APP"
+```
+
+Then the secrets (US-48). `fly secrets import` reads `NAME=VALUE` lines from standard input,
+so no value lands in the shell history — type the lines, then Ctrl-D:
+
+```sh
+fly secrets import --app "$FLY_APP" --stage
+TRIP_ARCHIVE_PASSWORD=…
+KOMOOT_EMAIL=…
+KOMOOT_PASSWORD=…
+```
+
+The Komoot lines are optional, as on the laptop. The first deploy creates the machine and the
+volume:
+
+```sh
+scripts/deploy.sh
+```
+
+### Deploying a change
+
+```sh
+scripts/deploy.sh
+```
+
+It refuses to run with uncommitted changes — `fly deploy` ships the directory as it is on disk,
+and only a clean tree makes what runs a commit — and with more than one machine (above). The
+migrations run on boot, so a new schema needs no manual step.
+
+### After a deployment
+
+Checked by hand; this is platform configuration no test reaches (US-49):
+
+```sh
+curl -sI "http://$FLY_APP.fly.dev/" | head -3             # 301 to https://
+curl -sI "https://$FLY_APP.fly.dev/app/" | head -1         # 200: the SPA loads
+curl -s  "https://$FLY_APP.fly.dev/api/trips"              # 401 JSON: nothing without a session
+```
+
+### Changing a secret
+
+The same `fly secrets import --app "$FLY_APP"` (without `--stage`) restarts the machine with
+the new value. For `TRIP_ARCHIVE_PASSWORD` that ends every session on every device — the only
+revocation there is (US-19).
+
+### Looking inside
+
+```sh
+fly ssh console --app "$FLY_APP"
+sqlite3 /data/trip-archive.db
+```
+
+`fly ssh console` needs a running machine; any request wakes it.

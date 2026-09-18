@@ -1,9 +1,10 @@
 //! Centralized configuration defaults.
 //!
 //! These are rarely-changed values that don't warrant a settings file or env
-//! var of their own (beyond the two paths that are already env-overridable —
-//! see `server::paths`) — kept here as one place to find and adjust them,
-//! instead of scattered as inline literals across the modules that use them.
+//! var of their own (beyond the paths and the listen address that are already
+//! env-overridable — see `server::paths`) — kept here as one place to find and
+//! adjust them, instead of scattered as inline literals across the modules
+//! that use them.
 
 /// Storage & filesystem layout (ADR-0002, ADR-0007, ADR-0016; US-10).
 pub mod storage {
@@ -23,11 +24,14 @@ pub mod storage {
     pub const BLOBS_SUBDIR: &str = "photos";
 }
 
-/// HTTP server networking (US-10: single-user, laptop-local; deployment
-/// topology is otherwise deferred per ADR-0014).
+/// HTTP server networking (US-10 on the laptop, US-45 in a container).
 pub mod server {
-    /// Address the HTTP server binds to.
-    pub const BIND_ADDR: &str = "127.0.0.1:3000";
+    /// Env var overriding the listen address, as `IP:port`. See
+    /// `server::paths::bind_addr`.
+    pub const BIND_ADDR_ENV_VAR: &str = "TRIP_ARCHIVE_BIND_ADDR";
+    /// Listen address when `BIND_ADDR_ENV_VAR` isn't set: loopback only, so
+    /// a laptop run is never reachable from the network by accident.
+    pub const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([127, 0, 0, 1], 3000);
 
     /// Request-body cap for the multipart upload routes (`/api/import`,
     /// `/api/import/staged` and `/api/trips/:id/photos`, ADR-0004). Axum's

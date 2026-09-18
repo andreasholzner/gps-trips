@@ -1,0 +1,16 @@
+# The build context `fly deploy` uploads: the sources the image is built from,
+# and nothing that is local state, a secret, or rebuilt inside the image.
+.git
+.env
+.env.*
+target/
+data/
+public/app/
+tests/browser/
+docs/
+.claude/
+.claude-flow/
+.swarm/
+.idea/
+.devcontainer/
+ruvector.db
