@@ -141,10 +141,16 @@ so no value lands in the shell history — type the lines, then Ctrl-D:
 
 ```sh
 fly secrets import --app "$FLY_APP" --stage
-TRIP_ARCHIVE_PASSWORD=…
-KOMOOT_EMAIL=…
-KOMOOT_PASSWORD=…
+TRIP_ARCHIVE_PASSWORD="…"
+KOMOOT_EMAIL="…"
+KOMOOT_PASSWORD="…"
 ```
+
+**Put every value in double quotes.** Unquoted, `flyctl` reads a `#` as the start of a comment
+and silently cuts the value there, and it strips leading spaces — a password stored that way
+is not the one you type, and the login refuses it. Inside double quotes both survive; the quotes
+themselves are removed. The one case quoting does not cover is a `"` inside the value ahead of
+a `#` — avoid that combination.
 
 The Komoot lines are optional, as on the laptop. The first deploy creates the machine and the
 volume:
@@ -175,8 +181,8 @@ curl -s  "https://$FLY_APP.fly.dev/api/trips"              # 401 JSON: nothing w
 
 ### Changing a secret
 
-The same `fly secrets import --app "$FLY_APP"` (without `--stage`) restarts the machine with
-the new value. For `TRIP_ARCHIVE_PASSWORD` that ends every session on every device — the only
+The same `fly secrets import --app "$FLY_APP"` (without `--stage`, and again with the value in
+double quotes) restarts the machine with the new value. For `TRIP_ARCHIVE_PASSWORD` that ends every session on every device — the only
 revocation there is (US-19).
 
 ### Looking inside
