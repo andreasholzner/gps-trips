@@ -31,6 +31,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0023](./0023-managed-scale-to-zero-hosting.md)      | Managed scale-to-zero hosting; mobile access via the web UI                 | Accepted                      |
 | [0024](./0024-dioxus-ui-web-and-android.md)          | Dioxus UI: a CSR SPA on the web and an Android app from one source          | Accepted                      |
 | [0025](./0025-js-widget-interop-via-eval.md)         | Vendored JS widgets driven from Rust through `document::eval`               | Accepted                      |
+| [0026](./0026-store-downscaled-photos.md)            | Store a size-bounded copy of each photo, not the original                   | Accepted                      |
 
 ## Conventions
 
