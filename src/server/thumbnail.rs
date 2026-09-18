@@ -6,7 +6,6 @@
 use std::io::Cursor;
 
 use image::codecs::jpeg::JpegEncoder;
-use image::imageops::FilterType;
 use image::{DynamicImage, ImageDecoder, ImageEncoder, ImageReader};
 
 use crate::config::{photo, thumbnail};
@@ -37,17 +36,24 @@ fn process_photo_within(bytes: &[u8], orientation: Option<u16>, max_decode: u64)
     let Some(decoded) = decode(bytes, max_decode) else {
         return ProcessedPhoto::default();
     };
-    let (image, stored) = if exceeds(&decoded.image, photo::MAX_DIMENSION) {
+    let Decoded {
+        mut image,
+        exif,
+        icc,
+    } = decoded;
+    let mut stored = None;
+    if exceeds(&image, photo::MAX_DIMENSION) {
         let bound = photo::MAX_DIMENSION;
-        // Triangle averages over the whole footprint of each output pixel,
-        // which keeps a large downscale free of aliasing at a fraction of
-        // Lanczos's cost on a shared CPU.
-        let smaller = decoded.image.resize(bound, bound, FilterType::Triangle);
-        let stored = encode_jpeg(&smaller, photo::JPEG_QUALITY, decoded.exif, decoded.icc);
-        (smaller, stored)
-    } else {
-        (decoded.image, None)
-    };
+        // `.thumbnail()` rather than a filtered `.resize()`: a filter's
+        // vertical pass allocates an f32 RGBA buffer at the source's full
+        // width — larger than the decoded photo itself — and the whole point
+        // is that an import fits in the machine's memory (US-54). Its block
+        // averaging aliases only when the size barely changes, and camera
+        // photos are far past the bound. Reassigning frees the full-size
+        // buffer before the thumbnail is made.
+        image = image.thumbnail(bound, bound);
+        stored = encode_jpeg(&image, photo::JPEG_QUALITY, exif, icc);
+    }
     ProcessedPhoto {
         stored,
         thumbnail: make_thumbnail(image, orientation),
