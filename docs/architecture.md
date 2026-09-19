@@ -87,7 +87,7 @@ C4Container
         ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
         Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "Runs on the laptop: one-way reconcile of every trip into a QMapShack database, reading the archive through the JSON API; run manually or from cron, never from inside the app. TOML config for archive URL, target path + folder mapping; rolling backups; version gate.")
-        Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23).")
+        Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23). Runs inside the deployed instance, against its volume.")
         Container(check, "komoot_check CLI", "Rust binary, same crate", "Standalone probe that the reverse-engineered komoot API still works (US-27). No DB or blob store.")
         Container(backup, "backup CLI", "Rust binary, same crate", "Runs on the laptop: pulls a database snapshot and the photos it names into a data-directory-shaped backup, fetching only photos it lacks (US-40).")
     }
