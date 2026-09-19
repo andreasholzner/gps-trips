@@ -130,6 +130,24 @@ replays one. `test-results/` and `playwright-report/` are git-ignored.
 Android has no automated tests at all and is verified by hand on a device
 ([ADR-0012](./adr/0012-tdd-test-strategy.md), [ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)).
 
+## Keeping `target/` small
+
+Cargo never deletes build artifacts: each change to a dependency, feature or compiler flag adds a
+fresh copy of what it affects under a new hash and keeps the old one. With one binary per file in
+`tests/`, that grows `target/` without bound — it had reached 87 GB when this was written. Dependencies are already built without debug
+info (`[profile.dev.package."*"]` in `Cargo.toml`), which keeps each copy small; pruning the stale
+ones takes [`cargo-sweep`](https://github.com/holmgr/cargo-sweep):
+
+```sh
+cargo install cargo-sweep   # first time only
+cargo sweep --time 14       # remove artifacts unused for 14 days
+cargo sweep --installed     # remove artifacts of toolchains rustup no longer has
+cargo sweep --maxsize 20GB  # or: remove the oldest until target/ is below 20 GB
+```
+
+Add `--dry-run` to see what would go. `cargo clean` remains the blunt alternative, at the price
+of a full rebuild.
+
 ## Before committing
 
 Build succeeds, `cargo test --workspace` is green, `clippy` is clean, `cargo fmt --all --check`
