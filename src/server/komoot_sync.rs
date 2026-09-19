@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use sqlx::SqlitePool;
 
+use crate::config;
 use crate::config::komoot::PAGE_SIZE;
 use crate::models::{KomootPrivacy, SelectedTour, SyncCandidate, TripKind};
 use crate::server::{
@@ -364,10 +365,12 @@ async fn sync_one_tour(
 
     let mut prepared_photos = Vec::with_capacity(komoot_photos.len());
     for photo in komoot_photos {
+        // Without Komoot's dimensions, ask for the size the stored copy is
+        // bounded to anyway (US-54).
         let url = crate::server::komoot::resolve_photo_url(
             &photo.src,
-            photo.width_px,
-            photo.height_px,
+            photo.width_px.unwrap_or(config::photo::MAX_DIMENSION),
+            photo.height_px.unwrap_or(config::photo::MAX_DIMENSION),
             false,
         );
         let bytes = blocking_call({

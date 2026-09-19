@@ -15,8 +15,8 @@ async fn us54_a_synced_photo_larger_than_the_bound_is_stored_downscaled() {
         id: "p1".to_string(),
         src: "https://cdn.example/p1?width={width}&height={height}&crop={crop}".to_string(),
         location: None,
-        width_px: width,
-        height_px: height,
+        width_px: Some(width),
+        height_px: Some(height),
     };
     let resolved = crate::server::komoot::resolve_photo_url(&photo.src, width, height, false);
 
@@ -36,4 +36,34 @@ async fn us54_a_synced_photo_larger_than_the_bound_is_stored_downscaled() {
     let stored = list_photos(&db.pool, *trip_id).await.unwrap().remove(0);
     let image = image::load_from_memory(&store.get(&stored.blob_key).unwrap()).unwrap();
     assert_eq!(image.width(), MAX_DIMENSION);
+}
+
+#[tokio::test]
+async fn a_synced_photo_without_dimensions_is_fetched_at_the_bound() {
+    let db = TestDb::new().await;
+    let (store, _dir) = test_store();
+    let photo = KomootPhoto {
+        id: "p1".to_string(),
+        src: "https://cdn.example/p1?width={width}&height={height}&crop={crop}".to_string(),
+        location: None,
+        width_px: None,
+        height_px: None,
+    };
+    let resolved =
+        crate::server::komoot::resolve_photo_url(&photo.src, MAX_DIMENSION, MAX_DIMENSION, false);
+
+    let client: Arc<dyn KomootClient> = Arc::new(MockKomootClient {
+        tours: vec![a_tour("999", "Mountain Loop", "mtb")],
+        gpx: HashMap::from([("999".to_string(), SAMPLE_GPX.to_vec())]),
+        photos: HashMap::from([("999".to_string(), vec![photo])]),
+        photo_bytes: HashMap::from([(resolved, valid_jpeg_bytes(20, 10))]),
+        ..Default::default()
+    });
+
+    let summary = sync_selected_tours(&db.pool, &store, client, &recorded_sel(&["999"]))
+        .await
+        .unwrap();
+
+    let (_, trip_id) = summary.imported.first().expect("tour must import");
+    assert_eq!(list_photos(&db.pool, *trip_id).await.unwrap().len(), 1);
 }

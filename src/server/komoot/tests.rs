@@ -58,3 +58,16 @@ fn cover_images_response_parses_as_empty_when_embedded_is_missing() {
     let parsed: CoverImagesResponse = serde_json::from_str(json).unwrap();
     assert!(parsed.embedded.items.is_empty());
 }
+
+#[test]
+fn cover_images_response_parses_a_photo_whose_dimensions_are_null() {
+    // Regression guard: Komoot has been observed sending `null` for
+    // `width_px`/`height_px`, which failed the whole tour's import.
+    let json = r#"{"_embedded": {"items": [
+        {"id": 1, "src": "https://cdn.example/p", "location": null,
+         "width_px": null, "height_px": null}
+    ]}}"#;
+    let parsed: CoverImagesResponse = serde_json::from_str(json).unwrap();
+    let photo = &parsed.embedded.items[0];
+    assert_eq!((photo.width_px, photo.height_px), (None, None));
+}

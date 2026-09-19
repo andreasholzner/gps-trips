@@ -404,7 +404,7 @@ Each item has, among other fields:
 - `id` — photo id; `_links.self` is `/v007/tours/{tour_id}/images/{id}`
 - `location` — `{lat, lng, alt}`, geotagged position along the route
 - `src` — a **templated** CloudFront URL with `{width}`, `{height}`, `{crop}` placeholders
-- `width_px` / `height_px` — original image dimensions
+- `width_px` / `height_px` — original image dimensions; occasionally `null`
 - `title` / `caption` / `attribution` — often `null`/empty, not reliably populated
 
 To get the actual image bytes, fill in the `src` template's placeholders, e.g.:

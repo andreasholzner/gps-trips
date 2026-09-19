@@ -92,15 +92,15 @@ async fn sync_selected_tours_imports_gpx_and_photos_in_one_transaction_with_the_
             lat: 69.7,
             lng: 18.9,
         }),
-        width_px: 20,
-        height_px: 10,
+        width_px: Some(20),
+        height_px: Some(10),
     };
     let photo_without_location = KomootPhoto {
         id: "p2".to_string(),
         src: "https://cdn.example/p2?width={width}&height={height}&crop={crop}".to_string(),
         location: None,
-        width_px: 20,
-        height_px: 10,
+        width_px: Some(20),
+        height_px: Some(10),
     };
     let resolved_p1 =
         crate::server::komoot::resolve_photo_url(&photo_with_location.src, 20, 10, false);
@@ -276,8 +276,8 @@ async fn sync_one_tour_names_a_photo_by_its_sniffed_format_not_a_hardcoded_jpg()
         id: "p1".to_string(),
         src: "https://cdn.example/p1?width={width}&height={height}&crop={crop}".to_string(),
         location: None,
-        width_px: 20,
-        height_px: 10,
+        width_px: Some(20),
+        height_px: Some(10),
     };
     let resolved = crate::server::komoot::resolve_photo_url(&png_photo.src, 20, 10, false);
 
@@ -321,8 +321,8 @@ async fn sync_one_tour_rolls_back_the_trip_when_a_later_photo_fails_mid_transact
         id: "p1".to_string(),
         src: "https://cdn.example/p1?width={width}&height={height}&crop={crop}".to_string(),
         location: None,
-        width_px: 20,
-        height_px: 10,
+        width_px: Some(20),
+        height_px: Some(10),
     };
     // Deliberately not registered in `photo_bytes` below, so
     // `fetch_photo_bytes` errors for it.
@@ -330,8 +330,8 @@ async fn sync_one_tour_rolls_back_the_trip_when_a_later_photo_fails_mid_transact
         id: "p2".to_string(),
         src: "https://cdn.example/p2?width={width}&height={height}&crop={crop}".to_string(),
         location: None,
-        width_px: 20,
-        height_px: 10,
+        width_px: Some(20),
+        height_px: Some(10),
     };
     let resolved_ok = crate::server::komoot::resolve_photo_url(&photo_ok.src, 20, 10, false);
 
@@ -384,8 +384,8 @@ async fn list_all_tour_photos_pages_through_more_than_one_page() {
             id: i.to_string(),
             src: "https://cdn.example/p?width={width}&height={height}&crop={crop}".to_string(),
             location: None,
-            width_px: 1,
-            height_px: 1,
+            width_px: Some(1),
+            height_px: Some(1),
         })
         .collect();
 

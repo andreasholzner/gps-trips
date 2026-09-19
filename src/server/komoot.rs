@@ -92,14 +92,15 @@ where
 /// bytes themselves can be fetched (`fetch_photo_bytes`). `location` is
 /// `None` on the rare photo Komoot has no GPS for (US-22's placement
 /// pipeline falls back to this app's own EXIF/interpolation for those).
+/// `width_px`/`height_px` are `None` when Komoot sends `null` for them.
 #[derive(Debug, Clone, Deserialize)]
 pub struct KomootPhoto {
     #[serde(deserialize_with = "id_as_string")]
     pub id: String,
     pub src: String,
     pub location: Option<KomootLocation>,
-    pub width_px: u32,
-    pub height_px: u32,
+    pub width_px: Option<u32>,
+    pub height_px: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
