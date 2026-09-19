@@ -10,8 +10,10 @@
 //! execution) in ADR-0022.
 //!
 //! Consistency: instead of the in-process US-26 lock (unreachable from a
-//! separate CLI process), the whole run reads the archive through one open
-//! transaction — a single WAL snapshot (see `repo::export`).
+//! separate CLI process), the run reconciles against one consistent trip
+//! list (see `repo::export`) and reads a trip's geometry only when writing
+//! it. A trip that changes after the list was read is caught up by the next
+//! run (ADR-0022's 2026-09-19 amendment).
 
 pub mod backup;
 pub mod blob;
@@ -28,8 +30,8 @@ use anyhow::Context;
 use sqlx::{SqliteConnection, SqlitePool};
 use time::OffsetDateTime;
 
-use crate::models::Tag;
-use crate::server::repo::{self, ExportTrip};
+use crate::models::ExportTrip;
+use crate::server::repo;
 
 use self::config::ExportConfig;
 
@@ -82,10 +84,7 @@ pub async fn run_export(archive: &SqlitePool, cfg: &ExportConfig) -> anyhow::Res
 
     let root = target::root_folder_id(&mut target_conn).await?;
 
-    // One transaction for the whole run: a consistent WAL snapshot of the
-    // archive, regardless of what the server commits while we run.
-    let mut archive_tx = archive.begin().await.context("opening archive snapshot")?;
-    let trips = repo::list_trips_for_export(&mut archive_tx)
+    let trips = repo::list_export_trips(archive)
         .await
         .context("listing trips")?;
     tracing::info!(
@@ -100,7 +99,7 @@ pub async fn run_export(archive: &SqlitePool, cfg: &ExportConfig) -> anyhow::Res
     for trip in &trips {
         let key = keyqms(trip.id);
         match reconcile_trip(
-            &mut archive_tx,
+            archive,
             &mut target_conn,
             cfg,
             &mut folder_ids,
@@ -143,8 +142,6 @@ pub async fn run_export(archive: &SqlitePool, cfg: &ExportConfig) -> anyhow::Res
     let archive_ids: HashSet<i64> = trips.iter().map(|t| t.id).collect();
     remove_stale_items(&mut target_conn, &archive_ids, &mut outcome).await?;
 
-    // Read-only snapshot — dropping the tx rolls it back.
-    drop(archive_tx);
     tracing::info!(
         "export finished: {} inserted, {} updated, {} removed, {} skipped, {} failed",
         outcome.inserted,
@@ -186,7 +183,7 @@ async fn open_target(cfg: &ExportConfig) -> anyhow::Result<SqliteConnection> {
 /// skip it otherwise — without ever reading its geometry. Any error here
 /// fails this trip only.
 async fn reconcile_trip(
-    archive_tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    archive: &SqlitePool,
     target_conn: &mut SqliteConnection,
     cfg: &ExportConfig,
     folder_ids: &mut HashMap<Vec<String>, i64>,
@@ -194,10 +191,7 @@ async fn reconcile_trip(
     trip: &ExportTrip,
     keyqms: &str,
 ) -> anyhow::Result<TripOutcome> {
-    let tags = repo::list_trip_tags_in_tx(archive_tx, trip.id)
-        .await
-        .context("reading tags")?;
-    let summary = item_comment(trip, &tags);
+    let summary = item_comment(trip);
 
     let folder_path = cfg.resolve_folder_path(
         trip.activity_type,
@@ -219,7 +213,7 @@ async fn reconcile_trip(
         .await
         .context("looking up the existing item")?;
     let Some(state) = state else {
-        let built = build_item_blob(archive_tx, trip, keyqms, &summary, &tags).await?;
+        let built = build_item_blob(archive, trip, keyqms, &summary).await?;
         target::insert_item(
             target_conn,
             &built.as_new_item(trip, keyqms, &summary),
@@ -242,7 +236,7 @@ async fn reconcile_trip(
         return Ok(TripOutcome::Skipped);
     }
     if content_changed {
-        let built = build_item_blob(archive_tx, trip, keyqms, &summary, &tags).await?;
+        let built = build_item_blob(archive, trip, keyqms, &summary).await?;
         target::update_item(
             target_conn,
             state.id,
@@ -292,18 +286,17 @@ impl BuiltItem {
 /// Fetch the trip's geometry from the snapshot and build the `items.data`
 /// blob (full rewrite semantics — a fresh single-event history, ADR-0022).
 async fn build_item_blob(
-    archive_tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    archive: &SqlitePool,
     trip: &ExportTrip,
     keyqms: &str,
     summary: &str,
-    tags: &[Tag],
 ) -> anyhow::Result<BuiltItem> {
-    let geojson = repo::get_track_geojson_in_tx(archive_tx, trip.id)
+    let geojson = repo::get_track_geojson(archive, trip.id)
         .await
         .context("reading track geometry")?
         .context("trip has no track geometry")?;
     let points = blob::points_from_geojson(&geojson)?;
-    let keywords: Vec<String> = tags.iter().map(|t| t.name.clone()).collect();
+    let keywords: Vec<String> = trip.tags.iter().map(|t| t.name.clone()).collect();
 
     let (data, hash) = blob::build_track_item(
         &blob::TrackBlobInput {
@@ -372,7 +365,7 @@ async fn remove_stale_items(
 /// QMapShack's trigger) and `trk.desc` — every attribute the archive holds
 /// beyond name/geometry, since QMapShack has no structured slots for them
 /// (ADR-0022 field scope; trips have no free-text description of their own).
-fn item_comment(trip: &ExportTrip, tags: &[Tag]) -> String {
+fn item_comment(trip: &ExportTrip) -> String {
     let mut head = Vec::new();
     if let Some(start) = &trip.start_time {
         // Stored rows are full RFC-3339, but never let a malformed one
@@ -394,8 +387,8 @@ fn item_comment(trip: &ExportTrip, tags: &[Tag]) -> String {
     }
 
     let mut lines = vec![head.join(" · "), stats.join(" · ")];
-    if !tags.is_empty() {
-        let names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
+    if !trip.tags.is_empty() {
+        let names: Vec<&str> = trip.tags.iter().map(|t| t.name.as_str()).collect();
         lines.push(format!("Tags: {}", names.join(", ")));
     }
     if let Some(tz) = &trip.tz_name {
@@ -410,7 +403,7 @@ fn item_comment(trip: &ExportTrip, tags: &[Tag]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ActivityType, TripKind};
+    use crate::models::{ActivityType, Tag, TripKind};
 
     fn trip(start: Option<&str>) -> ExportTrip {
         ExportTrip {
@@ -424,6 +417,7 @@ mod tests {
             ascent_m: Some(400.4),
             descent_m: Some(380.0),
             duration_secs: Some(3 * 3600 + 20 * 60),
+            tags: Vec::new(),
         }
     }
 
@@ -442,10 +436,9 @@ mod tests {
 
     #[test]
     fn item_comment_summarizes_every_best_effort_field() {
-        let comment = item_comment(
-            &trip(Some("2024-06-01T08:00:00Z")),
-            &[tag("fjell"), tag("telt")],
-        );
+        let mut tagged = trip(Some("2024-06-01T08:00:00Z"));
+        tagged.tags = vec![tag("fjell"), tag("telt")];
+        let comment = item_comment(&tagged);
         assert_eq!(
             comment,
             "2024-06-01 · Hiking · recorded\n\
@@ -460,7 +453,7 @@ mod tests {
     fn item_comment_survives_a_malformed_short_start_time() {
         // Repo-written rows are full RFC-3339, but a corrupted/hand-edited
         // row must fail that one trip at worst — never panic the whole run.
-        let comment = item_comment(&trip(Some("2024")), &[]);
+        let comment = item_comment(&trip(Some("2024")));
         assert!(comment.starts_with("2024 · Hiking"), "{comment}");
     }
 
@@ -471,7 +464,7 @@ mod tests {
         bare.descent_m = None;
         bare.duration_secs = None;
         bare.tz_name = None;
-        let comment = item_comment(&bare, &[]);
+        let comment = item_comment(&bare);
         assert_eq!(
             comment,
             "Hiking · recorded\n12.3 km\nExported from trip-archive (trip 42)"

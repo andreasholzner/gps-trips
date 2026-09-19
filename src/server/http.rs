@@ -11,7 +11,8 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
 use crate::models::{
-    PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary,
+    ExportTrip, PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail,
+    TripSummary,
 };
 use crate::server::{
     auth, backup, delete,
@@ -110,6 +111,9 @@ pub fn router(state: AppState) -> Router {
             "/api/backup/database",
             get(backup::handle_database_snapshot),
         )
+        // US-51: every trip, unfiltered, for the laptop's `qmapshack_export`;
+        // the geometry of the trips it writes comes from `track.geojson`.
+        .route("/api/export/trips", get(export_trips_api))
         // US-44: what a bookmark to the old review page now means.
         .route("/komoot/sync", get(sync_page_moved))
         // US-22: review + trigger a Komoot "Sync now" pull.
@@ -179,6 +183,15 @@ async fn list_trips_api(
 ) -> Result<Json<Vec<TripSummary>>, AppError> {
     let filter = parse_filter(&query)?;
     Ok(Json(repo::list_trips(&state.pool, &filter).await?))
+}
+
+/// GET `/api/export/trips` — every trip with its tags, for the QMapShack
+/// exporter (US-51, ADR-0022's 2026-09-19 amendment). Unlike `/api/trips` it
+/// takes no filter: the exporter trashes the items of trips this list lacks.
+async fn export_trips_api(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ExportTrip>>, AppError> {
+    Ok(Json(repo::list_export_trips(&state.pool).await?))
 }
 
 /// GET `/import` — where the server-rendered import form used to be
