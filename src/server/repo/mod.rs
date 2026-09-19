@@ -11,9 +11,7 @@ mod staging;
 mod tag;
 mod trip;
 
-pub use export::{
-    get_track_geojson_in_tx, list_trip_tags_in_tx, list_trips_for_export, ExportTrip,
-};
+pub use export::list_export_trips;
 pub use photo::{count_photos, insert_photo, list_photos, NewPhoto};
 pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,

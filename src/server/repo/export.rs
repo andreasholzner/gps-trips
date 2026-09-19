@@ -1,85 +1,60 @@
-//! Transaction-scoped archive reads for the QMapShack exporter (US-36,
-//! ADR-0022): the whole export run reads through one open transaction, so
-//! under WAL it sees a single consistent snapshot of the archive no matter
-//! what the server commits concurrently — the exporter-side replacement for
-//! the in-process US-26 lock a separate CLI process can't take. Follows the
-//! `insert_trip_in_tx` precedent for tx-scoped variants.
+//! The archive as the QMapShack exporter reads it (US-36, US-51): every
+//! trip with its tags, for `GET /api/export/trips` (ADR-0022's 2026-09-19
+//! amendment). Trips and tags are read in one transaction, so under WAL the
+//! list is one consistent state of the archive however the server commits
+//! meanwhile — the exporter's change detection and removal pass both rely on
+//! it. The geometry is not part of it: the exporter fetches that per trip,
+//! only for the trips it writes.
 
-use sqlx::{sqlite::SqliteRow, Row, Sqlite, Transaction};
+use std::collections::HashMap;
 
-use crate::models::{ActivityType, Tag, TripKind};
+use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 
-/// Everything the exporter needs per trip besides geometry and tags.
-#[derive(Debug)]
-pub struct ExportTrip {
-    pub id: i64,
-    pub name: String,
-    pub activity_type: ActivityType,
-    pub trip_kind: TripKind,
-    /// RFC-3339 UTC (ADR-0009), `None` for trips whose GPX had no times.
-    pub start_time: Option<String>,
-    pub tz_name: Option<String>,
-    pub distance_m: f64,
-    pub ascent_m: Option<f64>,
-    pub descent_m: Option<f64>,
-    pub duration_secs: Option<i64>,
-}
+use crate::models::{ExportTrip, Tag};
 
-/// Every trip in the archive, in id order — the exporter is full-library by
-/// design (ADR-0022), so there is deliberately no filter parameter.
-pub async fn list_trips_for_export(
-    tx: &mut Transaction<'_, Sqlite>,
-) -> Result<Vec<ExportTrip>, sqlx::Error> {
-    sqlx::query(
+/// Every trip in the archive, in id order, each with its tags in name order.
+/// Full-library by design (ADR-0022): there is deliberately no filter.
+pub async fn list_export_trips(pool: &SqlitePool) -> Result<Vec<ExportTrip>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut tags: HashMap<i64, Vec<Tag>> = HashMap::new();
+    let rows = sqlx::query(
+        r#"SELECT trip_tag.trip_id, tag.id, tag.name FROM tag
+           JOIN trip_tag ON trip_tag.tag_id = tag.id
+           ORDER BY tag.name"#,
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in rows {
+        tags.entry(row.get("trip_id")).or_default().push(Tag {
+            id: row.get("id"),
+            name: row.get("name"),
+        });
+    }
+    let trips = sqlx::query(
         r#"SELECT id, name, activity_type, trip_kind, start_time, tz_name,
                   distance_m, ascent_m, descent_m, duration_secs
            FROM trip ORDER BY id"#,
     )
-    .map(|row: SqliteRow| ExportTrip {
-        id: row.get("id"),
-        name: row.get("name"),
-        activity_type: row.get("activity_type"),
-        trip_kind: row.get("trip_kind"),
-        start_time: row.get("start_time"),
-        tz_name: row.get("tz_name"),
-        distance_m: row.get("distance_m"),
-        ascent_m: row.get("ascent_m"),
-        descent_m: row.get("descent_m"),
-        duration_secs: row.get("duration_secs"),
+    .map(|row: SqliteRow| {
+        let id = row.get("id");
+        ExportTrip {
+            id,
+            name: row.get("name"),
+            activity_type: row.get("activity_type"),
+            trip_kind: row.get("trip_kind"),
+            start_time: row.get("start_time"),
+            tz_name: row.get("tz_name"),
+            distance_m: row.get("distance_m"),
+            ascent_m: row.get("ascent_m"),
+            descent_m: row.get("descent_m"),
+            duration_secs: row.get("duration_secs"),
+            tags: tags.remove(&id).unwrap_or_default(),
+        }
     })
-    .fetch_all(&mut **tx)
-    .await
-}
-
-/// Tx-scoped twin of `repo::get_track_geojson`.
-pub async fn get_track_geojson_in_tx(
-    tx: &mut Transaction<'_, Sqlite>,
-    trip_id: i64,
-) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query_scalar("SELECT geojson FROM track WHERE trip_id = ?")
-        .bind(trip_id)
-        .fetch_optional(&mut **tx)
-        .await
-}
-
-/// Tx-scoped twin of `repo::list_trip_tags` (same alphabetical order).
-pub async fn list_trip_tags_in_tx(
-    tx: &mut Transaction<'_, Sqlite>,
-    trip_id: i64,
-) -> Result<Vec<Tag>, sqlx::Error> {
-    sqlx::query(
-        r#"SELECT tag.id, tag.name FROM tag
-           JOIN trip_tag ON trip_tag.tag_id = tag.id
-           WHERE trip_tag.trip_id = ?
-           ORDER BY tag.name"#,
-    )
-    .bind(trip_id)
-    .map(|row: SqliteRow| Tag {
-        id: row.get("id"),
-        name: row.get("name"),
-    })
-    .fetch_all(&mut **tx)
-    .await
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(trips)
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -87,6 +62,7 @@ pub async fn list_trip_tags_in_tx(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{ActivityType, TripKind};
     use crate::server::db::testing::TestDb;
     use crate::server::geojson::build_track_geojson;
     use crate::server::gpx::{compute_stats, TrackPoint, TrackStats};
@@ -142,8 +118,7 @@ mod tests {
             insert_trip_with(&db.pool, "Recorded", TripKind::Recorded, Some(start)).await;
         let planned = insert_trip_with(&db.pool, "Planned", TripKind::Planned, None).await;
 
-        let mut tx = db.pool.begin().await.unwrap();
-        let trips = list_trips_for_export(&mut tx).await.unwrap();
+        let trips = list_export_trips(&db.pool).await.unwrap();
         assert_eq!(trips.len(), 2, "planned trips are exported too");
 
         let first = trips.iter().find(|t| t.id == recorded).unwrap();
@@ -154,6 +129,7 @@ mod tests {
         assert_eq!(first.tz_name.as_deref(), Some("Europe/Oslo"));
         assert!(first.distance_m > 0.0);
         assert_eq!(first.duration_secs, Some(600));
+        assert!(first.tags.is_empty());
 
         let second = trips.iter().find(|t| t.id == planned).unwrap();
         assert_eq!(second.trip_kind, TripKind::Planned);
@@ -161,36 +137,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tx_scoped_reads_match_their_pool_based_counterparts() {
+    async fn each_trip_carries_its_own_tags_in_name_order() {
         let db = TestDb::new().await;
-        let id = insert_trip_with(
-            &db.pool,
-            "Tagged",
-            TripKind::Recorded,
-            Some(datetime!(2024-06-01 08:00:00 UTC)),
-        )
-        .await;
-        let tag_id = repo::get_or_create_tag(&db.pool, "fjell").await.unwrap();
-        repo::add_trip_tag(&db.pool, id, tag_id).await.unwrap();
+        let start = Some(datetime!(2024-06-01 08:00:00 UTC));
+        let first = insert_trip_with(&db.pool, "First", TripKind::Recorded, start).await;
+        let second = insert_trip_with(&db.pool, "Second", TripKind::Recorded, start).await;
+        for (trip, name) in [(first, "telt"), (first, "fjell"), (second, "bre")] {
+            let tag_id = repo::get_or_create_tag(&db.pool, name).await.unwrap();
+            repo::add_trip_tag(&db.pool, trip, tag_id).await.unwrap();
+        }
 
-        let mut tx = db.pool.begin().await.unwrap();
-        let geojson = get_track_geojson_in_tx(&mut tx, id).await.unwrap();
-        let tags = list_trip_tags_in_tx(&mut tx, id).await.unwrap();
-        drop(tx);
+        let trips = list_export_trips(&db.pool).await.unwrap();
 
-        assert_eq!(
-            geojson,
-            repo::get_track_geojson(&db.pool, id).await.unwrap(),
-            "same geometry through the transaction"
-        );
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].name, "fjell");
-
-        let mut tx = db.pool.begin().await.unwrap();
-        assert_eq!(
-            get_track_geojson_in_tx(&mut tx, 9999).await.unwrap(),
-            None,
-            "missing trip yields None, not an error"
-        );
+        let names =
+            |i: usize| -> Vec<&str> { trips[i].tags.iter().map(|t| t.name.as_str()).collect() };
+        assert_eq!(names(0), ["fjell", "telt"]);
+        assert_eq!(names(1), ["bre"]);
     }
 }

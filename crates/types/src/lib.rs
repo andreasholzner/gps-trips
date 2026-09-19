@@ -17,6 +17,7 @@
 mod activity_type;
 mod bounding_box;
 mod error_response;
+mod export_trip;
 mod komoot_link;
 mod komoot_privacy;
 mod komoot_sync;
@@ -33,6 +34,7 @@ mod trip_summary;
 pub use activity_type::ActivityType;
 pub use bounding_box::BoundingBox;
 pub use error_response::ErrorResponse;
+pub use export_trip::ExportTrip;
 pub use komoot_link::KomootLink;
 pub use komoot_privacy::KomootPrivacy;
 pub use komoot_sync::{
