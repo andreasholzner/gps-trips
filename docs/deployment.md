@@ -1,4 +1,4 @@
-# Deployment — running Trip Archive (US-10, US-45…US-49, US-51)
+# Deployment — running Trip Archive (US-10, US-45…US-51)
 
 Trip Archive is a single Axum binary plus a `public/` folder holding the SPA's built bundle.
 The SQLite DB and photo blobs live under one configurable data directory; no external services
@@ -110,7 +110,7 @@ The deployed archive is the same binary in a container ([ADR-0023](./adr/0023-ma
   killed regardless — which only a deployment or host maintenance can hit, since auto-stop waits for
   an idle machine.
 - **Volume**: `/data`, holding the database and the photos (`TRIP_ARCHIVE_DATA_DIR=/data`). It
-  starts at 1 GB and grows by itself up to a limit that is provisional until US-50.
+  starts at 1 GB and grows by itself, 1 GB at a time, up to 5 GB.
 - **Address**: `https://<app>.fly.dev` with Fly's certificate. Plain HTTP is answered with a
   redirect to HTTPS by Fly's edge and never reaches the app.
 - **Health check**: a TCP check on port 3000. The server binds only after the password check and
@@ -254,9 +254,87 @@ The backup directory is laid out like a data directory — `trip-archive.db` plu
   mounted, the run fails instead of writing a backup onto the laptop's own disk.
 
 **Restoring**: the directory is a data directory. Run the archive on a *copy* of it with
-`TRIP_ARCHIVE_DATA_DIR` pointing there to look at it; putting it onto a fresh volume is part of
-US-50's procedure. The session salt is deliberately not in the backup, so a restored archive
-creates a new one and every device signs in again once.
+`TRIP_ARCHIVE_DATA_DIR` pointing there to look at it; to put it back onto the deployed archive,
+see [From a backup](#from-a-backup). The session salt is deliberately not in the backup, so a
+restored archive creates a new one and every device signs in again once.
+
+### Restoring the volume
+
+Both ways end the same: a new volume, the machine replaced by a clone that mounts it, and the
+old volume kept until the new one has been checked. A volume belongs to one machine, which is
+why the machine is cloned rather than changed. A clone reports that it replaces the previous
+mountpoint — expected, that is the point. `fly volumes destroy` asks for confirmation.
+
+First, from `fly machines list` and `fly volumes list`, the machine's id (`M`) and its volume's
+id and size (`V`, `SIZE`), and the counts to compare against later:
+
+```sh
+fly ssh console --app "$FLY_APP" -C "sqlite3 /data/trip-archive.db 'SELECT count(*) FROM trip; SELECT count(*) FROM photo;'"
+```
+
+#### From a snapshot
+
+For the ordinary failures — a bad migration, a mistake on the volume. Snapshots are taken daily
+and before every deploy, and kept 14 days:
+
+```sh
+fly volumes snapshots list V --app "$FLY_APP"                                          # → S
+fly volumes create data --snapshot-id S --size SIZE --region arn --app "$FLY_APP"       # → V2
+fly machine clone M --attach-volume V2:/data --app "$FLY_APP"                           # → M2
+fly machine destroy M --force --app "$FLY_APP"
+```
+
+Check the counts and the SPA; then, and only then:
+
+```sh
+fly volumes destroy V --app "$FLY_APP"
+```
+
+If `clone` complains about zones, add `--volume-requires-unique-zone=false`. Until the old
+volume is destroyed, cloning a machine onto it again undoes the restore.
+
+#### From a backup
+
+For when the snapshots cannot help — they share Fly's fate — or the archive moves: the backup
+directory, restored by borg, copied onto a fresh volume (US-50). The new machine starts with a
+placeholder command, so no server opens a database on the volume while it is filled, and with
+auto-stop off, since neither sftp nor ssh counts as traffic:
+
+```sh
+du -sh /path/to/backup        # the volume needs twice this — the archive, and its tar — in whole GB → N
+fly volumes create data --size N --region arn --app "$FLY_APP"                                      # → V2
+fly machine clone M --attach-volume V2:/data --override-cmd "sleep 86400" --detach --app "$FLY_APP" # → M2
+fly machine update M2 --autostop=off --skip-health-checks --app "$FLY_APP"
+fly machine destroy M --force --app "$FLY_APP"
+tar -C /path/to/backup -cf ~/restore.tar trip-archive.db photos
+fly ssh sftp put ~/restore.tar /data/restore.tar --app "$FLY_APP"
+fly ssh console --app "$FLY_APP"
+```
+
+`--detach` because the clone would otherwise wait for a health check that cannot pass: nothing
+listens yet. Inside the ssh session:
+
+```sh
+rm -rf /data/restore && mkdir /data/restore && tar -xf /data/restore.tar -C /data/restore
+sqlite3 /data/restore/trip-archive.db 'PRAGMA integrity_check; SELECT count(*) FROM trip; SELECT count(*) FROM photo;'
+# "ok" and the backup's counts — only then:
+rm -rf /data/trip-archive.db* /data/photos /data/session-salt
+mv /data/restore/trip-archive.db /data/restore/photos /data/ && rm -rf /data/restore /data/restore.tar
+```
+
+Every step before the `mv` can be repeated. `scripts/deploy.sh` then brings back the server and
+auto-stop from `fly.toml`, and takes the restored volume's first snapshot. Check:
+
+- the counts and `PRAGMA integrity_check` as above, and the SPA's photos and thumbnails;
+- `target/release/backup` fetches nothing and removes nothing: the volume holds exactly the
+  photos of the backup.
+
+Then, and only then:
+
+```sh
+fly volumes destroy V --app "$FLY_APP"
+rm ~/restore.tar
+```
 
 ### Komoot backfill
 
