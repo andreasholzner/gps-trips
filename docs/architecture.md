@@ -146,7 +146,7 @@ C4Component
 
     Container_Boundary(server, "Application Server") {
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the shared-password gate: resolves a principal from the session cookie or a Bearer token onto every request, and refuses anything outside its allowlist.")
-        Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password, so nothing is stored and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
+        Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password (Argon2id, under a salt kept in the data directory), so nothing is stored, a leaked token allows no password guessing, and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")

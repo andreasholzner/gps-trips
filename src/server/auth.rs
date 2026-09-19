@@ -16,12 +16,15 @@
 //! * **The session is signed, not stored.** No sessions table: the token
 //!   carries its own expiry and a signature over it, under a key derived
 //!   from the password. Rotating the password changes the key, which is what
-//!   revokes every session that exists.
+//!   revokes every session that exists. The derivation is Argon2id under a
+//!   salt the server keeps (US-55, the 2026-09-19 amendment), so a leaked
+//!   token allows no guessing of the password.
 //!
 //! [ADR-0010]: ../../docs/adr/0010-single-user-optional-auth.md
 
 use std::sync::{Arc, Mutex};
 
+use argon2::{Algorithm, Argon2, Params, Version};
 use axum::{
     extract::{Request, State},
     http::{header, HeaderMap, Method},
@@ -37,11 +40,12 @@ use crate::config;
 use crate::models::{Principal, Session};
 use crate::server::{error::AppError, state::AppState};
 
+mod salt;
+pub use salt::Salt;
+
 type HmacSha256 = Hmac<Sha256>;
 
-/// Domain separation for the two things HMAC is used for here, so a value
-/// signed as one can never be read as the other.
-const KEY_CONTEXT: &[u8] = b"trip-archive/session-key/v1";
+/// Domain separation for what the key signs.
 const TOKEN_CONTEXT: &[u8] = b"trip-archive/session-token/v1/owner.";
 
 /// The server was asked to start without a usable shared password.
@@ -66,6 +70,7 @@ pub struct MissingPassword;
 #[derive(Clone)]
 pub struct Auth {
     key: [u8; 32],
+    salt: Salt,
     failures: Arc<Mutex<LoginFailures>>,
 }
 
@@ -89,15 +94,16 @@ pub struct VerifiedSession {
 }
 
 impl Auth {
-    /// The gate for `password`. Rejects an empty or whitespace-only secret:
-    /// it is indistinguishable from none, and none is what this refuses to
-    /// run without.
-    pub fn new(password: &str) -> Result<Self, MissingPassword> {
+    /// The gate for `password`, its key derived under `salt`. Rejects an
+    /// empty or whitespace-only secret: it is indistinguishable from none,
+    /// and none is what this refuses to run without.
+    pub fn new(password: &str, salt: &Salt) -> Result<Self, MissingPassword> {
         if password.trim().is_empty() {
             return Err(MissingPassword);
         }
         Ok(Self {
-            key: derive_key(password),
+            key: derive_key(password, salt),
+            salt: salt.clone(),
             failures: Arc::new(Mutex::new(LoginFailures::default())),
         })
     }
@@ -105,13 +111,32 @@ impl Auth {
     /// The gate configured from the environment — `main`'s entry point, and
     /// the last thing that happens before the archive would otherwise be
     /// reachable. An unset variable and an empty one are the same answer.
-    pub fn from_env() -> Result<Self, MissingPassword> {
-        Self::new(&std::env::var(config::auth::PASSWORD_ENV_VAR).unwrap_or_default())
+    pub fn from_env(salt: &Salt) -> Result<Self, MissingPassword> {
+        Self::new(
+            &std::env::var(config::auth::PASSWORD_ENV_VAR).unwrap_or_default(),
+            salt,
+        )
+    }
+
+    /// The same gate with a lockout counter of its own — so test servers can
+    /// share one key, derived once, without one test's failed logins locking
+    /// out another's.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_fresh_lockout(&self) -> Self {
+        Self {
+            failures: Arc::new(Mutex::new(LoginFailures::default())),
+            ..self.clone()
+        }
     }
 
     /// Attempt a login. `now` arrives as a value rather than being read here
     /// (ADR-0012's 2026-07-24 amendment), so the lockout is testable without
     /// waiting fifteen minutes.
+    ///
+    /// Derives a key from `password`, which is deliberately slow and
+    /// memory-hungry (US-55): call it off the async runtime. Attempts are
+    /// taken one at a time under the lockout's lock, which bounds what
+    /// concurrent logins can cost.
     pub fn login(&self, password: &str, now: OffsetDateTime) -> LoginOutcome {
         let mut failures = self.failures();
         if let Some(wait) = failures.locked_for(now) {
@@ -159,7 +184,7 @@ impl Auth {
     /// rather than as strings, so the archive holds no copy of the secret in
     /// memory and the comparison leaks neither its content nor its length.
     fn password_matches(&self, attempt: &str) -> bool {
-        bool::from(derive_key(attempt).ct_eq(&self.key))
+        bool::from(derive_key(attempt, &self.salt).ct_eq(&self.key))
     }
 
     fn sign(&self, expires_at_unix: i64) -> String {
@@ -180,13 +205,23 @@ impl Auth {
     }
 }
 
-/// The signing key: HMAC used as a key-derivation step, so the password
-/// itself never has to be kept and rotating it invalidates every token
-/// signed under the old one.
-fn derive_key(password: &str) -> [u8; 32] {
-    let mut mac = HmacSha256::new_from_slice(KEY_CONTEXT).expect("HMAC accepts any key length");
-    mac.update(password.as_bytes());
-    mac.finalize().into_bytes().into()
+/// The signing key: derived from the password, so the password itself never
+/// has to be kept and rotating it invalidates every token signed under the
+/// old one — by Argon2id under the server's own salt, so a token cannot be
+/// used to guess it (US-55).
+fn derive_key(password: &str, salt: &Salt) -> [u8; 32] {
+    let params = Params::new(
+        config::auth::ARGON2_MEMORY_KIB,
+        config::auth::ARGON2_ITERATIONS,
+        config::auth::ARGON2_LANES,
+        Some(32),
+    )
+    .expect("the configured Argon2 parameters are valid");
+    let mut key = [0; 32];
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(password.as_bytes(), salt.as_bytes(), &mut key)
+        .expect("a salt of SALT_LEN bytes and a 32-byte output are within Argon2's limits");
+    key
 }
 
 /// The hex signature over a token's expiry. The whole token is the expiry

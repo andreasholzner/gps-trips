@@ -60,6 +60,10 @@ md-5   = "0.10"
 hmac   = "0.12"
 sha2   = "0.10"
 subtle = "2"
+# US-55 (ADR-0010's 2026-09-19 amendment): the signing key is derived by
+# Argon2id under a random salt the server generates and keeps.
+argon2    = { version = "0.5", default-features = false, features = ["alloc"] }
+getrandom = { version = "0.3", features = ["std"] }
 
 # US-40: the snapshot's temp directory on the server; the `backup`
 # command's password prompt, which must not echo.
@@ -96,3 +100,13 @@ trip-archive = { path = ".", features = ["test-support"] }
 [profile.wasm-release]
 inherits = "release"
 strip = "debuginfo"
+
+# Argon2id at its production cost (US-55) takes seconds per derivation in an
+# unoptimized build, and every test server derives a key. Optimizing just the
+# crates that do the work keeps the suite fast without a test-only cost
+# setting that production could end up with.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

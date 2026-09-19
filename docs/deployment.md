@@ -59,6 +59,11 @@ derived from it, so there is nothing else to revoke; every other device shows it
 again the next time it fetches anything. Five consecutive failed sign-ins stop logins being
 answered at all for fifteen minutes, for the instance as a whole.
 
+The key is derived with Argon2id under a random salt the archive creates on first boot as
+`session-salt` in the data directory (US-55), so a leaked session token cannot be used to guess the
+password. Keep the file with the data: if it is deleted or unreadable, a new one is created and
+every session ends once — nothing else is lost.
+
 Signing out on the web clears that browser's session and leaves nothing behind. It is deliberately
 a web-only control: signing out is for a device you are walking away from but still holding, and
 the case where a phone's access should be withdrawn — a lost or stolen one — is exactly the case
@@ -243,5 +248,6 @@ The backup directory is laid out like a data directory — `trip-archive.db` plu
 
 **Restoring**: the directory is a data directory. Run the archive on a *copy* of it with
 `TRIP_ARCHIVE_DATA_DIR` pointing there to look at it; putting it onto a fresh volume is part of
-US-50's procedure.
+US-50's procedure. The session salt is deliberately not in the backup, so a restored archive
+creates a new one and every device signs in again once.
 

@@ -7,8 +7,13 @@ use super::*;
 
 const PASSWORD: &str = "correct horse battery staple";
 
+/// The salt every test here derives under, unless it is the variable.
+fn a_salt() -> Salt {
+    Salt::from([7; config::auth::SALT_LEN])
+}
+
 fn an_auth() -> Auth {
-    Auth::new(PASSWORD).expect("a non-empty password is accepted")
+    Auth::new(PASSWORD, &a_salt()).expect("a non-empty password is accepted")
 }
 
 /// A fixed instant to reason from — `now` is a value everywhere in this
@@ -22,21 +27,21 @@ fn a_time() -> OffsetDateTime {
 #[test]
 fn us19_an_empty_password_is_refused() {
     assert!(
-        Auth::new("").is_err(),
+        Auth::new("", &a_salt()).is_err(),
         "an empty secret is no secret; the archive must refuse to run with it"
     );
 }
 
 #[test]
 fn us19_a_whitespace_only_password_is_refused() {
-    assert!(Auth::new("   \t ").is_err());
+    assert!(Auth::new("   \t ", &a_salt()).is_err());
 }
 
 #[test]
 fn us19_a_password_of_spaces_around_real_characters_is_kept_verbatim() {
     // Trimmed for the emptiness check only: " a " is a password, and it is
     // not the same password as "a".
-    let auth = Auth::new(" a ").expect("a padded but non-empty secret is a secret");
+    let auth = Auth::new(" a ", &a_salt()).expect("a padded but non-empty secret is a secret");
     assert!(matches!(
         auth.login(" a ", a_time()),
         LoginOutcome::Granted(_)
@@ -53,7 +58,7 @@ fn us19_from_env_refuses_an_unset_password() {
     let _guard = PASSWORD_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::remove_var(config::auth::PASSWORD_ENV_VAR);
     assert!(
-        Auth::from_env().is_err(),
+        Auth::from_env(&a_salt()).is_err(),
         "a forgotten environment variable must stop the boot, not open the archive"
     );
 }
@@ -62,7 +67,7 @@ fn us19_from_env_refuses_an_unset_password() {
 fn us19_from_env_refuses_an_empty_password() {
     let _guard = PASSWORD_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var(config::auth::PASSWORD_ENV_VAR, "");
-    let refused = Auth::from_env().is_err();
+    let refused = Auth::from_env(&a_salt()).is_err();
     std::env::remove_var(config::auth::PASSWORD_ENV_VAR);
     assert!(refused, "an empty value is the same as none");
 }
@@ -71,7 +76,7 @@ fn us19_from_env_refuses_an_empty_password() {
 fn us19_from_env_accepts_a_real_password() {
     let _guard = PASSWORD_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var(config::auth::PASSWORD_ENV_VAR, PASSWORD);
-    let accepted = Auth::from_env().is_ok();
+    let accepted = Auth::from_env(&a_salt()).is_ok();
     std::env::remove_var(config::auth::PASSWORD_ENV_VAR);
     assert!(accepted);
 }
@@ -174,8 +179,59 @@ fn us19_rotating_the_password_revokes_every_existing_session() {
     // The consequence ADR-0010's amendment accepts by name: the signing key
     // is derived from the password, so changing it is the revocation.
     let session = an_auth().mint(a_time());
-    let rotated = Auth::new("a different secret entirely").unwrap();
+    let rotated = Auth::new("a different secret entirely", &a_salt()).unwrap();
     assert!(rotated.verify(&session.token, a_time()).is_none());
+}
+
+// ── US-55: the key is slow to derive and salted by the server ────────────────
+
+#[test]
+fn us55_a_token_does_not_verify_under_another_salt() {
+    // The salt never leaves the server, so a leaked token cannot be checked
+    // against a guessed password: without the salt, not even the right
+    // password reproduces the signature.
+    let session = an_auth().mint(a_time());
+    let elsewhere = Auth::new(PASSWORD, &Salt::from([8; config::auth::SALT_LEN])).unwrap();
+    assert!(elsewhere.verify(&session.token, a_time()).is_none());
+}
+
+#[test]
+fn us55_the_same_password_and_salt_accept_each_others_tokens() {
+    // What lets a session survive a restart: the salt persists, so the next
+    // boot derives the same key.
+    let session = an_auth().mint(a_time());
+    assert!(an_auth().verify(&session.token, a_time()).is_some());
+}
+
+#[test]
+fn us55_the_key_is_argon2id_of_the_password_under_the_salt() {
+    use argon2::{Algorithm, Argon2, Params, Version};
+
+    let params = Params::new(
+        config::auth::ARGON2_MEMORY_KIB,
+        config::auth::ARGON2_ITERATIONS,
+        config::auth::ARGON2_LANES,
+        Some(32),
+    )
+    .unwrap();
+    let mut expected = [0; 32];
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(PASSWORD.as_bytes(), a_salt().as_bytes(), &mut expected)
+        .unwrap();
+
+    assert_eq!(an_auth().key, expected);
+}
+
+#[test]
+fn us55_a_token_signed_under_the_old_fast_key_is_refused() {
+    // The single HMAC-SHA256 this replaces; its tokens end once.
+    let mut mac = HmacSha256::new_from_slice(b"trip-archive/session-key/v1").unwrap();
+    mac.update(PASSWORD.as_bytes());
+    let old_key: [u8; 32] = mac.finalize().into_bytes().into();
+    let expiry = (a_time() + config::auth::SESSION_TTL).unix_timestamp();
+    let old_token = format!("{expiry}.{}", signature_hex(&old_key, expiry));
+
+    assert!(an_auth().verify(&old_token, a_time()).is_none());
 }
 
 // ── Logging in ───────────────────────────────────────────────────────────────

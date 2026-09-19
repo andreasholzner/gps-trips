@@ -238,10 +238,21 @@ pub const TEST_PASSWORD: &str = "a test password";
 /// has to carry by hand, having no cookie store to keep one in (the same
 /// position the Android app is in, US-16).
 fn token() -> String {
-    trip_archive::server::auth::Auth::new(TEST_PASSWORD)
-        .expect("a non-empty test password")
-        .mint(time::OffsetDateTime::now_utc())
-        .token
+    test_auth().mint(time::OffsetDateTime::now_utc()).token
+}
+
+/// The gate every test server is built with. Its key is derived once —
+/// Argon2id is deliberately slow (US-55) — under a fixed salt, so [`token`]
+/// verifies on every server; each gets a lockout counter of its own.
+fn test_auth() -> trip_archive::server::auth::Auth {
+    use trip_archive::server::auth::{Auth, Salt};
+
+    static AUTH: std::sync::OnceLock<Auth> = std::sync::OnceLock::new();
+    AUTH.get_or_init(|| {
+        let salt = Salt::from([7; trip_archive::config::auth::SALT_LEN]);
+        Auth::new(TEST_PASSWORD, &salt).expect("a non-empty test password")
+    })
+    .with_fresh_lockout()
 }
 
 /// A client for an archive nobody has signed in to — for the screens that
@@ -258,7 +269,6 @@ async fn serve_archive(
     tempfile::TempDir,
 ) {
     use trip_archive::server::{
-        auth::Auth,
         db, http,
         state::AppState,
         storage::{BlobStore, LocalDisk},
@@ -269,8 +279,7 @@ async fn serve_archive(
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    let auth = Auth::new(TEST_PASSWORD).expect("a non-empty test password");
-    let state = AppState::new(pool, store, komoot, auth);
+    let state = AppState::new(pool, store, komoot, test_auth());
     let router = http::router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
