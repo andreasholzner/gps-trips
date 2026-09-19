@@ -65,8 +65,8 @@ subtle = "2"
 argon2    = { version = "0.5", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.3", features = ["std"] }
 
-# US-40: the snapshot's temp directory on the server; the `backup`
-# command's password prompt, which must not echo.
+# US-40: the snapshot's temp directory on the server; the laptop commands'
+# password prompt (`backup`, `qmapshack_export`), which must not echo.
 tempfile  = "3"
 rpassword = "7"
 

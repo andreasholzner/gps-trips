@@ -22,6 +22,7 @@ use axum::{
 use common::{delete, get, import_request_with_photos, send, test_app, SAMPLE_GPX, TEST_PASSWORD};
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, Connection};
 use trip_archive::config::storage::{BLOBS_SUBDIR, DB_FILENAME};
+use trip_archive::server::archive_client::ClientError;
 use trip_archive::server::backup::client::{self, BackupError, Options};
 
 const PHOTO: &[u8] = include_bytes!("fixtures/geotagged.jpg");
@@ -286,7 +287,7 @@ async fn us40_a_failed_run_leaves_the_previous_backup_as_it_was() {
     let result = client::run(&options(&failing, target.path())).await;
 
     assert!(
-        matches!(result, Err(BackupError::Status { .. })),
+        matches!(result, Err(BackupError::Client(ClientError::Status { .. }))),
         "{result:?}"
     );
     assert_eq!(trips_in(&target.path().join(DB_FILENAME)).await, 1);
@@ -329,7 +330,10 @@ async fn us40_a_wrong_password_is_refused_before_anything_is_written() {
 
     let result = client::run(&wrong).await;
 
-    assert!(matches!(result, Err(BackupError::Refused)), "{result:?}");
+    assert!(
+        matches!(result, Err(BackupError::Client(ClientError::Refused))),
+        "{result:?}"
+    );
     assert_eq!(files_under(target.path()), Vec::<PathBuf>::new());
 }
 

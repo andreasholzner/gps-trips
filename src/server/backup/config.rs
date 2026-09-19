@@ -15,11 +15,12 @@
 
 use std::path::{Path, PathBuf};
 
-use reqwest::Url;
 use serde::Deserialize;
 
-/// The config file's place under the user's config directory.
-const CONFIG_FILE: &str = "trip-archive/backup.toml";
+use crate::server::archive_client::config::{self as archive, ArchiveConfigError};
+
+/// The config file's name in the user's config directory.
+const CONFIG_FILE: &str = "backup.toml";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -33,14 +34,10 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::de::Error,
     },
-    #[error("url {0:?} is not an https URL")]
-    BadUrl(String),
     #[error("target {0:?} must be an absolute path")]
     RelativeTarget(PathBuf),
-    #[error("password_command must not be empty; leave it out to be asked instead")]
-    EmptyPasswordCommand,
-    #[error("neither XDG_CONFIG_HOME nor HOME is set, so there is no default config file; pass --config")]
-    NoConfigDir,
+    #[error(transparent)]
+    Archive(#[from] ArchiveConfigError),
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -74,23 +71,11 @@ impl BackupConfig {
             path: PathBuf::new(),
             source,
         })?;
-        // https only: the password is sent to it.
-        let is_https =
-            Url::parse(&config.url).is_ok_and(|url| url.scheme() == "https" && url.has_host());
-        if !is_https {
-            return Err(ConfigError::BadUrl(config.url));
-        }
+        archive::validate(&config.url, config.password_command.as_deref())?;
         // Relative would mean relative to wherever the command happens to be
         // run from — a backup landing somewhere nobody looks.
         if !config.target.is_absolute() {
             return Err(ConfigError::RelativeTarget(config.target));
-        }
-        if config
-            .password_command
-            .as_deref()
-            .is_some_and(|command| command.trim().is_empty())
-        {
-            return Err(ConfigError::EmptyPasswordCommand);
         }
         Ok(config)
     }
@@ -98,23 +83,7 @@ impl BackupConfig {
 
 /// `$XDG_CONFIG_HOME/trip-archive/backup.toml`, or `~/.config/…` when that is unset.
 pub fn default_path() -> Result<PathBuf, ConfigError> {
-    resolve_default_path(
-        std::env::var_os("XDG_CONFIG_HOME"),
-        std::env::var_os("HOME"),
-    )
-}
-
-fn resolve_default_path(
-    xdg_config_home: Option<std::ffi::OsString>,
-    home: Option<std::ffi::OsString>,
-) -> Result<PathBuf, ConfigError> {
-    // An empty XDG_CONFIG_HOME counts as unset, as the XDG spec says.
-    let config_dir = match (xdg_config_home.filter(|dir| !dir.is_empty()), home) {
-        (Some(dir), _) => PathBuf::from(dir),
-        (None, Some(home)) if !home.is_empty() => PathBuf::from(home).join(".config"),
-        _ => return Err(ConfigError::NoConfigDir),
-    };
-    Ok(config_dir.join(CONFIG_FILE))
+    Ok(archive::default_path(CONFIG_FILE)?)
 }
 
 #[cfg(test)]
@@ -163,24 +132,11 @@ mod tests {
 
     #[test]
     fn us40_the_url_must_be_https() {
-        // The password travels to it: never in the clear.
-        for url in [
-            "example.fly.dev",
-            "ftp://example.fly.dev",
-            "http://example.fly.dev",
-            "http://127.0.0.1:3000",
-            "https://",
-            "",
-        ] {
-            let text = FULL.replace("https://example.fly.dev", url);
-            assert!(
-                matches!(
-                    BackupConfig::from_toml_str(&text),
-                    Err(ConfigError::BadUrl(_))
-                ),
-                "{url:?}"
-            );
-        }
+        let text = FULL.replace("https://example.fly.dev", "http://example.fly.dev");
+        assert!(matches!(
+            BackupConfig::from_toml_str(&text),
+            Err(ConfigError::Archive(ArchiveConfigError::BadUrl(_)))
+        ));
     }
 
     #[test]
@@ -197,7 +153,9 @@ mod tests {
         let text = FULL.replace("kwallet-query -r trip-archive kdewallet", "  ");
         assert!(matches!(
             BackupConfig::from_toml_str(&text),
-            Err(ConfigError::EmptyPasswordCommand)
+            Err(ConfigError::Archive(
+                ArchiveConfigError::EmptyPasswordCommand
+            ))
         ));
     }
 
@@ -208,25 +166,5 @@ mod tests {
             err.to_string().contains("/nonexistent/backup.toml"),
             "{err}"
         );
-    }
-
-    #[test]
-    fn us40_the_default_path_follows_xdg_then_home() {
-        let path = |xdg: Option<&str>, home: Option<&str>| {
-            resolve_default_path(xdg.map(Into::into), home.map(Into::into))
-        };
-        assert_eq!(
-            path(Some("/xdg"), Some("/home/o")).unwrap(),
-            PathBuf::from("/xdg/trip-archive/backup.toml")
-        );
-        assert_eq!(
-            path(Some(""), Some("/home/o")).unwrap(),
-            PathBuf::from("/home/o/.config/trip-archive/backup.toml")
-        );
-        assert_eq!(
-            path(None, Some("/home/o")).unwrap(),
-            PathBuf::from("/home/o/.config/trip-archive/backup.toml")
-        );
-        assert!(matches!(path(None, None), Err(ConfigError::NoConfigDir)));
     }
 }
