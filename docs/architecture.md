@@ -86,7 +86,7 @@ C4Container
         Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files, and nothing else — no server-rendered pages since US-44. Handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
         ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
-        Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "One-way reconcile of every trip into a QMapShack database; run manually or from cron, never from inside the app. TOML config for target path + folder mapping; rolling backups; version gate.")
+        Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "Runs on the laptop: one-way reconcile of every trip into a QMapShack database, reading the archive through the JSON API; run manually or from cron, never from inside the app. TOML config for archive URL, target path + folder mapping; rolling backups; version gate.")
         Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23).")
         Container(check, "komoot_check CLI", "Rust binary, same crate", "Standalone probe that the reverse-engineered komoot API still works (US-27). No DB or blob store.")
         Container(backup, "backup CLI", "Rust binary, same crate", "Runs on the laptop: pulls a database snapshot and the photos it names into a data-directory-shaped backup, fetching only photos it lacks (US-40).")
@@ -105,7 +105,7 @@ C4Container
     Rel(server, blobs, "Stores originals/thumbnails; serves files", "file IO / ServeDir")
     Rel(server, komoot, "Pulls tours + photos; pushes edits/deletes", "HTTPS")
     Rel(spa, osm, "Fetches map tiles", "HTTPS")
-    Rel(qmsexport, db, "Reads the whole archive in one WAL-snapshot transaction", "sqlx (SQL)")
+    Rel(qmsexport, server, "Fetches the trip list, then geometry of new/changed trips only", "HTTPS / JSON")
     Rel(qmsexport, qms, "Inserts/updates/trashes items in its database", "SQLite file IO")
     Rel(backfill, komoot, "Lists + downloads tours and photos", "HTTPS")
     Rel(backfill, db, "Imports tours transactionally", "sqlx (SQL)")
@@ -124,11 +124,13 @@ C4Container
   ([ADR-0007](./adr/0007-blobstore-abstraction.md)).
 - The API is JSON-first so a future Android/PWA client is additive
   ([ADR-0008](./adr/0008-json-first-api.md)).
-- The three CLI binaries are thin shells over the same library crate as the server — same
-  repositories, same import pipeline — and open the same SQLite file directly. Consistency
-  differs by process: inside the server, an in-process sync guard serializes "Sync now" against
-  edits/deletes (US-26); the out-of-process exporter instead reads the archive through a single
-  WAL-snapshot transaction ([ADR-0022](./adr/0022-qmapshack-export.md)).
+- The CLI binaries are thin shells over the same library crate as the server. `komoot_backfill`
+  opens the SQLite file directly and goes through the same import pipeline; inside the server, an
+  in-process sync guard serializes "Sync now" against edits/deletes (US-26). `backup` and
+  `qmapshack_export` run on the laptop and reach the archive only over HTTPS: the exporter reads
+  one consistent, unfiltered trip list and fetches geometry per trip as needed — a trip that
+  changes mid-run is caught up by the next run
+  ([ADR-0022](./adr/0022-qmapshack-export.md)'s 2026-09-19 amendment).
 
 ---
 
@@ -148,7 +150,7 @@ C4Component
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the shared-password gate: resolves a principal from the session cookie or a Bearer token onto every request, and refuses anything outside its allowlist.")
         Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password (Argon2id, under a salt kept in the data directory), so nothing is stored, a leaked token allows no password guessing, and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
-        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download.")
+        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
         Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX and parks it in import_staging; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
