@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted — amended once:
+- 2026-09-19 — the backfill runs inside the deployed instance
+  ([Amendment](#amendment-2026-09-19--the-backfill-runs-inside-the-deployed-instance)).
 
 ## Context
 
@@ -174,3 +176,40 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   were wanted. This coupling is accepted: the endpoint and its response shape are verified against
   the live API, and halting-and-surfacing on a failed Komoot call is this ADR's deliberate stance
   everywhere else too — degrading silently would contradict it.
+
+## Amendment (2026-09-19) — the backfill runs inside the deployed instance
+
+`komoot_backfill` writes the archive: it imports trips and stores photos through the same
+pipeline as "Sync now", straight into the database and the photo store. Since the archive
+moved to a hosted volume ([ADR-0023](./0023-managed-scale-to-zero-hosting.md)), neither is
+reachable from the laptop (US-51). Unlike the QMapShack export
+([ADR-0022](./0022-qmapshack-export.md)'s 2026-09-19 amendment), it cannot work from a copy.
+
+Making it an API client — driving "Sync now" in batches from the laptop — was weighed and
+set aside: it is real code for a tool that runs about once, and it would lose the per-call
+confirmation of `--interactive`, since the Komoot calls would happen on the server.
+
+**Decision.** The backfill ships in the deployed image beside the server and runs inside the
+instance, started by the owner over the platform's remote shell. It uses the instance's own
+data directory and Komoot credentials, so its behaviour, flags and tests are unchanged. The
+rationale above still holds: a run of hundreds of tours stays out of a request/response
+cycle.
+
+**What still holds.** Everything the decision above says about the backfill: a separate,
+owner-started one-off run, not exposed in the web UI; idempotent through `komoot_tour_id`, so
+a rerun after an interruption resumes; ongoing ingestion through "Sync now" afterwards.
+
+**Two processes now write one database.** The server and the backfill share the SQLite file,
+which WAL mode and the busy timeout allow ([ADR-0002](./0002-sqlite-local-disk.md)). The US-26
+sync guard is in-process and does not see the backfill. What protects the archive is the
+per-tour transaction together with `trip_komoot_link`'s unique `komoot_tour_id`: if "Sync now"
+and the backfill import the same tour, one of them fails and rolls back, and no duplicate trip
+is created. The owner is still expected not to press "Sync now" during a backfill, as the
+original decision already accepted for the rate-limit budget.
+
+**Consequences.**
+- The run is bound to the platform's remote shell: a lost session or a machine stopped
+  mid-run ends it, and a rerun resumes. Keeping the machine up for the length of a run is an
+  operational matter, recorded with the procedure in `docs/deployment.md`.
+- The backfill shares the machine's memory with the server.
+- The image grows by one binary.
