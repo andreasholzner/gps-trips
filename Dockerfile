@@ -2,8 +2,10 @@
 #
 # The deployed archive (US-45, ADR-0023): the static musl server binary and
 # the SPA bundle beside it (ADR-0016), on Alpine for a shell to inspect the
-# volume with. Built by `scripts/deploy.sh` on Fly's remote builder, so the
-# laptop needs none of the toolchain below.
+# volume with. `komoot_backfill` rides along: it writes the volume, so it runs
+# inside the instance (US-51, ADR-0021's 2026-09-19 amendment). Built by
+# `scripts/deploy.sh` on Fly's remote builder, so the laptop needs none of the
+# toolchain below.
 
 # ── Build ────────────────────────────────────────────────────────────────────
 # Debian, not Alpine: the prebuilt `dx` links against glibc. `musl-tools` is
@@ -46,11 +48,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     rm -rf target/dx/ui-dioxus; \
     (cd crates/ui-dioxus && dx build --release --platform web); \
     cargo build --release --locked --target x86_64-unknown-linux-musl \
-        --bin trip-archive --bin komoot_check; \
+        --bin trip-archive --bin komoot_check --bin komoot_backfill; \
     mkdir -p /out/public; \
     cp -r target/dx/ui-dioxus/release/web/public /out/public/app; \
     cp target/x86_64-unknown-linux-musl/release/trip-archive \
-       target/x86_64-unknown-linux-musl/release/komoot_check /out/
+       target/x86_64-unknown-linux-musl/release/komoot_check \
+       target/x86_64-unknown-linux-musl/release/komoot_backfill /out/
 
 # ── Run ──────────────────────────────────────────────────────────────────────
 FROM alpine:3.24
