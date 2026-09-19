@@ -57,5 +57,9 @@ export default defineConfig({
     },
     reuseExistingServer: false,
     timeout: 180_000,
+    // Stopped the way the platform stops it (US-47) rather than SIGKILLed,
+    // Playwright's default: a coverage-instrumented server only writes its
+    // profile when `main` returns, and CI reports that coverage.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });
