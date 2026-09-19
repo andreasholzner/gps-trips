@@ -92,14 +92,27 @@ fn exceeds(image: &DynamicImage, bound: u32) -> bool {
     image.width() > bound || image.height() > bound
 }
 
+/// The most EXIF a JPEG can carry: one APP1 segment's 65,533 data bytes,
+/// less its `Exif\0\0` header. The encoder does not check this — it wraps
+/// the segment's 16-bit length and writes a corrupt file.
+const MAX_JPEG_EXIF_LEN: usize = 65_533 - 6;
+
 /// Encode as JPEG, carrying over the source's EXIF and colour profile when
-/// it had them.
+/// it had them. `None` if the EXIF will not fit a JPEG: only a PNG or WebP
+/// can hold that much, and the copy keeps its EXIF or is not made.
 fn encode_jpeg(
     image: &DynamicImage,
     quality: u8,
     exif: Option<Vec<u8>>,
     icc: Option<Vec<u8>>,
 ) -> Option<Vec<u8>> {
+    if exif
+        .as_ref()
+        .is_some_and(|exif| exif.len() > MAX_JPEG_EXIF_LEN)
+    {
+        tracing::warn!("photo's EXIF is too large for a JPEG; storing it as uploaded");
+        return None;
+    }
     let mut out = Vec::new();
     let mut encoder = JpegEncoder::new_with_quality(&mut out, quality);
     if let Some(exif) = exif {
@@ -206,6 +219,19 @@ pub mod fixtures {
         let img = RgbImage::from_pixel(width, height, Rgb([10, 20, 30]));
         let mut out = Vec::new();
         PngEncoder::new(&mut out)
+            .write_image(&img, width, height, image::ExtendedColorType::Rgb8)
+            .unwrap();
+        out
+    }
+
+    /// A solid-color PNG carrying `tiff` as its `eXIf` chunk — which, unlike
+    /// a JPEG's APP1 segment, has no 64 KB limit.
+    pub fn png_with_exif(width: u32, height: u32, tiff: &[u8]) -> Vec<u8> {
+        let img = RgbImage::from_pixel(width, height, Rgb([10, 20, 30]));
+        let mut out = Vec::new();
+        let mut encoder = PngEncoder::new(&mut out);
+        encoder.set_exif_metadata(tiff.to_vec()).unwrap();
+        encoder
             .write_image(&img, width, height, image::ExtendedColorType::Rgb8)
             .unwrap();
         out
