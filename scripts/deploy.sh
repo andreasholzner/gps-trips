@@ -26,4 +26,30 @@ if (( machines > 1 )); then
     exit 1
 fi
 
+# A snapshot of the volume before every deploy (US-50). Migrations run on
+# boot, so rolling an image back past one needs the volume as it was before.
+# It is taken while the old machine runs: crash-consistent, which SQLite's
+# WAL recovers from as from a power cut. No attached volume — the very first
+# deploy, or one right after a restore — means nothing to keep yet.
+command -v jq >/dev/null || { echo "Refusing to deploy: jq is needed to read flyctl's JSON." >&2; exit 1; }
+volume=$(fly volumes list --app "$FLY_APP" --json | jq -r '.[] | select(.attached_machine_id != null) | .id')
+if [[ -n "$volume" ]]; then
+    snapshots() { fly volumes snapshots list "$volume" --app "$FLY_APP" --json; }
+    # `snapshots create` only schedules one and names no id, so the new
+    # snapshot is the one that was not there before.
+    known=$(snapshots | jq -c '[(. // [])[].id]')
+    fly volumes snapshots create "$volume" --app "$FLY_APP"
+    for (( waited = 0; ; waited += 10 )); do
+        status=$(snapshots | jq -r --argjson known "$known" \
+            '[(. // [])[] | select(.id as $id | $known | index($id) | not)] | last | .status // "waiting"')
+        [[ "$status" == created ]] && break
+        if [[ "$status" == failed ]] || (( waited >= 600 )); then
+            echo "Refusing to deploy: the snapshot of $volume is $status." >&2
+            exit 1
+        fi
+        sleep 10
+    done
+    echo "Snapshot of $volume created."
+fi
+
 exec fly deploy --app "$FLY_APP" --ha=false --remote-only

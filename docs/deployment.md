@@ -178,6 +178,11 @@ It refuses to run with uncommitted changes — `fly deploy` ships the directory 
 and only a clean tree makes what runs a commit — and with more than one machine (above). The
 migrations run on boot, so a new schema needs no manual step.
 
+Before deploying, it snapshots the volume and waits until the snapshot exists, so an image can be
+rolled back past a migration it ran; if the snapshot fails, nothing is deployed. It reads
+`flyctl`'s JSON with `jq`, which must be installed. Snapshots — these and Fly's daily ones — are
+kept for 14 days (`snapshot_retention` in `fly.toml`), longer than the gap between two backups.
+
 ### After a deployment
 
 Checked by hand; this is platform configuration no test reaches (US-49):
