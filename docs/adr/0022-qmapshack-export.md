@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted — amended once:
+- 2026-09-19 — the exporter reads the archive through its HTTP API
+  ([Amendment](#amendment-2026-09-19--the-exporter-reads-the-archive-through-its-http-api)).
 
 ## Context
 
@@ -189,3 +191,57 @@ under for Komoot sync.
   exporter is told the **target database path** (CLI arg vs. config), and how `items.icon`
   (`NOT NULL`) gets populated — current thinking is extracting a real icon per activity type from
   a QMapShack-created example database rather than generating new artwork.
+
+## Amendment (2026-09-19) — the exporter reads the archive through its HTTP API
+
+The decision above assumed the archive and QMapShack share a machine: the exporter opened the
+archive's SQLite file directly. Since the archive moved to a hosted volume
+([ADR-0023](./0023-managed-scale-to-zero-hosting.md)), that file is out of the laptop's reach,
+while QMapShack still only runs there (US-51). An exporter left pointing at a local data
+directory would not fail — it would reconcile QMapShack against a stale or empty archive, and
+the removal pass would trash every exported item the stale copy lacks.
+
+Two ways back were weighed. Downloading the US-40 database snapshot and running the exporter
+on it unchanged is the smaller change, but it transfers the whole archive on every run and makes
+the SQLite schema a contract between the server and whatever exporter version the laptop has
+built. Reading through the API keeps the contract where [ADR-0008](./0008-json-first-api.md)
+puts it, and transfers only what the reconcile actually reads.
+
+**Decision.** The exporter is a client of a running archive's HTTP API, signing in with the
+shared password like any other client ([ADR-0010](./0010-single-user-optional-auth.md)). It
+no longer opens the archive database; the direct path is removed rather than kept as a
+fallback, so there is no configuration in which it silently reads the wrong archive. It reads:
+
+- **every trip's cheap columns and tags in one response**, produced from one read transaction
+  on the server — the input to change detection and to the removal pass;
+- **a trip's geometry only when that trip is inserted or rewritten**, one request per trip,
+  preserving the rule that an unchanged trip's geometry is never read.
+
+**What still holds.** Everything about the *target*: one-way sync, `keyqms` identity and
+scoping, owner-configured folders, the rolling backup, the compatibility gate, per-item
+best-effort execution, and failure visibility through the exit code. The exporter still runs
+outside the archive process, on the owner's machine, manually or from the owner's scheduler
+([ADR-0014](./0014-defer-deployment-topology.md)).
+
+**What no longer holds.**
+- *Consistency without a lock* is weakened from one snapshot per run to one consistent trip
+  list per run. A trip edited after the list was read gets a stale name or comment until the
+  next run rewrites it — the change detection compares exactly those fields, so this heals
+  itself. A trip deleted in the meantime fails that trip alone, as any per-trip error does.
+- *No new HTTP API surface* is reversed: the export gets an endpoint of its own. The existing
+  trip list does not fit — it is filterable and omits fields the reconcile needs — and
+  loosening it to serve both would couple the UI's list to the export's contract.
+
+**The list is complete or nothing.** The removal pass treats an exported item whose trip is
+absent from the list as deleted. The list is therefore never paged or filtered, and anything
+short of a complete, well-formed list — a refused sign-in, an error status, a truncated or
+unparsable body — aborts the run before the target is written, not even backed up.
+
+**Consequences.**
+- An export needs the archive running and reachable; exporting a data directory with no server
+  running is no longer possible. After the cutover the laptop holds no archive to export, so
+  this costs nothing in practice.
+- The first run against an empty target fetches every trip's geometry, one request each; later
+  runs fetch only what changed.
+- The export tests exercise the exporter against a running test server rather than a database
+  pool.
