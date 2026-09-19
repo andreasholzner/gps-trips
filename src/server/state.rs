@@ -115,7 +115,8 @@ mod tests {
         let db = TestDb::new().await;
         let dir = tempfile::tempdir().expect("temp dir");
         let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-        let auth = Auth::new("a test password").expect("a non-empty password");
+        let auth = Auth::new("a test password", &crate::server::auth::Salt::from([7; 16]))
+            .expect("a non-empty password");
         (AppState::new(db.pool, store, None, auth), dir)
     }
 

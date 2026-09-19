@@ -16,7 +16,7 @@ use axum::{
 use tower::ServiceExt; // .oneshot()
 use trip_archive::models::StagedImport;
 use trip_archive::server::{
-    auth::Auth,
+    auth::{Auth, Salt},
     db, http,
     state::AppState,
     storage::{BlobStore, LocalDisk},
@@ -29,14 +29,25 @@ use trip_archive::server::{
 /// story's arrival left the other test files unchanged.
 pub const TEST_PASSWORD: &str = "a test password";
 
-/// The gate the test servers are built with.
+/// The salt every test server derives its key under — fixed, so a token
+/// minted by [`test_token`] verifies on any of them (US-55).
+pub fn test_salt() -> Salt {
+    Salt::from([7; trip_archive::config::auth::SALT_LEN])
+}
+
+/// The gate the test servers are built with. Its key is derived once per
+/// test binary — Argon2id is deliberately slow (US-55) — and every server
+/// gets its own lockout counter.
 pub fn test_auth() -> Auth {
-    Auth::new(TEST_PASSWORD).expect("a non-empty test password")
+    static AUTH: std::sync::OnceLock<Auth> = std::sync::OnceLock::new();
+    AUTH.get_or_init(|| Auth::new(TEST_PASSWORD, &test_salt()).expect("a non-empty test password"))
+        .with_fresh_lockout()
 }
 
 /// A valid session token for [`TEST_PASSWORD`]. Any `Auth` built from the
-/// same password signs interchangeably — the key is derived from the secret,
-/// not generated per instance — so this needs no handle on the router's own.
+/// same password and salt signs interchangeably — the key is derived from
+/// them, not generated per instance — so this needs no handle on the
+/// router's own.
 pub fn test_token() -> String {
     test_auth().mint(time::OffsetDateTime::now_utc()).token
 }
@@ -90,7 +101,7 @@ pub async fn test_app_with_password(password: &str) -> (Router, tempfile::TempDi
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
-    let auth = Auth::new(password).expect("a non-empty password");
+    let auth = Auth::new(password, &test_salt()).expect("a non-empty password");
     (http::router(AppState::new(pool, store, None, auth)), dir)
 }
 

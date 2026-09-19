@@ -38,7 +38,14 @@ pub async fn handle_login(
 ) -> Result<Response, AppError> {
     // Read once at the boundary, then passed on as a value (ADR-0012's
     // 2026-07-24 amendment).
-    match state.auth.login(&body.password, OffsetDateTime::now_utc()) {
+    let now = OffsetDateTime::now_utc();
+    // Checking a password derives a key with Argon2id, deliberately costly
+    // (US-55) — the blocking pool's work, not the runtime's.
+    let auth = state.auth.clone();
+    let outcome = tokio::task::spawn_blocking(move || auth.login(&body.password, now))
+        .await
+        .expect("login task panicked");
+    match outcome {
         LoginOutcome::Granted(session) => Ok(granted(session)),
         LoginOutcome::Refused => Err(AppError::Unauthorized),
         LoginOutcome::LockedOut(retry_after) => Err(AppError::RateLimited { retry_after }),

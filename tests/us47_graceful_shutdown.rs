@@ -15,7 +15,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use axum::body::to_bytes;
-use common::{import_request, test_token, SAMPLE_GPX, TEST_PASSWORD};
+use common::{import_request, test_salt, test_token, SAMPLE_GPX, TEST_PASSWORD};
 use trip_archive::config::storage::DB_FILENAME;
 
 /// The server process, killed outright if a test fails before stopping it.
@@ -35,6 +35,14 @@ impl Server {
     /// Start the binary on a free loopback port, with its data under `data_dir`,
     /// and wait until it says where it listens.
     fn start(data_dir: &Path) -> Self {
+        // The salt the harness's tokens are signed under, where `main` reads
+        // it from (US-55) — otherwise it generates its own and no token of
+        // ours verifies.
+        std::fs::write(
+            data_dir.join(trip_archive::config::auth::SALT_FILENAME),
+            test_salt().as_bytes(),
+        )
+        .expect("write the session salt");
         let mut child = Command::new(env!("CARGO_BIN_EXE_trip-archive"))
             .env("TRIP_ARCHIVE_PASSWORD", TEST_PASSWORD)
             .env("TRIP_ARCHIVE_DATA_DIR", data_dir)

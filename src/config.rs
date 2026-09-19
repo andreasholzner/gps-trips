@@ -98,6 +98,20 @@ pub mod auth {
     /// (ADR-0023) an attacker who is being answered at all is one the owner
     /// is paying to wake.
     pub const LOGIN_LOCKOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    /// The file, under the data directory, holding the salt the session
+    /// signing key is derived under (US-55). Created on first boot; not part
+    /// of the backup, so a restore ends every session once.
+    pub const SALT_FILENAME: &str = "session-salt";
+    /// Salt length in bytes.
+    pub const SALT_LEN: usize = 16;
+
+    /// Argon2id's cost for deriving the signing key — RFC 9106's
+    /// low-memory recommendation. Paid once at boot and once per login
+    /// attempt, and by an attacker once per guess should the salt leak.
+    pub const ARGON2_MEMORY_KIB: u32 = 64 * 1024;
+    pub const ARGON2_ITERATIONS: u32 = 3;
+    pub const ARGON2_LANES: u32 = 1;
 }
 
 /// Komoot sync (US-27, ADR-0021). Auth details: `docs/komoot-api.md`.
