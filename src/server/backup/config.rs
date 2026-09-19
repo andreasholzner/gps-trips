@@ -33,7 +33,7 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::de::Error,
     },
-    #[error("url {0:?} is not an http(s) URL")]
+    #[error("url {0:?} is not an https URL")]
     BadUrl(String),
     #[error("target {0:?} must be an absolute path")]
     RelativeTarget(PathBuf),
@@ -46,7 +46,7 @@ pub enum ConfigError {
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BackupConfig {
-    /// The archive's base URL.
+    /// The archive's base URL, https only.
     pub url: String,
     /// The backup directory — on the external disk, so only there when it is mounted.
     pub target: PathBuf,
@@ -74,9 +74,10 @@ impl BackupConfig {
             path: PathBuf::new(),
             source,
         })?;
-        let is_http = Url::parse(&config.url)
-            .is_ok_and(|url| matches!(url.scheme(), "http" | "https") && url.has_host());
-        if !is_http {
+        // https only: the password is sent to it.
+        let is_https =
+            Url::parse(&config.url).is_ok_and(|url| url.scheme() == "https" && url.has_host());
+        if !is_https {
             return Err(ConfigError::BadUrl(config.url));
         }
         // Relative would mean relative to wherever the command happens to be
@@ -161,8 +162,16 @@ mod tests {
     }
 
     #[test]
-    fn us40_the_url_must_be_http() {
-        for url in ["example.fly.dev", "ftp://example.fly.dev", ""] {
+    fn us40_the_url_must_be_https() {
+        // The password travels to it: never in the clear.
+        for url in [
+            "example.fly.dev",
+            "ftp://example.fly.dev",
+            "http://example.fly.dev",
+            "http://127.0.0.1:3000",
+            "https://",
+            "",
+        ] {
             let text = FULL.replace("https://example.fly.dev", url);
             assert!(
                 matches!(
