@@ -108,5 +108,12 @@ strip = "debuginfo"
 [profile.dev.package.argon2]
 opt-level = 3
 
+# Every integration test under tests/ is its own binary, statically linking
+# every dependency — with full debug info, that repeats across dozens of
+# binaries and fills tens of gigabytes of target/. Dependencies are rarely
+# stepped into; this workspace's own crates keep their debug info.
+[profile.dev.package."*"]
+debug = false
+
 [profile.dev.package.blake2]
 opt-level = 3
