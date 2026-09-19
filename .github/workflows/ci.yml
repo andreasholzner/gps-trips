@@ -1,8 +1,14 @@
 # The two test layers of [ADR-0012](../../docs/adr/0012-tdd-test-strategy.md),
-# as two jobs in one workflow:
+# as two jobs in one workflow, and a third that reports their coverage:
 #
-#   test     — everything under `cargo test`, on the host target.
-#   browser  — Playwright against the shipped artifact, gated on `test`.
+#   test      — everything under `cargo test`, on the host target.
+#   browser   — Playwright against the shipped artifact, gated on `test`.
+#   coverage  — both layers' line coverage, merged into the run's summary.
+#
+# Coverage is informative only: nothing fails on a number. It measures the
+# Rust that runs on the host — the server under both layers, the shared crate
+# and the SPA's host-target tests. The SPA as it runs in the browser, as
+# wasm, is not measured; stable Rust has no coverage for that target.
 #
 # The gate is the point: a browser, a wasm bundle and a release build are
 # minutes of work that tell you nothing new once the unit tests are already
@@ -37,8 +43,14 @@ jobs:
       - name: Prepare the toolchain
         run: |
           rustup target add wasm32-unknown-unknown
+          rustup component add llvm-tools-preview
           rustc --version
           cargo --version
+
+      # Pinned to the commit behind v2.87.15.
+      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
+        with:
+          tool: cargo-llvm-cov@0.9
 
       # Caches the dependency half of `target/` and `~/.cargo`, and — unlike a
       # hand-rolled `actions/cache` of the whole `target/` — drops this
@@ -56,8 +68,18 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # `cargo test`, instrumented. cargo-llvm-cov skips doctests on stable;
+      # the workspace has none.
       - name: Tests
-        run: cargo test --workspace
+        run: cargo llvm-cov --workspace --lcov --output-path lcov-unit.info
+
+      - name: Keep the coverage
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unit
+          path: lcov-unit.info
+          retention-days: 1
 
       # ADR-0024's load-bearing property: the shared models and the UI must
       # compile for the browser, without the server's dependencies. A `sqlx`
@@ -81,7 +103,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Prepare the toolchain
-        run: rustup target add wasm32-unknown-unknown
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustup component add llvm-tools-preview
+
+      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
+        with:
+          tool: cargo-llvm-cov@0.9
 
       # A cache of its own: this job builds release and wasm artifacts, which
       # share almost nothing with the debug ones the `test` job leaves behind.
@@ -122,8 +150,17 @@ jobs:
       # does not fit inside it. The job would fail as a web-server timeout
       # rather than as whatever actually went wrong. No extra time on a warm
       # cache: this is the same build, moved to where it reports itself.
+      #
+      # Instrumented for coverage. The environment `show-env` prints is
+      # sourced step by step instead of exported to the job: the wasm build
+      # above must not see it, and the `cargo run` below must, or it would
+      # rebuild the server uninstrumented. `clean` drops profiles a restored
+      # cache may have carried over from an earlier run.
       - name: Build the server the browser tests drive
-        run: cargo build --release --bin trip-archive
+        run: |
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov clean --workspace
+          cargo build --release --bin trip-archive
 
       # Two Node versions, easily confused. The action's own runtime is
       # node24 from `@v5` onwards; `@v4` still ran on the deprecated node20.
@@ -147,7 +184,24 @@ jobs:
       # missing.
       - name: Run the browser tests
         working-directory: tests/browser
-        run: npm test
+        run: |
+          source <(cargo llvm-cov show-env --sh)
+          npm test
+
+      # The server wrote its profile when Playwright stopped it with SIGTERM.
+      - name: Coverage of the browser tests
+        continue-on-error: true
+        run: |
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov report --release --lcov --output-path lcov-browser.info
+
+      - name: Keep the coverage
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-browser
+          path: lcov-browser.info
+          retention-days: 1
 
       # Failures in this layer are usually timing; the trace is what makes
       # them diagnosable after the fact.
@@ -159,3 +213,48 @@ jobs:
           path: tests/browser/test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  coverage:
+    name: Coverage
+    needs: [test, browser]
+    runs-on: ubuntu-latest
+    # A report, not a gate (see the top of this file).
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      - name: Install lcov
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends lcov
+
+      - name: Report the coverage
+        run: |
+          set -euo pipefail
+          lcov --quiet -a lcov-unit.info -a lcov-browser.info -o lcov.info
+          lines() { lcov --summary "$1" 2>&1 | sed -n 's/^ *lines\.*: //p'; }
+          {
+            echo "## Line coverage"
+            echo
+            echo "| Tests | Lines |"
+            echo "| --- | --- |"
+            echo "| \`cargo test\` | $(lines lcov-unit.info) |"
+            echo "| Browser (server side) | $(lines lcov-browser.info) |"
+            echo "| **Combined** | **$(lines lcov.info)** |"
+            echo
+            echo "<details><summary>Per file</summary>"
+            echo
+            echo '```'
+            lcov --list lcov.info
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: lcov.info
+          retention-days: 30
