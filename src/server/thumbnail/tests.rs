@@ -231,3 +231,44 @@ fn us54_a_photo_too_large_to_decode_within_the_limit_is_stored_as_uploaded() {
     assert!(processed.stored.is_none());
     assert!(processed.thumbnail.is_none());
 }
+
+#[test]
+fn us54_an_oversized_png_keeps_its_exif_in_the_stored_copy() {
+    let (width, height) = oversized();
+    let tiff = location::fixtures::geotagged_bytes(59.91, 10.75);
+    let original = fixtures::png_with_exif(width, height, &tiff);
+
+    let stored = stored_copy(&original);
+
+    let gps = location::extract_photo_metadata(&stored).gps;
+    assert!(gps.is_some(), "the EXIF came along");
+}
+
+#[test]
+fn us54_exif_too_large_for_a_jpeg_keeps_the_photo_as_uploaded() {
+    // A PNG's or WebP's EXIF can exceed the 64 KB a JPEG's APP1 segment
+    // holds. Writing it anyway would store a corrupt JPEG in place of the
+    // original; dropping it would break the copy's promise to keep it.
+    let (width, height) = oversized();
+    let mut tiff = location::fixtures::geotagged_bytes(59.91, 10.75);
+    tiff.resize(70 * 1024, 0);
+    let original = fixtures::png_with_exif(width, height, &tiff);
+
+    let processed = process_photo(&original, None);
+
+    assert!(processed.stored.is_none(), "stored as uploaded");
+    assert!(processed.thumbnail.is_some(), "it still gets a thumbnail");
+}
+
+#[test]
+fn us54_exif_that_just_fits_a_jpeg_is_kept_and_the_copy_decodes() {
+    let (width, height) = oversized();
+    let mut tiff = location::fixtures::geotagged_bytes(59.91, 10.75);
+    tiff.resize(MAX_JPEG_EXIF_LEN, 0);
+    let original = fixtures::png_with_exif(width, height, &tiff);
+
+    let stored = stored_copy(&original);
+
+    assert_eq!(decode(&stored).width(), BOUND);
+    assert!(location::extract_photo_metadata(&stored).gps.is_some());
+}
