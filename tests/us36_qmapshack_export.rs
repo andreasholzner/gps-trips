@@ -3,25 +3,30 @@
 //! entry point the `qmapshack_export` binary is a thin shell around (the
 //! binary itself is not unit-tested, per the komoot binaries' precedent).
 
+mod common;
+
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool};
 use time::macros::datetime;
 use time::OffsetDateTime;
 
+use common::TEST_PASSWORD;
 use trip_archive::models::{ActivityType, TripKind};
 use trip_archive::server::gpx::{compute_stats, TrackPoint};
 use trip_archive::server::qmapshack::{self, config::ExportConfig, decode, target};
 use trip_archive::server::repo::{insert_trip, NewTrip};
 use trip_archive::server::{db, geojson};
 
-/// A fresh archive DB (real temp file + migrations, ADR-0012) whose TempDir
-/// also hosts the export target path and config.
-async fn test_archive() -> (tempfile::TempDir, SqlitePool) {
+/// A fresh archive DB (real temp file + migrations, ADR-0012) served over
+/// HTTP, as the exporter reaches it (US-51); its TempDir also hosts the
+/// export target path and config.
+async fn test_archive() -> (tempfile::TempDir, SqlitePool, String) {
     let dir = tempfile::tempdir().expect("create tempdir");
     let pool = db::create_pool(&dir.path().join("archive.db"))
         .await
         .expect("create archive pool");
-    (dir, pool)
+    let url = common::serve(common::router_over(pool.clone(), dir.path())).await;
+    (dir, pool, url)
 }
 
 /// Insert a trip built from synthetic points via the public import pipeline
@@ -100,7 +105,8 @@ fn config_for(dir: &tempfile::TempDir, target_name: &str) -> ExportConfig {
     // US-39: every ActivityType (incl. unknown) and TripKind must have an
     // explicit mapping, or ExportConfig::from_toml_str rejects the config.
     let toml = format!(
-        "target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n\
+        "url = \"https://archive.test\"\n\
+         target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n\
          [activity_type_names]\n\
          unknown = \"Unspecified\"\n\
          hiking = \"Hiking\"\n\
@@ -156,7 +162,7 @@ async fn folder_id_at(target: &SqlitePool, path: &[&str]) -> i64 {
 
 #[tokio::test]
 async fn us36_export_writes_every_trip_as_a_track_item_in_configured_folders() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
 
     let hike_2024 = insert_test_trip(
         &archive,
@@ -184,7 +190,7 @@ async fn us36_export_writes_every_trip_as_a_track_item_in_configured_folders() {
     .await;
 
     let cfg = config_for(&dir, "export.db");
-    let outcome = qmapshack::run_export(&archive, &cfg)
+    let outcome = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("export succeeds");
     assert_eq!(outcome.inserted, 3);
@@ -280,7 +286,7 @@ fn backup_files(dir: &tempfile::TempDir) -> Vec<String> {
 
 #[tokio::test]
 async fn us36_version_gate_fails_clearly_without_writing_anything() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     insert_test_trip(
         &archive,
         "En tur",
@@ -302,7 +308,7 @@ async fn us36_version_gate_fails_clearly_without_writing_anything() {
     drop(conn);
     let bytes_before = std::fs::read(&target_path).expect("target bytes");
 
-    let err = qmapshack::run_export(&archive, &config_for(&dir, "export.db"))
+    let err = qmapshack::run_export(&url, TEST_PASSWORD, &config_for(&dir, "export.db"))
         .await
         .expect_err("mismatched version must refuse the export");
 
@@ -322,7 +328,7 @@ async fn us36_version_gate_fails_clearly_without_writing_anything() {
 
 #[tokio::test]
 async fn us36_bootstraps_a_missing_target_with_full_schema() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     insert_test_trip(
         &archive,
         "En tur",
@@ -332,7 +338,7 @@ async fn us36_bootstraps_a_missing_target_with_full_schema() {
     )
     .await;
 
-    let outcome = qmapshack::run_export(&archive, &config_for(&dir, "fresh.db"))
+    let outcome = qmapshack::run_export(&url, TEST_PASSWORD, &config_for(&dir, "fresh.db"))
         .await
         .expect("export bootstraps a missing target");
     assert_eq!(outcome.inserted, 1);
@@ -384,7 +390,7 @@ async fn us36_bootstraps_a_missing_target_with_full_schema() {
 
 #[tokio::test]
 async fn us36_rerun_skips_already_exported_trips() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     insert_test_trip(
         &archive,
         "Tur A",
@@ -403,12 +409,12 @@ async fn us36_rerun_skips_already_exported_trips() {
     .await;
 
     let cfg = config_for(&dir, "export.db");
-    let first = qmapshack::run_export(&archive, &cfg)
+    let first = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
     assert_eq!(first.inserted, 2);
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.inserted, 0, "nothing new to insert");
@@ -428,7 +434,7 @@ async fn us36_rerun_skips_already_exported_trips() {
 
 #[tokio::test]
 async fn us36_creates_rolling_backup_and_prunes_by_retention() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     insert_test_trip(
         &archive,
         "En tur",
@@ -440,7 +446,7 @@ async fn us36_creates_rolling_backup_and_prunes_by_retention() {
 
     // First run bootstraps the target (no backup of a file that didn't exist).
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
     assert_eq!(backup_files(&dir), Vec::<String>::new());
@@ -468,7 +474,7 @@ async fn us36_creates_rolling_backup_and_prunes_by_retention() {
 
     // Second run backs up the existing target, then prunes: the union of
     // {recent} and {3 newest} is {new, recent1, recent2} — ancients go.
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
 
@@ -487,7 +493,7 @@ async fn us36_creates_rolling_backup_and_prunes_by_retention() {
 
 #[tokio::test]
 async fn us36_per_item_failure_continues_and_is_reported() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let good = insert_test_trip(
         &archive,
         "God tur",
@@ -510,7 +516,7 @@ async fn us36_per_item_failure_continues_and_is_reported() {
         .await
         .expect("corrupt one trip's geometry");
 
-    let outcome = qmapshack::run_export(&archive, &config_for(&dir, "export.db"))
+    let outcome = qmapshack::run_export(&url, TEST_PASSWORD, &config_for(&dir, "export.db"))
         .await
         .expect("the run itself completes");
     assert_eq!(outcome.inserted, 1);

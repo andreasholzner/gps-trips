@@ -1,9 +1,10 @@
 //! US-36/US-39: parsing and validating the export config.
 
 use super::*;
+use crate::server::archive_client::config::ArchiveConfigError;
 
 const MINIMAL: &str =
-    "target_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{year}/{activity_type}\"\n";
+    "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{year}/{activity_type}\"\n";
 
 /// `[activity_type_names]`/`[trip_type_names]` tables covering every
 /// `ActivityType` (incl. `Unknown`) and `TripKind` variant. US-39 makes
@@ -137,7 +138,7 @@ fn complete_mapping_of_every_variant_is_accepted() {
 #[test]
 fn name_tables_override_activity_and_trip_type_spellings() {
     let toml = format!(
-        "target_db = \"/tmp/t.db\"\n\
+        "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\n\
          folder_template = \"{{trip_type}}/{{activity_type}}\"\n\
          {}",
         FULL_NAME_TABLES
@@ -159,7 +160,7 @@ fn name_tables_override_activity_and_trip_type_spellings() {
 #[test]
 fn segments_may_mix_literals_and_placeholders() {
     let toml = format!(
-        "target_db = \"/tmp/t.db\"\nfolder_template = \"Archiv {{year}}-{{trip_type}}\"\n{FULL_NAME_TABLES}"
+        "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Archiv {{year}}-{{trip_type}}\"\n{FULL_NAME_TABLES}"
     );
     let cfg = config(&toml);
     assert_eq!(
@@ -181,15 +182,17 @@ fn unknown_toml_keys_are_rejected() {
 
 #[test]
 fn empty_target_db_is_rejected() {
-    let err = ExportConfig::from_toml_str("target_db = \"\"\nfolder_template = \"Trips\"\n")
-        .expect_err("empty target_db");
+    let err = ExportConfig::from_toml_str(
+        "url = \"https://archive.test\"\ntarget_db = \"\"\nfolder_template = \"Trips\"\n",
+    )
+    .expect_err("empty target_db");
     assert!(matches!(err, ConfigError::EmptyTargetDb), "{err}");
 }
 
 #[test]
 fn empty_or_slash_delimited_templates_are_rejected() {
     for template in ["", "/Trips", "Trips/", "Trips//X"] {
-        let toml = format!("target_db = \"/tmp/t.db\"\nfolder_template = \"{template}\"\n");
+        let toml = format!("url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"{template}\"\n");
         let err = ExportConfig::from_toml_str(&toml).expect_err(template);
         assert!(
             matches!(
@@ -203,7 +206,7 @@ fn empty_or_slash_delimited_templates_are_rejected() {
 
 #[test]
 fn unknown_placeholders_are_rejected_and_named() {
-    let toml = "target_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{month}\"\n";
+    let toml = "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{month}\"\n";
     let err = ExportConfig::from_toml_str(toml).expect_err("unknown placeholder");
     assert!(
         matches!(&err, ConfigError::UnknownPlaceholder { found } if found == "month"),
@@ -215,7 +218,7 @@ fn unknown_placeholders_are_rejected_and_named() {
 #[test]
 fn unmatched_braces_are_rejected() {
     for template in ["Trips/{year", "Trips/year}", "{yea{r}"] {
-        let toml = format!("target_db = \"/tmp/t.db\"\nfolder_template = \"{template}\"\n");
+        let toml = format!("url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"{template}\"\n");
         let err = ExportConfig::from_toml_str(&toml).expect_err(template);
         assert!(
             matches!(
@@ -257,4 +260,43 @@ fn load_reports_a_missing_file_with_its_path() {
     let err = ExportConfig::load(Path::new("/nonexistent/qms.toml")).expect_err("missing");
     assert!(matches!(err, ConfigError::Io { .. }), "{err}");
     assert!(err.to_string().contains("/nonexistent/qms.toml"));
+}
+
+#[test]
+fn us51_the_archive_url_and_password_command_load() {
+    let cfg = config(&complete("password_command = \"pass show archive\"\n"));
+    assert_eq!(cfg.url, "https://archive.test");
+    assert_eq!(cfg.password_command.as_deref(), Some("pass show archive"));
+    assert_eq!(config(&complete("")).password_command, None);
+}
+
+#[test]
+fn us51_the_archive_url_is_required() {
+    let toml = complete("").replace("url = \"https://archive.test\"\n", "");
+    let err = ExportConfig::from_toml_str(&toml).expect_err("no url");
+    assert!(matches!(err, ConfigError::Toml(_)), "{err}");
+}
+
+#[test]
+fn us51_the_archive_url_must_be_https() {
+    // The password travels to it: never in the clear.
+    let toml = complete("").replace("https://archive.test", "http://archive.test");
+    let err = ExportConfig::from_toml_str(&toml).expect_err("plain http");
+    assert!(
+        matches!(err, ConfigError::Archive(ArchiveConfigError::BadUrl(_))),
+        "{err}"
+    );
+}
+
+#[test]
+fn us51_an_empty_password_command_is_rejected() {
+    let err = ExportConfig::from_toml_str(&complete("password_command = \" \"\n"))
+        .expect_err("blank command");
+    assert!(
+        matches!(
+            err,
+            ConfigError::Archive(ArchiveConfigError::EmptyPasswordCommand)
+        ),
+        "{err}"
+    );
 }

@@ -19,7 +19,9 @@ use axum::{
     response::IntoResponse,
     Router,
 };
-use common::{delete, get, import_request_with_photos, send, test_app, SAMPLE_GPX, TEST_PASSWORD};
+use common::{
+    delete, get, import_request_with_photos, send, serve, test_app, SAMPLE_GPX, TEST_PASSWORD,
+};
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, Connection};
 use trip_archive::config::storage::{BLOBS_SUBDIR, DB_FILENAME};
 use trip_archive::server::archive_client::ClientError;
@@ -36,14 +38,6 @@ async fn import_trip_with_photo(app: &Router) {
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-}
-
-/// Serve `app` on a free loopback port, for the client to reach over HTTP.
-async fn serve(app: Router) -> String {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    format!("http://{addr}")
 }
 
 /// The router, counting the photo blobs it serves.

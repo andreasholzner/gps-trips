@@ -9,11 +9,10 @@
 //! detection, rolling backups, version gate, per-item best-effort
 //! execution) in ADR-0022.
 //!
-//! Consistency: instead of the in-process US-26 lock (unreachable from a
-//! separate CLI process), the run reconciles against one consistent trip
-//! list (see `repo::export`) and reads a trip's geometry only when writing
-//! it. A trip that changes after the list was read is caught up by the next
-//! run (ADR-0022's 2026-09-19 amendment).
+//! The archive is read over its HTTP API, as any client reads it (US-51,
+//! ADR-0022's 2026-09-19 amendment): one consistent list of every trip (see
+//! `repo::export`), then a trip's geometry only when that trip is written.
+//! A trip that changes after the list was read is caught up by the next run.
 
 pub mod backup;
 pub mod blob;
@@ -27,11 +26,11 @@ pub mod target;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::SqliteConnection;
 use time::OffsetDateTime;
 
 use crate::models::ExportTrip;
-use crate::server::repo;
+use crate::server::archive_client::ArchiveClient;
 
 use self::config::ExportConfig;
 
@@ -72,21 +71,37 @@ enum TripOutcome {
     Skipped,
 }
 
-/// Reconcile the QMapShack database configured in `cfg` to the archive's
-/// current state: insert new trips, update/re-link changed ones, trash
-/// removed ones (US-37). Setup errors (config/target/gate/backup) return
-/// `Err` before any item is written; a failure listing the target's items
-/// for the removal pass is also fatal, but happens after the per-trip
-/// writes (all idempotent — the next run heals). Per-trip and per-removal
-/// failures are logged, counted, and skipped.
-pub async fn run_export(archive: &SqlitePool, cfg: &ExportConfig) -> anyhow::Result<ExportOutcome> {
+/// Reconcile the QMapShack database configured in `cfg` to the current
+/// state of the archive at `archive_url`: insert new trips, update/re-link
+/// changed ones, trash removed ones (US-37). The complete trip list is read
+/// first (US-51): a run that cannot get it — refused, unreachable, an error,
+/// a truncated or malformed answer — fails before the target is opened, let
+/// alone backed up, and so never takes a trip's absence for its deletion.
+/// Setup errors (target/gate/backup) likewise return `Err` before any item
+/// is written; a failure listing the target's items for the removal pass is
+/// also fatal, but happens after the per-trip writes (all idempotent — the
+/// next run heals). Per-trip and per-removal failures are logged, counted,
+/// and skipped.
+pub async fn run_export(
+    archive_url: &str,
+    password: &str,
+    cfg: &ExportConfig,
+) -> anyhow::Result<ExportOutcome> {
+    let archive = ArchiveClient::sign_in(archive_url, password)
+        .await
+        .context("signing in to the archive")?;
+    let trips: Vec<ExportTrip> = archive
+        .get_ok(&["api", "export", "trips"])
+        .await
+        .context("listing trips")?
+        .json()
+        .await
+        .context("reading the trip list")?;
+
     let mut target_conn = open_target(cfg).await?;
 
     let root = target::root_folder_id(&mut target_conn).await?;
 
-    let trips = repo::list_export_trips(archive)
-        .await
-        .context("listing trips")?;
     tracing::info!(
         "exporting {} trip(s) to {}",
         trips.len(),
@@ -99,7 +114,7 @@ pub async fn run_export(archive: &SqlitePool, cfg: &ExportConfig) -> anyhow::Res
     for trip in &trips {
         let key = keyqms(trip.id);
         match reconcile_trip(
-            archive,
+            &archive,
             &mut target_conn,
             cfg,
             &mut folder_ids,
@@ -183,7 +198,7 @@ async fn open_target(cfg: &ExportConfig) -> anyhow::Result<SqliteConnection> {
 /// skip it otherwise — without ever reading its geometry. Any error here
 /// fails this trip only.
 async fn reconcile_trip(
-    archive: &SqlitePool,
+    archive: &ArchiveClient,
     target_conn: &mut SqliteConnection,
     cfg: &ExportConfig,
     folder_ids: &mut HashMap<Vec<String>, i64>,
@@ -283,18 +298,24 @@ impl BuiltItem {
     }
 }
 
-/// Fetch the trip's geometry from the snapshot and build the `items.data`
+/// Fetch the trip's geometry from the archive and build the `items.data`
 /// blob (full rewrite semantics — a fresh single-event history, ADR-0022).
 async fn build_item_blob(
-    archive: &SqlitePool,
+    archive: &ArchiveClient,
     trip: &ExportTrip,
     keyqms: &str,
     summary: &str,
 ) -> anyhow::Result<BuiltItem> {
-    let geojson = repo::get_track_geojson(archive, trip.id)
+    // A trip deleted since the list was read answers 404: this trip fails,
+    // the next run's list no longer holds it.
+    let id = trip.id.to_string();
+    let geojson = archive
+        .get_ok(&["api", "trips", &id, "track.geojson"])
         .await
-        .context("reading track geometry")?
-        .context("trip has no track geometry")?;
+        .context("fetching track geometry")?
+        .text()
+        .await
+        .context("reading track geometry")?;
     let points = blob::points_from_geojson(&geojson)?;
     let keywords: Vec<String> = trip.tags.iter().map(|t| t.name.clone()).collect();
 
