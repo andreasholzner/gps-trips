@@ -1,7 +1,11 @@
-//! Owner-facing export configuration (US-36/US-39, ADR-0022): one TOML file
-//! holding the target database path and the folder-mapping template.
+//! Owner-facing export configuration (US-36/US-39/US-51, ADR-0022): one TOML
+//! file holding the archive to read, the target database path and the
+//! folder-mapping template. Found like `backup`'s own file, as
+//! `trip-archive/qmapshack_export.toml` in the user's config directory.
 //!
 //! ```toml
+//! url = "https://<app>.fly.dev"
+//! password_command = "kwallet-query -r trip-archive kdewallet"   # optional
 //! target_db = "/home/owner/qms/Touren.db"
 //! folder_template = "Trips/{year}/{activity_type}"
 //! undated = "undated"                  # optional {year} fallback
@@ -34,6 +38,10 @@ use std::str::FromStr;
 use serde::Deserialize;
 
 use crate::models::{ActivityType, TripKind};
+use crate::server::archive_client::config::{self as archive, ArchiveConfigError};
+
+/// The config file's name in the user's config directory.
+const CONFIG_FILE: &str = "qmapshack_export.toml";
 
 /// Supported `folder_template` placeholders.
 const PLACEHOLDERS: &str = "{year}, {activity_type}, {trip_type}";
@@ -70,6 +78,8 @@ pub enum ConfigError {
     BadName { what: String, value: String },
     #[error("config is missing required folder-name mappings: {0}")]
     IncompleteMapping(String),
+    #[error(transparent)]
+    Archive(#[from] ArchiveConfigError),
 }
 
 /// The raw TOML shape. `deny_unknown_fields` makes a typo'd key a loud
@@ -77,6 +87,8 @@ pub enum ConfigError {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
+    url: String,
+    password_command: Option<String>,
     target_db: PathBuf,
     folder_template: String,
     undated: Option<String>,
@@ -97,6 +109,10 @@ enum Piece {
 /// Validated export configuration.
 #[derive(Debug)]
 pub struct ExportConfig {
+    /// The archive's base URL, https only (US-51).
+    pub url: String,
+    /// A command printing the archive password, run by `sh`; asked for when absent.
+    pub password_command: Option<String>,
     pub target_db: PathBuf,
     /// Parsed `folder_template`: one `Vec<Piece>` per path segment.
     template: Vec<Vec<Piece>>,
@@ -110,6 +126,7 @@ impl ExportConfig {
     pub fn from_toml_str(s: &str) -> Result<Self, ConfigError> {
         let raw: RawConfig = toml::from_str(s)?;
 
+        archive::validate(&raw.url, raw.password_command.as_deref())?;
         if raw.target_db.as_os_str().is_empty() {
             return Err(ConfigError::EmptyTargetDb);
         }
@@ -160,6 +177,8 @@ impl ExportConfig {
         }
 
         Ok(Self {
+            url: raw.url,
+            password_command: raw.password_command,
             target_db: raw.target_db,
             template,
             undated,
@@ -175,6 +194,12 @@ impl ExportConfig {
             source,
         })?;
         Self::from_toml_str(&text)
+    }
+
+    /// `$XDG_CONFIG_HOME/trip-archive/qmapshack_export.toml`, or
+    /// `~/.config/…` when that is unset — where `backup` looks for its own.
+    pub fn default_path() -> Result<PathBuf, ConfigError> {
+        Ok(archive::default_path(CONFIG_FILE)?)
     }
 
     /// Resolve the folder path (one name per level, root-relative) for a

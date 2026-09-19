@@ -78,6 +78,13 @@ pub async fn test_app_on(data_dir: &std::path::Path) -> Router {
     http::router(AppState::new(pool, store, None, test_auth()))
 }
 
+/// A router over an open `pool`, for tests that arrange the archive through
+/// the repositories and reach it over HTTP — US-51's exporter.
+pub fn router_over(pool: sqlx::SqlitePool, data_dir: &std::path::Path) -> Router {
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(data_dir.join(TEST_BLOBS_SUBDIR)));
+    http::router(AppState::new(pool, store, None, test_auth()))
+}
+
 /// A router backed by a fresh temp database and a `LocalDisk` blob store, both
 /// under one `TempDir`. Keep the returned `TempDir` alive for the whole test —
 /// dropping it deletes the database and the stored photos.
@@ -136,6 +143,15 @@ pub async fn test_app_with_state(
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
     let state = AppState::new(pool, store, komoot, test_auth());
     (http::router(state.clone()), state, dir)
+}
+
+/// Serve `app` on a free loopback port and return its base URL, for a
+/// laptop command's client to reach over real HTTP (US-40, US-51).
+pub async fn serve(app: Router) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{addr}")
 }
 
 /// Drive a single request through the router, signed in as the owner

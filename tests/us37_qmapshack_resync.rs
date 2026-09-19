@@ -6,11 +6,14 @@
 //! the config-resolved folder placement; exporter-owned items are fully
 //! authoritative, so owner-side moves/trashing inside QMapShack are undone).
 
+mod common;
+
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::SqlitePool;
 use time::macros::datetime;
 use time::OffsetDateTime;
 
+use common::TEST_PASSWORD;
 use trip_archive::models::{ActivityType, TripKind};
 use trip_archive::server::gpx::{compute_stats, TrackPoint};
 use trip_archive::server::qmapshack::{self, config::ExportConfig, decode};
@@ -19,14 +22,16 @@ use trip_archive::server::repo::{
 };
 use trip_archive::server::{db, geojson};
 
-/// A fresh archive DB (real temp file + migrations, ADR-0012) whose TempDir
-/// also hosts the export target path.
-async fn test_archive() -> (tempfile::TempDir, SqlitePool) {
+/// A fresh archive DB (real temp file + migrations, ADR-0012) served over
+/// HTTP, as the exporter reaches it (US-51); its TempDir also hosts the
+/// export target path.
+async fn test_archive() -> (tempfile::TempDir, SqlitePool, String) {
     let dir = tempfile::tempdir().expect("create tempdir");
     let pool = db::create_pool(&dir.path().join("archive.db"))
         .await
         .expect("create archive pool");
-    (dir, pool)
+    let url = common::serve(common::router_over(pool.clone(), dir.path())).await;
+    (dir, pool, url)
 }
 
 async fn insert_test_trip(
@@ -80,7 +85,8 @@ fn points_2023() -> Vec<TrackPoint> {
 fn config_for(dir: &tempfile::TempDir, target_name: &str) -> ExportConfig {
     let target = dir.path().join(target_name);
     let toml = format!(
-        "target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n\
+        "url = \"https://archive.test\"\n\
+         target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n\
          [activity_type_names]\n\
          unknown = \"Unspecified\"\n\
          hiking = \"Hiking\"\n\
@@ -142,7 +148,7 @@ async fn linked_folder_names(target: &SqlitePool, trip_id: i64) -> Vec<String> {
 
 #[tokio::test]
 async fn us37_trip_added_since_last_run_is_inserted_on_the_next_run() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     insert_test_trip(
         &archive,
         "Tur A",
@@ -152,7 +158,7 @@ async fn us37_trip_added_since_last_run_is_inserted_on_the_next_run() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
 
@@ -165,7 +171,7 @@ async fn us37_trip_added_since_last_run_is_inserted_on_the_next_run() {
     )
     .await;
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.inserted, 1, "only the new trip is inserted");
@@ -186,7 +192,7 @@ async fn us37_trip_added_since_last_run_is_inserted_on_the_next_run() {
 
 #[tokio::test]
 async fn us37_renamed_trip_is_updated_in_place() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let trip = insert_test_trip(
         &archive,
         "Gammelt navn",
@@ -196,7 +202,7 @@ async fn us37_renamed_trip_is_updated_in_place() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
 
@@ -204,7 +210,7 @@ async fn us37_renamed_trip_is_updated_in_place() {
         .await
         .expect("rename trip");
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.inserted, 0);
@@ -243,7 +249,7 @@ async fn us37_renamed_trip_is_updated_in_place() {
 
 #[tokio::test]
 async fn us37_activity_change_moves_the_item_and_refreshes_its_content() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let trip = insert_test_trip(
         &archive,
         "Fjelltur",
@@ -253,7 +259,7 @@ async fn us37_activity_change_moves_the_item_and_refreshes_its_content() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
     let target = open_target(&dir, "export.db").await;
@@ -274,7 +280,7 @@ async fn us37_activity_change_moves_the_item_and_refreshes_its_content() {
     .await
     .expect("change activity type");
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.updated, 1);
@@ -312,7 +318,7 @@ async fn us37_activity_change_moves_the_item_and_refreshes_its_content() {
 
 #[tokio::test]
 async fn us37_tag_change_updates_keywords_and_comment() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let trip = insert_test_trip(
         &archive,
         "Med tagger",
@@ -322,14 +328,14 @@ async fn us37_tag_change_updates_keywords_and_comment() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
 
     let tag = get_or_create_tag(&archive, "fjell").await.expect("tag");
     add_trip_tag(&archive, trip, tag).await.expect("tag trip");
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.updated, 1, "a tag edit is a detected change");
@@ -347,7 +353,7 @@ async fn us37_tag_change_updates_keywords_and_comment() {
 
 #[tokio::test]
 async fn us37_deleted_trip_is_moved_to_qmapshack_trash_once() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let keep = insert_test_trip(
         &archive,
         "Beholdes",
@@ -365,13 +371,13 @@ async fn us37_deleted_trip_is_moved_to_qmapshack_trash_once() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
 
     assert!(delete_trip(&archive, doomed).await.expect("delete trip"));
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.removed, 1, "the deleted trip's item is removed");
@@ -391,7 +397,7 @@ async fn us37_deleted_trip_is_moved_to_qmapshack_trash_once() {
     assert!(keep_trash.is_none(), "the surviving trip is untouched");
 
     // An already-trashed item is not counted again on the next run.
-    let third = qmapshack::run_export(&archive, &cfg)
+    let third = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("third run");
     assert_eq!(third.removed, 0);
@@ -400,7 +406,7 @@ async fn us37_deleted_trip_is_moved_to_qmapshack_trash_once() {
 
 #[tokio::test]
 async fn us37_unchanged_rerun_is_a_pure_skip_with_identical_bytes() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let trip = insert_test_trip(
         &archive,
         "Stabil tur",
@@ -410,7 +416,7 @@ async fn us37_unchanged_rerun_is_a_pure_skip_with_identical_bytes() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
     let target = open_target(&dir, "export.db").await;
@@ -422,7 +428,7 @@ async fn us37_unchanged_rerun_is_a_pure_skip_with_identical_bytes() {
             .await
             .unwrap();
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.inserted, 0);
@@ -446,7 +452,7 @@ async fn us37_unchanged_rerun_is_a_pure_skip_with_identical_bytes() {
 
 #[tokio::test]
 async fn us37_owner_created_items_and_folders_are_left_untouched() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let trip = insert_test_trip(
         &archive,
         "Egen tur",
@@ -456,7 +462,7 @@ async fn us37_owner_created_items_and_folders_are_left_untouched() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
 
@@ -505,11 +511,11 @@ async fn us37_owner_created_items_and_folders_are_left_untouched() {
         &points_2023(),
     )
     .await;
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert!(delete_trip(&archive, doomed).await.expect("delete"));
-    let third = qmapshack::run_export(&archive, &cfg)
+    let third = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("third run");
     assert_eq!(third.removed, 1);
@@ -540,7 +546,7 @@ async fn us37_owner_created_items_and_folders_are_left_untouched() {
 
 #[tokio::test]
 async fn us37_owner_trashed_or_refiled_exported_items_are_restored() {
-    let (dir, archive) = test_archive().await;
+    let (dir, archive, url) = test_archive().await;
     let trashed = insert_test_trip(
         &archive,
         "Kastet i QMS",
@@ -558,7 +564,7 @@ async fn us37_owner_trashed_or_refiled_exported_items_are_restored() {
     )
     .await;
     let cfg = config_for(&dir, "export.db");
-    qmapshack::run_export(&archive, &cfg)
+    qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("first run");
 
@@ -584,7 +590,7 @@ async fn us37_owner_trashed_or_refiled_exported_items_are_restored() {
         .await
         .unwrap();
 
-    let second = qmapshack::run_export(&archive, &cfg)
+    let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await
         .expect("second run");
     assert_eq!(second.updated, 2, "both owner edits are reconciled away");
