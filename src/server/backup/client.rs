@@ -11,6 +11,9 @@
 //! 3. the database is swapped in with a rename;
 //! 4. only then are photos the snapshot no longer names removed.
 //!
+//! A photo the server no longer holds is reported rather than failing the
+//! run: the rest of the archive still gets its backup.
+//!
 //! Until step 3 the previous backup is untouched but for new photo files; from
 //! step 3 on the directory holds the new one. Photos never change once stored
 //! (trip ids are never reused, photos are never replaced), so one already held
@@ -45,6 +48,9 @@ pub struct Report {
     pub kept: usize,
     /// Files under `photos/` the snapshot no longer names.
     pub removed: usize,
+    /// Keys the snapshot names that the server answered 404 for — damage
+    /// on the server, for the command to report as errors.
+    pub missing: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -89,8 +95,10 @@ pub async fn run(options: &Options) -> Result<Report, BackupError> {
         if path.is_file() {
             report.kept += 1;
         } else {
-            fetch_photo(&http, &base, &token, key, &path).await?;
-            report.fetched += 1;
+            match fetch_photo(&http, &base, &token, key, &path).await? {
+                Fetched::Stored => report.fetched += 1,
+                Fetched::NotFound => report.missing.push(key.clone()),
+            }
         }
     }
 
@@ -207,16 +215,26 @@ fn validate_key(key: &str) -> Result<(), BackupError> {
     }
 }
 
+/// Whether a photo arrived, or the server does not hold it.
+enum Fetched {
+    Stored,
+    NotFound,
+}
+
 async fn fetch_photo(
     http: &reqwest::Client,
     base: &Url,
     token: &str,
     key: &str,
     to: &Path,
-) -> Result<(), BackupError> {
+) -> Result<Fetched, BackupError> {
     let segments: Vec<&str> = std::iter::once("media").chain(key.split('/')).collect();
     let url = endpoint(base, &segments)?;
-    let response = checked(http.get(url.clone()).bearer_auth(token).send().await?, url)?;
+    let response = http.get(url.clone()).bearer_auth(token).send().await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(Fetched::NotFound);
+    }
+    let response = checked(response, url)?;
     let bytes = response.bytes().await?;
     if let Some(parent) = to.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -224,7 +242,7 @@ async fn fetch_photo(
     let partial = Partial(partial_name(to));
     tokio::fs::write(&partial.0, &bytes).await?;
     std::fs::rename(&partial.0, to)?;
-    Ok(())
+    Ok(Fetched::Stored)
 }
 
 /// Replace the backup's database with the snapshot. A WAL or shared-memory
