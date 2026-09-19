@@ -63,6 +63,12 @@ async fn main() -> ExitCode {
     };
     match client::run(&options).await {
         Ok(report) => {
+            // Damage on the server, not a failed backup: the rest arrived.
+            for key in &report.missing {
+                eprintln!(
+                    "error: the archive has no file for photo {key}; it is not in the backup"
+                );
+            }
             println!(
                 "Backed up into {}: {} photo files fetched, {} already held, {} removed.",
                 options.target.display(),

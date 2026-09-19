@@ -243,6 +243,8 @@ The backup directory is laid out like a data directory — `trip-archive.db` plu
   runs only the new ones. Photos of deleted trips are removed; borg's history keeps them.
 - **Safe to interrupt.** A run that fails at any point leaves the previous backup complete; at
   most, photos already fetched for the next one wait beside it.
+- **Damage is reported, not fatal.** A photo the database names but the server has no file for
+  is printed as an `error:` line and left out; the rest of the backup completes.
 - **Never on the wrong disk.** The directory must exist — create it once. If the disk is not
   mounted, the run fails instead of writing a backup onto the laptop's own disk.
 

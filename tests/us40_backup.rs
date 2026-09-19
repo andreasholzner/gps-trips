@@ -298,6 +298,28 @@ async fn us40_a_failed_run_leaves_the_previous_backup_as_it_was() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn us40_a_photo_missing_on_the_server_is_reported_not_fatal() {
+    // A row whose blob is gone is damage on the server; the rest of the
+    // archive still needs its backup, and the owner needs to hear about it.
+    let (app, server_dir) = test_app().await;
+    import_trip_with_photo(&app).await;
+    let blobs = server_dir.path().join(common::TEST_BLOBS_SUBDIR);
+    let original = files_under(&blobs)
+        .into_iter()
+        .find(|path| !path.starts_with("trips/1/thumbs"))
+        .expect("the original photo");
+    std::fs::remove_file(blobs.join(&original)).unwrap();
+    let url = serve(app).await;
+    let target = tempfile::tempdir().unwrap();
+
+    let report = client::run(&options(&url, target.path())).await.unwrap();
+
+    assert_eq!(report.missing, vec![original.to_str().unwrap().to_owned()]);
+    assert_eq!(report.fetched, 1, "the thumbnail still arrived");
+    assert_eq!(trips_in(&target.path().join(DB_FILENAME)).await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn us40_a_wrong_password_is_refused_before_anything_is_written() {
     let (app, _server_dir) = test_app().await;
     let url = serve(app).await;
