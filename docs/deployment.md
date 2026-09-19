@@ -1,4 +1,4 @@
-# Deployment — running Trip Archive (US-10, US-45…US-49)
+# Deployment — running Trip Archive (US-10, US-45…US-49, US-51)
 
 Trip Archive is a single Axum binary plus a `public/` folder holding the SPA's built bundle.
 The SQLite DB and photo blobs live under one configurable data directory; no external services
@@ -99,8 +99,8 @@ when organizing trips, stop it afterwards; there is no daemon/service setup requ
 
 The deployed archive is the same binary in a container ([ADR-0023](./adr/0023-managed-scale-to-zero-hosting.md)):
 
-- **Image** (`Dockerfile`): the static musl `trip-archive` and `komoot_check` binaries and the
-  SPA bundle beside them, on Alpine — which adds only a shell and the `sqlite3` CLI for looking
+- **Image** (`Dockerfile`): the static musl `trip-archive`, `komoot_check` and `komoot_backfill`
+  binaries and the SPA bundle beside them, on Alpine — which adds only a shell and the `sqlite3` CLI for looking
   at the volume. It is built on Fly's remote builder with a pinned Rust version, so the laptop
   needs `flyctl` and nothing else.
 - **Machine** (`fly.toml`): one `shared-cpu-1x` machine with 1 GB in `arn` (Stockholm). It is
@@ -253,3 +253,64 @@ The backup directory is laid out like a data directory — `trip-archive.db` plu
 US-50's procedure. The session salt is deliberately not in the backup, so a restored archive
 creates a new one and every device signs in again once.
 
+### Komoot backfill
+
+`komoot_backfill` imports every Komoot tour the archive does not hold yet, photos included
+(US-23). It writes the database and the photos on the volume, so it runs inside the instance,
+with the instance's own Komoot secrets (US-51):
+
+```sh
+fly ssh console --app "$FLY_APP" -C "komoot_backfill --limit 20"
+fly ssh console --app "$FLY_APP" -C "komoot_backfill --planned"   # planned routes
+```
+
+The flags are the laptop's: `--limit N`, `--planned`, `--debug`, and `--interactive`, which asks
+before every Komoot call and so needs a terminal — add `--pty` to `fly ssh console` for it.
+
+- **Keep the machine awake.** Auto-stop sees only web traffic, not the ssh session, so an idle
+  machine is stopped within minutes, and the run with it. For the length of a run, keep the
+  archive open in a browser tab and reload it every few minutes.
+- **Safe to rerun.** A run that stops for any reason — the session drops, the machine is
+  stopped — resumes on the next one: tours already imported are skipped, and the one in progress
+  was rolled back.
+- **Do not press "Sync now" meanwhile.** It cannot create a duplicate trip, but one of the two
+  imports of the same tour fails.
+- **Out of memory?** Give the machine more for the run with
+  `fly scale memory 2048 --app "$FLY_APP"`, and `fly scale memory 1024 --app "$FLY_APP"`
+  afterwards.
+
+### QMapShack export
+
+`qmapshack_export` reconciles the whole archive into a QMapShack database (US-36/US-37). It runs
+on the laptop, where QMapShack is, and reads the deployed archive over HTTPS (US-51). Once,
+configure it in `~/.config/trip-archive/qmapshack_export.toml` (or under `$XDG_CONFIG_HOME`),
+beside `backup.toml`:
+
+```toml
+url = "https://<the app name>.fly.dev"
+password_command = "kwallet-query -r trip-archive kdewallet"      # optional
+target_db = "/home/you/qms/Touren.db"
+folder_template = "Trips/{year}/{activity_type}"
+
+[activity_type_names]      # required: every activity type, see server/qmapshack/config.rs
+# …
+[trip_type_names]          # required: recorded and planned
+# …
+```
+
+The password works as for the backup: asked for on every run, or printed by `password_command`
+— which a run from cron needs, since nobody is there to type it. Then, with QMapShack closed:
+
+```sh
+cargo build --release --bin qmapshack_export      # once, and after updates
+target/release/qmapshack_export                   # or: --config <path>; --debug for more log
+```
+
+- **Nothing is touched without the whole archive.** The run reads the complete trip list before
+  it opens the target. If it cannot — the archive is unreachable, the password is refused, the
+  answer is an error or cut off — it fails with nothing written and no backup taken, so no
+  exported track is ever trashed for a trip that merely did not arrive.
+- **Cheap to rerun.** Only new or changed trips have their track downloaded; unchanged ones are
+  skipped.
+- **Failures show in the exit code.** It is non-zero whenever any trip failed, for cron to alert
+  on; the log says which, and the next run retries them.
