@@ -44,6 +44,11 @@ pub fn test_auth() -> Auth {
         .with_fresh_lockout()
 }
 
+/// Serializes the tests that set `TRIP_ARCHIVE_ASSETS_DIR`: env vars are
+/// process-global, and the router reads this one when it is built. Tokio's
+/// mutex (not `std::sync::Mutex`) because the guard is held across `.await`.
+pub static ASSETS_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// A valid session token for [`TEST_PASSWORD`]. Any `Auth` built from the
 /// same password and salt signs interchangeably — the key is derived from
 /// them, not generated per instance — so this needs no handle on the

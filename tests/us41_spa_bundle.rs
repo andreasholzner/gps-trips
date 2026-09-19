@@ -11,9 +11,6 @@ mod common;
 
 use axum::http::StatusCode;
 
-/// Env vars are process-global; serialize the tests that set one.
-static ASSETS_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
 const INDEX_HTML: &[u8] = b"<!DOCTYPE html><title>Trip Archive</title><div id=\"main\"></div>";
 
 /// An assets dir holding a stand-in SPA bundle: `app/index.html` plus one
@@ -28,7 +25,7 @@ fn assets_dir_with_bundle() -> tempfile::TempDir {
 
 #[tokio::test]
 async fn the_spa_bundle_is_served_at_app() {
-    let _guard = ASSETS_ENV_LOCK.lock().await;
+    let _guard = common::ASSETS_ENV_LOCK.lock().await;
     let assets = assets_dir_with_bundle();
 
     std::env::set_var("TRIP_ARCHIVE_ASSETS_DIR", assets.path());
@@ -91,7 +88,7 @@ async fn a_deep_link_into_the_spa_falls_back_to_its_index() {
     // The SPA routes paths like `/app/trips/:id` client-side, so opening or
     // reloading such a URL must still hand the browser the app shell rather
     // than a 404.
-    let _guard = ASSETS_ENV_LOCK.lock().await;
+    let _guard = common::ASSETS_ENV_LOCK.lock().await;
     let assets = assets_dir_with_bundle();
 
     std::env::set_var("TRIP_ARCHIVE_ASSETS_DIR", assets.path());

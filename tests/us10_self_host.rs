@@ -19,13 +19,9 @@ mod common;
 
 use axum::http::StatusCode;
 
-/// Env vars are process-global; serialize tests that touch `TRIP_ARCHIVE_ASSETS_DIR`.
-/// Tokio's mutex (not `std::sync::Mutex`) because the guard is held across `.await`.
-static ASSETS_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
 #[tokio::test]
 async fn us10_serves_static_assets_from_a_configured_dir_independent_of_cwd() {
-    let _guard = ASSETS_ENV_LOCK.lock().await;
+    let _guard = common::ASSETS_ENV_LOCK.lock().await;
 
     // A stand-in assets dir that is emphatically not the crate's `public/`.
     let assets = tempfile::tempdir().expect("assets dir");
@@ -48,7 +44,7 @@ async fn us10_serves_static_assets_from_a_configured_dir_independent_of_cwd() {
 
 #[tokio::test]
 async fn us10_missing_assets_dir_yields_404_not_a_panic() {
-    let _guard = ASSETS_ENV_LOCK.lock().await;
+    let _guard = common::ASSETS_ENV_LOCK.lock().await;
 
     // A path that is never created on disk, e.g. a typo'd env var in a real deployment.
     let parent = tempfile::tempdir().expect("temp dir");
