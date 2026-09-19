@@ -86,6 +86,6 @@ fn granted(session: Session) -> Response {
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 //
-// The handlers are asserted through the real router in `tests/us19_auth.rs`,
+// The handlers are asserted through the real router in `tests/it/us19_auth.rs`,
 // where a session's whole round trip — sign in, use the cookie, sign out —
 // is one story rather than three isolated calls.

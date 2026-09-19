@@ -2,8 +2,8 @@
 //! QMapShack database (ADR-0022), run manually or from the owner's own
 //! scheduler (cron), never from inside the app (ADR-0014). It reads the
 //! archive over its HTTP API, never a database file. All logic lives in
-//! `qmapshack::run_export` and is covered by `tests/us36_qmapshack_export.rs`,
-//! `tests/us37_qmapshack_resync.rs` and `tests/us51_remote_export.rs` — this
+//! `qmapshack::run_export` and is covered by `tests/it/us36_qmapshack_export.rs`,
+//! `tests/it/us37_qmapshack_resync.rs` and `tests/it/us51_remote_export.rs` — this
 //! file is a thin shell and is not unit-tested, the same policy as the other
 //! CLIs.
 //!

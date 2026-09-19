@@ -1,6 +1,6 @@
 //! US-40: pull a consistent backup of the deployed archive into a directory
 //! for the borg jobs. All logic lives in `server::backup` and is covered by
-//! `tests/us40_backup.rs` and the modules' own tests — this file is a thin
+//! `tests/it/us40_backup.rs` and the modules' own tests — this file is a thin
 //! shell and is not unit-tested, the same policy as the other CLIs.
 //!
 //! Usage: `backup [--config <path>]`

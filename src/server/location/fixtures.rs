@@ -8,7 +8,7 @@
 //! IFD with the four tags this module reads.
 //!
 //! `pub`, gated by `test-support` as well as `test`, so both `location`'s own
-//! unit tests *and* `tests/us3_photo_map_placement.rs`'s integration tests
+//! unit tests *and* `tests/it/us3_photo_map_placement.rs`'s integration tests
 //! call the same byte-builder — see the `[dev-dependencies]` entry in
 //! `Cargo.toml` that enables `test-support` for `tests/`. A single source of
 //! truth for the TIFF layout, instead of two hand-maintained copies.

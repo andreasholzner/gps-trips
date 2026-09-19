@@ -4,7 +4,7 @@
 //! configurable data directory; no external services required.
 //!
 //! The DB/blob-store side of "configurable data directory" is already exercised by every
-//! other test via `tests/common::test_app` (a fresh `tempdir` per test, ADR-0012). This file
+//! other test via `common::test_app` (a fresh `tempdir` per test, ADR-0012). This file
 //! covers the piece specific to US-10: static assets must be resolvable independent of the
 //! process's current working directory (ADR-0016), not hardcoded to a `public/` folder in
 //! the CWD. `src/server/paths.rs` unit-tests the pure resolution logic; this proves

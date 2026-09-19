@@ -1,7 +1,7 @@
 //! A hand-rolled `KomootClient` test double, `pub` (gated by `test-support`
 //! as well as `test`, mirroring `location::fixtures` and `thumbnail`'s
 //! fixture builders) so both this crate's own unit tests *and*
-//! `tests/us25_sync_halts_on_failure.rs`'s HTTP-level acceptance tests can
+//! `tests/it/us25_sync_halts_on_failure.rs`'s HTTP-level acceptance tests can
 //! drive the same mock through the real `AppState`/router — see the
 //! `[dev-dependencies]` entry in `Cargo.toml` that enables `test-support`
 //! for `tests/`.

@@ -32,7 +32,9 @@ A Cargo workspace of three crates:
 | `crates/types` (`trip-archive-types`) | the data models shared by the server and the UI. Compiles for the server, for wasm and for Android; the SQLite mappings sit behind an optional `sqlx` feature only the server enables |
 | `crates/ui-dioxus`                    | the Dioxus SPA ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md))                                                                                                                  |
 
-`tests/` holds the server's integration tests and, under `tests/browser/`, the browser layer.
+`tests/it/` holds the server's integration tests and `tests/browser/` the browser layer. The
+integration tests build as one binary: each story's tests are a module of `tests/it/main.rs`, named
+`usN_…` after the story, so a new file there needs its `mod` line.
 
 ## Running it
 
@@ -102,7 +104,8 @@ cargo fmt --all --check
 
 `cargo test --workspace` runs the server's unit and integration tests, the shared crate's, and
 the SPA's host-target tests — pure logic, components rendered to HTML with `dioxus-ssr`, and
-whole screens rendered against a real in-process server on a temporary database.
+whole screens rendered against a real in-process server on a temporary database. One story's
+integration tests run on their own by its ID: `cargo test --test it us40`.
 
 ### The browser layer
 
@@ -133,10 +136,10 @@ Android has no automated tests at all and is verified by hand on a device
 ## Keeping `target/` small
 
 Cargo never deletes build artifacts: each change to a dependency, feature or compiler flag adds a
-fresh copy of what it affects under a new hash and keeps the old one. With one binary per file in
-`tests/`, that grows `target/` without bound — it had reached 87 GB when this was written. Dependencies are already built without debug
-info (`[profile.dev.package."*"]` in `Cargo.toml`), which keeps each copy small; pruning the stale
-ones takes [`cargo-sweep`](https://github.com/holmgr/cargo-sweep):
+fresh copy of what it affects under a new hash and keeps the old one, so `target/` grows without
+bound. The integration tests link as one binary and dependencies are built without debug info
+(`[profile.dev.package."*"]` in `Cargo.toml`), which keeps each copy small; pruning the stale ones
+takes [`cargo-sweep`](https://github.com/holmgr/cargo-sweep):
 
 ```sh
 cargo install cargo-sweep   # first time only

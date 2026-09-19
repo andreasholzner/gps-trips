@@ -81,7 +81,7 @@ impl AppState {
 
     /// Test-only direct write to the sync flag, bypassing `try_start_sync`'s
     /// `SyncGuard` — lets a test simulate "a sync is in flight" without
-    /// racing a real one (see `tests/us26_sync_blocks_concurrent_edits.rs`).
+    /// racing a real one (see `tests/it/us26_sync_blocks_concurrent_edits.rs`).
     /// Gated the same way `komoot::testing`'s `MockKomootClient` is (`test`
     /// or the `test-support` feature `tests/` builds with), so it's
     /// unreachable from any production code path.

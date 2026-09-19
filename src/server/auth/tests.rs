@@ -1,7 +1,7 @@
 //! US-19 — the gate's own behaviour, below the HTTP layer. The acceptance
 //! criteria as the owner meets them (every route refuses an anonymous
 //! request; a session survives a redeploy; signing out ends it) are asserted
-//! against the real router in `tests/us19_auth.rs`.
+//! against the real router in `tests/it/us19_auth.rs`.
 
 use super::*;
 
@@ -50,7 +50,7 @@ fn us19_a_password_of_spaces_around_real_characters_is_kept_verbatim() {
 }
 
 /// Env vars are process-global; serialize the tests that touch this one, the
-/// way `tests/us10_self_host.rs` does for the assets dir.
+/// way `tests/it/us10_self_host.rs` does for the assets dir.
 static PASSWORD_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]

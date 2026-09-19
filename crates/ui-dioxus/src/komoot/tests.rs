@@ -13,8 +13,8 @@
 //!
 //! These are the assertions that let the server-rendered review page go
 //! (ADR-0012's migration rule); the dedup and the pull itself are the API's,
-//! and stay in `tests/us22_sync_candidates_api.rs` and
-//! `tests/us25_sync_halts_on_failure.rs`.
+//! and stay in `tests/it/us22_sync_candidates_api.rs` and
+//! `tests/it/us25_sync_halts_on_failure.rs`.
 
 use std::sync::Arc;
 

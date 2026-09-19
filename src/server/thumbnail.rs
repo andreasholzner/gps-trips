@@ -179,7 +179,7 @@ fn apply_orientation(img: DynamicImage, orientation: u16) -> DynamicImage {
 
 /// A small, real, decodable JPEG test fixture — shared by this module's own
 /// unit tests, sibling modules' tests (`photos.rs`, `delete.rs`), and
-/// `tests/us5_thumbnails.rs`, so there is one source of truth for "a real
+/// `tests/it/us5_thumbnails.rs`, so there is one source of truth for "a real
 /// image `image` can decode" instead of hand-maintained per-file copies.
 /// Gated the same way `location::fixtures` is (ADR-0012's precedent).
 #[cfg(any(test, feature = "test-support"))]
