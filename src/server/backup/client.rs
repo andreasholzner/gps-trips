@@ -22,12 +22,12 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use reqwest::{StatusCode, Url};
+use reqwest::StatusCode;
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, Connection};
 use tokio::io::AsyncWriteExt;
 
 use crate::config::storage::{BLOBS_SUBDIR, DB_FILENAME};
-use crate::models::{Login, Session};
+use crate::server::archive_client::{checked, ArchiveClient, ClientError};
 
 /// What one run needs. No `Debug`: it carries the password.
 pub struct Options {
@@ -57,16 +57,8 @@ pub struct Report {
 pub enum BackupError {
     #[error("{0} does not exist — is the backup disk mounted?")]
     NoTarget(PathBuf),
-    #[error("the archive refused the password")]
-    Refused,
-    #[error("the archive is refusing sign-ins after too many failed attempts; try again later")]
-    LockedOut,
-    #[error("{url} answered {status}")]
-    Status { url: Url, status: StatusCode },
-    #[error("{0} is not a valid archive URL")]
-    Url(String),
-    #[error("could not reach the archive: {0}")]
-    Request(#[from] reqwest::Error),
+    #[error(transparent)]
+    Client(#[from] ClientError),
     #[error("the snapshot names a photo outside the photo directory: {0:?}")]
     UnsafeKey(String),
     #[error("could not read the snapshot: {0}")]
@@ -75,17 +67,21 @@ pub enum BackupError {
     Io(#[from] std::io::Error),
 }
 
+impl From<reqwest::Error> for BackupError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Client(e.into())
+    }
+}
+
 /// Pull the archive at `options.url` into `options.target`.
 pub async fn run(options: &Options) -> Result<Report, BackupError> {
     if !options.target.is_dir() {
         return Err(BackupError::NoTarget(options.target.clone()));
     }
-    let base = Url::parse(&options.url).map_err(|_| BackupError::Url(options.url.clone()))?;
-    let http = reqwest::Client::new();
-    let token = sign_in(&http, &base, &options.password).await?;
+    let archive = ArchiveClient::sign_in(&options.url, &options.password).await?;
 
     let partial = Partial(options.target.join(format!(".{DB_FILENAME}.partial")));
-    download_snapshot(&http, &base, &token, &partial.0).await?;
+    download_snapshot(&archive, &partial.0).await?;
     let keys = photo_keys(&partial.0).await?;
 
     let photos = options.target.join(BLOBS_SUBDIR);
@@ -95,7 +91,7 @@ pub async fn run(options: &Options) -> Result<Report, BackupError> {
         if path.is_file() {
             report.kept += 1;
         } else {
-            match fetch_photo(&http, &base, &token, key, &path).await? {
+            match fetch_photo(&archive, key, &path).await? {
                 Fetched::Stored => report.fetched += 1,
                 Fetched::NotFound => report.missing.push(key.clone()),
             }
@@ -107,32 +103,6 @@ pub async fn run(options: &Options) -> Result<Report, BackupError> {
     Ok(report)
 }
 
-/// The password from the output of `command`, run by `sh` — for a password
-/// manager such as `kwallet-query`. Exactly one trailing newline is dropped,
-/// the one such tools end their output with; anything else is the password.
-pub fn password_from_command(command: &str) -> std::io::Result<String> {
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .stderr(std::process::Stdio::inherit())
-        .output()?;
-    if !output.status.success() {
-        return Err(std::io::Error::other(format!(
-            "the password command failed ({})",
-            output.status
-        )));
-    }
-    let mut password = String::from_utf8(output.stdout)
-        .map_err(|_| std::io::Error::other("the password command printed no text"))?;
-    if password.ends_with('\n') {
-        password.pop();
-        if password.ends_with('\r') {
-            password.pop();
-        }
-    }
-    Ok(password)
-}
-
 /// A file that is deleted unless it has been moved into place.
 struct Partial(PathBuf);
 
@@ -142,35 +112,8 @@ impl Drop for Partial {
     }
 }
 
-async fn sign_in(
-    http: &reqwest::Client,
-    base: &Url,
-    password: &str,
-) -> Result<String, BackupError> {
-    let url = endpoint(base, &["api", "session"])?;
-    let response = http
-        .post(url.clone())
-        .json(&Login {
-            password: password.to_owned(),
-        })
-        .send()
-        .await?;
-    match response.status() {
-        StatusCode::UNAUTHORIZED => Err(BackupError::Refused),
-        StatusCode::TOO_MANY_REQUESTS => Err(BackupError::LockedOut),
-        status if !status.is_success() => Err(BackupError::Status { url, status }),
-        _ => Ok(response.json::<Session>().await?.token),
-    }
-}
-
-async fn download_snapshot(
-    http: &reqwest::Client,
-    base: &Url,
-    token: &str,
-    to: &Path,
-) -> Result<(), BackupError> {
-    let url = endpoint(base, &["api", "backup", "database"])?;
-    let mut response = checked(http.get(url.clone()).bearer_auth(token).send().await?, url)?;
+async fn download_snapshot(archive: &ArchiveClient, to: &Path) -> Result<(), BackupError> {
+    let mut response = archive.get_ok(&["api", "backup", "database"]).await?;
     let mut file = tokio::fs::File::create(to).await?;
     while let Some(chunk) = response.chunk().await? {
         file.write_all(&chunk).await?;
@@ -222,19 +165,16 @@ enum Fetched {
 }
 
 async fn fetch_photo(
-    http: &reqwest::Client,
-    base: &Url,
-    token: &str,
+    archive: &ArchiveClient,
     key: &str,
     to: &Path,
 ) -> Result<Fetched, BackupError> {
     let segments: Vec<&str> = std::iter::once("media").chain(key.split('/')).collect();
-    let url = endpoint(base, &segments)?;
-    let response = http.get(url.clone()).bearer_auth(token).send().await?;
+    let response = archive.get(&segments).await?;
     if response.status() == StatusCode::NOT_FOUND {
         return Ok(Fetched::NotFound);
     }
-    let response = checked(response, url)?;
+    let response = checked(response)?;
     let bytes = response.bytes().await?;
     if let Some(parent) = to.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -297,25 +237,6 @@ fn partial_name(path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// `base` with `segments` appended as path segments, each percent-encoded.
-fn endpoint(base: &Url, segments: &[&str]) -> Result<Url, BackupError> {
-    let mut url = base.clone();
-    url.path_segments_mut()
-        .map_err(|_| BackupError::Url(base.to_string()))?
-        .pop_if_empty()
-        .extend(segments);
-    Ok(url)
-}
-
-fn checked(response: reqwest::Response, url: Url) -> Result<reqwest::Response, BackupError> {
-    let status = response.status();
-    if status.is_success() {
-        Ok(response)
-    } else {
-        Err(BackupError::Status { url, status })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,30 +257,5 @@ mod tests {
                 "{bad:?}"
             );
         }
-    }
-
-    #[test]
-    fn us40_the_password_command_keeps_everything_but_its_last_newline() {
-        let from = |cmd| password_from_command(cmd).unwrap();
-        assert_eq!(from("printf 'a#b c'"), "a#b c");
-        assert_eq!(from("printf ' spaced \\n'"), " spaced ");
-        assert_eq!(from("printf 'crlf\\r\\n'"), "crlf");
-        assert_eq!(from("printf 'two\\n\\n'"), "two\n");
-    }
-
-    #[test]
-    fn us40_a_failing_password_command_is_an_error() {
-        assert!(password_from_command("exit 3").is_err());
-    }
-
-    #[test]
-    fn us40_endpoints_keep_the_base_path_and_encode_segments() {
-        let base = Url::parse("https://example.test/").unwrap();
-        assert_eq!(
-            endpoint(&base, &["media", "trips", "1", "0000-a b.jpg"])
-                .unwrap()
-                .as_str(),
-            "https://example.test/media/trips/1/0000-a%20b.jpg"
-        );
     }
 }

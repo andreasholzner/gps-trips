@@ -13,6 +13,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use trip_archive::server::archive_client;
 use trip_archive::server::backup::client::{self, Options};
 use trip_archive::server::backup::config::{self, BackupConfig};
 
@@ -44,11 +45,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let password = match &config.password_command {
-        Some(command) => client::password_from_command(command),
-        None => rpassword::prompt_password("Archive password: "),
-    };
-    let password = match password {
+    let password = match archive_client::read_password(config.password_command.as_deref()) {
         Ok(password) => password,
         Err(e) => {
             eprintln!("could not read the password: {e}");
