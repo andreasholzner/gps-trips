@@ -28,10 +28,10 @@ kill_timeout = "30s"
   strategy = "rolling"
 
 # The SQLite database and the photo blobs (US-46; ADR-0002, ADR-0007).
-# Grows by itself as it fills. The limit is provisional until US-50, when the
-# first fill shows what the archive needs. Daily snapshots, plus one before
-# every deploy (scripts/deploy.sh), are kept two weeks: longer than the gap
-# between two borg runs of the backup (US-40).
+# Grows by itself as it fills, up to 5 GB, the limit confirmed after the first
+# fill (US-50). Daily snapshots, plus one before every deploy
+# (scripts/deploy.sh), are kept two weeks: longer than the gap between two borg
+# runs of the backup (US-40).
 [mounts]
   source = "data"
   destination = "/data"
