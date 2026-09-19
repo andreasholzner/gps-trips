@@ -426,7 +426,9 @@ mod tests {
                     ..Default::default()
                 } } }
             },
-            |html| html.contains("Oslo Hills Walk"),
+            // The trips and the known tags are separate fetches that land in
+            // either order: wait for both.
+            |html| html.contains("Oslo Hills Walk") && html.contains("tag-choices"),
         )
         .await;
 
