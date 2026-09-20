@@ -140,6 +140,31 @@ test("photos taken at the same place share one marker that shows them all (US-57
   await expect(cluster).toHaveCount(1);
   await expect(cluster).toHaveText("2");
 
+  // A ring around the count: white all the way round, and the number in the
+  // middle of it. Both were lost to CSS from outside this rule — Leaflet's
+  // own `.leaflet-marker-icon` outranked the centring, and US-58's
+  // neutralising rule outranked three sides of the border.
+  const shape = await cluster.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    const glyph = document.createRange();
+    glyph.selectNodeContents(el);
+    const count = glyph.getBoundingClientRect();
+    return {
+      borders: [
+        style.borderTopWidth,
+        style.borderRightWidth,
+        style.borderBottomWidth,
+        style.borderLeftWidth,
+      ],
+      offX: Math.abs((count.left + count.right) / 2 - (box.left + box.right) / 2),
+      offY: Math.abs((count.top + count.bottom) / 2 - (box.top + box.bottom) / 2),
+    };
+  });
+  expect(shape.borders, "a ring, not an edge").toEqual(["2px", "2px", "2px", "2px"]);
+  expect(shape.offX, "the count sits in the middle across").toBeLessThanOrEqual(1.5);
+  expect(shape.offY, "the count sits in the middle down").toBeLessThanOrEqual(1.5);
+
   await cluster.click();
 
   const popup = page.locator("#track-map .photo-popup");
@@ -258,8 +283,8 @@ test("the zoom control and the photo markers keep their own size (US-58)", async
   const badge = page.locator("#track-map .photo-cluster");
   await expect(badge).toHaveText("2");
   const drawn = await badge.boundingBox();
-  expect(Math.round(drawn.width), "badge width").toBe(26);
-  expect(Math.round(drawn.height), "badge height").toBe(26);
+  expect(Math.round(drawn.width), "badge width").toBe(20);
+  expect(Math.round(drawn.height), "badge height").toBe(20);
 });
 
 // US-15: the edit form is opened, typed into and submitted — three real

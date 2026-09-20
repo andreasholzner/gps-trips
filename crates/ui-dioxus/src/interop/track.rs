@@ -104,7 +104,11 @@ const TRACK_MAP_SCRIPT: &str = r##"
                 icon: L.divIcon({
                   className: "photo-cluster",
                   html: String(photos.length),
-                  iconSize: [26, 26],
+                  // Big enough for the count and no bigger: a single photo's
+                  // circle is 14px across, and a badge that dwarfs it reads
+                  // as a different kind of thing rather than the same marker
+                  // standing for more.
+                  iconSize: [20, 20],
                 }),
               })
             : L.circleMarker([group.lat, group.lon], {

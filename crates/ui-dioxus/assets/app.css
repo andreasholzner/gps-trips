@@ -181,7 +181,14 @@ nav.tabs button:not(:disabled) {
 /* The marker for such a group: the same circle as a single photo's, with the
    count in it. A `divIcon` is markup, so this is what gives it its shape —
    Leaflet only positions it. */
-.photo-cluster {
+/* Qualified by the container rather than left as a bare class, so it outranks
+   the two rules that were quietly beating it: Leaflet's own
+   `.leaflet-marker-icon { display: block }`, which is just as specific but
+   loads after this file and so undid the centring, and the `[role=button]`
+   neutralising rule above, which is more specific and took the border off
+   three of the four sides. Both are the same lesson — a marker is styled
+   against two vendored stylesheets, not on a blank page. */
+.leaflet-container .photo-cluster {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -189,7 +196,10 @@ nav.tabs button:not(:disabled) {
   background: #d6336c;
   border: 2px solid #ffffff;
   color: #ffffff;
-  font-size: 0.75rem;
+  /* In pixels, like the 20px circle it has to sit inside: Pico scales the
+     root font with the viewport, so a rem here would grow the digits out of
+     a marker that stays the same size. */
+  font-size: 11px;
   font-weight: bold;
   line-height: 1;
 }
