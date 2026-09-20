@@ -221,6 +221,48 @@ test("hovering the elevation profile reads out the point and marks it on the tra
   await expect(page.locator("#track-map .hover-mark")).toHaveCount(0);
 });
 
+// US-59's mark against US-57's badges. A group badge is a real marker and a
+// marker pane sits above the overlay pane every vector is drawn in, so the
+// ring needs a pane of its own or it goes under the very marker it is next
+// to. Stacking is only real once both libraries have drawn.
+test("the hovered point is marked above every photo marker (US-59)", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Stacked Trip");
+  // Two photos at one place, so the map carries a group badge as well as the
+  // track: a single photo's circle is a vector and never outranked the ring.
+  for (const name of ["first.jpg", "second.jpg"]) {
+    await request.post(`/api/trips/${id}/photos`, {
+      multipart: { photos: { name, mimeType: "image/jpeg", buffer: GEOTAGGED_JPEG } },
+    });
+  }
+  await page.goto(`/app/trips/${id}`);
+  await expect(page.locator("#track-map .photo-cluster")).toHaveCount(1);
+  await page.locator("#elevation").scrollIntoViewIfNeeded();
+
+  const chart = await page.locator("#elevation").boundingBox();
+  await page.mouse.move(chart.x + chart.width / 2, chart.y + chart.height / 2);
+  await expect(page.locator("#track-map .hover-mark")).toHaveCount(1);
+
+  // The ring is in a pane of its own, and that pane is painted after the one
+  // holding the badges.
+  const stacking = await page.evaluate(() => {
+    const ring = document.querySelector("#track-map .hover-mark");
+    const pane = ring.closest(".leaflet-pane");
+    const markers = document.querySelector("#track-map .leaflet-marker-pane");
+    return {
+      pane: pane.className,
+      ringZ: Number(getComputedStyle(pane).zIndex),
+      markerZ: Number(getComputedStyle(markers).zIndex),
+    };
+  });
+  expect(stacking.pane, "a pane of its own, not the overlay pane").not.toContain(
+    "leaflet-overlay-pane",
+  );
+  expect(stacking.ringZ).toBeGreaterThan(stacking.markerZ);
+});
+
 // Kept deliberately (US-59): with a mouse, dragging across the profile zooms
 // into that range, and a double-click puts it back. Only the finger is spared
 // the zoom, because a touchscreen has no double-click to undo it with.

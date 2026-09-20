@@ -146,6 +146,17 @@ const TRACK_MAP_SCRIPT: &str = r##"
       }
     }
 
+    // A pane of the ring's own, above the markers. Every vector here — the
+    // track, the photo circles, the ring — belongs to the overlay pane
+    // (z-index 400), while a group's badge is a real marker in the marker
+    // pane (600), so a ring drawn with the other vectors goes *under* the
+    // badge it is meant to point at. 610 keeps it under tooltips and popups,
+    // which should still open over it.
+    const HOVER_PANE = "hover-mark";
+    if (!map.getPane(HOVER_PANE)) {
+      map.createPane(HOVER_PANE).style.zIndex = 610;
+    }
+
     // Then stay on the channel for the point the elevation profile is being
     // hovered at (US-59): a position to mark, or null when the cursor has
     // left the chart. Rust resolves the chart's index to a position — the
@@ -173,6 +184,11 @@ const TRACK_MAP_SCRIPT: &str = r##"
           weight: 3,
           fill: false,
           className: "hover-mark",
+          pane: HOVER_PANE,
+          // It says where the cursor is; it is not something to click. Left
+          // interactive it would swallow clicks meant for a photo marker
+          // underneath it, which is the price of drawing it on top.
+          interactive: false,
         }).addTo(map);
       }
     }
