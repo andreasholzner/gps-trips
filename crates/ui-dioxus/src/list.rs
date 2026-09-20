@@ -5,12 +5,13 @@
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, Tag, TripKind};
+use trip_archive_types::TripKind;
 
 use crate::api::{self, ApiClient};
 use crate::bulk_tag::BulkTagPanel;
+use crate::filter_bar::FilterBar;
 use crate::filters::Filters;
-use crate::region::RegionFilter;
+use crate::format;
 use crate::trip_table::TripTable;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
@@ -44,16 +45,36 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         .as_ref()
         .and_then(|tags| tags.clone().ok())
         .unwrap_or_default();
+    // How many trips the tab holds in all (US-61), counted from the same rows
+    // the list reads — only with every filter but `kind` dropped.
+    //
+    // Scoped to the tab by reading a memo of `kind` rather than the filters
+    // themselves: subscribing to the whole signal would re-count the archive
+    // on every typed character, to arrive at the same number each time.
+    let kind = use_memo(move || filters.read().kind);
+    let total = use_resource(move || async move {
+        let all_of_this_tab = Filters {
+            kind: kind(),
+            ..Default::default()
+        };
+        api::list_trips(&archive(), all_of_this_tab.to_query()).await
+    });
+    // A failure here costs the count line, not the list — the same trade the
+    // tags make above.
+    let total = total
+        .read_unchecked()
+        .as_ref()
+        .and_then(|trips| trips.as_ref().ok().map(Vec::len));
     // Which trips the bulk-tag panel will act on (US-34).
     let selected = use_signal(BTreeSet::new);
     let staged = use_signal(Vec::new);
 
     rsx! {
         h1 { "Trips" }
-        KindTabs { filters }
-        FilterPanel { filters }
-        TagFilter { filters, all_tags: all_tags.clone() }
-        RegionFilter { filters }
+        FilterBar { filters, all_tags: all_tags.clone() }
+        if let (Some(total), Some(Ok(shown))) = (total, trips.read_unchecked().as_ref()) {
+            TripCounts { shown: shown.len(), total, kind: kind() }
+        }
         BulkTagPanel {
             selected,
             staged,
@@ -74,139 +95,18 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     }
 }
 
-/// The Recorded/Planned tabs (US-32). Switching tabs writes only `kind`
-/// into the shared signal, so every other filter is kept — the same
-/// guarantee the server-rendered page's tab forms give.
+/// How many trips the list shows, and how many the tab holds in all (US-61).
+/// A caption on the table rather than a heading: the numbers are context for
+/// what is below, not an announcement of their own.
 #[component]
-fn KindTabs(filters: Signal<Filters>) -> Element {
-    rsx! {
-        nav { class: "tabs",
-            for kind in TripKind::ALL {
-                button {
-                    key: "{kind}",
-                    disabled: filters.read().kind == kind,
-                    onclick: move |_| filters.write().kind = kind,
-                    "{kind.label()}"
-                }
-            }
-        }
-    }
-}
-
-/// The filter form (US-13). Every input writes straight into the shared
-/// `Filters` signal, so the list re-queries as the owner types — no submit
-/// button, and no separate "pending vs. applied" copy of the state.
-#[component]
-fn FilterPanel(filters: Signal<Filters>) -> Element {
-    rsx! {
-        fieldset {
-            legend { "Filter" }
-            div { class: "filter-fields",
-            label {
-                "Search "
-                input {
-                    r#type: "search",
-                    value: "{filters.read().q}",
-                    oninput: move |event| filters.write().q = event.value(),
-                }
-            }
-            label {
-                "Activity "
-                select {
-                    value: filters.read().activity.map_or("", |activity| activity.as_str()),
-                    onchange: move |event| {
-                        filters.write().activity = event.value().parse::<ActivityType>().ok();
-                    },
-                    option { value: "", "— any —" }
-                    for activity in ActivityType::SELECTABLE {
-                        option { key: "{activity}", value: activity.as_str(), "{activity.label()}" }
-                    }
-                }
-            }
-            label {
-                "From "
-                input {
-                    r#type: "date",
-                    value: "{filters.read().from}",
-                    oninput: move |event| filters.write().from = event.value(),
-                }
-            }
-            label {
-                "To "
-                input {
-                    r#type: "date",
-                    value: "{filters.read().to}",
-                    oninput: move |event| filters.write().to = event.value(),
-                }
-            }
-            label {
-                "Min km "
-                input {
-                    r#type: "number",
-                    min: "0",
-                    value: "{filters.read().min_dist}",
-                    oninput: move |event| filters.write().min_dist = event.value(),
-                }
-            }
-            label {
-                "Max km "
-                input {
-                    r#type: "number",
-                    min: "0",
-                    value: "{filters.read().max_dist}",
-                    oninput: move |event| filters.write().max_dist = event.value(),
-                }
-            }
-            }
-            button {
-                onclick: move |_| {
-                    // Clearing keeps the tab the owner is on.
-                    let kind = filters.read().kind;
-                    filters.set(Filters { kind, ..Default::default() });
-                },
-                "Clear filters"
-            }
-        }
-    }
-}
-
-/// The tag filter (US-38): one checkbox per known tag; only trips carrying
-/// all checked tags are listed. Nothing renders while the archive has no
-/// tags at all — an empty fieldset would only raise the question of what
-/// belongs in it.
-#[component]
-fn TagFilter(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
-    if all_tags.is_empty() {
+fn TripCounts(shown: usize, total: usize, kind: TripKind) -> Element {
+    // An empty tab is said better by `EmptyState`, in its own words — "0
+    // recorded trips" would be a second, colder way of saying the same thing.
+    if total == 0 {
         return rsx! {};
     }
     rsx! {
-        fieldset {
-            legend { "Tags" }
-            div { class: "tag-choices",
-            for tag in all_tags {
-                label {
-                    input {
-                        r#type: "checkbox",
-                        checked: filters.read().tags.contains(&tag.name),
-                        onchange: {
-                            let name = tag.name.clone();
-                            move |event: FormEvent| {
-                                let mut filters = filters.write();
-                                if event.checked() {
-                                    if !filters.tags.contains(&name) {
-                                        filters.tags.push(name.clone());
-                                    }
-                                } else {
-                                    filters.tags.retain(|chosen| chosen != &name);
-                                }
-                            }
-                        },
-                    }
-                    "{tag.name}"
-                }
-            }
-            }
-        }
+        p { class: "trip-counts", "{format::trip_counts(shown, total, kind)}" }
     }
 }
 
@@ -233,26 +133,86 @@ mod tests {
         import_gpx, import_sample, render, render_against_archive, serve_test_archive, tag_trip,
         ALPS_GPX,
     };
-    use trip_archive_types::{KomootPrivacy, Tag, TripKind};
+    use trip_archive_types::{KomootPrivacy, TripKind};
 
-    // The Recorded/Planned tabs (US-32): both tabs offered, the active one
-    // marked. Actually clicking a tab is a real event, which this layer
-    // cannot dispatch — the browser layer covers the switch itself, and
-    // that switching keeps the other filters is KindTabs writing only
-    // `kind` into the shared signal.
+    // ── US-61's counts ───────────────────────────────────────────────────
+
     #[test]
-    fn the_tabs_offer_recorded_and_planned_with_the_active_one_marked() {
-        let html = render(|| {
-            let filters = Signal::new(Filters::default());
-            rsx! { KindTabs { filters } }
-        });
+    fn the_counts_line_reports_both_numbers() {
+        let html = render(|| rsx! { TripCounts { shown: 1, total: 2, kind: TripKind::Recorded } });
 
-        assert!(html.contains("Recorded"), "{html}");
-        assert!(html.contains("Planned"), "{html}");
-        assert!(
-            html.contains("disabled"),
-            "the active tab is not clickable: {html}"
-        );
+        assert!(html.contains("1 of 2 recorded trips"), "{html}");
+    }
+
+    #[test]
+    fn an_empty_tab_leaves_the_counts_to_the_empty_state() {
+        // "0 recorded trips" would be a second, colder way of saying what
+        // `EmptyState` already says in the owner's own terms.
+        let html = render(|| rsx! { TripCounts { shown: 0, total: 0, kind: TripKind::Recorded } });
+
+        assert!(!html.contains("trips"), "{html}");
+    }
+
+    // US-61 against a real server: a narrowed list says what it narrowed
+    // from, counted from the rows the screen already reads.
+    #[tokio::test]
+    async fn a_narrowed_list_counts_itself_against_the_whole_tab() {
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
+        // On the other tab, so it counts towards neither number here.
+        import_sample(&archive, &[("name", "Dream Route"), ("kind", "planned")]).await;
+
+        let html = render_against_archive(
+            &archive,
+            || {
+                rsx! { TripList { filters: Filters { q: "inn".to_string(), ..Default::default() } } }
+            },
+            // The list and the tab total are separate fetches landing in
+            // either order: wait for the line that needs both.
+            |html| html.contains("recorded trip"),
+        )
+        .await;
+
+        assert!(html.contains("1 of 2 recorded trips"), "{html}");
+    }
+
+    // US-61: with nothing narrowing it, there is nothing to have narrowed
+    // from, and the line says one number.
+    #[tokio::test]
+    async fn an_unnarrowed_list_counts_only_itself() {
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
+
+        let html = render_against_archive(
+            &archive,
+            || rsx! { TripList {} },
+            |html| html.contains("recorded trip"),
+        )
+        .await;
+
+        assert!(html.contains("2 recorded trips"), "{html}");
+        assert!(!html.contains(" of "), "nothing narrowed it: {html}");
+    }
+
+    // US-61: the total follows the tab, and so does the noun.
+    #[tokio::test]
+    async fn the_counts_follow_the_selected_tab() {
+        let (archive, _dir) = serve_test_archive().await;
+        import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        import_sample(&archive, &[("name", "Dream Route"), ("kind", "planned")]).await;
+
+        let html = render_against_archive(
+            &archive,
+            || {
+                rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
+            },
+            |html| html.contains("planned trip"),
+        )
+        .await;
+
+        assert!(html.contains("1 planned trip"), "{html}");
     }
 
     // US-32 against a real server: the screen defaults to the Recorded tab,
@@ -310,26 +270,6 @@ mod tests {
         assert!(html.contains("No planned trips yet."), "{html}");
     }
 
-    // The filter form itself (US-13): every dimension the owner can narrow
-    // by has its input, pre-filled with the current filter state.
-    #[test]
-    fn the_filter_panel_offers_every_dimension_prefilled() {
-        let html = render(|| {
-            let filters = Signal::new(Filters {
-                q: "oslo".to_string(),
-                ..Default::default()
-            });
-            rsx! { FilterPanel { filters } }
-        });
-
-        for label in ["Search", "Activity", "From", "To", "Min km", "Max km"] {
-            assert!(html.contains(label), "missing {label}: {html}");
-        }
-        assert!(html.contains("oslo"), "{html}");
-        // The activity picker offers every selectable activity.
-        assert!(html.contains("Kayaking"), "{html}");
-    }
-
     // US-13 against a real server: the screen's query narrows the list to
     // matching trips.
     #[tokio::test]
@@ -368,34 +308,6 @@ mod tests {
 
         assert!(html.contains("No trips match your filters."), "{html}");
         assert!(!html.contains("No trips yet"), "{html}");
-    }
-
-    // The tag filter (US-38): one checkbox per known tag, the chosen ones
-    // checked. Toggling is a real event — browser layer.
-    #[test]
-    fn the_tag_filter_offers_every_known_tag_with_chosen_ones_checked() {
-        let all_tags = vec![
-            Tag {
-                id: 1,
-                name: "alpine".to_string(),
-            },
-            Tag {
-                id: 2,
-                name: "summer".to_string(),
-            },
-        ];
-
-        let html = render(move || {
-            let filters = Signal::new(Filters {
-                tags: vec!["alpine".to_string()],
-                ..Default::default()
-            });
-            rsx! { TagFilter { filters, all_tags: all_tags.clone() } }
-        });
-
-        assert!(html.contains("alpine"), "{html}");
-        assert!(html.contains("summer"), "{html}");
-        assert!(html.contains("checked"), "{html}");
     }
 
     // US-38 against a real server: only trips carrying all chosen tags are

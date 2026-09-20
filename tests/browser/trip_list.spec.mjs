@@ -125,11 +125,55 @@ test("switching tabs keeps the active filter (US-32)", async ({ page }) => {
   await expect(page.getByRole("searchbox")).toHaveValue("route");
 });
 
+// US-61: the disclosure is the one thing on this screen whose whole point is
+// what happens across two events — it must survive the re-render the second
+// one causes. `dioxus-ssr` dispatches neither.
+test("the occasional filters open on demand and stay open (US-61)", async ({ page }) => {
+  await page.goto("/app/");
+
+  // Closed to begin with, so the table starts near the top of the screen.
+  const disclosure = page.locator("details", { hasText: "More filters" }).first();
+  await expect(disclosure).not.toHaveAttribute("open", /.*/);
+  await expect(page.getByLabel("From")).toBeHidden();
+
+  // The controls the owner reaches for constantly are not behind it.
+  await expect(page.getByRole("searchbox")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recorded" })).toBeVisible();
+
+  await page.getByText("More filters").click();
+  await expect(page.getByLabel("From")).toBeVisible();
+
+  // Still open after the list re-queries: filtering as you type re-renders
+  // this whole screen, and an element rebuilt each keystroke would snap shut.
+  await page.getByRole("searchbox").fill("inn");
+  await expect(rows(page)).toHaveCount(1);
+  await expect(page.getByLabel("From")).toBeVisible();
+});
+
+// US-61: the two numbers above the table. They are read off fetches that
+// land in either order, which is a race only a real browser runs.
+test("the list says how many trips match and how many there are (US-61)", async ({ page }) => {
+  await page.goto("/app/");
+  await expect(page.getByText("2 recorded trips")).toBeVisible();
+
+  await page.getByRole("searchbox").fill("inn");
+
+  await expect(page.getByText("1 of 2 recorded trips")).toBeVisible();
+
+  // The total follows the tab, and so does the noun.
+  await page.getByRole("searchbox").fill("");
+  await page.getByRole("button", { name: "Planned" }).click();
+  await expect(page.getByText("1 planned trip")).toBeVisible();
+});
+
 test("choosing a tag narrows the list to trips carrying it (US-38)", async ({ page }) => {
   // Needs a real `change` event on the checkbox.
   await page.goto("/app/");
   await expect(rows(page)).toHaveCount(2);
 
+  // The tag filter is one of the occasional ones, behind the disclosure
+  // (US-61).
+  await page.getByText("More filters").click();
   await page.getByRole("checkbox", { name: "alpine" }).check();
 
   await expect(rows(page)).toHaveCount(1);
@@ -146,6 +190,10 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
 
   // Collapsed by default: no map, and so no tiles, on an ordinary list view.
+  // Doubly so since US-61 — the region sits behind "More filters", and
+  // opening that alone must not start fetching tiles either.
+  await expect(page.locator("#region-map")).toHaveCount(0);
+  await page.getByText("More filters").click();
   await expect(page.locator("#region-map")).toHaveCount(0);
   await page.getByText("Region", { exact: true }).click();
   await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
@@ -176,9 +224,12 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await expect(page).toHaveURL(/kind=planned/);
   await page.getByRole("button", { name: "Recorded" }).click();
 
-  // And it is restored onto the map on the next load (US-14).
+  // And it is restored onto the map on the next load (US-14). A reload
+  // closes both disclosures — the open state lives in the DOM, not the URL,
+  // and only the filter it hides is bookmarkable (US-61).
   await page.reload();
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
+  await page.getByText("More filters").click();
   await page.getByText("Region", { exact: true }).click();
   await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
 
@@ -193,6 +244,7 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
 // one screen's container would leave this one broken.
 test("the region map's zoom control keeps its own size (US-58)", async ({ page }) => {
   await page.goto("/app/");
+  await page.getByText("More filters").click();
   await page.getByText("Region", { exact: true }).click();
   await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
 
@@ -232,6 +284,7 @@ test("selected trips are tagged in one go, after confirming a new tag (US-34)", 
   // The panel goes away with the selection, and the new tag is now a filter
   // choice that lists exactly the trips it was applied to.
   await expect(page.getByRole("button", { name: /Apply to/ })).toBeHidden();
+  await page.getByText("More filters").click();
   await page.getByRole("checkbox", { name: NEW_TAG }).check();
   await expect(rows(page)).toHaveCount(2);
 });

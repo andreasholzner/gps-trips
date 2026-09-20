@@ -11,6 +11,7 @@ mod bulk_tag;
 mod delete;
 mod detail;
 mod edit;
+mod filter_bar;
 mod filters;
 mod format;
 mod import;

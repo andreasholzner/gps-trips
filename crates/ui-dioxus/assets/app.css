@@ -166,6 +166,55 @@ nav.tabs {
   margin-bottom: 1rem;
 }
 
+/* The controls the owner reaches for constantly, on one line (US-61): the
+   tabs, the name search, the activity and "Clear filters". A flex row rather
+   than `.filter-fields`' grid, because these four want their natural widths
+   — a tab pair and a button stretched to a grid column's share would read as
+   a form, which is what the stack of fieldsets above the table used to.
+
+   They wrap onto further lines on a phone, and `align-items: end` puts the
+   tabs and the button on the bottom edge of the inputs beside them, whose
+   own label sits above them. That alignment is why the bottom margins Pico
+   gives the tabs and the inputs are taken off and the spacing moved to the
+   row's `gap`: with each child carrying a different one, "end" was four
+   different heights. */
+.filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.filter-toolbar > *,
+.filter-toolbar nav.tabs,
+.filter-toolbar input,
+.filter-toolbar select {
+  margin-bottom: 0;
+}
+
+/* The search is the one control here worth extra room when there is any. */
+.filter-toolbar label:first-of-type {
+  flex: 1 1 12rem;
+}
+
+/* Clearing is the control on this toolbar the owner reaches for least, and
+   Pico would make it the loudest thing on the screen — the same slab US-60
+   took off "Sign out", for the same reason. It stays a button, since it acts
+   rather than navigates, at the weight of the text around it. */
+.filter-toolbar > button {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--pico-muted-color);
+  font-weight: normal;
+  text-decoration: underline;
+  cursor: pointer;
+  /* Pico's own padding is what would otherwise lift the label off the line
+     the inputs sit on, now that nothing here carries a bottom margin. */
+  padding-bottom: 0.5rem;
+}
+
 nav.tabs button:disabled {
   opacity: 1;
 }
@@ -197,6 +246,16 @@ nav.tabs button:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+/* How many trips the list shows, and how many the tab holds (US-61). A
+   caption on the table rather than a heading: the numbers are context for
+   what is below, so they read at the weight of the table's own text and sit
+   close to it. */
+.trip-counts {
+  color: var(--pico-muted-color);
+  font-size: 0.875em;
+  margin-bottom: 0.5rem;
 }
 
 /* Neither the trip list's eight columns nor the sync review's six fit a

@@ -2,7 +2,7 @@
 //! browser types so it runs under a plain `cargo test` on the host
 //! (ADR-0012: pure logic lives in plain modules).
 
-use trip_archive_types::KomootPrivacy;
+use trip_archive_types::{KomootPrivacy, TripKind};
 
 /// Metres as kilometres, the unit the list shows.
 pub fn km(metres: f64) -> String {
@@ -47,6 +47,23 @@ pub fn or_dash(value: Option<&str>) -> String {
 /// "Unknown": displayed, never pushed back (ADR-0021).
 pub fn privacy(privacy: Option<KomootPrivacy>) -> String {
     privacy.map_or_else(dash, |p| p.label().to_string())
+}
+
+/// How many trips the list shows, and how many the tab holds in all (US-61)
+/// — "247 of 312 recorded trips", so a narrowed list says what it narrowed
+/// *from*. An unnarrowed list drops the "of": there is nothing to compare it
+/// against, and "312 of 312" only reads as noise.
+///
+/// The noun agrees with the number it follows, which is the total whenever
+/// both are shown.
+pub fn trip_counts(shown: usize, total: usize, kind: TripKind) -> String {
+    let noun = if total == 1 { "trip" } else { "trips" };
+    let kind = kind.as_str();
+    if shown == total {
+        format!("{total} {kind} {noun}")
+    } else {
+        format!("{shown} of {total} {kind} {noun}")
+    }
 }
 
 fn dash() -> String {
@@ -98,6 +115,41 @@ mod tests {
         );
         assert_eq!(or_dash(Some("Europe/Oslo")), "Europe/Oslo");
         assert_eq!(or_dash(None), "—");
+    }
+
+    // US-61: the line above the table. The second number appears only when
+    // there is something to have narrowed from.
+    #[test]
+    fn an_unnarrowed_list_reports_one_number() {
+        assert_eq!(
+            trip_counts(312, 312, TripKind::Recorded),
+            "312 recorded trips"
+        );
+        assert_eq!(trip_counts(7, 7, TripKind::Planned), "7 planned trips");
+    }
+
+    #[test]
+    fn a_narrowed_list_says_what_it_narrowed_from() {
+        assert_eq!(
+            trip_counts(247, 312, TripKind::Recorded),
+            "247 of 312 recorded trips"
+        );
+        // Nothing matched, but the tab is not empty — which is exactly the
+        // case this line exists for.
+        assert_eq!(
+            trip_counts(0, 312, TripKind::Recorded),
+            "0 of 312 recorded trips"
+        );
+    }
+
+    #[test]
+    fn the_noun_agrees_with_the_number_beside_it() {
+        assert_eq!(trip_counts(1, 1, TripKind::Recorded), "1 recorded trip");
+        // "1 of 312" — the noun follows the total, not the shown count.
+        assert_eq!(
+            trip_counts(1, 312, TripKind::Recorded),
+            "1 of 312 recorded trips"
+        );
     }
 
     #[test]
