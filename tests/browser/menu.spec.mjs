@@ -64,6 +64,16 @@ test("on a wide screen the items are in the header, with no burger (US-60)", asy
     await expect(item(page, name)).toBeVisible();
   }
 
+  // Sign out is the rarest thing in the menu and must not be the loudest:
+  // Pico makes every button a filled block, which put a solid slab beside
+  // three quiet links.
+  const signOut = await page.locator("#sign-out").evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { background: style.backgroundColor, border: style.borderStyle };
+  });
+  expect(signOut.background, "not a filled block").toBe("rgba(0, 0, 0, 0)");
+  expect(signOut.border, "nor an outlined one").toBe("none");
+
   // And they navigate without a page load, like every other link in the SPA.
   await page.evaluate(() => {
     window.__stillTheSameDocument = true;

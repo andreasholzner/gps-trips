@@ -78,6 +78,26 @@ button {
   line-height: 1;
 }
 
+/* Sign out stays a button — it acts rather than navigates — but is styled
+   down to the weight of the links beside it. Pico makes every button a
+   filled block, which made the thing the owner reaches for least the
+   loudest item in the header. Muted rather than merely unfilled, because it
+   is also the one item here with consequences. */
+.app-menu #sign-out {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--pico-muted-color);
+  font-size: inherit;
+  font-weight: normal;
+  text-decoration: underline;
+  cursor: pointer;
+  /* Pico centres a button's label, which in the phone's stacked panel left
+     it alone in the middle while every link above it sat at the edge. */
+  text-align: left;
+  align-self: flex-start;
+}
+
 .app-menu {
   display: none;
 }
