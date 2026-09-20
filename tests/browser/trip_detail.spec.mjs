@@ -98,6 +98,41 @@ test("the track, the elevation profile and a photo marker are drawn (US-7, US-3)
   await expect(page.getByRole("img", { name: "geotagged.jpg" })).toBeVisible();
 });
 
+// US-57: photos taken at the same place share one marker whose popup holds
+// all of them. Which photos are grouped is decided in Rust and unit-tested
+// there; what a click on the marker then shows is this layer's second
+// exemption — the popup exists only once Leaflet has drawn it.
+test("photos taken at the same place share one marker that shows them all (US-57)", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Crowded Trip");
+  // The same geotagged fixture twice: two photos, one position — which is
+  // what US-4's interpolation produces routinely by snapping several photos
+  // onto a single track point.
+  for (const name of ["first.jpg", "second.jpg"]) {
+    const uploaded = await request.post(`/api/trips/${id}/photos`, {
+      multipart: { photos: { name, mimeType: "image/jpeg", buffer: GEOTAGGED_JPEG } },
+    });
+    expect(uploaded.status(), `seeding ${name}`).toBe(204);
+  }
+
+  await page.goto(`/app/trips/${id}`);
+
+  // One marker for the two of them, and it says so. Stacked circles would
+  // leave only the topmost clickable — the bug this story is about.
+  const cluster = page.locator("#track-map .photo-cluster");
+  await expect(cluster).toHaveCount(1);
+  await expect(cluster).toHaveText("2");
+
+  await cluster.click();
+
+  const popup = page.locator("#track-map .photo-popup");
+  await expect(popup.getByText("2 photos here")).toBeVisible();
+  await expect(popup.getByRole("img", { name: "first.jpg" })).toBeVisible();
+  await expect(popup.getByRole("img", { name: "second.jpg" })).toBeVisible();
+});
+
 // US-15: the edit form is opened, typed into and submitted — three real
 // events, none of which `dioxus-ssr` can dispatch.
 test("editing the name and activity saves them (US-15)", async ({ page, request }) => {

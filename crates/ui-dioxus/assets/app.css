@@ -112,6 +112,43 @@ nav.tabs button:not(:disabled) {
   margin-top: 1rem;
 }
 
+/* A map marker's popup (US-57). It holds every photo taken at that place, so
+   it scrolls rather than growing past the map it sits on. */
+.photo-popup {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.photo-popup img {
+  display: block;
+  max-width: 150px;
+}
+
+.photo-popup img + img {
+  margin-top: 0.25rem;
+}
+
+.photo-popup-count {
+  margin: 0 0 0.25rem;
+  font-weight: bold;
+}
+
+/* The marker for such a group: the same circle as a single photo's, with the
+   count in it. A `divIcon` is markup, so this is what gives it its shape —
+   Leaflet only positions it. */
+.photo-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #d6336c;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
 /* The photo gallery (US-7). Thumbnails are already small (US-5); the cap is
    for the full-size original that stands in when none could be made. */
 .gallery {

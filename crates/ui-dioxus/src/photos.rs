@@ -10,34 +10,82 @@ use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::import::batches;
 use crate::interop;
 
-/// A photo the map draws: where it is, what to show in its popup, and what
-/// to call it. Prepared here rather than in the drawing script — the script
+/// One marker on the map: where it is, and every photo it stands for
+/// (US-57). Prepared here rather than in the drawing script — the script
 /// renders, Rust decides (ADR-0025) — which is also what makes the choice of
-/// *which* photos appear (US-3/US-4) testable without a browser.
+/// *which* photos appear (US-3/US-4) and which of them share a marker
+/// testable without a browser.
+///
+/// `photos` is never empty, and its first entry is the seed that fixed the
+/// marker's position. The script reads the count off it rather than being
+/// sent one, so there is no second number that can disagree with the list.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct PhotoMarker {
     pub lat: f64,
     pub lon: f64,
+    pub photos: Vec<MarkerPhoto>,
+}
+
+/// A photo inside a marker's popup: the thumbnail to show and what to call
+/// it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct MarkerPhoto {
     pub thumbnail_url: String,
     pub name: String,
 }
 
-/// The markers for a trip's photos: one per photo that has a position,
-/// however it was determined — read from EXIF (US-3) or interpolated from
-/// the track by timestamp (US-4). A photo with neither is left off the map,
-/// which is US-4's "left unplaced and not shown".
+/// How close two photos must be to share a marker (US-57).
+const GROUPING_RADIUS_M: f64 = 20.0;
+
+/// The mean Earth radius, as `geo` uses it for the haversine distances the
+/// server computes — so the two agree about what a metre is.
+const EARTH_RADIUS_M: f64 = 6_371_008.8;
+
+/// The markers for a trip's photos: one per group of photos taken at the
+/// same place, from those that have a position, however it was determined —
+/// read from EXIF (US-3) or interpolated from the track by timestamp (US-4).
+/// A photo with neither is left off the map, which is US-4's "left unplaced
+/// and not shown".
+///
+/// Grouping is seed-anchored (US-57): the first photo of a group fixes its
+/// position, and a later one joins only if it is within [`GROUPING_RADIUS_M`]
+/// *of that seed*. That is deterministic in the order the API lists them, and
+/// it bounds a group at the threshold — merging transitively would chain
+/// photos 15 m apart into a group far wider than the marker claims.
 pub fn photo_markers(base_url: &str, photos: &[PhotoResponse]) -> Vec<PhotoMarker> {
-    photos
-        .iter()
-        .filter_map(|photo| {
-            Some(PhotoMarker {
-                lat: photo.lat?,
-                lon: photo.lon?,
-                thumbnail_url: absolute(base_url, &photo.thumbnail_url),
-                name: photo.original_name.clone(),
-            })
-        })
-        .collect()
+    let mut markers: Vec<PhotoMarker> = Vec::new();
+    for photo in photos {
+        let (Some(lat), Some(lon)) = (photo.lat, photo.lon) else {
+            continue;
+        };
+        let here = MarkerPhoto {
+            thumbnail_url: absolute(base_url, &photo.thumbnail_url),
+            name: photo.original_name.clone(),
+        };
+        match markers.iter_mut().find(|marker| {
+            metres_between((marker.lat, marker.lon), (lat, lon)) <= GROUPING_RADIUS_M
+        }) {
+            Some(marker) => marker.photos.push(here),
+            None => markers.push(PhotoMarker {
+                lat,
+                lon,
+                photos: vec![here],
+            }),
+        }
+    }
+    markers
+}
+
+/// The distance in metres between two `(lat, lon)` positions, as an
+/// equirectangular approximation: the latitudes are close enough here that
+/// treating the patch between them as flat is sub-metre accurate, which is
+/// well inside what a 20 m threshold needs — and not a reason to pull `geo`
+/// into a crate that does not depend on it.
+fn metres_between((lat_a, lon_a): (f64, f64), (lat_b, lon_b): (f64, f64)) -> f64 {
+    let mid_lat = ((lat_a + lat_b) / 2.0).to_radians();
+    let x = (lon_b - lon_a).to_radians() * mid_lat.cos();
+    let y = (lat_b - lat_a).to_radians();
+    EARTH_RADIUS_M * x.hypot(y)
 }
 
 /// A photo URL the archive gave as a path, resolved against the archive it
@@ -247,7 +295,104 @@ mod tests {
         assert_eq!(markers.len(), 1, "{markers:?}");
         assert_eq!(markers[0].lat, 59.91);
         assert_eq!(markers[0].lon, 10.75);
-        assert_eq!(markers[0].name, "geotagged.jpg");
+        assert_eq!(markers[0].photos.len(), 1);
+        assert_eq!(markers[0].photos[0].name, "geotagged.jpg");
+        assert_eq!(
+            markers[0].photos[0].thumbnail_url,
+            "http://archive.test/media/trips/1/thumb-geotagged.jpg"
+        );
+    }
+
+    // ── US-57: every photo taken at the same place is reachable ──────────
+
+    /// A latitude `metres` north of `lat` — one degree of latitude is the
+    /// same distance everywhere, so this needs no longitude.
+    fn north_of(lat: f64, metres: f64) -> f64 {
+        lat + metres / (EARTH_RADIUS_M * std::f64::consts::PI / 180.0)
+    }
+
+    #[test]
+    fn photos_taken_at_the_same_place_share_one_marker_that_says_how_many() {
+        // What US-4's interpolation produces routinely: several photos
+        // snapped onto one track point, which used to stack markers so that
+        // only the topmost could be clicked.
+        let photos = vec![
+            a_photo(1, "first.jpg", Some((59.91, 10.75))),
+            a_photo(2, "second.jpg", Some((59.91, 10.75))),
+            a_photo(3, "third.jpg", Some((north_of(59.91, 5.0), 10.75))),
+        ];
+
+        let markers = photo_markers("http://archive.test", &photos);
+
+        assert_eq!(markers.len(), 1, "{markers:?}");
+        // The seed fixes the position, and the photos keep the order the API
+        // listed them in.
+        assert_eq!(markers[0].lat, 59.91);
+        assert_eq!(
+            markers[0]
+                .photos
+                .iter()
+                .map(|photo| photo.name.as_str())
+                .collect::<Vec<_>>(),
+            ["first.jpg", "second.jpg", "third.jpg"]
+        );
+    }
+
+    #[test]
+    fn a_photo_further_than_twenty_metres_away_keeps_its_own_marker() {
+        let photos = vec![
+            a_photo(1, "here.jpg", Some((59.91, 10.75))),
+            a_photo(2, "over-there.jpg", Some((north_of(59.91, 25.0), 10.75))),
+        ];
+
+        let markers = photo_markers("http://archive.test", &photos);
+
+        assert_eq!(markers.len(), 2, "{markers:?}");
+        assert_eq!(markers[0].photos[0].name, "here.jpg");
+        assert_eq!(markers[1].photos[0].name, "over-there.jpg");
+    }
+
+    #[test]
+    fn grouping_is_anchored_on_the_seed_rather_than_chaining_along_a_line() {
+        // Three photos 15 m apart in a line. Merging transitively would put
+        // all three in one group 30 m wide — wider than the threshold the
+        // marker claims. Each photo is measured against its group's seed, so
+        // the third opens a group of its own.
+        let photos = vec![
+            a_photo(1, "a.jpg", Some((59.91, 10.75))),
+            a_photo(2, "b.jpg", Some((north_of(59.91, 15.0), 10.75))),
+            a_photo(3, "c.jpg", Some((north_of(59.91, 30.0), 10.75))),
+        ];
+
+        let markers = photo_markers("http://archive.test", &photos);
+
+        assert_eq!(markers.len(), 2, "{markers:?}");
+        assert_eq!(
+            markers[0]
+                .photos
+                .iter()
+                .map(|photo| photo.name.as_str())
+                .collect::<Vec<_>>(),
+            ["a.jpg", "b.jpg"]
+        );
+        assert_eq!(markers[1].photos[0].name, "c.jpg");
+    }
+
+    #[test]
+    fn distance_is_metres_on_the_ground_in_both_directions() {
+        // Sub-metre at this threshold is all the grouping needs, which is why
+        // it is an equirectangular approximation computed here rather than a
+        // reason to pull `geo` into this crate.
+        let oslo = (59.91, 10.75);
+
+        let north = metres_between(oslo, (north_of(59.91, 15.0), 10.75));
+        assert!((north - 15.0).abs() < 0.01, "{north}");
+
+        // A degree of longitude shortens with the cosine of the latitude:
+        // ~55.6 m per 0.001° at 59.91°N, not the ~111 m it would be at the
+        // equator.
+        let east = metres_between(oslo, (59.91, 10.751));
+        assert!((east - 55.7).abs() < 0.5, "{east}");
     }
 
     #[test]

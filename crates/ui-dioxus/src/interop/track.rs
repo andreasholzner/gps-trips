@@ -70,23 +70,48 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // include a photo whose EXIF GPS puts it off the track (US-3), which
     // needs the markers' own bounds.
     map.photoMarkers = L.featureGroup(
-      (view.markers || []).map((photo) => {
-        const img = document.createElement("img");
-        img.src = photo.thumbnail_url;
-        img.alt = photo.name;
-        img.style.maxWidth = "150px";
-        // A circle marker, not Leaflet's default pin: that pin is an image
-        // file, and neither the bundle nor the APK ships Leaflet's `images/`
+      (view.markers || []).map((group) => {
+        const photos = group.photos || [];
+        // Every photo the marker stands for, not just the topmost one
+        // (US-57). The popup scrolls once there are more than fit.
+        const popup = document.createElement("div");
+        popup.className = "photo-popup";
+        if (photos.length > 1) {
+          const count = document.createElement("p");
+          count.className = "photo-popup-count";
+          count.textContent = `${photos.length} photos here`;
+          popup.appendChild(count);
+        }
+        for (const photo of photos) {
+          const img = document.createElement("img");
+          img.src = photo.thumbnail_url;
+          img.alt = photo.name;
+          popup.appendChild(img);
+        }
+
+        // Neither shape is Leaflet's default pin: that pin is an image file,
+        // and neither the bundle nor the APK ships Leaflet's `images/`
         // directory — every one of them would 404 and leave the photo
-        // invisible on the map. This needs no asset at all, and reads
-        // against the track line rather than into it.
-        return L.circleMarker([photo.lat, photo.lon], {
-          radius: 7,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: "#d6336c",
-          fillOpacity: 1,
-        }).bindPopup(img);
+        // invisible on the map. A circle for a single photo, and for a group
+        // a `divIcon` carrying the count, which is markup rather than an
+        // asset for the same reason.
+        const marker =
+          photos.length > 1
+            ? L.marker([group.lat, group.lon], {
+                icon: L.divIcon({
+                  className: "photo-cluster",
+                  html: String(photos.length),
+                  iconSize: [26, 26],
+                }),
+              })
+            : L.circleMarker([group.lat, group.lon], {
+                radius: 7,
+                color: "#ffffff",
+                weight: 2,
+                fillColor: "#d6336c",
+                fillOpacity: 1,
+              });
+        return marker.bindPopup(popup);
       }),
     ).addTo(map);
 
@@ -164,8 +189,9 @@ const ELEVATION_SCRIPT: &str = r##"
 "##;
 
 /// What the map shows: the track as `[lat, lon]` pairs, and a marker per
-/// photo that has a position (US-3/US-4). Sent as one value because it is one
-/// picture — a redraw with new markers must not lose the line.
+/// group of photos taken at the same place (US-3/US-4, grouped by US-57).
+/// Sent as one value because it is one picture — a redraw with new markers
+/// must not lose the line.
 #[derive(Serialize)]
 struct TrackMapView {
     points: Vec<[f64; 2]>,
