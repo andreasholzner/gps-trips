@@ -18,6 +18,7 @@ mod interop;
 mod komoot;
 mod list;
 mod login;
+mod menu;
 mod photos;
 mod region;
 #[cfg(test)]
@@ -33,6 +34,7 @@ use import::ImportTrip;
 use komoot::KomootSync;
 use list::TripList;
 use login::Login;
+use menu::{AppShell, SignOut};
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -68,6 +70,10 @@ const UPLOT_JS: Asset = asset!("/assets/uPlot.iife.min.js");
 /// restored onto the map on the next load.
 #[derive(Routable, Clone, PartialEq)]
 enum Route {
+    /// Every screen renders inside the app's own menu (US-60), which is why
+    /// it is a layout route: `Link` needs the router's context, and the
+    /// navigation the menu replaced sat outside it.
+    #[layout(AppShell)]
     #[route("/?:..filters")]
     TripList { filters: Filters },
     /// One trip, by id (US-42) — the target of every row in the list.
@@ -156,6 +162,33 @@ fn App() -> Element {
         access.set(resolved);
     });
 
+    // Signing out is offered on the web and nowhere else, deliberately. It is
+    // a "leave this device clean while I am still holding it" action, which is
+    // a browser situation: the archive can be opened in one you are about to
+    // walk away from. The Android app cannot be, and the case where its access
+    // *should* be revoked — a lost or stolen phone — is the one case where no
+    // button on that phone can be reached. Rotating the password is the answer
+    // there, and it is the answer whether or not this exists (US-16).
+    //
+    // It reaches the menu as context rather than as props: the menu is
+    // rendered by the router, which hands its layouts nothing, and this keeps
+    // `Access` the business of this module alone.
+    if cfg!(feature = "web") {
+        use_context_provider(|| {
+            SignOut(Callback::new(move |_| {
+                spawn(async move {
+                    let client = archive();
+                    // Whether the archive heard or not, this client is done
+                    // with the session: clearing it locally is what signing
+                    // out means here.
+                    let _ = api::logout(&client).await;
+                    archive.set(ApiClient::new(client.base_url()).reporting_refusals_to(refused));
+                    access.set(Access::SignedOut { notice: None });
+                });
+            }))
+        });
+    }
+
     use_context_provider(|| archive);
 
     let body = match access() {
@@ -174,37 +207,7 @@ fn App() -> Element {
                 },
             }
         },
-        Access::SignedIn => rsx! {
-            // Web only, deliberately. Signing out is a "leave this device
-            // clean while I am still holding it" action, which is a browser
-            // situation: the archive can be opened in one you are about to
-            // walk away from. The Android app cannot be, and the case where
-            // its access *should* be revoked — a lost or stolen phone — is
-            // the one case where no button on that phone can be reached.
-            // Rotating the password is the answer there, and it is the answer
-            // whether or not this exists (US-16).
-            if cfg!(feature = "web") {
-                nav { class: "session",
-                    button {
-                        r#type: "button",
-                        id: "sign-out",
-                        onclick: move |_| async move {
-                            let client = archive();
-                            // Whether the archive heard or not, this client is
-                            // done with the session: clearing it locally is what
-                            // signing out means here.
-                            let _ = api::logout(&client).await;
-                            archive.set(
-                                ApiClient::new(client.base_url()).reporting_refusals_to(refused),
-                            );
-                            access.set(Access::SignedOut { notice: None });
-                        },
-                        "Sign out"
-                    }
-                }
-            }
-            Router::<Route> {}
-        },
+        Access::SignedIn => rsx! { Router::<Route> {} },
     };
 
     rsx! {

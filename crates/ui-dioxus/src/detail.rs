@@ -10,13 +10,11 @@ use trip_archive_types::TripDetail as Trip;
 use crate::api::{self, ApiClient};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
-use crate::filters::Filters;
 use crate::format;
 use crate::interop;
 use crate::photos::{self, AddPhotos, PhotoGallery, PhotoMarker};
 use crate::track::{self, Track};
 use crate::trip_tags::TripTags;
-use crate::Route;
 use trip_archive_types::PhotoResponse;
 
 /// The screen. `id` comes from the route (`/trips/:id`), so a link, a
@@ -75,13 +73,11 @@ pub fn TripDetail(id: i64) -> Element {
     };
 
     rsx! {
-        // Back to the unfiltered list. Whatever the owner had narrowed it to
-        // lives in the list's own URL (US-52), so the browser's Back button
-        // is what restores that; this link is the way out when there is no
-        // history behind the screen — a bookmark, or a shared link.
-        nav { class: "elsewhere",
-            Link { to: Route::TripList { filters: Filters::default() }, "← All trips" }
-        }
+        // The way back is the menu's "All trips" (US-60), on every screen
+        // rather than one link per screen. Whatever the owner had narrowed
+        // the list to lives in its own URL (US-52), so the browser's Back
+        // button is still what restores *that* — the menu goes to the
+        // unfiltered list, as this link did.
         match &*trip_resource.read_unchecked() {
             // Either nothing has been read yet, or what was read belongs to
             // the trip this screen was showing a moment ago.

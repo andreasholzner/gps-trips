@@ -12,7 +12,6 @@ use crate::bulk_tag::BulkTagPanel;
 use crate::filters::Filters;
 use crate::region::RegionFilter;
 use crate::trip_table::TripTable;
-use crate::Route;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
 /// a bookmarked or reloaded link starts the screen already narrowed — the
@@ -51,14 +50,6 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
 
     rsx! {
         h1 { "Trips" }
-        // The server-rendered list page used to be the way to these; it is
-        // gone (US-52) and the SPA is the archive's home now. Both are
-        // screens in this app since US-43 and US-44, so both are router
-        // links: no page load, and the href picks up the bundle's base path.
-        nav { class: "elsewhere",
-            Link { to: Route::ImportTrip {}, "Import a trip" }
-            Link { to: Route::KomootSync {}, "Sync with Komoot" }
-        }
         KindTabs { filters }
         FilterPanel { filters }
         TagFilter { filters, all_tags: all_tags.clone() }

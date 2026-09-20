@@ -51,11 +51,87 @@ button {
   border-radius: 0;
 }
 
-/* Links out to the pages the SPA does not own yet (US-43, US-44). */
-nav.elsewhere {
+/* The app's own menu (US-60), which every screen renders inside.
+
+   One set of markup, two shapes: below the breakpoint the burger opens a
+   panel over the page, and from a tablet's width up the burger goes and the
+   items sit in a row in the header. Which of the two it is belongs here
+   rather than in the component, so there is one menu and not two. */
+.app-header {
   display: flex;
+  align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.burger {
+  /* Pico makes every button a filled block; this one is a glyph. The colour
+     is inherited rather than taken from `--pico-color`: Pico sets that
+     property *on the button itself* to the inverse it uses for text on a
+     filled background, so naming it here paints the glyph white on white. */
+  width: auto;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.app-menu {
+  display: none;
+}
+
+.app-menu.open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  /* Over the page, not shoving it down: a menu that reflowed the screen
+     behind it would move the very thing the owner is about to look at. */
+  position: absolute;
+  z-index: 2;
+  top: 3.5rem;
+  left: 1rem;
+  right: 1rem;
+  padding: 1rem;
+  border: var(--pico-border-width) solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-background-color);
+  box-shadow: var(--pico-box-shadow);
+}
+
+/* Everything outside the open panel, so a click anywhere else closes it —
+   including on a map or a chart, which swallow their own pointer events. */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+@media (min-width: 768px) {
+  .burger {
+    display: none;
+  }
+
+  /* Always on show, open or not: on a screen this wide there is room for the
+     items themselves, so the panel never applies. */
+  .app-menu,
+  .app-menu.open {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    align-items: center;
+    position: static;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  /* Nothing to click away from when nothing is covering the page — and a
+     leftover backdrop from a narrow layout would block the whole screen. */
+  .menu-backdrop {
+    display: none;
+  }
 }
 
 /* Recorded/Planned (US-32). The active tab is the `disabled` one, which

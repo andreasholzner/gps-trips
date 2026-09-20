@@ -24,9 +24,7 @@ use dioxus::prelude::*;
 use trip_archive_types::{SelectedTour, SyncCandidate, SyncCandidates, SyncRequest, SyncResponse};
 
 use crate::api::{self, ApiClient, ApiError};
-use crate::filters::Filters;
 use crate::format;
-use crate::Route;
 
 /// What the ticked boxes ask for.
 ///
@@ -126,9 +124,6 @@ pub fn KomootSync() -> Element {
     let mut error = use_signal(|| None::<String>);
 
     rsx! {
-        nav { class: "elsewhere",
-            Link { to: Route::TripList { filters: Filters::default() }, "← All trips" }
-        }
         h1 { "Sync with Komoot" }
 
         match &*listing.read_unchecked() {

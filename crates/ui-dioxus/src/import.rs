@@ -19,7 +19,6 @@ use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, ConfirmImport, StagedImport, TripKind};
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
-use crate::filters::Filters;
 use crate::photos::{upload_in_batches, PartialUpload};
 use crate::Route;
 
@@ -244,9 +243,6 @@ pub fn ImportTrip() -> Element {
     };
 
     rsx! {
-        nav { class: "elsewhere",
-            Link { to: Route::TripList { filters: Filters::default() }, "← All trips" }
-        }
         h1 { "Import a trip" }
 
         if let Some(progress) = progress() {
