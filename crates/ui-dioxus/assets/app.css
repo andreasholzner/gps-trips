@@ -92,8 +92,10 @@ button {
   font-weight: normal;
   text-decoration: underline;
   cursor: pointer;
-  /* Pico centres a button's label, which in the phone's stacked panel left
-     it alone in the middle while every link above it sat at the edge. */
+  /* Pico centres a button's label and stretches it across the panel, which
+     in the phone's stacked menu left it alone in the middle while every link
+     above it sat at the edge. Both are about the column, and the row
+     undoes them below. */
   text-align: left;
   align-self: flex-start;
 }
@@ -140,11 +142,22 @@ button {
     display: flex;
     flex-direction: row;
     gap: 1rem;
-    align-items: center;
+    /* Baseline rather than centre: sign out is a button among anchors, and
+       the box Pico gives it is not the height of theirs. Centring boxes of
+       unequal height puts their text on different lines, which is what left
+       sign out sitting ten pixels above the links beside it. */
+    align-items: baseline;
     position: static;
     padding: 0;
     border: none;
     box-shadow: none;
+  }
+
+  /* The column pinned sign out to the panel's leading edge; in the row that
+     same declaration overrides the baseline above and lifts it back off the
+     line. */
+  .app-menu #sign-out {
+    align-self: auto;
   }
 
   /* Nothing to click away from when nothing is covering the page — and a

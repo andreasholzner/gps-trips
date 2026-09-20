@@ -74,6 +74,24 @@ test("on a wide screen the items are in the header, with no burger (US-60)", asy
   expect(signOut.background, "not a filled block").toBe("rgba(0, 0, 0, 0)");
   expect(signOut.border, "nor an outlined one").toBe("none");
 
+  // Quiet, but on the same line as the links it sits beside. Styling it down
+  // to their weight is only half the job: it is still a button among anchors,
+  // and a row of items of unequal height only reads as one row if their text
+  // sits on one baseline. Measured rather than eyeballed, because a few
+  // pixels of drift is exactly the amount that looks like a mistake without
+  // announcing what it is.
+  const baselines = await page
+    .locator("#app-menu")
+    .evaluate((menu) =>
+      [...menu.children].map((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        // The bottom of the text itself, not of the box around it.
+        return Math.round(range.getBoundingClientRect().bottom);
+      }),
+    );
+  expect(new Set(baselines).size, `menu items sit on ${baselines}`).toBe(1);
+
   // And they navigate without a page load, like every other link in the SPA.
   await page.evaluate(() => {
     window.__stillTheSameDocument = true;
