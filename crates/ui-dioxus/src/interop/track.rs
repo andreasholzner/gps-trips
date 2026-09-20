@@ -213,8 +213,17 @@ const ELEVATION_SCRIPT: &str = r##"
     // is a `MouseEvent`, so the handler itself needs no changing. The
     // container also has to claim the gesture in CSS (`touch-action`), or a
     // drag along the chart is consumed as a page scroll and never arrives.
-    const asPointer = (name) => (u, target, handler) => {
-      target.addEventListener(name, handler);
+    //
+    // `only` narrows a binding to one kind of pointer. `pointerleave` takes
+    // it: a touch pointer is destroyed the moment the finger lifts, and
+    // treating that as "the cursor left the chart" would clear a reading the
+    // owner has only just taken. With a mouse the cursor really does leave,
+    // and the reading goes with it.
+    const asPointer = (name, only) => (u, target, handler) => {
+      target.addEventListener(name, (event) => {
+        if (only && event.pointerType !== only) return;
+        handler(event);
+      });
       return null;
     };
 
@@ -235,7 +244,7 @@ const ELEVATION_SCRIPT: &str = r##"
         cursor: {
           bind: {
             mousemove: asPointer("pointermove"),
-            mouseleave: asPointer("pointerleave"),
+            mouseleave: asPointer("pointerleave", "mouse"),
             mousedown: asPointer("pointerdown"),
             mouseup: asPointer("pointerup"),
           },
@@ -259,6 +268,34 @@ const ELEVATION_SCRIPT: &str = r##"
       [distanceKm, elevationM],
       el,
     );
+
+    const chart = widgets[CONTAINER];
+    const over = el.querySelector(".u-over");
+
+    // A tap places the cursor. uPlot only ever positions it on a move, and a
+    // tap is a `pointerdown` and a `pointerup` with nothing in between, so
+    // without this a tap reads nothing at all. `true` fires the hooks, which
+    // is what sends the index on to Rust.
+    over.addEventListener("pointerdown", (event) => {
+      // Dragging across the chart zooms into that range — kept for the mouse,
+      // where a double-click puts it back, and taken away from the finger,
+      // which has no double-click and would be left zoomed in with no way
+      // out. uPlot reads this at the end of the drag, so setting it per
+      // gesture works.
+      chart.cursor.drag.setScale = event.pointerType === "mouse";
+      const bounds = over.getBoundingClientRect();
+      chart.setCursor(
+        { left: event.clientX - bounds.left, top: event.clientY - bounds.top },
+        true,
+      );
+    });
+
+    // A drag that does not zoom still draws uPlot's selection band, and with
+    // nothing to commit it to, the band would simply stay there.
+    over.addEventListener("pointerup", (event) => {
+      if (event.pointerType === "mouse") return;
+      chart.setSelect({ width: 0, height: 0 }, false);
+    });
 "##;
 
 /// What the map shows: the track as `[lat, lon]` pairs, and a marker per

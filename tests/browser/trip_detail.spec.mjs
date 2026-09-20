@@ -49,6 +49,21 @@ async function ownTrip(request, label) {
   return id;
 }
 
+/// The chart's x range, and the band a drag draws across it. A zoom redraws
+/// a canvas and the band is uPlot's own element, so the widget is the only
+/// place either is observable from outside.
+const xScale = (page) =>
+  page.evaluate(() => {
+    const chart = window.tripArchiveWidgets.elevation;
+    return [chart.scales.x.min, chart.scales.x.max];
+  });
+
+const selectionWidth = (page) =>
+  page.evaluate(() => {
+    const band = document.querySelector("#elevation .u-select");
+    return band ? Math.round(parseFloat(getComputedStyle(band).width)) : 0;
+  });
+
 // US-19: the archive is gated, so the browser needs a session before any of
 // this can run. The seeding `request` fixture arrives with one already
 // (`session.mjs`).
@@ -179,6 +194,27 @@ test("hovering the elevation profile reads out the point and marks it on the tra
   await page.mouse.move(chart.x + chart.width / 2, chart.y - 80);
   await expect(page.locator("#readout-distance")).toHaveText("—");
   await expect(page.locator("#track-map .hover-mark")).toHaveCount(0);
+});
+
+// Kept deliberately (US-59): with a mouse, dragging across the profile zooms
+// into that range, and a double-click puts it back. Only the finger is spared
+// the zoom, because a touchscreen has no double-click to undo it with.
+test("a mouse drag still zooms the profile (US-59)", async ({ page, request }) => {
+  const id = await ownTrip(request, "Zoomed Trip");
+  await page.goto(`/app/trips/${id}`);
+  await expect(page.locator("#elevation canvas")).toBeVisible();
+  await page.locator("#elevation").scrollIntoViewIfNeeded();
+
+  const chart = await page.locator("#elevation").boundingBox();
+  const y = chart.y + chart.height / 2;
+  const whole = await xScale(page);
+
+  await page.mouse.move(chart.x + chart.width * 0.2, y);
+  await page.mouse.down();
+  await page.mouse.move(chart.x + chart.width * 0.5, y, { steps: 5 });
+  await page.mouse.up();
+
+  await expect.poll(() => xScale(page)).not.toEqual(whole);
 });
 
 // US-58: Pico's classless build styles every `[role=button]`, and Leaflet
@@ -349,6 +385,7 @@ test.describe("with a touchscreen", () => {
     const chart = await page.locator("#elevation").boundingBox();
     const y = chart.y + chart.height / 2;
     const scrolledTo = await page.evaluate(() => window.scrollY);
+    const whole = await xScale(page);
 
     // Playwright's touchscreen can tap but not drag, and a tap sends no
     // `pointermove` at all — the gesture this story is about. So the drag is
@@ -372,6 +409,49 @@ test.describe("with a touchscreen", () => {
     // instead of the page scrolling out from under the finger.
     expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
 
+    const reading = await page.locator("#readout-distance").textContent();
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    // Lifting the finger is not "the pointer left the chart": a touch pointer
+    // is destroyed on lift, and clearing the reading then would make it flash
+    // and vanish. It stays until the next gesture.
+    await expect(page.locator("#readout-distance")).toHaveText(reading);
+    await expect(page.locator("#track-map .hover-mark")).toHaveCount(1);
+
+    // And reading the profile does not rescale it. A drag zooms with a mouse,
+    // which the owner can undo by double-clicking; a finger has no
+    // double-click, so a zoom it cannot undo is a trap rather than a feature.
+    expect(await xScale(page)).toEqual(whole);
+    // Nor does it leave the selection band the drag drew behind it.
+    expect(await selectionWidth(page)).toBe(0);
+  });
+
+  test("a tap on the profile reads out that point and keeps it (US-59)", async ({
+    page,
+    request,
+  }) => {
+    const id = await ownTrip(request, "Tapped Trip");
+    await page.goto(`/app/trips/${id}`);
+    await expect(page.locator("#elevation canvas")).toBeVisible();
+    await page.locator("#elevation").scrollIntoViewIfNeeded();
+    const chart = await page.locator("#elevation").boundingBox();
+
+    // A tap sends `pointerdown` and `pointerup` and no `pointermove` at all,
+    // so uPlot — which only ever places the cursor on a move — would read
+    // nothing from it.
+    await page.touchscreen.tap(chart.x + chart.width * 0.45, chart.y + chart.height / 2);
+
+    await expect(page.locator("#readout-distance")).toHaveText(/^\d+\.\d\d km$/);
+    await expect(page.locator("#readout-elevation")).toHaveText(/^\d+ m$/);
+    await expect(page.locator("#track-map .hover-mark")).toHaveCount(1);
+
+    // Still there once the finger is long gone.
+    const reading = await page.locator("#readout-distance").textContent();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#readout-distance")).toHaveText(reading);
+
+    // A second tap elsewhere reads that point instead.
+    await page.touchscreen.tap(chart.x + chart.width * 0.8, chart.y + chart.height / 2);
+    await expect(page.locator("#readout-distance")).not.toHaveText(reading);
   });
 });
