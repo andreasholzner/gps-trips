@@ -188,6 +188,25 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await expect(page).not.toHaveURL(/[?&]bbox=/);
 });
 
+// US-58: the same control on the other map. The fix belongs to the control
+// rather than to either screen, so it is asserted on both — a rule scoped to
+// one screen's container would leave this one broken.
+test("the region map's zoom control keeps its own size (US-58)", async ({ page }) => {
+  await page.goto("/app/");
+  await page.getByText("Region", { exact: true }).click();
+  await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
+
+  const bar = await page.locator("#region-map .leaflet-control-zoom").boundingBox();
+  for (const label of ["Zoom in", "Zoom out"]) {
+    const button = await page.getByRole("button", { name: label }).boundingBox();
+    expect(Math.round(button.width), `${label} width`).toBe(30);
+    expect(Math.round(button.height), `${label} height`).toBe(30);
+    expect(button.y + button.height, `${label} inside the bar`).toBeLessThanOrEqual(
+      bar.y + bar.height + 1,
+    );
+  }
+});
+
 test("selected trips are tagged in one go, after confirming a new tag (US-34)", async ({
   page,
 }) => {

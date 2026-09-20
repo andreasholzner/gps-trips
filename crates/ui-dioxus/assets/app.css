@@ -21,6 +21,36 @@ button {
   width: auto;
 }
 
+/* Pico's classless build styles every `[role=button]`, and Leaflet puts that
+   role on its zoom buttons, its popup close button and every keyboard-
+   reachable marker — none of which is a Pico button (US-58). Pico gives them
+   15px 20px of padding, a primary-coloured border and its own corner radius;
+   under the universal `box-sizing: border-box` that padding overflows a 30px
+   zoom button into 42x32, so the "+" sits hard against the right edge and the
+   "−" is pushed out of the bar altogether.
+
+   Only what Pico alone sets is neutralised. Leaflet's own rules are more
+   specific and already win the rest — width, height, line-height, colours —
+   and overriding those here would be the same mistake in the other
+   direction. The border is taken off a side at a time so Leaflet's divider
+   between the two buttons, which it puts on the bottom edge, survives. */
+.leaflet-container [role="button"] {
+  padding: 0;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  box-shadow: none;
+}
+
+/* The corner radius, only where it shows: Leaflet rounds the bar's real
+   corners through its own `:first-child`/`:last-child` rules, which outrank
+   this, and Pico's radius would otherwise round the join between the two
+   buttons as well. Scoped to the bar so it cannot reach a marker of ours
+   that is round on purpose (US-57's cluster badge). */
+.leaflet-bar a {
+  border-radius: 0;
+}
+
 /* Links out to the pages the SPA does not own yet (US-43, US-44). */
 nav.elsewhere {
   display: flex;

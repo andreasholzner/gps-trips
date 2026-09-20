@@ -133,6 +133,51 @@ test("photos taken at the same place share one marker that shows them all (US-57
   await expect(popup.getByRole("img", { name: "second.jpg" })).toBeVisible();
 });
 
+// US-58: Pico's classless build styles every `[role=button]`, and Leaflet
+// puts that role on its zoom buttons and on every keyboard-reachable marker.
+// What that costs is a box size, which no host-target layer can see — this
+// layer's first business is real rendering, and geometry is only real once a
+// browser has laid it out.
+test("the zoom control and the photo markers keep their own size (US-58)", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Sized Trip");
+  const uploaded = await request.post(`/api/trips/${id}/photos`, {
+    multipart: {
+      photos: { name: "geotagged.jpg", mimeType: "image/jpeg", buffer: GEOTAGGED_JPEG },
+    },
+  });
+  expect(uploaded.status(), "seeding a geotagged photo").toBe(204);
+
+  await page.goto(`/app/trips/${id}`);
+  await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
+
+  // Both buttons are the 30x30 Leaflet draws them as, and both are inside
+  // the bar: Pico's padding made them 42x32 and pushed the "−" out of it.
+  const bar = await page.locator("#track-map .leaflet-control-zoom").boundingBox();
+  for (const label of ["Zoom in", "Zoom out"]) {
+    const button = await page.getByRole("button", { name: label }).boundingBox();
+    expect(Math.round(button.width), `${label} width`).toBe(30);
+    expect(Math.round(button.height), `${label} height`).toBe(30);
+    expect(button.y + button.height, `${label} inside the bar`).toBeLessThanOrEqual(
+      bar.y + bar.height + 1,
+    );
+  }
+
+  // A marker carries the same role, so US-57's badge was stretched into an
+  // ellipse by the same rule — and sat off the point it stands for.
+  await request.post(`/api/trips/${id}/photos`, {
+    multipart: { photos: { name: "second.jpg", mimeType: "image/jpeg", buffer: GEOTAGGED_JPEG } },
+  });
+  await page.reload();
+  const badge = page.locator("#track-map .photo-cluster");
+  await expect(badge).toHaveText("2");
+  const drawn = await badge.boundingBox();
+  expect(Math.round(drawn.width), "badge width").toBe(26);
+  expect(Math.round(drawn.height), "badge height").toBe(26);
+});
+
 // US-15: the edit form is opened, typed into and submitted — three real
 // events, none of which `dioxus-ssr` can dispatch.
 test("editing the name and activity saves them (US-15)", async ({ page, request }) => {
