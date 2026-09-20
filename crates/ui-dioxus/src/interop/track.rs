@@ -60,11 +60,14 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // One payload carries the whole picture — the line and the photos on it —
     // so a redraw replaces what is there rather than layering on top of it.
     const view = await dioxus.recv();
-    for (const layer of [map.trackLine, map.photoMarkers]) {
+    for (const layer of [map.trackLine, map.photoMarkers, map.hoverMark]) {
       if (layer) map.removeLayer(layer);
     }
     map.trackLine = null;
     map.photoMarkers = null;
+    // A mark for a chart that is being replaced points at a track that is
+    // no longer drawn.
+    map.hoverMark = null;
 
     // A feature group, not a plain layer group: the view has to be able to
     // include a photo whose EXIF GPS puts it off the track (US-3), which
@@ -128,14 +131,46 @@ const TRACK_MAP_SCRIPT: &str = r##"
     if (map.photoMarkers.getLayers().length > 0) {
       bounds.extend(map.photoMarkers.getBounds());
     }
-    if (!bounds.isValid()) return;
-    // Only when there is something new to frame. This script runs again
-    // whenever the photos change, and refitting then would throw away a
-    // zoom the owner had just made into part of the track.
-    const framed = bounds.toBBoxString();
-    if (map.framed !== framed) {
-      map.fitBounds(bounds);
-      map.framed = framed;
+    if (bounds.isValid()) {
+      // Only when there is something new to frame. This script runs again
+      // whenever the photos change, and refitting then would throw away a
+      // zoom the owner had just made into part of the track.
+      const framed = bounds.toBBoxString();
+      if (map.framed !== framed) {
+        map.fitBounds(bounds);
+        map.framed = framed;
+      }
+    }
+
+    // Then stay on the channel for the point the elevation profile is being
+    // hovered at (US-59): a position to mark, or null when the cursor has
+    // left the chart. Rust resolves the chart's index to a position — the
+    // two indices are not the same point — so this end only draws.
+    for (;;) {
+      let at;
+      try {
+        at = await dioxus.recv();
+      } catch {
+        // The channel closed: this draw was superseded, or the screen went
+        // away. Whichever it is, the instance that owns the map now is not
+        // this one.
+        return;
+      }
+      if (map.hoverMark) {
+        map.removeLayer(map.hoverMark);
+        map.hoverMark = null;
+      }
+      if (at) {
+        // A ring rather than a dot: the track runs through the point being
+        // marked, and an unfilled circle keeps the line visible under it.
+        map.hoverMark = L.circleMarker(at, {
+          radius: 8,
+          color: "#3367d6",
+          weight: 3,
+          fill: false,
+          className: "hover-mark",
+        }).addTo(map);
+      }
     }
 "##;
 
@@ -172,11 +207,49 @@ const ELEVATION_SCRIPT: &str = r##"
     }
     if (!distanceKm || distanceKm.length === 0) return;
 
+    // uPlot binds mouse events by name, and a finger sends none of them. Each
+    // binding below registers the handler under its pointer equivalent and
+    // returns nothing, so uPlot adds no listener of its own: a `PointerEvent`
+    // is a `MouseEvent`, so the handler itself needs no changing. The
+    // container also has to claim the gesture in CSS (`touch-action`), or a
+    // drag along the chart is consumed as a page scroll and never arrives.
+    const asPointer = (name) => (u, target, handler) => {
+      target.addEventListener(name, handler);
+      return null;
+    };
+
+    // The index last reported to Rust. uPlot fires `setCursor` on every
+    // pointer move; only a move onto a different sample is news.
+    let reported;
+
     widgets[CONTAINER] = new uPlot(
       {
         width: el.clientWidth || 600,
         height: 200,
         scales: { x: { time: false } },
+        // Off (US-59): clicking it toggles the series off and leaves an empty
+        // frame, and its marker square reads as a checkbox. The live readout
+        // it also carried is rendered as ordinary markup by Rust instead,
+        // through the same formatting as the stats above the chart.
+        legend: { show: false },
+        cursor: {
+          bind: {
+            mousemove: asPointer("pointermove"),
+            mouseleave: asPointer("pointerleave"),
+            mousedown: asPointer("pointerdown"),
+            mouseup: asPointer("pointerup"),
+          },
+        },
+        hooks: {
+          setCursor: [
+            (u) => {
+              const idx = u.cursor.idx ?? null;
+              if (idx === reported) return;
+              reported = idx;
+              dioxus.send(idx);
+            },
+          ],
+        },
         series: [
           { label: "Distance (km)" },
           { label: "Elevation (m)", stroke: "#3367d6", width: 2 },
@@ -212,13 +285,26 @@ pub fn start_track_map(points: Vec<[f64; 2]>, markers: Vec<PhotoMarker>) -> docu
 }
 
 /// Start the elevation chart with its two prepared series. The handle is the
-/// channel, as above.
+/// channel, as above — and this one is read in a loop: the chart reports the
+/// index the cursor is on, or `null` when it leaves (US-59).
 pub fn start_elevation_chart(distance_km: Vec<f64>, elevation_m: Vec<f64>) -> document::Eval {
     start(
         ELEVATION_SCRIPT,
         (distance_km, elevation_m),
         "the elevation chart",
     )
+}
+
+/// Mark `at` on the track map, or clear the mark when there is nothing to
+/// mark — the position Rust resolved the hovered chart index to (US-59).
+///
+/// Sent on the map's own channel, which the script keeps reading after it has
+/// drawn: this is the map end of the round trip US-52's spike proved `eval`
+/// carries (ADR-0025).
+pub fn mark_on_track_map(map: &document::Eval, at: Option<[f64; 2]>) {
+    if let Err(err) = map.send(at) {
+        dioxus::logger::tracing::error!("could not mark the hovered point: {err}");
+    }
 }
 
 /// Run a drawing script and hand it its payload over the channel — never

@@ -77,6 +77,51 @@ pub fn elevation_series(track: &Track) -> Option<(Vec<f64>, Vec<f64>)> {
     Some((distance_km, elevation_m.clone()))
 }
 
+/// One sample of the elevation chart: what to read out when the cursor is on
+/// it, and where on the track it is (US-59).
+///
+/// `position` is `None` where the track carries no drawable position for that
+/// sample — the map then marks nothing rather than marking the wrong point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HoverPoint {
+    pub distance_m: f64,
+    pub elevation_m: f64,
+    pub position: Option<[f64; 2]>,
+}
+
+/// The chart's samples, in the chart's own order, so the index the cursor
+/// reports indexes this directly (US-59).
+///
+/// That alignment is why this exists: [`polyline`] leaves out a position
+/// carrying fewer than two coordinates, so the line's indices and the
+/// chart's are not the same points, and resolving a hovered index against
+/// the line would mark a place the cursor is nowhere near.
+///
+/// Empty for a track [`elevation_series`] would refuse to draw: there is no
+/// chart to hover over, and half a pair of series cannot say where anything
+/// is.
+pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
+    let Some((_, _)) = elevation_series(track) else {
+        return Vec::new();
+    };
+    let positions = &track.geometry.coordinates;
+    track
+        .properties
+        .cumulative_distance_m
+        .iter()
+        .zip(&track.properties.elevation_m)
+        .enumerate()
+        .map(|(i, (&distance_m, &elevation_m))| HoverPoint {
+            distance_m,
+            elevation_m,
+            position: match positions.get(i).map(|position| &position[..]) {
+                Some(&[lon, lat, ..]) => Some([lat, lon]),
+                _ => None,
+            },
+        })
+        .collect()
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
@@ -131,6 +176,74 @@ mod tests {
 
         assert_eq!(distance_km, vec![0.0, 1.234]);
         assert_eq!(elevation_m, vec![12.0, 30.0]);
+    }
+
+    // ── US-59: the hovered sample, and where it is on the track ──────────
+
+    #[test]
+    fn a_hovered_sample_carries_its_distance_elevation_and_position() {
+        let points = hover_points(&stored_track());
+
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].distance_m, 0.0);
+        assert_eq!(points[0].elevation_m, 12.0);
+        assert_eq!(points[0].position, Some([59.91, 10.75]));
+        assert_eq!(points[1].distance_m, 1234.0);
+        assert_eq!(points[1].position, Some([59.92, 10.76]));
+    }
+
+    #[test]
+    fn a_position_left_out_of_the_line_still_holds_its_place_in_the_chart() {
+        // `polyline` drops a position carrying fewer than two coordinates
+        // while the chart's series keep every sample, so the two indices are
+        // not the same point. The chart's index is the one the cursor reports,
+        // so it is the one that must resolve — and the dropped sample resolves
+        // to no mark rather than to the next point along.
+        let track: Track = serde_json::from_str(
+            r#"{"geometry": {"coordinates": [[10.75], [10.76, 59.92, 30.0]]},
+                "properties": {"cumulative_distance_m": [0.0, 1234.0],
+                               "elevation_m": [12.0, 30.0]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(polyline(&track), vec![[59.92, 10.76]]);
+
+        let points = hover_points(&track);
+        assert_eq!(points.len(), 2, "one per chart sample: {points:?}");
+        assert_eq!(points[0].position, None);
+        assert_eq!(points[1].position, Some([59.92, 10.76]));
+        // The sample the chart would report at index 1 is the one the map
+        // marks — not the polyline's index 1, which does not exist.
+        assert_eq!(points[1].distance_m, 1234.0);
+    }
+
+    #[test]
+    fn a_track_with_fewer_positions_than_samples_resolves_the_rest_to_nothing() {
+        // Nothing the server writes looks like this, but a hovered index that
+        // runs off the end of the geometry must read as "no mark" rather than
+        // panic on the way.
+        let track: Track = serde_json::from_str(
+            r#"{"geometry": {"coordinates": [[10.75, 59.91, 12.0]]},
+                "properties": {"cumulative_distance_m": [0.0, 1234.0],
+                               "elevation_m": [12.0, 30.0]}}"#,
+        )
+        .unwrap();
+
+        let points = hover_points(&track);
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[1].position, None);
+    }
+
+    #[test]
+    fn a_track_that_draws_no_chart_has_nothing_to_hover() {
+        let lopsided: Track = serde_json::from_str(
+            r#"{"geometry": {"coordinates": []},
+                "properties": {"cumulative_distance_m": [0.0, 1.0], "elevation_m": [12.0]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(elevation_series(&lopsided), None);
+        assert_eq!(hover_points(&lopsided), Vec::new());
     }
 
     #[test]

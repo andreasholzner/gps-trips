@@ -25,7 +25,7 @@ mod region;
 mod track;
 
 pub use region::{bbox_corners, bbox_param, start_region_map};
-pub use track::{start_elevation_chart, start_track_map};
+pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};
 
 use dioxus::prelude::*;
 

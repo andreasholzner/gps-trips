@@ -140,6 +140,21 @@ nav.tabs button:not(:disabled) {
 
 .elevation {
   margin-top: 1rem;
+  /* The chart has to claim a finger drag along it, or the browser takes it
+     as a page scroll and the cursor never moves (US-59). `pan-y` claims the
+     horizontal gesture only, so a vertical swipe still scrolls the page —
+     the cost is that a diagonal drag can be taken as a scroll and drop the
+     readout mid-gesture. */
+  touch-action: pan-y;
+}
+
+/* What the cursor is on, under the chart (US-59). uPlot's own legend is off:
+   this is the readout it carried, in the page's own markup. A fixed line, so
+   nothing below it moves when a value appears. */
+.chart-readout {
+  margin: 0.25rem 0 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--pico-muted-color);
 }
 
 /* A map marker's popup (US-57). It holds every photo taken at that place, so

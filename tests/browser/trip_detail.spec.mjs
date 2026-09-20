@@ -133,6 +133,54 @@ test("photos taken at the same place share one marker that shows them all (US-57
   await expect(popup.getByRole("img", { name: "second.jpg" })).toBeVisible();
 });
 
+// US-59: hovering the profile reads out the point and marks it on the track.
+// Both exemptions at once — a real pointer moving, and two JS widgets whose
+// drawing is the thing under test. The index round-trips through Rust in
+// between, which is what `track::hover_points` covers without a browser.
+test("hovering the elevation profile reads out the point and marks it on the track (US-59)", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Hovered Trip");
+  await page.goto(`/app/trips/${id}`);
+  await expect(page.locator("#elevation canvas")).toBeVisible();
+
+  // uPlot's own legend is gone: it is the control that hides the series, and
+  // its marker square reads as a checkbox.
+  await expect(page.locator("#elevation .u-legend")).toHaveCount(0);
+
+  // Nothing is hovered yet, so the readout claims no position and the map
+  // carries no mark.
+  await expect(page.locator("#readout-distance")).toHaveText("—");
+  await expect(page.locator("#readout-elevation")).toHaveText("—");
+  await expect(page.locator("#track-map .hover-mark")).toHaveCount(0);
+
+  // Onto the middle of the chart. `page.mouse` emits real pointer events,
+  // which is what the rebound `cursor.bind` listens for — but it works in
+  // viewport coordinates and does not scroll the way `locator.click()` does,
+  // so the chart has to be brought into view or the move lands elsewhere
+  // entirely (the same trap the region map's drag documents).
+  await page.locator("#elevation").scrollIntoViewIfNeeded();
+  const chart = await page.locator("#elevation").boundingBox();
+  await page.mouse.move(chart.x + chart.width / 2, chart.y + chart.height / 2);
+
+  await expect(page.locator("#readout-distance")).toHaveText(/^\d+\.\d\d km$/);
+  await expect(page.locator("#readout-elevation")).toHaveText(/^\d+ m$/);
+  // The index reached Rust, was resolved to a position, and came back to the
+  // map as a mark on the track.
+  await expect(page.locator("#track-map .hover-mark")).toHaveCount(1);
+
+  // Further along the chart is a different point of the track.
+  const first = await page.locator("#readout-distance").textContent();
+  await page.mouse.move(chart.x + chart.width * 0.85, chart.y + chart.height / 2);
+  await expect(page.locator("#readout-distance")).not.toHaveText(first);
+
+  // Off the chart: the screen stops showing a point nothing is pointing at.
+  await page.mouse.move(chart.x + chart.width / 2, chart.y - 80);
+  await expect(page.locator("#readout-distance")).toHaveText("—");
+  await expect(page.locator("#track-map .hover-mark")).toHaveCount(0);
+});
+
 // US-58: Pico's classless build styles every `[role=button]`, and Leaflet
 // puts that role on its zoom buttons and on every keyboard-reachable marker.
 // What that costs is a box size, which no host-target layer can see — this
@@ -280,4 +328,50 @@ test("a row leads into the detail screen without a page load (US-42)", async ({
   await expect(page.locator("#trip-name")).toHaveText(name);
   await expect(page).toHaveURL(new RegExp(`/app/trips/${id}$`));
   expect(await page.evaluate(() => window.__stillTheSameDocument)).toBe(true);
+});
+
+// US-59 with a finger. uPlot v1.6.31 binds mouse events by name, which a
+// touchscreen never sends, and the page would otherwise take a drag along
+// the chart as a scroll — so the pointer rebinding and `touch-action` are
+// only real in a browser with a touchscreen, which is its own context.
+test.describe("with a touchscreen", () => {
+  test.use({ hasTouch: true });
+
+  test("a finger drag along the profile moves the readout and marks the track (US-59)", async ({
+    page,
+    request,
+  }) => {
+    const id = await ownTrip(request, "Touched Trip");
+    await page.goto(`/app/trips/${id}`);
+    await expect(page.locator("#elevation canvas")).toBeVisible();
+    await page.locator("#elevation").scrollIntoViewIfNeeded();
+
+    const chart = await page.locator("#elevation").boundingBox();
+    const y = chart.y + chart.height / 2;
+    const scrolledTo = await page.evaluate(() => window.scrollY);
+
+    // Playwright's touchscreen can tap but not drag, and a tap sends no
+    // `pointermove` at all — the gesture this story is about. So the drag is
+    // dispatched as real touch input.
+    const touch = await page.context().newCDPSession(page);
+    const at = (fraction) => ({ x: chart.x + chart.width * fraction, y });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [at(0.3)],
+    });
+    for (const fraction of [0.4, 0.5, 0.6]) {
+      await touch.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [at(fraction)],
+      });
+    }
+
+    await expect(page.locator("#readout-distance")).toHaveText(/^\d+\.\d\d km$/);
+    await expect(page.locator("#track-map .hover-mark")).toHaveCount(1);
+    // `touch-action: pan-y` claims the horizontal gesture: the chart reads it
+    // instead of the page scrolling out from under the finger.
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
+
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  });
 });
