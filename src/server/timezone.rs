@@ -96,13 +96,48 @@ pub fn resolve_to_utc(tz_name: &str, naive: PrimitiveDateTime) -> Option<OffsetD
 /// in force yet, so the entry is `UTC` — the same fallback `guess_timezone`
 /// makes. Empty for an empty track.
 pub fn offset_transitions(points: &[TimedPoint]) -> Vec<(usize, UtcOffset)> {
+    in_force(offset_changes(points.iter().copied().enumerate()))
+}
+
+/// Where the UTC offset changes along a track, in the order and under the
+/// indices the points are given in (US-62): the served track numbers every
+/// point, timed or not, and the readout looks a hovered index up in this.
+///
+/// Unlike [`offset_transitions`] an unresolvable zone is not papered over: it
+/// is `None`, starting where it starts, so the readout can say its time is
+/// UTC rather than label it with an offset it was never in.
+pub fn offset_changes(
+    points: impl IntoIterator<Item = (usize, TimedPoint)>,
+) -> Vec<(usize, Option<UtcOffset>)> {
+    changes_by(points, offset_at)
+}
+
+/// [`offset_changes`] with the lookup supplied, so the unresolvable case can
+/// be tested — every real coordinate resolves.
+fn changes_by(
+    points: impl IntoIterator<Item = (usize, TimedPoint)>,
+    lookup: impl Fn(f64, f64, OffsetDateTime) -> Option<UtcOffset>,
+) -> Vec<(usize, Option<UtcOffset>)> {
+    let mut changes: Vec<(usize, Option<UtcOffset>)> = Vec::new();
+    for (index, point) in points {
+        let offset = lookup(point.lon, point.lat, point.time);
+        if changes.last().map(|&(_, current)| current) != Some(offset) {
+            changes.push((index, offset));
+        }
+    }
+    changes
+}
+
+/// The changes reduced to the offsets placement reads a wall clock against:
+/// an unresolvable stretch keeps the offset already in force, and one at the
+/// very start is `UTC`, the fallback `guess_timezone` makes.
+fn in_force(changes: Vec<(usize, Option<UtcOffset>)>) -> Vec<(usize, UtcOffset)> {
     let mut transitions: Vec<(usize, UtcOffset)> = Vec::new();
-    for (index, point) in points.iter().enumerate() {
-        let Some(offset) = offset_at(point.lon, point.lat, point.time) else {
-            if transitions.is_empty() {
-                transitions.push((index, UtcOffset::UTC));
-            }
-            continue;
+    for (index, offset) in changes {
+        let offset = match (offset, transitions.last()) {
+            (Some(offset), _) => offset,
+            (None, None) => UtcOffset::UTC,
+            (None, Some(_)) => continue,
         };
         if transitions.last().map(|&(_, current)| current) != Some(offset) {
             transitions.push((index, offset));
@@ -309,5 +344,60 @@ mod tests {
     #[test]
     fn offset_transitions_is_empty_for_a_track_with_no_timed_points() {
         assert_eq!(offset_transitions(&[]), vec![]);
+    }
+
+    // ── US-62: the offsets in force along a track, as it is served ─────────
+
+    fn hours(h: i8) -> UtcOffset {
+        UtcOffset::from_hms(h, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn offset_changes_keep_the_index_each_point_was_given() {
+        // The served track numbers every point, timed or not — the chart's
+        // own index — so a change is reported at the index it came in with,
+        // not at its place among the timed points.
+        let points = [
+            (0, at(KARASJOK, datetime!(2024-06-01 08:00 UTC))),
+            (3, at(INARI, datetime!(2024-06-01 10:00 UTC))),
+        ];
+        assert_eq!(
+            offset_changes(points),
+            vec![(0, Some(hours(2))), (3, Some(hours(3)))]
+        );
+    }
+
+    #[test]
+    fn offset_changes_report_a_zone_this_build_cannot_resolve_as_none() {
+        // US-62: an unresolvable zone is said to be one, so the readout can
+        // label its time UTC rather than borrow the offset before it.
+        let lookup = |lon: f64, _: f64, _: OffsetDateTime| (lon < 26.0).then(|| hours(2));
+        let points = [
+            (0, at(KARASJOK, datetime!(2024-06-01 08:00 UTC))),
+            (1, at(INARI, datetime!(2024-06-01 09:00 UTC))),
+            (2, at(KARASJOK, datetime!(2024-06-01 10:00 UTC))),
+        ];
+        assert_eq!(
+            changes_by(points, lookup),
+            vec![(0, Some(hours(2))), (1, None), (2, Some(hours(2)))]
+        );
+    }
+
+    #[test]
+    fn in_force_keeps_the_offset_across_an_unresolvable_stretch() {
+        // US-64's placement reads a wall clock against these, and an unknown
+        // zone mid-track is no reason to invent a transition.
+        assert_eq!(
+            in_force(vec![(0, Some(hours(2))), (1, None), (2, Some(hours(2)))]),
+            vec![(0, hours(2))]
+        );
+    }
+
+    #[test]
+    fn in_force_starts_at_utc_when_the_first_zone_is_unresolvable() {
+        assert_eq!(
+            in_force(vec![(0, None), (4, Some(hours(3)))]),
+            vec![(0, UtcOffset::UTC), (4, hours(3))]
+        );
     }
 }

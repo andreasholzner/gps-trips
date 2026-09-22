@@ -19,6 +19,7 @@ use crate::server::{
     edit::{handle_bulk_set_activity_type, handle_edit_trip},
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
+    geojson,
     import::{handle_add_photos, handle_import},
     komoot::KomootClient,
     komoot_sync, paths, repo,
@@ -344,7 +345,9 @@ async fn download_gpx(
 
 /// GET `/api/trips/:id/track.geojson` — the track geometry as GeoJSON (US-7).
 /// The client fetches this once to draw both the map polyline and the elevation
-/// chart (geometry + elevation/distance arrays travel together; ADR-0005/0006).
+/// chart (geometry + elevation/distance arrays travel together; ADR-0005/0006),
+/// and reads the hovered point's time off it with the offsets it was in (US-62,
+/// `geojson::with_utc_offsets`).
 async fn track_geojson(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -353,7 +356,7 @@ async fn track_geojson(
         .await?
         .ok_or(AppError::NotFound)?;
     let headers = [(header::CONTENT_TYPE, "application/geo+json")];
-    Ok((headers, geojson).into_response())
+    Ok((headers, geojson::with_utc_offsets(&geojson)).into_response())
 }
 
 /// DELETE `/api/trips/:id` — delete a trip and its photo blobs (US-9, the v1

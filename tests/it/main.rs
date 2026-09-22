@@ -35,6 +35,7 @@ mod us51_export_api;
 mod us51_remote_export;
 mod us54_downscale;
 mod us5_thumbnails;
+mod us62_trip_page;
 mod us63_trip_list;
 mod us6_trip_list;
 mod us7_trip_detail;

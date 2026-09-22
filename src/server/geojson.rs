@@ -1,4 +1,5 @@
 use crate::server::gpx::{TimedPoint, TrackPoint};
+use crate::server::timezone;
 
 /// Build the GeoJSON blob stored in the `track` table (ADR-0003).
 ///
@@ -67,17 +68,54 @@ pub fn parse_timed_points(geojson: &str) -> Vec<TimedPoint> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(geojson) else {
         return Vec::new();
     };
-    let Some(coordinates) = value["geometry"]["coordinates"].as_array() else {
-        return Vec::new();
-    };
-    let Some(timestamps) = value["properties"]["timestamps"].as_array() else {
-        return Vec::new();
-    };
+    let mut timed: Vec<TimedPoint> = indexed_timed_points(&value)
+        .into_iter()
+        .map(|(_, point)| point)
+        .collect();
+    timed.sort_by_key(|p| p.time);
+    timed
+}
 
-    let mut timed: Vec<TimedPoint> = coordinates
+/// A stored track blob as it is served (US-62): verbatim (ADR-0003), plus
+/// `properties.utc_offsets` — the offset in force from each index at which it
+/// changes, `[[0, 7200], [1841, 10800]]`, in seconds east of UTC, or `null`
+/// from an index whose zone this build's tzdata cannot resolve.
+///
+/// Indices are the blob's own, the ones the elevation chart reports; a point
+/// with no timestamp has no instant to take an offset at and carries the one
+/// before it. Computed per request, never stored: the boundaries and tzdata it
+/// reads are versioned apart from the archive, so the best answer is today's.
+/// A blob this cannot read is served as it is — the geometry still draws.
+pub fn with_utc_offsets(geojson: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(geojson) else {
+        return geojson.to_string();
+    };
+    let changes = timezone::offset_changes(indexed_timed_points(&value));
+    let Some(properties) = value["properties"].as_object_mut() else {
+        return geojson.to_string();
+    };
+    let offsets: Vec<serde_json::Value> = changes
+        .into_iter()
+        .map(|(index, offset)| serde_json::json!([index, offset.map(|o| o.whole_seconds())]))
+        .collect();
+    properties.insert("utc_offsets".to_string(), offsets.into());
+    value.to_string()
+}
+
+/// Each point that has a timestamp, under its index in the blob, in blob
+/// order. Shared by [`parse_timed_points`], which then sorts them by time.
+fn indexed_timed_points(value: &serde_json::Value) -> Vec<(usize, TimedPoint)> {
+    let (Some(coordinates), Some(timestamps)) = (
+        value["geometry"]["coordinates"].as_array(),
+        value["properties"]["timestamps"].as_array(),
+    ) else {
+        return Vec::new();
+    };
+    coordinates
         .iter()
         .zip(timestamps)
-        .filter_map(|(coord, ts)| {
+        .enumerate()
+        .filter_map(|(index, (coord, ts))| {
             let lon = coord.get(0)?.as_f64()?;
             let lat = coord.get(1)?.as_f64()?;
             let time = time::OffsetDateTime::parse(
@@ -85,11 +123,9 @@ pub fn parse_timed_points(geojson: &str) -> Vec<TimedPoint> {
                 &time::format_description::well_known::Rfc3339,
             )
             .ok()?;
-            Some(TimedPoint { time, lat, lon })
+            Some((index, TimedPoint { time, lat, lon }))
         })
-        .collect();
-    timed.sort_by_key(|p| p.time);
-    timed
+        .collect()
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -213,5 +249,67 @@ mod tests {
             "earlier timestamp first"
         );
         assert!((timed[1].lon - 11.0).abs() < 1e-9);
+    }
+
+    // ── US-62: the track as it is served ────────────────────────────────────
+
+    /// Karasjok (Europe/Oslo) and Inari (Europe/Helsinki), either side of
+    /// the border — real coordinates, as `timezone`'s own tests use.
+    fn border_track(timestamps: [&str; 3]) -> String {
+        serde_json::json!({
+            "type": "Feature",
+            "geometry": { "type": "LineString", "coordinates": [
+                [25.514, 69.472, 0.0], [25.6, 69.4, 0.0], [27.029, 68.906, 0.0]
+            ] },
+            "properties": { "elevation_m": [0.0, 0.0, 0.0], "timestamps": timestamps }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn the_served_track_says_where_the_offset_changes_by_the_charts_index() {
+        // The middle point has no time, so among the timed points Inari is
+        // the second; in the blob — which is what the chart indexes — it is
+        // the third, and that is the index the change must be reported at.
+        let blob = border_track(["2024-06-01T08:00:00Z", "", "2024-06-01T10:00:00Z"]);
+
+        let served: serde_json::Value = serde_json::from_str(&with_utc_offsets(&blob)).unwrap();
+
+        assert_eq!(
+            served["properties"]["utc_offsets"],
+            serde_json::json!([[0, 7200], [2, 10800]])
+        );
+    }
+
+    #[test]
+    fn the_served_track_is_the_stored_one_otherwise() {
+        // ADR-0003: the blob is stored verbatim, and nothing it carries is
+        // changed on its way out.
+        let blob = border_track(["2024-06-01T08:00:00Z", "", "2024-06-01T10:00:00Z"]);
+
+        let mut served: serde_json::Value = serde_json::from_str(&with_utc_offsets(&blob)).unwrap();
+        served["properties"]
+            .as_object_mut()
+            .unwrap()
+            .remove("utc_offsets");
+
+        assert_eq!(
+            served,
+            serde_json::from_str::<serde_json::Value>(&blob).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_track_with_no_times_is_served_with_no_offsets() {
+        let blob = border_track(["", "", ""]);
+
+        let served: serde_json::Value = serde_json::from_str(&with_utc_offsets(&blob)).unwrap();
+
+        assert_eq!(served["properties"]["utc_offsets"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn a_blob_that_cannot_be_read_is_served_as_it_is() {
+        assert_eq!(with_utc_offsets("not json"), "not json");
     }
 }
