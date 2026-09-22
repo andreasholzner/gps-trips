@@ -103,48 +103,6 @@ pub fn absolute(base_url: &str, url: &str) -> String {
     format!("{base_url}{url}")
 }
 
-/// The gallery: every photo as a thumbnail (US-5 guarantees there is always
-/// one to use — the full-size image stands in when none could be made).
-///
-/// `photos` is `None` until the trip's photos have been read — distinct from
-/// an empty list, because "no photos yet" is a claim about the trip and a
-/// read still in flight is not evidence for it. `error` is what the archive
-/// said when that read failed, and is shown alongside whatever is already on
-/// screen rather than replacing it.
-#[component]
-pub fn PhotoGallery(
-    photos: Option<Vec<PhotoResponse>>,
-    base_url: String,
-    #[props(default)] error: Option<String>,
-) -> Element {
-    rsx! {
-        h2 { "Photos" }
-        if let Some(error) = error.clone() {
-            p { class: "error", "Could not load the photos: {error}" }
-        }
-        match photos {
-            None if error.is_none() => rsx! { p { "Loading the photos…" } },
-            None => rsx! {},
-            Some(photos) if photos.is_empty() => rsx! {
-                if error.is_none() {
-                    p { "No photos yet." }
-                }
-            },
-            Some(photos) => rsx! {
-                div { class: "gallery",
-                    for photo in photos {
-                        img {
-                            key: "{photo.id}",
-                            src: absolute(&base_url, &photo.thumbnail_url),
-                            alt: "{photo.original_name}",
-                        }
-                    }
-                }
-            },
-        }
-    }
-}
-
 /// An upload that stopped part-way: how many photos the archive already
 /// holds, and why the rest did not arrive.
 #[derive(Debug)]
@@ -258,29 +216,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{import_sample, render, serve_test_archive};
-    use trip_archive_types::LocationSource;
-
-    fn a_photo(id: i64, name: &str, at: Option<(f64, f64)>) -> PhotoResponse {
-        PhotoResponse {
-            id,
-            trip_id: 1,
-            original_name: name.to_string(),
-            content_type: Some("image/jpeg".to_string()),
-            byte_len: 1024,
-            created_at: "2026-07-11T09:30:00Z".to_string(),
-            taken_at: None,
-            taken_offset_secs: None,
-            url: format!("/media/trips/1/{name}"),
-            thumbnail_url: format!("/media/trips/1/thumb-{name}"),
-            lat: at.map(|(lat, _)| lat),
-            lon: at.map(|(_, lon)| lon),
-            location_source: match at {
-                Some(_) => LocationSource::Exif,
-                None => LocationSource::None,
-            },
-        }
-    }
+    use crate::test_support::{a_photo, import_sample, render, serve_test_archive};
 
     // US-3 and US-4: a photo is on the map when it has a position, however it
     // got one. US-4's unplaced photo — outside the track's time range — has
@@ -418,94 +354,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_gallery_shows_every_photo_by_its_thumbnail() {
-        let photos = vec![
-            a_photo(1, "first.jpg", None),
-            a_photo(2, "second.jpg", Some((59.91, 10.75))),
-        ];
-
-        let html = render(move || {
-            rsx! {
-                PhotoGallery {
-                    photos: Some(photos.clone()),
-                    base_url: "http://archive.test".to_string(),
-                }
-            }
-        });
-
-        assert!(
-            html.contains("http://archive.test/media/trips/1/thumb-first.jpg"),
-            "{html}"
-        );
-        assert!(html.contains("thumb-second.jpg"), "{html}");
-        // The name is the alt text: a gallery of unlabelled images is no use
-        // to a screen reader.
-        assert!(html.contains(r#"alt="first.jpg""#), "{html}");
-    }
-
-    #[test]
-    fn a_trip_with_no_photos_says_so() {
-        let html = render(|| {
-            rsx! { PhotoGallery { photos: Some(Vec::new()), base_url: String::new() } }
-        });
-
-        assert!(html.contains("No photos yet"), "{html}");
-    }
-
     // US-2's other half, on the screen: photos can be added at a later time.
     // Choosing files and clicking are real events (the browser layer); that
     // the control is offered at all is assertable here.
-    #[test]
-    fn a_gallery_that_could_not_be_read_says_so_instead_of_claiming_emptiness() {
-        // "No photos yet" is a claim about the trip; a failed fetch is not
-        // evidence for it.
-        let html = render(|| {
-            rsx! {
-                PhotoGallery {
-                    photos: Some(Vec::new()),
-                    base_url: String::new(),
-                    error: Some("the archive is unreachable".to_string()),
-                }
-            }
-        });
-
-        assert!(html.contains("the archive is unreachable"), "{html}");
-        assert!(!html.contains("No photos yet"), "{html}");
-    }
-
-    #[test]
-    fn a_gallery_that_failed_to_refresh_keeps_what_is_already_on_screen() {
-        // The refresh after an upload can fail; the photos already read are
-        // still true, and blanking them would be a second, invented loss.
-        let photos = vec![a_photo(1, "first.jpg", None)];
-
-        let html = render(move || {
-            rsx! {
-                PhotoGallery {
-                    photos: Some(photos.clone()),
-                    base_url: String::new(),
-                    error: Some("the archive is unreachable".to_string()),
-                }
-            }
-        });
-
-        assert!(html.contains("the archive is unreachable"), "{html}");
-        assert!(html.contains("thumb-first.jpg"), "{html}");
-    }
-
-    #[test]
-    fn a_gallery_that_has_not_been_read_yet_claims_nothing_about_the_trip() {
-        // "No photos yet" is a claim; a read still in flight is not evidence
-        // for it, any more than a failed one is.
-        let html = render(|| {
-            rsx! { PhotoGallery { photos: None, base_url: String::new() } }
-        });
-
-        assert!(!html.contains("No photos yet"), "{html}");
-        assert!(html.contains("Loading"), "{html}");
-    }
-
     // ── US-54: no single request carries every chosen photo ────────────
 
     fn uploads(count: usize) -> Vec<PhotoUpload> {

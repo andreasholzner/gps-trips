@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use trip_archive_types::{ActivityType, TripDetail};
+use trip_archive_types::{ActivityType, LocationSource, PhotoResponse, TripDetail};
 
 use crate::api::ApiClient;
 
@@ -315,5 +315,27 @@ pub fn a_trip(name: &str) -> TripDetail {
         max_lat: Some(60.0),
         max_lon: Some(10.8),
         komoot: None,
+    }
+}
+
+/// A photo as the photos endpoint returns it, placed at `at` if given.
+pub fn a_photo(id: i64, name: &str, at: Option<(f64, f64)>) -> PhotoResponse {
+    PhotoResponse {
+        id,
+        trip_id: 1,
+        original_name: name.to_string(),
+        content_type: Some("image/jpeg".to_string()),
+        byte_len: 1024,
+        created_at: "2026-07-11T09:30:00Z".to_string(),
+        taken_at: None,
+        taken_offset_secs: None,
+        url: format!("/media/trips/1/{name}"),
+        thumbnail_url: format!("/media/trips/1/thumb-{name}"),
+        lat: at.map(|(lat, _)| lat),
+        lon: at.map(|(_, lon)| lon),
+        location_source: match at {
+            Some(_) => LocationSource::Exif,
+            None => LocationSource::None,
+        },
     }
 }

@@ -5,7 +5,8 @@
 use dioxus::prelude::*;
 
 use crate::api::{self, ApiClient};
-use crate::photos::{self, PhotoGallery};
+use crate::gallery::PhotoGallery;
+use crate::photos;
 use crate::trip_tags::TripTags;
 use trip_archive_types::PhotoResponse;
 

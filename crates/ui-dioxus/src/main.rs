@@ -15,6 +15,7 @@ mod edit;
 mod filter_bar;
 mod filters;
 mod format;
+mod gallery;
 mod heat;
 mod import;
 mod interop;
