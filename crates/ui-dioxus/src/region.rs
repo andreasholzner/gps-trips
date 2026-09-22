@@ -73,6 +73,17 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Element {
         }
     });
 
+    // The rectangle follows the region the filters hold, so clearing it —
+    // "Clear region", or "Clear filters" on the toolbar — takes it off the
+    // map. A memo, so a keystroke in the search box sends nothing here.
+    let region = use_memo(move || filters.read().bbox.clone());
+    use_effect(move || {
+        let corners = interop::bbox_corners(&region.read());
+        if let Some(map) = handle.read().as_ref() {
+            interop::show_region(map, corners);
+        }
+    });
+
     // Redrawn whenever the list's rows change — on the same terms the table
     // re-queries — and once more when the map comes up, which may be after
     // the first rows have arrived.

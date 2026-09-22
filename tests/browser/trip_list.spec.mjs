@@ -223,10 +223,26 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
   await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
 
-  // Clearing brings the trips back.
+  // Clearing brings the trips back, and takes the rectangle off the map:
+  // a rectangle the filters no longer hold would claim a region that is
+  // not narrowing anything.
   await page.locator("#region-clear").click();
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
   await expect(page).not.toHaveURL(/[?&]bbox=/);
+  await expect(page.locator("#region-map .leaflet-interactive")).toHaveCount(0);
+});
+
+// The toolbar's "Clear filters" clears the region too, so it must take the
+// rectangle with it just as "Clear region" does.
+test("clearing the filters takes the region off the map (US-14)", async ({ page }) => {
+  await page.goto("/app/?bbox=-30,30,-20,40");
+  await expect(page.getByText("No trips match your filters.")).toBeVisible();
+  await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear filters" }).click();
+
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+  await expect(page.locator("#region-map .leaflet-interactive")).toHaveCount(0);
 });
 
 // US-58: the same control on the other map. The fix belongs to the control

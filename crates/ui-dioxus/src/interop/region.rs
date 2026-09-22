@@ -1,6 +1,7 @@
 //! The region map (US-52/US-14, US-63) — the trip list's own widget.
 
 use dioxus::prelude::*;
+use serde::Serialize;
 
 use crate::heat::HeatMarks;
 
@@ -13,11 +14,12 @@ const BBOX_DECIMALS: usize = 6;
 /// the rectangle it is given, and reports every finished drag back as four
 /// numbers: `[west, south, east, north]`.
 ///
-/// Its channel carries the rectangle to restore first, then a
-/// [`HeatMarks`] every time the list's rows change. The view fits once —
-/// to the restored rectangle, or else to the first marks there are — and
-/// after that only when the owner asks with "Fit to trips", so the map does
-/// not jump on every keystroke.
+/// Its channel carries [`MapMessage`]s: the rectangle the filters hold —
+/// first when the map starts, then whenever the region changes, including
+/// to none when it is cleared — and the marks every time the list's rows
+/// change. The view fits once — to the first rectangle, or else to the
+/// first marks there are — and after that only when the owner asks with
+/// "Fit to trips", so the map does not jump on every keystroke.
 ///
 /// Coordinate hygiene stays on the JS side because it needs the live map:
 /// Leaflet's world repeats horizontally, so a map panned east reports
@@ -95,18 +97,10 @@ const REGION_MAP_SCRIPT: &str = r##"
       ]);
     });
 
-    // Only now wait for the rectangle the filters already hold — after the
-    // map is interactive, never before. Awaiting the channel first would
-    // leave the map drawn but dead if that message were slow or never came,
-    // which is exactly what it did.
-    const restore = await dioxus.recv();
+    // Only now read the channel — after the map is interactive, never
+    // before. Awaiting it first would leave the map drawn but dead if the
+    // first message were slow or never came, which is exactly what it did.
     let fitted = false;
-    if (restore && !rect) {
-      const bounds = [[restore[1], restore[0]], [restore[3], restore[2]]];
-      show(bounds);
-      map.fitBounds(bounds, { padding: [20, 20] });
-      fitted = true;
-    }
 
     // The heat marks (US-63): not interactive, so a drag that starts on one
     // still draws or pans. `heat-mark` names them for the browser tests.
@@ -117,26 +111,53 @@ const REGION_MAP_SCRIPT: &str = r##"
       map.fitBounds(L.latLngBounds(points), { padding: [20, 20], maxZoom: 12 });
     };
     document.getElementById("region-fit")?.addEventListener("click", fitToMarks);
+
     for (;;) {
-      const marks = await dioxus.recv();
-      heat.clearLayers();
-      points = marks.points;
-      for (const point of points) {
-        L.circleMarker(point, {
-          radius: 8,
-          stroke: false,
-          fillColor: "#d7301f",
-          fillOpacity: marks.opacity,
-          interactive: false,
-          className: "heat-mark",
-        }).addTo(heat);
-      }
-      if (!fitted && points.length > 0) {
-        fitToMarks();
-        fitted = true;
+      const message = await dioxus.recv();
+      if ("region" in message) {
+        // The rectangle follows the filters, so clearing the region —
+        // by "Clear region" or by "Clear filters" — takes it off the map.
+        const region = message.region;
+        if (!region) {
+          rect?.remove();
+          rect = null;
+          continue;
+        }
+        const bounds = [[region[1], region[0]], [region[3], region[2]]];
+        show(bounds);
+        if (!fitted) {
+          map.fitBounds(bounds, { padding: [20, 20] });
+          fitted = true;
+        }
+      } else if ("marks" in message) {
+        heat.clearLayers();
+        points = message.marks.points;
+        for (const point of points) {
+          L.circleMarker(point, {
+            radius: 8,
+            stroke: false,
+            fillColor: "#d7301f",
+            fillOpacity: message.marks.opacity,
+            interactive: false,
+            className: "heat-mark",
+          }).addTo(heat);
+        }
+        if (!fitted && points.length > 0) {
+          fitToMarks();
+          fitted = true;
+        }
       }
     }
 "##;
+
+/// What Rust tells the region map, keyed by kind: `{"region": [..]}` (or
+/// `null` for none) and `{"marks": {..}}`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MapMessage<'a> {
+    Region(Option<[f64; 4]>),
+    Marks(&'a HeatMarks),
+}
 
 /// Start the region map, handing it the rectangle the filters already hold.
 ///
@@ -144,16 +165,24 @@ const REGION_MAP_SCRIPT: &str = r##"
 /// as long as the map should report drags: it is the channel.
 pub fn start_region_map(restore: Option<[f64; 4]>) -> document::Eval {
     let eval = document::eval(REGION_MAP_SCRIPT);
-    if let Err(err) = eval.send(restore) {
+    if let Err(err) = eval.send(MapMessage::Region(restore)) {
         dioxus::logger::tracing::error!("could not seed the region map: {err}");
     }
     eval
 }
 
+/// Draw `region` on the region map in place of whatever rectangle it shows,
+/// or take the rectangle off when there is none (US-14).
+pub fn show_region(map: &document::Eval, region: Option<[f64; 4]>) {
+    if let Err(err) = map.send(MapMessage::Region(region)) {
+        dioxus::logger::tracing::error!("could not show the region on the map: {err}");
+    }
+}
+
 /// Replace the marks on the region map with `marks` (US-63), on the map's
 /// own channel.
 pub fn draw_heat_marks(map: &document::Eval, marks: &HeatMarks) {
-    if let Err(err) = map.send(marks) {
+    if let Err(err) = map.send(MapMessage::Marks(marks)) {
         dioxus::logger::tracing::error!("could not draw the trips on the map: {err}");
     }
 }
@@ -184,6 +213,27 @@ pub fn bbox_corners(param: &str) -> Option<[f64; 4]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_map_is_told_which_kind_of_message_it_is_reading() {
+        // The script tells a rectangle from the marks by the key alone.
+        let region = serde_json::to_value(MapMessage::Region(Some([1.0, 2.0, 3.0, 4.0]))).unwrap();
+        assert_eq!(
+            region,
+            serde_json::json!({ "region": [1.0, 2.0, 3.0, 4.0] })
+        );
+        let cleared = serde_json::to_value(MapMessage::Region(None)).unwrap();
+        assert_eq!(cleared, serde_json::json!({ "region": null }));
+        let marks = HeatMarks {
+            points: vec![[60.0, 11.0]],
+            opacity: 0.6,
+        };
+        let marks = serde_json::to_value(MapMessage::Marks(&marks)).unwrap();
+        assert_eq!(
+            marks,
+            serde_json::json!({ "marks": { "points": [[60.0, 11.0]], "opacity": 0.6 } })
+        );
+    }
 
     #[test]
     fn corners_become_the_apis_bbox_parameter() {
