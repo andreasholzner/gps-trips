@@ -469,10 +469,19 @@ nav.pager {
   align-items: center;
 }
 
-.tag-entry input {
+.tag-entry input,
+.tag-entry select {
   flex: 1 1 12rem;
   max-width: 22rem;
   margin-bottom: 0;
+}
+
+/* Tagging the selected trips and setting their activity (US-34, US-63):
+   side by side where there is room, stacked on a phone. */
+.bulk-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0 1rem;
 }
 
 .error {

@@ -379,6 +379,40 @@ async fn an_invalid_tag_name_is_reported_readably_and_tags_nothing() {
     assert_eq!(list_tags(&archive).await.expect("tags"), Vec::new());
 }
 
+// ── US-63: one activity type for many trips ──────────────────────────
+
+#[tokio::test]
+async fn one_request_sets_the_activity_of_every_selected_trip() {
+    let (archive, _dir) = serve_test_archive().await;
+    let first = import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+    let second = import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
+
+    bulk_set_activity_type(&archive, &[first, second], ActivityType::Kayaking)
+        .await
+        .expect("bulk activity");
+
+    let kayaking = list_trips(&archive, "activity=kayaking".to_string())
+        .await
+        .expect("filtered list");
+    assert_eq!(kayaking.len(), 2, "{kayaking:?}");
+}
+
+#[tokio::test]
+async fn a_selection_holding_a_vanished_trip_changes_nothing_at_all() {
+    let (archive, _dir) = serve_test_archive().await;
+    let existing = import_sample(&archive, &[]).await;
+
+    let err = bulk_set_activity_type(&archive, &[existing, 9_999], ActivityType::Hiking)
+        .await
+        .expect_err("a vanished trip must fail the request");
+
+    assert!(err.to_string().contains("nothing was changed"), "{err}");
+    let hiking = list_trips(&archive, "activity=hiking".to_string())
+        .await
+        .expect("filtered list");
+    assert!(hiking.is_empty(), "{hiking:?}");
+}
+
 // ── US-12: the two-phase import, from the client that drives it ──────────
 //
 // Uploading and confirming are requests, not screen behaviour, so they

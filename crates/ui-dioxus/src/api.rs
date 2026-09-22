@@ -12,8 +12,8 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{
-    ConfirmImport, ErrorResponse, ImportedTrip, PhotoResponse, StagedImport, SyncCandidates,
-    SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
+    ActivityType, ConfirmImport, ErrorResponse, ImportedTrip, PhotoResponse, StagedImport,
+    SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
 };
 
 use crate::track::Track;
@@ -375,6 +375,45 @@ pub async fn remove_trip_tag(archive: &ApiClient, id: i64, tag_id: i64) -> Resul
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
 
+    ok_or_error(archive, &url, response).await?;
+    Ok(())
+}
+
+/// The `POST /api/trips/activity_type` body (US-63): one activity for every
+/// selected trip.
+#[derive(Serialize)]
+struct BulkSetActivity<'a> {
+    trip_ids: &'a [i64],
+    activity_type: ActivityType,
+}
+
+/// `POST /api/trips/activity_type` — overwrite the activity type of every
+/// selected trip (US-63). All-or-nothing, like bulk tagging: a trip that no
+/// longer exists fails the whole request, reported as such rather than as a
+/// bare 404. Other refusals — a sync in flight (US-26) — carry the server's
+/// own words.
+pub async fn bulk_set_activity_type(
+    archive: &ApiClient,
+    trip_ids: &[i64],
+    activity_type: ActivityType,
+) -> Result<(), ApiError> {
+    let url = archive.url("/api/trips/activity_type");
+    let response = archive
+        .post(&url)
+        .json(&BulkSetActivity {
+            trip_ids,
+            activity_type,
+        })
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(ApiError::from_status(
+            response.status(),
+            "one or more selected trips no longer exist; nothing was changed",
+        ));
+    }
     ok_or_error(archive, &url, response).await?;
     Ok(())
 }

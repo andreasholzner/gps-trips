@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use trip_archive_types::TripKind;
 
 use crate::api::{self, ApiClient};
+use crate::bulk_activity::BulkActivityPanel;
 use crate::bulk_tag::BulkTagPanel;
 use crate::filter_bar::FilterBar;
 use crate::filters::Filters;
@@ -68,7 +69,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         .read_unchecked()
         .as_ref()
         .and_then(|trips| trips.as_ref().ok().map(Vec::len));
-    // Which trips the bulk-tag panel will act on (US-34).
+    // Which trips the bulk panels will act on (US-34, US-63).
     let selected = use_signal(BTreeSet::new);
     let staged = use_signal(Vec::new);
     // Which page of the list the table shows (US-63). Back to the first
@@ -94,16 +95,22 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         if let (Some(total), Some(Ok(shown))) = (total, trips.read_unchecked().as_ref()) {
             TripCounts { shown: shown.len(), total, kind: kind(), page: page() }
         }
-        BulkTagPanel {
-            selected,
-            staged,
-            all_tags,
-            // A new tag now exists and the trips carry it: both the
-            // suggestions and a tag-filtered list are out of date.
-            on_applied: move |_| {
-                tag_resource.restart();
-                trips.restart();
-            },
+        // What to do with the selected trips: tag them (US-34), or give
+        // them all one activity (US-63).
+        div { class: "bulk-panels",
+            BulkTagPanel {
+                selected,
+                staged,
+                all_tags,
+                // A new tag now exists and the trips carry it: both the
+                // suggestions and a tag-filtered list are out of date.
+                on_applied: move |_| {
+                    tag_resource.restart();
+                    trips.restart();
+                },
+            }
+            // An activity-filtered list may no longer hold the trips.
+            BulkActivityPanel { selected, on_applied: move |_| trips.restart() }
         }
         match &*trips.read_unchecked() {
             None => rsx! { p { "Loading…" } },

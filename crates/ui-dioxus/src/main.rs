@@ -7,6 +7,7 @@
 use dioxus::prelude::*;
 
 mod api;
+mod bulk_activity;
 mod bulk_tag;
 mod delete;
 mod detail;

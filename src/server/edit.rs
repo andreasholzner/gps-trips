@@ -1,4 +1,5 @@
-//! Editing a trip's name and activity type (US-15). Kept separate from
+//! Editing a trip's name and activity type (US-15), and many trips'
+//! activity type at once (US-63). Kept separate from
 //! `repo.rs` (DB-only) and `http.rs`, mirroring how `delete.rs` isolates its
 //! one write operation instead of folding every concern into one file.
 
@@ -115,6 +116,39 @@ pub async fn handle_edit_trip(
     )
     .await?;
     if !updated {
+        return Err(AppError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The `POST /api/trips/activity_type` request body (US-63): the trips
+/// selected on the list screen, and the one activity type they all get.
+#[derive(Deserialize)]
+pub struct BulkActivityRequest {
+    trip_ids: Vec<i64>,
+    activity_type: String,
+}
+
+/// `POST /api/trips/activity_type` — set one activity type on every selected
+/// trip (US-63), mirroring `POST /api/trips/tags` (US-34): one request, one
+/// transaction, and an unknown trip 404s the whole request with nothing
+/// changed. The activity is validated as the single-trip edit validates it
+/// (blank resets to `Unknown`, an unrecognized value is a 400, ADR-0018).
+/// Unlike a tag, an activity type overwrites, so every linked trip's change
+/// is queued for Komoot (US-22) — and, like the single-trip `PATCH`, the
+/// request is refused with 409 while a sync is in flight (US-26).
+pub async fn handle_bulk_set_activity_type(
+    State(state): State<AppState>,
+    Json(body): Json<BulkActivityRequest>,
+) -> Result<StatusCode, AppError> {
+    if state.sync_in_progress() {
+        return Err(AppError::Conflict(SYNC_IN_PROGRESS_MSG.to_string()));
+    }
+    if body.trip_ids.is_empty() {
+        return Err(AppError::BadRequest("no trips selected".to_string()));
+    }
+    let activity_type = resolve_activity_type(Some(body.activity_type))?;
+    if !repo::set_activity_type(&state.pool, &body.trip_ids, activity_type).await? {
         return Err(AppError::NotFound);
     }
     Ok(StatusCode::NO_CONTENT)

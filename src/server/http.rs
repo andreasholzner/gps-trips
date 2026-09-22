@@ -16,7 +16,7 @@ use crate::models::{
 };
 use crate::server::{
     auth, backup, delete,
-    edit::handle_edit_trip,
+    edit::{handle_bulk_set_activity_type, handle_edit_trip},
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
     import::{handle_add_photos, handle_import},
@@ -104,6 +104,11 @@ pub fn router(state: AppState) -> Router {
         )
         // US-34: bulk-tag trips selected on the list page, in one request.
         .route("/api/trips/tags", post(handle_bulk_add_trip_tags))
+        // US-63: one activity type for the trips selected on the list page.
+        .route(
+            "/api/trips/activity_type",
+            post(handle_bulk_set_activity_type),
+        )
         .route("/api/tags", get(handle_list_all_tags))
         // US-40: a consistent snapshot of the database, for the laptop's
         // `backup` command; the photos it names come from `/media/*path`.

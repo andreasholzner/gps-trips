@@ -337,6 +337,44 @@ test("selected trips are tagged in one go, after confirming a new tag (US-34)", 
   await expect(rows(page)).toHaveCount(2);
 });
 
+// US-63: one activity type for the selected trips. Choosing, confirming and
+// the list catching up are real events. Its two trips are its own, removed
+// again afterwards, so no other test sees their activity change.
+test.describe("one activity for many trips (US-63)", () => {
+  const seeded = [];
+
+  test.beforeAll(async ({ request }) => {
+    for (const name of ["Bulk Activity One", "Bulk Activity Two"]) {
+      seeded.push(await importTrip(request, { name, activity_type: "hiking" }));
+    }
+  });
+
+  test.afterAll(async ({ request }) => {
+    for (const id of seeded.splice(0)) {
+      expect((await request.delete(`/api/trips/${id}`)).status()).toBe(204);
+    }
+  });
+
+  test("the selected trips get one activity, after confirming", async ({ page }) => {
+    await page.goto("/app/?q=bulk%20activity");
+    await expect(rows(page)).toHaveCount(2);
+
+    await page.locator("table thead").getByRole("checkbox").check();
+    await page.getByLabel("Activity for selected trips").selectOption("kayaking");
+    await page.getByRole("button", { name: "Set for 2 selected" }).click();
+
+    // It says what it will overwrite, and has not done it yet.
+    await expect(page.getByText("Set the activity of 2 trips to Kayaking?")).toBeVisible();
+    await expect(rows(page).filter({ hasText: "Hiking" })).toHaveCount(2);
+
+    await page.getByRole("button", { name: "Change", exact: true }).click();
+
+    await expect(rows(page).filter({ hasText: "Kayaking" })).toHaveCount(2);
+    // Done with: the selection is cleared, and the panels with it.
+    await expect(page.getByLabel("Activity for selected trips")).toHaveCount(0);
+  });
+});
+
 // US-63's paging. Moving between pages and keeping a selection across them
 // are real clicks. Its 51 trips are seeded here and removed again afterwards,
 // so every other test in this file keeps its two-trip archive.
