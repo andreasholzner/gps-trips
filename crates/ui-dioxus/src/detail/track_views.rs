@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 use crate::api::{self, ApiClient};
 use crate::format;
 use crate::interop;
-use crate::photos::PhotoMarker;
+use crate::photos::{self, PhotoMarker, PhotoView, PopupTap};
 use crate::track::{self, Track};
 
 /// The track on an OSM map and the elevation profile below it (US-7), from
@@ -14,8 +14,15 @@ use crate::track::{self, Track};
 ///
 /// A track that will not load costs the map and the chart, not the screen:
 /// the stats, the gallery and the edit controls around it are unaffected.
+///
+/// `on_open_photos` is told the set a photo tapped in a marker's popup opens
+/// the viewer on, and where in it to start (US-62).
 #[component]
-pub fn TrackSection(id: i64, markers: Vec<PhotoMarker>) -> Element {
+pub fn TrackSection(
+    id: i64,
+    markers: Vec<PhotoMarker>,
+    on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
+) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let track = use_resource(use_reactive!(|id| async move {
         api::get_track(&archive(), id).await
@@ -26,7 +33,7 @@ pub fn TrackSection(id: i64, markers: Vec<PhotoMarker>) -> Element {
             None => rsx! { p { "Loading the track…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load the track: {err}" } },
             Some(Ok(track)) => rsx! {
-                TrackViews { track: track.clone(), markers: markers.clone() }
+                TrackViews { track: track.clone(), markers: markers.clone(), on_open_photos }
             },
         }
     }
@@ -42,7 +49,11 @@ pub fn TrackSection(id: i64, markers: Vec<PhotoMarker>) -> Element {
 /// index and the polyline's are not the same point (`track::hover_points`),
 /// which is the whole reason the resolution does not happen in either script.
 #[component]
-fn TrackViews(track: Track, markers: Vec<PhotoMarker>) -> Element {
+fn TrackViews(
+    track: Track,
+    markers: Vec<PhotoMarker>,
+    on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
+) -> Element {
     let points = track::polyline(&track);
     let series = track::elevation_series(&track);
     let samples = track::hover_points(&track);
@@ -50,7 +61,7 @@ fn TrackViews(track: Track, markers: Vec<PhotoMarker>) -> Element {
     let hovered_at = hovered().and_then(|i| samples.get(i).and_then(|sample| sample.position));
 
     rsx! {
-        TrackMap { points, markers, hovered_at }
+        TrackMap { points, markers, hovered_at, on_open_photos }
         if let Some((distance_km, elevation_m)) = series {
             ElevationChart { distance_km, elevation_m, hovered }
             HoverReadout { points: samples, hovered: hovered() }
@@ -65,6 +76,7 @@ fn TrackMap(
     points: Vec<[f64; 2]>,
     markers: Vec<PhotoMarker>,
     hovered_at: Option<[f64; 2]>,
+    on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
     // The handle is the channel, so it is held for as long as the map should
     // keep taking messages — which is now the component's whole life, not
@@ -77,8 +89,18 @@ fn TrackMap(
     // map. The script is written to be drawn into twice (`interop::track`),
     // and replacing the handle here closes the superseded script's channel,
     // which is how that one learns to stop.
+    //
+    // The same channel brings a photo tapped in a popup back (US-62), and is
+    // read for as long as this draw is the current one: a redraw restarts
+    // this future, and the superseded loop goes with it.
     use_future(use_reactive!(|points, markers| async move {
-        handle.set(Some(interop::start_track_map(points, markers)));
+        let mut map = interop::start_track_map(points, markers.clone());
+        handle.set(Some(map));
+        while let Ok(tap) = map.recv::<PopupTap>().await {
+            if let Some(opened) = photos::tapped(&markers, tap) {
+                on_open_photos.call(opened);
+            }
+        }
     }));
 
     // Sent on every change of the hovered point, and again when a redraw

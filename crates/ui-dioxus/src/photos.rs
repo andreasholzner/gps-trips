@@ -1,12 +1,14 @@
-//! The trip's photos on the detail screen (US-2/US-7): the gallery, the
-//! markers that put them on the track map (US-3/US-4), and the control for
-//! adding more after the import.
+//! The trip's photos on the detail screen (US-2/US-7): the markers that put
+//! them on the track map (US-3/US-4), what the gallery and the viewer show of
+//! each (US-62), and the control for adding more after the import.
 
 use dioxus::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use time::UtcOffset;
 use trip_archive_types::PhotoResponse;
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
+use crate::format;
 use crate::import::batches;
 use crate::interop;
 
@@ -23,15 +25,69 @@ use crate::interop;
 pub struct PhotoMarker {
     pub lat: f64,
     pub lon: f64,
-    pub photos: Vec<MarkerPhoto>,
+    pub photos: Vec<PhotoView>,
 }
 
-/// A photo inside a marker's popup: the thumbnail to show and what to call
-/// it.
+/// A photo as the screen shows it — in a marker's popup, and in the viewer
+/// either that popup or the gallery opens (US-62): the thumbnail, the image
+/// at the size the archive holds it (ADR-0026's bounded copy), what to call
+/// it, and when it was taken. Serialized because a marker's photos travel to
+/// the map's drawing script, and back as the set to browse.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct MarkerPhoto {
+pub struct PhotoView {
     pub thumbnail_url: String,
+    pub url: String,
     pub name: String,
+    pub caption: Option<String>,
+}
+
+/// Every photo as the viewer browses the gallery: all of them, in gallery
+/// order (US-62).
+pub fn photo_views(base_url: &str, photos: &[PhotoResponse]) -> Vec<PhotoView> {
+    let with_date = captions_need_dates(photos);
+    photos
+        .iter()
+        .map(|photo| view_of(base_url, photo, with_date))
+        .collect()
+}
+
+fn view_of(base_url: &str, photo: &PhotoResponse, with_date: bool) -> PhotoView {
+    PhotoView {
+        thumbnail_url: absolute(base_url, &photo.thumbnail_url),
+        url: absolute(base_url, &photo.url),
+        name: photo.original_name.clone(),
+        caption: caption(photo, with_date),
+    }
+}
+
+/// When a photo was taken, in the zone it was taken in, through the same
+/// rendering as the readout under the chart (US-62). `None` for a photo whose
+/// EXIF named no time: no caption, rather than a dash that claims a missing
+/// value.
+pub fn caption(photo: &PhotoResponse, with_date: bool) -> Option<String> {
+    let at = format::instant(photo.taken_at.as_deref()?)?;
+    Some(format::clock(at, offset_of(photo), with_date))
+}
+
+/// Whether the photos were taken on more than one local date — then every
+/// caption says which, and otherwise none repeats it (US-62, the readout's
+/// rule applied to the photos themselves: the gallery has no track to ask).
+pub fn captions_need_dates(photos: &[PhotoResponse]) -> bool {
+    let mut dates = photos.iter().filter_map(|photo| {
+        let at = format::instant(photo.taken_at.as_deref()?)?;
+        Some(
+            at.to_offset(offset_of(photo).unwrap_or(UtcOffset::UTC))
+                .date(),
+        )
+    });
+    match dates.next() {
+        Some(first) => dates.any(|date| date != first),
+        None => false,
+    }
+}
+
+fn offset_of(photo: &PhotoResponse) -> Option<UtcOffset> {
+    UtcOffset::from_whole_seconds(photo.taken_offset_secs?).ok()
 }
 
 /// How close two photos must be to share a marker (US-57).
@@ -53,15 +109,15 @@ const EARTH_RADIUS_M: f64 = 6_371_008.8;
 /// it bounds a group at the threshold — merging transitively would chain
 /// photos 15 m apart into a group far wider than the marker claims.
 pub fn photo_markers(base_url: &str, photos: &[PhotoResponse]) -> Vec<PhotoMarker> {
+    // Dated or not by the trip's photos as a whole, as the gallery's are, so
+    // a photo reads the same wherever it is opened from.
+    let with_date = captions_need_dates(photos);
     let mut markers: Vec<PhotoMarker> = Vec::new();
     for photo in photos {
         let (Some(lat), Some(lon)) = (photo.lat, photo.lon) else {
             continue;
         };
-        let here = MarkerPhoto {
-            thumbnail_url: absolute(base_url, &photo.thumbnail_url),
-            name: photo.original_name.clone(),
-        };
+        let here = view_of(base_url, photo, with_date);
         match markers.iter_mut().find(|marker| {
             metres_between((marker.lat, marker.lon), (lat, lon)) <= GROUPING_RADIUS_M
         }) {
@@ -74,6 +130,22 @@ pub fn photo_markers(base_url: &str, photos: &[PhotoResponse]) -> Vec<PhotoMarke
         }
     }
     markers
+}
+
+/// A photo tapped in a marker's popup, as the map's script reports it: which
+/// marker, and where in its group (US-62).
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub struct PopupTap {
+    pub marker: usize,
+    pub photo: usize,
+}
+
+/// The set a popup tap opens the viewer on — that marker's photos, in the
+/// popup's order — and where in it to start. `None` for a tap that names a
+/// marker or a photo the map no longer has.
+pub fn tapped(markers: &[PhotoMarker], tap: PopupTap) -> Option<(Vec<PhotoView>, usize)> {
+    let group = &markers.get(tap.marker)?.photos;
+    (tap.photo < group.len()).then(|| (group.clone(), tap.photo))
 }
 
 /// The distance in metres between two `(lat, lon)` positions, as an
@@ -238,6 +310,178 @@ mod tests {
         assert_eq!(
             markers[0].photos[0].thumbnail_url,
             "http://archive.test/media/trips/1/thumb-geotagged.jpg"
+        );
+    }
+
+    // ── US-62: when each photo was taken, and looking at it properly ─────
+
+    fn taken(photo: PhotoResponse, at: &str, offset_secs: Option<i32>) -> PhotoResponse {
+        PhotoResponse {
+            taken_at: Some(at.to_string()),
+            taken_offset_secs: offset_secs,
+            ..photo
+        }
+    }
+
+    #[test]
+    fn a_photo_is_captioned_with_when_it_was_taken_where_it_was_taken() {
+        let photo = taken(
+            a_photo(1, "a.jpg", None),
+            "2024-06-01T08:15:00Z",
+            Some(7200),
+        );
+
+        assert_eq!(caption(&photo, false).as_deref(), Some("10:15 (+02:00)"));
+        assert_eq!(
+            caption(&photo, true).as_deref(),
+            Some("1 Jun 10:15 (+02:00)")
+        );
+    }
+
+    #[test]
+    fn a_photo_whose_zone_is_unknown_is_captioned_in_labelled_utc() {
+        let photo = taken(a_photo(1, "a.jpg", None), "2024-06-01T08:15:00Z", None);
+
+        assert_eq!(caption(&photo, false).as_deref(), Some("08:15 UTC"));
+    }
+
+    #[test]
+    fn a_photo_with_no_capture_time_has_no_caption() {
+        // Silence rather than a dash: a dash claims a missing value.
+        assert_eq!(caption(&a_photo(1, "a.jpg", None), false), None);
+    }
+
+    #[test]
+    fn captions_carry_the_date_only_when_the_photos_span_more_than_one() {
+        let morning = taken(
+            a_photo(1, "a.jpg", None),
+            "2024-06-01T08:15:00Z",
+            Some(7200),
+        );
+        let evening = taken(
+            a_photo(2, "b.jpg", None),
+            "2024-06-01T20:15:00Z",
+            Some(7200),
+        );
+        // 22:30 UTC is already the 2nd at +02:00: dates are the local ones.
+        let midnight = taken(
+            a_photo(3, "c.jpg", None),
+            "2024-06-01T22:30:00Z",
+            Some(7200),
+        );
+        let untimed = a_photo(4, "d.jpg", None);
+
+        assert!(!captions_need_dates(&[
+            morning.clone(),
+            evening.clone(),
+            untimed
+        ]));
+        assert!(captions_need_dates(&[morning, midnight]));
+    }
+
+    #[test]
+    fn the_viewer_is_given_every_photo_in_gallery_order_at_full_size() {
+        let photos = vec![
+            taken(
+                a_photo(1, "first.jpg", None),
+                "2024-06-01T08:15:00Z",
+                Some(7200),
+            ),
+            a_photo(2, "second.jpg", Some((59.91, 10.75))),
+        ];
+
+        let views = photo_views("http://archive.test", &photos);
+
+        assert_eq!(
+            views,
+            vec![
+                PhotoView {
+                    thumbnail_url: "http://archive.test/media/trips/1/thumb-first.jpg".to_string(),
+                    url: "http://archive.test/media/trips/1/first.jpg".to_string(),
+                    name: "first.jpg".to_string(),
+                    caption: Some("10:15 (+02:00)".to_string()),
+                },
+                PhotoView {
+                    thumbnail_url: "http://archive.test/media/trips/1/thumb-second.jpg".to_string(),
+                    url: "http://archive.test/media/trips/1/second.jpg".to_string(),
+                    name: "second.jpg".to_string(),
+                    caption: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_marker_carries_what_the_viewer_needs_for_its_photos() {
+        // A tap in the popup opens the viewer on that marker's photos, so
+        // each one travels with its full-size URL and its caption.
+        let photos = vec![taken(
+            a_photo(1, "here.jpg", Some((59.91, 10.75))),
+            "2024-06-01T08:15:00Z",
+            Some(7200),
+        )];
+
+        let markers = photo_markers("http://archive.test", &photos);
+
+        assert_eq!(
+            markers[0].photos,
+            photo_views("http://archive.test", &photos)
+        );
+    }
+
+    #[test]
+    fn a_tap_in_a_popup_opens_that_markers_photos_at_the_one_tapped() {
+        // The popup's set, in the popup's order — not the trip's (US-62).
+        let photos = vec![
+            a_photo(1, "alone.jpg", Some((59.91, 10.75))),
+            a_photo(2, "first.jpg", Some((60.5, 11.0))),
+            a_photo(3, "second.jpg", Some((60.5, 11.0))),
+        ];
+        let markers = photo_markers("", &photos);
+
+        let (set, start) = tapped(
+            &markers,
+            PopupTap {
+                marker: 1,
+                photo: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            set.iter()
+                .map(|photo| photo.name.as_str())
+                .collect::<Vec<_>>(),
+            ["first.jpg", "second.jpg"]
+        );
+        assert_eq!(start, 1);
+    }
+
+    #[test]
+    fn a_tap_on_a_marker_the_map_no_longer_has_opens_nothing() {
+        // The tap and the markers arrive on different paths: a popup drawn
+        // for the previous photos can answer after they have changed.
+        let markers = photo_markers("", &[a_photo(1, "a.jpg", Some((59.91, 10.75)))]);
+
+        assert_eq!(
+            tapped(
+                &markers,
+                PopupTap {
+                    marker: 3,
+                    photo: 0
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            tapped(
+                &markers,
+                PopupTap {
+                    marker: 0,
+                    photo: 4
+                }
+            ),
+            None
         );
     }
 

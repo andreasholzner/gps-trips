@@ -32,6 +32,7 @@ mod test_support;
 mod track;
 mod trip_table;
 mod trip_tags;
+mod viewer;
 
 use api::ApiClient;
 use detail::TripDetail;

@@ -66,12 +66,24 @@
   overflow-y: auto;
 }
 
+/* Each photo in it is a button that opens the viewer on the group (US-62),
+   stripped of Pico's filled-block look: the photo is the control. */
+.photo-popup .popup-photo {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+
 .photo-popup img {
   display: block;
   max-width: 150px;
 }
 
-.photo-popup img + img {
+.popup-photo + .popup-photo {
   margin-top: 0.25rem;
 }
 
@@ -107,16 +119,40 @@
 }
 
 /* The photo gallery (US-7). Thumbnails are already small (US-5); the cap is
-   for the full-size original that stands in when none could be made. */
+   for the full-size original that stands in when none could be made. Each
+   is a button that opens the viewer, captioned with when it was taken
+   (US-62). */
 .gallery {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
+.gallery figure {
+  margin: 0;
+}
+
+.gallery button {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+
 .gallery img {
+  display: block;
   max-height: 200px;
   width: auto;
+}
+
+.gallery figcaption {
+  padding-top: 0.25rem;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--pico-muted-color);
 }
 
 /* The trip's tags on one line (US-62): the chips, then the field once adding
@@ -173,4 +209,65 @@
 
 .add-photos {
   margin-top: var(--pico-spacing);
+}
+
+/* The photo viewer (US-62): the photo as large as the screen allows, and
+   the controls under it. On the overlay's dark backdrop in either theme. */
+.viewer {
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: #ffffff;
+  /* A horizontal drag is the swipe to the next photo, and has to be claimed
+     or the browser takes it first and cancels it (US-59's lesson); a pinch
+     still zooms. The page behind does not scroll anyway while this is open. */
+  touch-action: pinch-zoom;
+}
+
+/* All the room the controls leave, not just the photo's own: a small photo
+   is still swiped anywhere across the screen. */
+.viewer-photo {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 0;
+  margin: 0;
+  user-select: none;
+}
+
+.viewer-photo img {
+  max-width: 100%;
+  max-height: calc(100vh - 9rem);
+  object-fit: contain;
+}
+
+.viewer-photo figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 1rem;
+  padding-top: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.viewer-controls button {
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid rgb(255 255 255 / 0.6);
+  background: transparent;
+  color: #ffffff;
+}
+
+.viewer-controls button[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
 }

@@ -6,8 +6,9 @@ use dioxus::prelude::*;
 
 use crate::api::{self, ApiClient};
 use crate::gallery::PhotoGallery;
-use crate::photos;
+use crate::photos::{self, PhotoView};
 use crate::trip_tags::TripTags;
+use crate::viewer::PhotoViewer;
 use trip_archive_types::PhotoResponse;
 
 mod actions;
@@ -72,6 +73,14 @@ pub fn TripDetail(id: i64) -> Element {
         Some((read_for, Err(err))) if *read_for == id => Some(err.to_string()),
         _ => None,
     };
+    // The photo viewer, while it is open: the set it browses and where it
+    // opened (US-62). The router shows the next trip through this same
+    // scope, and a viewer left open would browse the previous trip's photos.
+    let mut viewing = use_signal(|| None::<(Vec<PhotoView>, usize)>);
+    use_effect(use_reactive!(|id| {
+        let _ = id;
+        viewing.set(None);
+    }));
 
     rsx! {
         // The way back is the menu's "All trips" (US-60), on every screen
@@ -99,16 +108,24 @@ pub fn TripDetail(id: i64) -> Element {
                 TrackSection {
                     id,
                     markers: photos::photo_markers(archive().base_url(), photos.as_deref().unwrap_or(&[])),
+                    on_open_photos: move |opened| viewing.set(Some(opened)),
                 }
                 PhotoGallery {
                     photos: photos.clone(),
                     base_url: archive().base_url().to_string(),
                     error: photos_error.clone(),
+                    on_open: {
+                        let views = photos::photo_views(archive().base_url(), photos.as_deref().unwrap_or(&[]));
+                        move |start| viewing.set(Some((views.clone(), start)))
+                    },
                 }
                 TripActions {
                     trip: trip.clone(),
                     on_saved: move |_| trip_resource.restart(),
                     on_photos_added: move |_| photo_list.restart(),
+                }
+                if let Some((photos, start)) = viewing() {
+                    PhotoViewer { photos, start, on_close: move |_| viewing.set(None) }
                 }
             },
         }

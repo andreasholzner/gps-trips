@@ -73,7 +73,7 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // include a photo whose EXIF GPS puts it off the track (US-3), which
     // needs the markers' own bounds.
     map.photoMarkers = L.featureGroup(
-      (view.markers || []).map((group) => {
+      (view.markers || []).map((group, groupIndex) => {
         const photos = group.photos || [];
         // Every photo the marker stands for, not just the topmost one
         // (US-57). The popup scrolls once there are more than fit.
@@ -85,12 +85,28 @@ const TRACK_MAP_SCRIPT: &str = r##"
           count.textContent = `${photos.length} photos here`;
           popup.appendChild(count);
         }
-        for (const photo of photos) {
+        // Each photo opens the viewer on this marker's photos (US-62). The
+        // viewer is Rust's, so the tap crosses back over this channel — only
+        // where in which group, since Rust holds the set it sent.
+        photos.forEach((photo, photoIndex) => {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.className = "popup-photo";
+          open.title = `Open ${photo.name}`;
           const img = document.createElement("img");
           img.src = photo.thumbnail_url;
           img.alt = photo.name;
-          popup.appendChild(img);
-        }
+          open.appendChild(img);
+          open.addEventListener("click", () => {
+            try {
+              dioxus.send({ marker: groupIndex, photo: photoIndex });
+            } catch {
+              // A superseded draw's channel is closed; its popups are gone
+              // with the redraw.
+            }
+          });
+          popup.appendChild(open);
+        });
 
         // Neither shape is Leaflet's default pin: that pin is an image file,
         // and neither the bundle nor the APK ships Leaflet's `images/`
@@ -332,7 +348,8 @@ struct TrackMapView {
 ///
 /// The returned handle is the channel: it must be kept alive until the
 /// script has taken the payload, so callers hold it for the life of the
-/// screen.
+/// screen. It also carries a photo tapped in a popup back, as a
+/// [`PopupTap`](crate::photos::PopupTap) (US-62).
 pub fn start_track_map(points: Vec<[f64; 2]>, markers: Vec<PhotoMarker>) -> document::Eval {
     start(
         TRACK_MAP_SCRIPT,
