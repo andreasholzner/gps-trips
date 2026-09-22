@@ -287,8 +287,21 @@ nav.pager {
   overflow-x: auto;
 }
 
+/* Pico's `:where(table) { width: 100% }` would shrink the table to the box
+   instead of letting it overflow, squeezing every column into a sliver so
+   that the box never scrolls. Sized by its content instead, the table is
+   never narrower than its columns need — names may still wrap, numbers may
+   not — and never narrower than the box (US-63). */
 .table-scroll table {
   margin-bottom: 0;
+  width: auto;
+  min-width: 100%;
+}
+
+/* A date, a distance or a duration broken over two lines reads as two
+   values. */
+.table-scroll td.num {
+  white-space: nowrap;
 }
 
 /* The name — of a trip, or of the Komoot tour a sync would pull — is the

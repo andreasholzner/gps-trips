@@ -24,7 +24,8 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
 
     rsx! {
         // Eight columns don't fit a phone: the table scrolls inside this
-        // box so the page itself never scrolls sideways (US-41).
+        // box so the page itself never scrolls sideways (US-41), at the
+        // width its columns need rather than squeezed to the box's (US-63).
         div { class: "table-scroll",
         table {
             thead {
@@ -78,10 +79,10 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
                             Link { to: Route::TripDetail { id: trip.id }, "{trip.name}" }
                         }
                         td { "{trip.activity_type.label()}" }
-                        td { {format::date(trip.start_time.as_deref())} }
-                        td { {format::km(trip.distance_m)} }
-                        td { {format::metres(trip.ascent_m)} }
-                        td { {format::duration(trip.duration_secs)} }
+                        td { class: "num", {format::date(trip.start_time.as_deref())} }
+                        td { class: "num", {format::km(trip.distance_m)} }
+                        td { class: "num", {format::metres(trip.ascent_m)} }
+                        td { class: "num", {format::duration(trip.duration_secs)} }
                         td { {format::privacy(trip.privacy_status)} }
                     }
                 }

@@ -286,6 +286,27 @@ test("the map fits the trips on load and again when asked (US-63)", async ({ pag
   await expect.poll(inside).toBe(true);
 });
 
+// US-63: on a phone the table scrolls inside its own box rather than being
+// squeezed into it — a scrollbar is invisible to a rendered string.
+test("on a phone the table scrolls sideways and the page does not (US-63)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/app/");
+  await expect(rows(page)).toHaveCount(2);
+
+  const box = page.locator(".table-scroll");
+  const overflow = await box.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow, "the box has something to scroll").toBeGreaterThan(0);
+  const pageOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(pageOverflow, "the page itself does not scroll sideways").toBeLessThanOrEqual(0);
+
+  // A number stays on one line rather than wrapping into a column of digits.
+  for (const column of [3, 4, 5, 6]) {
+    await expect(rows(page).first().locator("td").nth(column)).toHaveCSS("white-space", "nowrap");
+  }
+});
+
 test("selected trips are tagged in one go, after confirming a new tag (US-34)", async ({
   page,
 }) => {
