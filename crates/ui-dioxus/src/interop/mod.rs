@@ -31,7 +31,7 @@ use dioxus::prelude::*;
 
 /// Empty the add-photos file picker (US-2), by its id.
 ///
-/// Not a widget, and the only thing here that is not: a file input cannot be
+/// Not a widget, like [`hold_page_scroll`] below: a file input cannot be
 /// cleared from Rust — its value is not a prop the framework owns, and
 /// rebuilding the element with a `key` does not reach it, because a key is
 /// only honoured on a template's root. Leaving it naming files that are no

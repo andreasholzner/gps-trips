@@ -88,6 +88,7 @@ C4Container
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
         Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "Runs on the laptop: one-way reconcile of every trip into a QMapShack database, reading the archive through the JSON API; run manually or from cron, never from inside the app. TOML config for archive URL, target path + folder mapping; rolling backups; version gate.")
         Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23). Runs inside the deployed instance, against its volume.")
+        Container(takenat, "photo_taken_at_backfill CLI", "Rust binary, same crate", "One-off: gives photos stored before US-62 the capture time their stored copy's EXIF names. Runs inside the deployed instance, against its volume.")
         Container(check, "komoot_check CLI", "Rust binary, same crate", "Standalone probe that the reverse-engineered komoot API still works (US-27). No DB or blob store.")
         Container(backup, "backup CLI", "Rust binary, same crate", "Runs on the laptop: pulls a database snapshot and the photos it names into a data-directory-shaped backup, fetching only photos it lacks (US-40).")
     }
@@ -110,6 +111,8 @@ C4Container
     Rel(backfill, komoot, "Lists + downloads tours and photos", "HTTPS")
     Rel(backfill, db, "Imports tours transactionally", "sqlx (SQL)")
     Rel(backfill, blobs, "Stores pulled photos", "file IO")
+    Rel(takenat, blobs, "Reads each stored copy's EXIF", "file IO")
+    Rel(takenat, db, "Fills in photo capture times", "sqlx (SQL)")
     Rel(check, komoot, "Probes the API", "HTTPS")
     Rel(backup, server, "Fetches the VACUUM INTO snapshot and missing photos", "HTTPS")
     Rel(backup, backupdisk, "Writes trip-archive.db + photos/", "file IO")
@@ -125,7 +128,8 @@ C4Container
 - The API is JSON-first so a future Android/PWA client is additive
   ([ADR-0008](./adr/0008-json-first-api.md)).
 - The CLI binaries are thin shells over the same library crate as the server. `komoot_backfill`
-  opens the SQLite file directly and goes through the same import pipeline; inside the server, an
+  opens the SQLite file directly and goes through the same import pipeline, and
+  `photo_taken_at_backfill` resolves capture times the way ingestion does; inside the server, an
   in-process sync guard serializes "Sync now" against edits/deletes (US-26). `backup` and
   `qmapshack_export` run on the laptop and reach the archive only over HTTPS: the exporter reads
   one consistent, unfiltered trip list and fetches geometry per trip as needed — a trip that

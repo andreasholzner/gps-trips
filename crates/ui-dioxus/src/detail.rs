@@ -131,6 +131,7 @@ pub fn TripDetail(id: i64) -> Element {
         }
     }
 }
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
