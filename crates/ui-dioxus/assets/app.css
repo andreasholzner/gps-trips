@@ -289,12 +289,21 @@ nav.tabs button:not(:disabled) {
   min-width: 12ch;
 }
 
-/* The region map (US-52). Leaflet needs a container with a real height, or
-   it lays out into nothing. */
+/* The region map (US-52), the middle of the list screen since US-63.
+   Leaflet needs a container with a real height, or it lays out into
+   nothing. On a phone the map would otherwise fill the screen, and a
+   one-finger drag on it pans rather than scrolls, so there it leaves room
+   for the table to show below it. */
 .region-map {
-  height: 320px;
+  height: 640px;
   width: 100%;
   margin-bottom: 0.5rem;
+}
+
+@media (max-width: 767.98px) {
+  .region-map {
+    height: min(640px, 60vh);
+  }
 }
 
 /* The detail screen's track map and elevation profile (US-7), both drawn by a

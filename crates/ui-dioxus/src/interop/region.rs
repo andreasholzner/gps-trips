@@ -1,15 +1,23 @@
-//! The region map (US-52/US-14) — the trip list's own widget.
+//! The region map (US-52/US-14, US-63) — the trip list's own widget.
 
 use dioxus::prelude::*;
+
+use crate::heat::HeatMarks;
 
 /// Coordinate decimals kept in the `bbox` parameter. Six is ~10 cm — far
 /// finer than a rectangle dragged by hand needs, and it keeps a shared URL
 /// readable.
 const BBOX_DECIMALS: usize = 6;
 
-/// The region map (US-52/US-14). Draws into `#region-map`, restores the
-/// rectangle it is given, and reports every finished drag back as four
+/// The region map (US-52/US-14, US-63). Draws into `#region-map`, restores
+/// the rectangle it is given, and reports every finished drag back as four
 /// numbers: `[west, south, east, north]`.
+///
+/// Its channel carries the rectangle to restore first, then a
+/// [`HeatMarks`] every time the list's rows change. The view fits once —
+/// to the restored rectangle, or else to the first marks there are — and
+/// after that only when the owner asks with "Fit to trips", so the map does
+/// not jump on every keystroke.
 ///
 /// Coordinate hygiene stays on the JS side because it needs the live map:
 /// Leaflet's world repeats horizontally, so a map panned east reports
@@ -92,10 +100,41 @@ const REGION_MAP_SCRIPT: &str = r##"
     // leave the map drawn but dead if that message were slow or never came,
     // which is exactly what it did.
     const restore = await dioxus.recv();
+    let fitted = false;
     if (restore && !rect) {
       const bounds = [[restore[1], restore[0]], [restore[3], restore[2]]];
       show(bounds);
       map.fitBounds(bounds, { padding: [20, 20] });
+      fitted = true;
+    }
+
+    // The heat marks (US-63): not interactive, so a drag that starts on one
+    // still draws or pans. `heat-mark` names them for the browser tests.
+    const heat = L.layerGroup().addTo(map);
+    let points = [];
+    const fitToMarks = () => {
+      if (points.length === 0) return;
+      map.fitBounds(L.latLngBounds(points), { padding: [20, 20], maxZoom: 12 });
+    };
+    document.getElementById("region-fit")?.addEventListener("click", fitToMarks);
+    for (;;) {
+      const marks = await dioxus.recv();
+      heat.clearLayers();
+      points = marks.points;
+      for (const point of points) {
+        L.circleMarker(point, {
+          radius: 8,
+          stroke: false,
+          fillColor: "#d7301f",
+          fillOpacity: marks.opacity,
+          interactive: false,
+          className: "heat-mark",
+        }).addTo(heat);
+      }
+      if (!fitted && points.length > 0) {
+        fitToMarks();
+        fitted = true;
+      }
     }
 "##;
 
@@ -109,6 +148,14 @@ pub fn start_region_map(restore: Option<[f64; 4]>) -> document::Eval {
         dioxus::logger::tracing::error!("could not seed the region map: {err}");
     }
     eval
+}
+
+/// Replace the marks on the region map with `marks` (US-63), on the map's
+/// own channel.
+pub fn draw_heat_marks(map: &document::Eval, marks: &HeatMarks) {
+    if let Err(err) = map.send(marks) {
+        dioxus::logger::tracing::error!("could not draw the trips on the map: {err}");
+    }
 }
 
 /// The four corners the map reported, as the `bbox` query parameter the API

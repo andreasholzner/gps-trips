@@ -1,5 +1,5 @@
-//! The trip list's filter controls (US-13/US-32/US-38, and US-14's region
-//! through [`crate::region`]).
+//! The trip list's filter controls (US-13/US-32/US-38). US-14's region is
+//! drawn on the map above the table ([`crate::region`], US-63).
 //!
 //! Split out of `list.rs` by US-61, which reshaped a stack of four full-width
 //! fieldsets into one toolbar and a disclosure: the controls are a concern of
@@ -14,13 +14,12 @@ use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, Tag, TripKind};
 
 use crate::filters::Filters;
-use crate::region::RegionFilter;
 
 /// Everything the owner narrows the list with.
 ///
 /// The split is by how often a filter is reached for, not by what it does:
 /// the tab, the name search and the activity are on the toolbar, always
-/// visible; the dates, the distances, the tags and the region map sit behind
+/// visible; the dates, the distances and the tags sit behind
 /// "More filters", so the table starts near the top of a desktop screen
 /// instead of below a stack of fieldsets (US-61).
 #[component]
@@ -135,10 +134,6 @@ fn MoreFilters(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
             }
         }
         TagFilter { filters, all_tags }
-        // Keeps its own disclosure inside this one: Leaflet cannot lay out in
-        // a closed `<details>`, and opening "More filters" should not start
-        // fetching map tiles for an owner who only wanted a date.
-        RegionFilter { filters }
     }
 }
 
@@ -260,7 +255,7 @@ mod tests {
 
         let disclosure = html.split_once("<details").expect("no disclosure").1;
         assert!(disclosure.contains("More filters"), "{html}");
-        for expected in ["From", "To", "Min km", "Max km", "alpine", "Region"] {
+        for expected in ["From", "To", "Min km", "Max km", "alpine"] {
             assert!(disclosure.contains(expected), "missing {expected}: {html}");
         }
         // Closed to begin with: the table starts near the top on an ordinary

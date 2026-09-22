@@ -189,13 +189,7 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await page.goto("/app/");
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
 
-  // Collapsed by default: no map, and so no tiles, on an ordinary list view.
-  // Doubly so since US-61 — the region sits behind "More filters", and
-  // opening that alone must not start fetching tiles either.
-  await expect(page.locator("#region-map")).toHaveCount(0);
-  await page.getByText("More filters").click();
-  await expect(page.locator("#region-map")).toHaveCount(0);
-  await page.getByText("Region", { exact: true }).click();
+  // In view from the start since US-63: nothing to open first.
   await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
 
   // Arm the drawing, then drag a rectangle over the map's western ocean,
@@ -224,13 +218,9 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
   await expect(page).toHaveURL(/kind=planned/);
   await page.getByRole("button", { name: "Recorded" }).click();
 
-  // And it is restored onto the map on the next load (US-14). A reload
-  // closes both disclosures — the open state lives in the DOM, not the URL,
-  // and only the filter it hides is bookmarkable (US-61).
+  // And it is restored onto the map on the next load (US-14).
   await page.reload();
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
-  await page.getByText("More filters").click();
-  await page.getByText("Region", { exact: true }).click();
   await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
 
   // Clearing brings the trips back.
@@ -244,8 +234,6 @@ test("dragging a rectangle on the map filters by region, and it survives a reloa
 // one screen's container would leave this one broken.
 test("the region map's zoom control keeps its own size (US-58)", async ({ page }) => {
   await page.goto("/app/");
-  await page.getByText("More filters").click();
-  await page.getByText("Region", { exact: true }).click();
   await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
 
   const bar = await page.locator("#region-map .leaflet-control-zoom").boundingBox();
@@ -257,6 +245,45 @@ test("the region map's zoom control keeps its own size (US-58)", async ({ page }
       bar.y + bar.height + 1,
     );
   }
+});
+
+// US-63: the marks are drawn by JS through `document::eval`, so only a real
+// page shows them — one per matching trip, redrawn as the filters change.
+test("the map marks every trip the filters match (US-63)", async ({ page }) => {
+  const marks = page.locator("#region-map .heat-mark");
+  await page.goto("/app/");
+
+  await expect(marks).toHaveCount(2);
+
+  await page.getByRole("searchbox").fill("inn");
+  await expect(rows(page)).toHaveCount(1);
+  await expect(marks).toHaveCount(1);
+});
+
+// US-63: the view fits the marks once, then stays where the owner puts it
+// until they ask. Panning is a real mouse gesture.
+test("the map fits the trips on load and again when asked (US-63)", async ({ page }) => {
+  const mark = page.locator("#region-map .heat-mark").first();
+  const map = page.locator("#region-map");
+  await page.goto("/app/");
+  await expect(mark).toBeInViewport();
+
+  // Pan the marks off the map: an unarmed drag moves the view.
+  await map.scrollIntoViewIfNeeded();
+  const box = await map.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  const inside = async () => {
+    const at = await mark.boundingBox();
+    const now = await map.boundingBox();
+    return at !== null && at.x >= now.x && at.x + at.width <= now.x + now.width;
+  };
+  await expect.poll(inside).toBe(false);
+
+  await page.locator("#region-fit").click();
+  await expect.poll(inside).toBe(true);
 });
 
 test("selected trips are tagged in one go, after confirming a new tag (US-34)", async ({

@@ -18,13 +18,13 @@
 //!   corners into a `bbox`, a track into a polyline and a pair of chart
 //!   series — and passes them in, where all of it stays unit-testable.
 //!
-//! Each widget lives in its own file here: the list's region map, and the
-//! detail screen's track map and elevation chart.
+//! Each widget lives in its own file here: the list's region map and its
+//! heat marks, and the detail screen's track map and elevation chart.
 
 mod region;
 mod track;
 
-pub use region::{bbox_corners, bbox_param, start_region_map};
+pub use region::{bbox_corners, bbox_param, draw_heat_marks, start_region_map};
 pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};
 
 use dioxus::prelude::*;

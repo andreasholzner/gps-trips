@@ -12,6 +12,8 @@ use crate::bulk_tag::BulkTagPanel;
 use crate::filter_bar::FilterBar;
 use crate::filters::Filters;
 use crate::format;
+use crate::heat;
+use crate::region::RegionFilter;
 use crate::trip_table::TripTable;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
@@ -68,10 +70,17 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // Which trips the bulk-tag panel will act on (US-34).
     let selected = use_signal(BTreeSet::new);
     let staged = use_signal(Vec::new);
+    // Every trip the filters match, as the map's heat marks (US-63) — all of
+    // them, not the page the table shows.
+    let marks = match &*trips.read_unchecked() {
+        Some(Ok(trips)) => Some(heat::marks(trips)),
+        _ => None,
+    };
 
     rsx! {
         h1 { "Trips" }
         FilterBar { filters, all_tags: all_tags.clone() }
+        RegionFilter { filters, marks }
         if let (Some(total), Some(Ok(shown))) = (total, trips.read_unchecked().as_ref()) {
             TripCounts { shown: shown.len(), total, kind: kind() }
         }
