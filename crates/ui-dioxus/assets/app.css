@@ -373,6 +373,42 @@ nav.pager {
   color: var(--pico-primary-inverse);
 }
 
+/* The controls the owner reaches for occasionally (US-62): an outline in the
+   muted colour instead of Pico's filled primary block. Written here because
+   the classless build has no `.secondary` or `.outline` to borrow — the same
+   kind of local correction this file already makes for Leaflet (US-58). A
+   link styled as one sits in the same row as the buttons. */
+.quiet {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+  border: var(--pico-border-width) solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  background: transparent;
+  color: var(--pico-muted-color);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.quiet:hover,
+.quiet:focus-visible {
+  border-color: var(--pico-muted-color);
+  color: var(--pico-color);
+}
+
+/* Quiet, but not disguised: deleting keeps the colour that says what it is. */
+.quiet.danger {
+  border-color: var(--pico-del-color);
+  background: transparent;
+  color: var(--pico-del-color);
+}
+
+.muted {
+  color: var(--pico-muted-color);
+}
+
 /* The staging row: input and its button on one line, wrapping on a phone. */
 .tag-entry {
   display: flex;

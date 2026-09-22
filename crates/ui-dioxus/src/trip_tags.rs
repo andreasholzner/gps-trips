@@ -20,7 +20,9 @@ pub fn is_new_name(known: &[Tag], typed: &str) -> bool {
     !known.iter().any(|tag| tag.name == name)
 }
 
-/// The tags section: what the trip carries, and a way to add more.
+/// The tags section: what the trip carries, and a way to add more — on one
+/// line (US-62). The field and its suggestions appear once adding is asked
+/// for, as the edit form does, so nothing is open until it is wanted.
 #[component]
 pub fn TripTags(id: i64) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -46,6 +48,7 @@ pub fn TripTags(id: i64) -> Element {
         }
     });
 
+    let mut adding = use_signal(|| false);
     let mut typed = use_signal(String::new);
     let mut confirming = use_signal(|| None::<String>);
     let mut error = use_signal(|| None::<String>);
@@ -54,6 +57,7 @@ pub fn TripTags(id: i64) -> Element {
     // over and land on a trip the owner never opened it for.
     use_effect(use_reactive!(|id| {
         let _ = id;
+        adding.set(false);
         typed.set(String::new());
         confirming.set(None);
         error.set(None);
@@ -66,6 +70,7 @@ pub fn TripTags(id: i64) -> Element {
         spawn(async move {
             match api::add_trip_tag(&archive(), id, &name).await {
                 Ok(_) => {
+                    adding.set(false);
                     typed.set(String::new());
                     error.set(None);
                     on_trip.restart();
@@ -99,51 +104,65 @@ pub fn TripTags(id: i64) -> Element {
     };
 
     rsx! {
-        h2 { "Tags" }
         if let Some(message) = load_error {
             p { class: "error", "Could not load the tags: {message}" }
         }
-        match on_this_trip {
-            None => rsx! { p { "Loading the tags…" } },
-            Some(tags) => rsx! {
-                TagChips {
-                    tags,
-                    on_remove: move |tag_id| async move {
-                        match api::remove_trip_tag(&archive(), id, tag_id).await {
-                            Ok(()) => {
-                                error.set(None);
-                                on_trip.restart();
+        div { class: "trip-tags",
+            match on_this_trip {
+                None => rsx! { span { "Loading the tags…" } },
+                Some(tags) => rsx! {
+                    TagChips {
+                        tags,
+                        on_remove: move |tag_id| async move {
+                            match api::remove_trip_tag(&archive(), id, tag_id).await {
+                                Ok(()) => {
+                                    error.set(None);
+                                    on_trip.restart();
+                                }
+                                Err(err) => error.set(Some(err.to_string())),
                             }
-                            Err(err) => error.set(Some(err.to_string())),
-                        }
-                    },
-                }
-            },
-        }
-        if let Some(name) = confirming() {
-            ConfirmNewTag {
-                name: name.clone(),
-                on_confirm: move |_| add.call(name.clone()),
-                on_cancel: move |_| confirming.set(None),
-            }
-        } else {
-            TagInput {
-                suggestions: suggestions(),
-                value: typed(),
-                on_input: move |value| typed.set(value),
-                on_submit: move |_| {
-                    let name = typed();
-                    if name.trim().is_empty() {
-                        return;
-                    }
-                    // A name nobody has used is created only after the owner
-                    // says so (US-33); a known one is applied straight away.
-                    if is_new_name(&suggestions.read(), &name) {
-                        confirming.set(Some(name));
-                    } else {
-                        add.call(name);
+                        },
                     }
                 },
+            }
+            if let Some(name) = confirming() {
+                ConfirmNewTag {
+                    name: name.clone(),
+                    on_confirm: move |_| add.call(name.clone()),
+                    on_cancel: move |_| confirming.set(None),
+                }
+            } else {
+                if adding() {
+                    TagInput {
+                        suggestions: suggestions(),
+                        value: typed(),
+                        on_input: move |value| typed.set(value),
+                        on_submit: move |_| {
+                            let name = typed();
+                            if name.trim().is_empty() {
+                                return;
+                            }
+                            // A name nobody has used is created only after the
+                            // owner says so (US-33); a known one is applied
+                            // straight away.
+                            if is_new_name(&suggestions.read(), &name) {
+                                confirming.set(Some(name));
+                            } else {
+                                add.call(name);
+                            }
+                        },
+                    }
+                }
+                button {
+                    id: "add-tag",
+                    r#type: "button",
+                    class: "quiet",
+                    onclick: move |_| {
+                        adding.toggle();
+                        typed.set(String::new());
+                    },
+                    if adding() { "Cancel" } else { "Add tag" }
+                }
             }
         }
         if let Some(message) = error() {
@@ -157,7 +176,7 @@ pub fn TripTags(id: i64) -> Element {
 fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
     rsx! {
         if tags.is_empty() {
-            p { "No tags yet." }
+            span { class: "muted", "No tags yet." }
         } else {
             div { class: "chips",
                 for tag in tags {
@@ -205,7 +224,7 @@ fn TagInput(
                     option { key: "{tag.id}", value: "{tag.name}" }
                 }
             }
-            button { r#type: "submit", "Add tag" }
+            button { r#type: "submit", "Add" }
         }
     }
 }
@@ -221,7 +240,7 @@ fn ConfirmNewTag(
     on_cancel: EventHandler<()>,
 ) -> Element {
     rsx! {
-        p { class: "confirm",
+        span { class: "confirm",
             "Create a new tag \"{name}\"? "
             button { r#type: "button", onclick: move |_| on_confirm.call(()), "Create it" }
             button { r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }

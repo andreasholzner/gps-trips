@@ -118,3 +118,36 @@
   max-height: 200px;
   width: auto;
 }
+
+/* The trip's tags on one line (US-62): the chips, then the field once adding
+   is asked for, then the button that asks. Pico's form spacing is for a
+   column of fields, not a row of controls. */
+.trip-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: var(--pico-spacing);
+}
+
+.trip-tags .chips {
+  margin-bottom: 0;
+}
+
+.trip-tags form {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.trip-tags input {
+  width: 12rem;
+  height: auto;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+}
+
+.trip-tags form button {
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+}

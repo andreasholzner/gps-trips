@@ -264,7 +264,7 @@ mod tests {
         assert!(html.contains(r#"id="delete-trip""#), "{html}");
     }
 
-    // US-33: the trip's tags, and the field that adds one.
+    // US-33: the trip's tags, and the way to add one.
     #[tokio::test]
     async fn the_screen_shows_the_trips_tags() {
         let (archive, _dir) = serve_test_archive().await;
@@ -278,10 +278,13 @@ mod tests {
         )
         .await;
 
-        assert!(html.contains("Tags"), "{html}");
-        assert!(html.contains(r#"id="tag-input""#), "{html}");
-        // Every known tag is offered while typing.
-        assert!(html.contains("<datalist"), "{html}");
+        // US-62: one line — the chips and a way to add one. The field and
+        // its suggestions appear once adding is asked for, not before; that
+        // they then offer every known tag is `trip_tags`' own test.
+        assert!(html.contains(r#"id="add-tag""#), "{html}");
+        assert!(!html.contains(r#"id="tag-input""#), "{html}");
+        assert!(!html.contains("<datalist"), "{html}");
+        assert!(!html.contains("<h2>Tags</h2>"), "{html}");
     }
 
     // US-7's gallery, and US-2's "photos can be added at a later time" as the

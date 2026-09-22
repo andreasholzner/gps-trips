@@ -358,9 +358,12 @@ test("a new tag is created only after it is confirmed (US-33)", async ({ page, r
   const name = `winter-${Math.random().toString(36).slice(2, 8)}`;
   await page.goto(`/app/trips/${id}`);
   await expect(page.getByText("No tags yet.")).toBeVisible();
+  // US-62: the field is not there until adding is asked for.
+  await expect(page.locator("#tag-input")).toHaveCount(0);
 
-  await page.locator("#tag-input").fill(name);
   await page.getByRole("button", { name: "Add tag" }).click();
+  await page.locator("#tag-input").fill(name);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
 
   // Nothing is created until the owner says so.
   await expect(page.getByText(`Create a new tag "${name}"?`)).toBeVisible();
