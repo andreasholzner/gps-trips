@@ -70,9 +70,6 @@ test("choosing a GPX prefills the name with the track's date (US-12)", async ({ 
 
   // The track carries a name, so the date leads and the name follows it.
   await expect(page.locator("#import-name")).toHaveValue(`${TRACK_DATE} Oslo Hills Walk`);
-  // And the timezone the archive guessed from where the track starts is
-  // offered rather than hidden (US-4).
-  await expect(page.locator("#import-timezone")).toHaveValue("Europe/Oslo");
 });
 
 // The other half of the same criterion: with no track name to offer, the

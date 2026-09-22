@@ -311,4 +311,3 @@ mod tests {
         assert_eq!(offset_transitions(&[]), vec![]);
     }
 }
-
