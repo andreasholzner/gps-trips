@@ -216,3 +216,22 @@ test.describe("with a touchscreen", () => {
     await expect(viewer.locator("#viewer-place")).toHaveText("1 / 3");
   });
 });
+
+// Hover is a real pointer state, and the colour it ends in is Pico's custom
+// properties resolved by a browser.
+test("the quiet controls stay readable under the pointer (US-62)", async ({ page, request }) => {
+  const id = await ownTrip(request, "Hovered Controls");
+  await page.goto(`/app/trips/${id}`);
+
+  for (const name of ["Add tag", "Edit name / activity", "Add photos"]) {
+    const button = page.getByRole("button", { name });
+    await button.hover();
+    const pageText = await page.evaluate(() => getComputedStyle(document.body).color);
+    // Polled: Pico eases the colour in over 0.2s.
+    await expect
+      .poll(() => button.evaluate((el) => getComputedStyle(el).color), {
+        message: `${name} under the pointer`,
+      })
+      .toBe(pageText);
+  }
+});

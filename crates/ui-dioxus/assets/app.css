@@ -392,10 +392,14 @@ nav.pager {
   text-decoration: none;
 }
 
+/* The page's own text colour, inherited rather than taken from
+   `--pico-color`: on hover Pico sets that property *on the button itself* to
+   the inverse it uses on a filled background — white on this transparent
+   one (the burger's trap, above). */
 .quiet:hover,
 .quiet:focus-visible {
   border-color: var(--pico-muted-color);
-  color: var(--pico-color);
+  color: inherit;
 }
 
 /* Quiet, but not disguised: deleting keeps the colour that says what it is. */
