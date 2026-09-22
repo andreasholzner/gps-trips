@@ -271,6 +271,15 @@ nav.tabs button:not(:disabled) {
   margin-bottom: 0.5rem;
 }
 
+/* The trip list's pager (US-63), under the table. Pico spreads a `nav`'s
+   children to its edges; previous, the place and next read as one control. */
+nav.pager {
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
 /* Neither the trip list's eight columns nor the sync review's six fit a
    phone. The table scrolls inside its own box so the page itself never
    scrolls sideways. */

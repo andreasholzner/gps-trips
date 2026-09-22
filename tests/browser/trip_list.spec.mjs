@@ -315,3 +315,53 @@ test("selected trips are tagged in one go, after confirming a new tag (US-34)", 
   await page.getByRole("checkbox", { name: NEW_TAG }).check();
   await expect(rows(page)).toHaveCount(2);
 });
+
+// US-63's paging. Moving between pages and keeping a selection across them
+// are real clicks. Its 51 trips are seeded here and removed again afterwards,
+// so every other test in this file keeps its two-trip archive.
+test.describe("paging (US-63)", () => {
+  const paged = [];
+
+  test.beforeAll(async ({ request }) => {
+    for (let n = 0; n < 51; n++) {
+      paged.push(await importTrip(request, { name: `Paged Trip ${String(n).padStart(2, "0")}` }));
+    }
+  });
+
+  test.afterAll(async ({ request }) => {
+    for (const id of paged.splice(0)) {
+      expect((await request.delete(`/api/trips/${id}`)).status()).toBe(204);
+    }
+  });
+
+  test("a selection survives paging, and select-all covers one page", async ({ page }) => {
+    await page.goto("/app/?q=paged");
+    await expect(rows(page)).toHaveCount(50);
+    await expect(page.getByText(/^51 of \d+ recorded trips · showing 1–50$/)).toBeVisible();
+
+    await rows(page).first().getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Next ›" }).click();
+
+    await expect(rows(page)).toHaveCount(1);
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+    // Select-all here takes this page's one row, not the fifty behind it.
+    await page.locator("table thead").getByRole("checkbox").check();
+    await expect(page.getByRole("button", { name: "Apply to 2 selected" })).toBeVisible();
+
+    await page.getByRole("button", { name: "‹ Previous" }).click();
+    await expect(rows(page).first().getByRole("checkbox")).toBeChecked();
+  });
+
+  test("changing the filters goes back to the first page", async ({ page }) => {
+    await page.goto("/app/?q=paged");
+    await page.getByRole("button", { name: "Next ›" }).click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+
+    await page.getByRole("searchbox").fill("paged trip");
+
+    await expect(rows(page)).toHaveCount(50);
+    await expect(page.getByText("Page 1 of 2")).toBeVisible();
+    // Where the owner is stays out of the URL (US-52 is about what the list is).
+    await expect(page).not.toHaveURL(/page=/);
+  });
+});

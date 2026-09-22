@@ -21,6 +21,7 @@ mod komoot;
 mod list;
 mod login;
 mod menu;
+mod pager;
 mod photos;
 mod region;
 #[cfg(test)]

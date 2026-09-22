@@ -66,6 +66,12 @@ pub fn trip_counts(shown: usize, total: usize, kind: TripKind) -> String {
     }
 }
 
+/// Which rows of the list a page shows (US-63), counted from one the way
+/// the owner counts them.
+pub fn page_place(rows: std::ops::Range<usize>) -> String {
+    format!("showing {}–{}", rows.start + 1, rows.end)
+}
+
 fn dash() -> String {
     "—".to_string()
 }
@@ -140,6 +146,13 @@ mod tests {
             trip_counts(0, 312, TripKind::Recorded),
             "0 of 312 recorded trips"
         );
+    }
+
+    #[test]
+    fn the_owners_place_is_the_rows_shown_counted_from_one() {
+        // US-63: beside US-61's counts, where the page is in the list.
+        assert_eq!(page_place(50..100), "showing 51–100");
+        assert_eq!(page_place(200..247), "showing 201–247");
     }
 
     #[test]
