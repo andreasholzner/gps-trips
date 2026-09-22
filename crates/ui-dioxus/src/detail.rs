@@ -304,6 +304,7 @@ mod tests {
             activity_type: ActivityType::Hiking,
             tz_name: Some("Europe/Oslo".to_string()),
             start_time: Some("2026-07-11T09:30:00Z".to_string()),
+            start_date: Some("2026-07-11".to_string()),
             end_time: Some("2026-07-11T13:15:00Z".to_string()),
             distance_m: 12_345.0,
             ascent_m: Some(410.0),

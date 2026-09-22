@@ -16,6 +16,10 @@ pub struct TripDetail {
     /// added to them.
     pub tz_name: Option<String>,
     pub start_time: Option<String>,
+    /// The local date the trip started on, `YYYY-MM-DD` — in `tz_name`, so
+    /// the same date US-12's suggested name leads with (US-62). `None` for a
+    /// track with no timestamps.
+    pub start_date: Option<String>,
     pub end_time: Option<String>,
     pub distance_m: f64,
     pub ascent_m: Option<f64>,

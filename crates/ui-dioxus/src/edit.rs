@@ -221,6 +221,7 @@ mod tests {
             activity_type: activity,
             tz_name: None,
             start_time: None,
+            start_date: None,
             end_time: None,
             distance_m: 1000.0,
             ascent_m: None,

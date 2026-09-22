@@ -32,3 +32,20 @@ async fn us62_the_served_track_carries_the_offsets_its_points_were_in() {
         3
     );
 }
+
+// ── The date beside the trip's name ─────────────────────────────────────────
+
+#[tokio::test]
+async fn us62_the_trip_carries_the_date_it_started_on_where_it_started() {
+    // LATE_EVENING_GPX starts at 22:30 UTC on the 1st, half past midnight on
+    // the 2nd in Oslo: the date beside the name is the owner's, the one US-12
+    // put in front of the name, not the one UTC was on.
+    let (app, _dir) = test_app().await;
+    let response = crate::common::import(&app, crate::common::LATE_EVENING_GPX).await;
+    let id = crate::common::trip_id_from_redirect(&response);
+
+    let response = get(&app, &format!("/api/trips/{id}")).await;
+    let json: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+
+    assert_eq!(json["start_date"], "2024-06-02", "{json}");
+}

@@ -2,12 +2,13 @@
 //! rows live in the sibling `photo` module.
 
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
-use time::OffsetDateTime;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::models::{
     ActivityType, BoundingBox, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary,
 };
 use crate::server::gpx::TrackStats;
+use crate::server::import::date_prefix;
 
 use super::to_rfc3339;
 
@@ -459,12 +460,23 @@ pub async fn update_trip(
 }
 
 fn row_to_detail(row: SqliteRow) -> TripDetail {
+    let start_time: Option<String> = row.get("start_time");
+    let tz_name: Option<String> = row.get("tz_name");
+    // Derived here rather than stored, the way US-12 derives the name's
+    // prefix, so the two cannot disagree (US-62).
+    let start_date = date_prefix(
+        start_time
+            .as_deref()
+            .and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok()),
+        tz_name.as_deref().unwrap_or("UTC"),
+    );
     TripDetail {
         id: row.get("id"),
         name: row.get("name"),
         activity_type: row.get("activity_type"),
-        tz_name: row.get("tz_name"),
-        start_time: row.get("start_time"),
+        tz_name,
+        start_time,
+        start_date,
         end_time: row.get("end_time"),
         distance_m: row.get("distance_m"),
         ascent_m: row.get("ascent_m"),
