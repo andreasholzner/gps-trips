@@ -99,8 +99,8 @@ when organizing trips, stop it afterwards; there is no daemon/service setup requ
 
 The deployed archive is the same binary in a container ([ADR-0023](./adr/0023-managed-scale-to-zero-hosting.md)):
 
-- **Image** (`Dockerfile`): the static musl `trip-archive`, `komoot_check` and `komoot_backfill`
-  binaries and the SPA bundle beside them, on Alpine — which adds only a shell and the `sqlite3` CLI for looking
+- **Image** (`Dockerfile`): the static musl `trip-archive`, `komoot_check`, `komoot_backfill` and
+  `photo_taken_at_backfill` binaries and the SPA bundle beside them, on Alpine — which adds only a shell and the `sqlite3` CLI for looking
   at the volume. It is built on Fly's remote builder with a pinned Rust version, so the laptop
   needs `flyctl` and nothing else.
 - **Machine** (`fly.toml`): one `shared-cpu-1x` machine with 1 GB in `arn` (Stockholm). It is
@@ -358,6 +358,19 @@ before every Komoot call and so needs a terminal — add `--pty` to `fly ssh con
   was rolled back.
 - **Do not press "Sync now" meanwhile.** It cannot create a duplicate trip, but one of the two
   imports of the same tour fails.
+
+### Photo capture-time backfill
+
+`photo_taken_at_backfill` gives every photo stored before US-62 the capture time its stored
+copy's EXIF names, so its thumbnail gets a caption. It reads the photos on the volume, so it runs
+inside the instance, once, after the release that brings US-62:
+
+```sh
+fly ssh console --app "$FLY_APP" -C "photo_taken_at_backfill"
+```
+
+It is safe to rerun: photos that already have a capture time are not read again. It lists any
+photo whose stored copy it could not read, and exits non-zero if there was one.
 - **Out of memory?** Give the machine more for the run with
   `fly scale memory 2048 --app "$FLY_APP"`, and `fly scale memory 1024 --app "$FLY_APP"`
   afterwards.

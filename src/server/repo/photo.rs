@@ -75,15 +75,48 @@ pub async fn count_photos(
         .await
 }
 
+/// Every column [`Photo`] carries, for the queries below to share.
+const PHOTO_COLUMNS: &str = "id, trip_id, original_name, content_type, byte_len, blob_key, \
+     thumbnail_key, created_at, lat, lon, location_source, taken_at";
+
 /// List a trip's photos, oldest first (US-2). Reads only the `photo` table.
 pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, sqlx::Error> {
-    sqlx::query(
-        r#"SELECT id, trip_id, original_name, content_type, byte_len, blob_key, thumbnail_key,
-                  created_at, lat, lon, location_source, taken_at
-           FROM photo WHERE trip_id = ? ORDER BY id"#,
-    )
+    sqlx::query(&format!(
+        "SELECT {PHOTO_COLUMNS} FROM photo WHERE trip_id = ? ORDER BY id"
+    ))
     .bind(trip_id)
-    .map(|row: SqliteRow| Photo {
+    .map(row_to_photo)
+    .fetch_all(pool)
+    .await
+}
+
+/// Every photo that has no capture time yet, grouped by trip — what the
+/// US-62 backfill reads back out of the stored copies.
+pub async fn list_photos_without_taken_at(pool: &SqlitePool) -> Result<Vec<Photo>, sqlx::Error> {
+    sqlx::query(&format!(
+        "SELECT {PHOTO_COLUMNS} FROM photo WHERE taken_at IS NULL ORDER BY trip_id, id"
+    ))
+    .map(row_to_photo)
+    .fetch_all(pool)
+    .await
+}
+
+/// Record when a photo was taken (US-62), as UTC (ADR-0009).
+pub async fn set_photo_taken_at(
+    pool: &SqlitePool,
+    id: i64,
+    taken_at: OffsetDateTime,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE photo SET taken_at = ? WHERE id = ?")
+        .bind(to_rfc3339(taken_at.to_offset(UtcOffset::UTC)))
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+fn row_to_photo(row: SqliteRow) -> Photo {
+    Photo {
         id: row.get("id"),
         trip_id: row.get("trip_id"),
         original_name: row.get("original_name"),
@@ -96,9 +129,7 @@ pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, 
         lon: row.get("lon"),
         location_source: row.get("location_source"),
         taken_at: row.get("taken_at"),
-    })
-    .fetch_all(pool)
-    .await
+    }
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

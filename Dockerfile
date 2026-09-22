@@ -48,12 +48,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     rm -rf target/dx/ui-dioxus; \
     (cd crates/ui-dioxus && dx build --release --platform web); \
     cargo build --release --locked --target x86_64-unknown-linux-musl \
-        --bin trip-archive --bin komoot_check --bin komoot_backfill; \
+        --bin trip-archive --bin komoot_check --bin komoot_backfill \
+        --bin photo_taken_at_backfill; \
     mkdir -p /out/public; \
     cp -r target/dx/ui-dioxus/release/web/public /out/public/app; \
     cp target/x86_64-unknown-linux-musl/release/trip-archive \
        target/x86_64-unknown-linux-musl/release/komoot_check \
-       target/x86_64-unknown-linux-musl/release/komoot_backfill /out/
+       target/x86_64-unknown-linux-musl/release/komoot_backfill \
+       target/x86_64-unknown-linux-musl/release/photo_taken_at_backfill /out/
 
 # ── Run ──────────────────────────────────────────────────────────────────────
 FROM alpine:3.24

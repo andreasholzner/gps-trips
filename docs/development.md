@@ -28,7 +28,7 @@ A Cargo workspace of three crates:
 
 | Path                                  | What it is                                                                                                                                                                            |
 |---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `.` (`trip-archive`)                  | the Axum server, plus the `komoot_check`, `komoot_backfill` and `qmapshack_export` CLI binaries under `src/bin/`                                                                      |
+| `.` (`trip-archive`)                  | the Axum server, plus the `komoot_check`, `komoot_backfill`, `photo_taken_at_backfill` and `qmapshack_export` CLI binaries under `src/bin/`                                           |
 | `crates/types` (`trip-archive-types`) | the data models shared by the server and the UI. Compiles for the server, for wasm and for Android; the SQLite mappings sit behind an optional `sqlx` feature only the server enables |
 | `crates/ui-dioxus`                    | the Dioxus SPA ([ADR-0024](./adr/0024-dioxus-ui-web-and-android.md))                                                                                                                  |
 

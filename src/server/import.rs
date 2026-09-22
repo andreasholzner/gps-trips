@@ -182,7 +182,7 @@ pub async fn handle_add_photos(
 /// Self-healing: a trip imported before `tz_name` existed gets it computed
 /// here (from the track's first point) and persisted, so it's stable and
 /// concrete from then on.
-async fn resolve_photo_context(
+pub(crate) async fn resolve_photo_context(
     pool: &SqlitePool,
     trip_id: i64,
     trip: TripDetail,
