@@ -4,7 +4,7 @@
 
 use std::sync::OnceLock;
 
-use time::{OffsetDateTime, PrimitiveDateTime};
+use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use time_tz::{OffsetDateTimeExt, PrimitiveDateTimeExt};
 
 use crate::server::gpx::{TimedPoint, TrackPoint};
@@ -83,12 +83,62 @@ pub fn resolve_to_utc(tz_name: &str, naive: PrimitiveDateTime) -> Option<OffsetD
     naive.assume_timezone(tz).take_first()
 }
 
+/// The UTC offsets in force along a track: the first point's offset and every
+/// index at which it changes (US-64). A track that stays in one zone and
+/// crosses no DST change is a single entry — which is every trip but the ones
+/// this exists for.
+///
+/// Each point's zone comes from its own coordinate (`tzf-rs`) and its offset
+/// from that zone at that instant (`time-tz`, so a DST change mid-track shows
+/// up as much as a border crossing does). A point whose zone this build's
+/// tzdata does not recognize keeps the offset already in force rather than
+/// inventing a transition; when it is the track's first point there is nothing
+/// in force yet, so the entry is `UTC` — the same fallback `guess_timezone`
+/// makes. Empty for an empty track.
+pub fn offset_transitions(points: &[TimedPoint]) -> Vec<(usize, UtcOffset)> {
+    let mut transitions: Vec<(usize, UtcOffset)> = Vec::new();
+    for (index, point) in points.iter().enumerate() {
+        let Some(offset) = offset_at(point.lon, point.lat, point.time) else {
+            if transitions.is_empty() {
+                transitions.push((index, UtcOffset::UTC));
+            }
+            continue;
+        };
+        if transitions.last().map(|&(_, current)| current) != Some(offset) {
+            transitions.push((index, offset));
+        }
+    }
+    transitions
+}
+
+/// The UTC offset in force at a coordinate at an instant — the geography
+/// lookup and the DST lookup, composed. `None` if this build's tzdata does not
+/// recognize the name the geo lookup returned.
+fn offset_at(lon: f64, lat: f64, at: OffsetDateTime) -> Option<UtcOffset> {
+    let tz = time_tz::timezones::get_by_name(finder().get_tz_name(lon, lat))?;
+    Some(at.to_timezone(tz).offset())
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use time::macros::datetime;
+
+    /// Karasjok, Norway — Europe/Oslo, and about 50 km from the Finnish
+    /// border the ski tour US-64 exists for crosses.
+    const KARASJOK: (f64, f64) = (25.5140, 69.4720);
+    /// Inari, Finland — Europe/Helsinki, an hour ahead of Karasjok.
+    const INARI: (f64, f64) = (27.0290, 68.9060);
+
+    fn at(lon_lat: (f64, f64), time: OffsetDateTime) -> TimedPoint {
+        TimedPoint {
+            time,
+            lat: lon_lat.1,
+            lon: lon_lat.0,
+        }
+    }
 
     #[test]
     fn local_date_is_the_date_where_the_track_is_not_where_utc_is() {
@@ -202,4 +252,63 @@ mod tests {
     fn guess_timezone_from_timed_points_falls_back_to_utc_when_empty() {
         assert_eq!(guess_timezone_from_timed_points(&[]), "UTC");
     }
+
+    // ── US-64: the offsets in force along a track ─────────────────────────
+
+    #[test]
+    fn offset_transitions_is_a_single_entry_for_a_track_inside_one_zone() {
+        // The trip this changes nothing for: one offset over the whole track.
+        let points = [
+            at(KARASJOK, datetime!(2024-06-01 08:00 UTC)),
+            at(KARASJOK, datetime!(2024-06-01 09:00 UTC)),
+            at(KARASJOK, datetime!(2024-06-01 10:00 UTC)),
+        ];
+        assert_eq!(
+            offset_transitions(&points),
+            vec![(0, UtcOffset::from_hms(2, 0, 0).unwrap())],
+            "Europe/Oslo is +02:00 in June, and nothing about the track changes it"
+        );
+    }
+
+    #[test]
+    fn offset_transitions_marks_the_index_where_the_track_crosses_a_border() {
+        // The ski tour from Finnmark into Finnish Lapland: +02:00 becomes
+        // +03:00 at the point the track is first on the Finnish side.
+        let points = [
+            at(KARASJOK, datetime!(2024-06-01 08:00 UTC)),
+            at(KARASJOK, datetime!(2024-06-01 09:00 UTC)),
+            at(INARI, datetime!(2024-06-01 10:00 UTC)),
+            at(INARI, datetime!(2024-06-01 11:00 UTC)),
+        ];
+        assert_eq!(
+            offset_transitions(&points),
+            vec![
+                (0, UtcOffset::from_hms(2, 0, 0).unwrap()),
+                (2, UtcOffset::from_hms(3, 0, 0).unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn offset_transitions_marks_a_dst_change_within_one_zone() {
+        // Europe/Oslo falls back at 03:00 local on 2024-10-27, i.e. 01:00 UTC:
+        // a multi-day trip sitting still across that night changes offset too.
+        let points = [
+            at(KARASJOK, datetime!(2024-10-27 00:30 UTC)),
+            at(KARASJOK, datetime!(2024-10-27 01:30 UTC)),
+        ];
+        assert_eq!(
+            offset_transitions(&points),
+            vec![
+                (0, UtcOffset::from_hms(2, 0, 0).unwrap()),
+                (1, UtcOffset::from_hms(1, 0, 0).unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn offset_transitions_is_empty_for_a_track_with_no_timed_points() {
+        assert_eq!(offset_transitions(&[]), vec![]);
+    }
 }
+

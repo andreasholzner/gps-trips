@@ -16,7 +16,6 @@ fn a_suggestion(name: &str) -> StagedImport {
         suggested_name: name.to_string(),
         start_date: Some("2024-06-01".to_string()),
         gpx_name: Some("Oslo Hills Walk".to_string()),
-        timezone: "Europe/Oslo".to_string(),
         distance_m: 1234.0,
         ascent_m: 40.0,
         duration_secs: Some(3600),
@@ -39,7 +38,6 @@ fn the_name_starts_as_the_archives_suggestion() {
     let form = ConfirmForm::of(&a_suggestion("2024-06-01 Oslo Hills Walk"));
 
     assert_eq!(form.name, "2024-06-01 Oslo Hills Walk");
-    assert_eq!(form.timezone, "Europe/Oslo");
     // US-31's default, and US-11's "not said yet".
     assert_eq!(form.kind, "recorded");
     assert_eq!(form.activity, "");
@@ -71,13 +69,11 @@ fn the_owners_answers_are_what_travel() {
     form.name = "2024-06-01 Nordmarka".to_string();
     form.activity = "hiking".to_string();
     form.kind = "planned".to_string();
-    form.timezone = "Europe/Berlin".to_string();
 
     let confirm = form.to_confirm();
     assert_eq!(confirm.name.as_deref(), Some("2024-06-01 Nordmarka"));
     assert_eq!(confirm.activity_type.as_deref(), Some("hiking"));
     assert_eq!(confirm.kind.as_deref(), Some("planned"));
-    assert_eq!(confirm.timezone.as_deref(), Some("Europe/Berlin"));
 }
 
 // ── How the photos are spent ─────────────────────────────────────────────
@@ -150,8 +146,10 @@ fn the_confirm_step_offers_every_field_the_trip_is_stored_with() {
     assert!(html.contains(r#"value="hiking""#), "{html}");
     assert!(html.contains(r#"value="recorded""#), "{html}");
     assert!(html.contains(r#"value="planned""#), "{html}");
-    // US-4: the guess, offered as an override rather than hidden.
-    assert!(html.contains(r#"value="Europe/Oslo""#), "{html}");
+    // US-64: no timezone to answer for — the archive reads the offsets the
+    // track itself was in, so the field the guess used to be offered in is
+    // gone rather than ignored.
+    assert!(!html.contains("import-timezone"), "{html}");
     // US-2: photos chosen in one dialog, with the track.
     assert!(html.contains(r#"id="import-photos""#), "{html}");
     assert!(html.contains("multiple"), "{html}");

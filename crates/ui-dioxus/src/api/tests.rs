@@ -401,7 +401,6 @@ async fn staging_a_gpx_suggests_a_name_that_leads_with_the_tracks_date() {
     let staged = stage_sample(&archive).await;
 
     assert_eq!(staged.suggested_name, "2024-06-01 Oslo Hills Walk");
-    assert_eq!(staged.timezone, "Europe/Oslo");
     assert!(staged.staging_id > 0);
 }
 
@@ -417,7 +416,6 @@ async fn confirming_creates_the_trip_the_owner_described() {
             name: Some("2024-06-01 Nordmarka".to_string()),
             activity_type: Some("hiking".to_string()),
             kind: Some("planned".to_string()),
-            ..Default::default()
         },
     )
     .await

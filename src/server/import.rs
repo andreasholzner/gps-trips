@@ -69,7 +69,6 @@ pub async fn handle_import(
     let mut form_name: Option<String> = None;
     let mut form_activity: Option<String> = None;
     let mut form_kind: Option<String> = None;
-    let mut form_timezone: Option<String> = None;
     let mut photos: Vec<UploadedPhoto> = Vec::new();
 
     while let Some(field) = multipart
@@ -88,7 +87,6 @@ pub async fn handle_import(
             Some("name") => form_name = Some(read_text(field).await?),
             Some("activity_type") => form_activity = Some(read_text(field).await?),
             Some("kind") => form_kind = Some(read_text(field).await?),
-            Some("timezone") => form_timezone = Some(read_text(field).await?),
             Some("photos") | Some("photo") => {
                 if let Some(photo) = read_photo_field(field).await? {
                     photos.push(photo);
@@ -104,8 +102,10 @@ pub async fn handle_import(
 
     let activity = resolve_activity_type(form_activity)?;
     let kind = resolve_trip_kind(form_kind)?;
-    // Resolved before the name, which reads the track's start *date* in it.
-    let tz_name = resolve_timezone(form_timezone, derived.guessed_tz)?;
+    // The trip's zone is the one its track starts in, always (US-64): it
+    // names the trip's date below, and placement reads the track's own
+    // offsets rather than this.
+    let tz_name = derived.guessed_tz;
     let name = resolve_name(form_name, derived.name, derived.stats.start_time, &tz_name);
 
     // Trip, track and photos commit in one transaction, so a failed import
@@ -124,10 +124,7 @@ pub async fn handle_import(
         },
     )
     .await?;
-    let ctx = TripPhotoContext {
-        timed_points: &derived.timed_points,
-        tz_name: Some(&tz_name),
-    };
+    let ctx = TripPhotoContext::new(&derived.timed_points, Some(&tz_name));
     ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
@@ -167,10 +164,7 @@ pub async fn handle_add_photos(
 
     let (timed_points, tz_name) = resolve_photo_context(&state.pool, trip_id, trip).await?;
 
-    let ctx = TripPhotoContext {
-        timed_points: &timed_points,
-        tz_name: Some(&tz_name),
-    };
+    let ctx = TripPhotoContext::new(&timed_points, Some(&tz_name));
     let mut tx = state.pool.begin().await?;
     ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
@@ -336,26 +330,11 @@ pub(crate) fn resolve_trip_kind(form_kind: Option<String>) -> Result<TripKind, A
     }
 }
 
-/// Resolve the `timezone` form field into a concrete IANA timezone (US-4,
-/// ADR-0009/0019): a blank or missing field uses `guessed` (auto-detected
-/// from the track's start coordinate); an explicit value must be a
-/// recognized IANA name, or the request is rejected as a 400.
-pub(crate) fn resolve_timezone(
-    form_timezone: Option<String>,
-    guessed: String,
-) -> Result<String, AppError> {
-    match form_timezone.filter(|t| !t.trim().is_empty()) {
-        None => Ok(guessed),
-        Some(value) if timezone::is_known_timezone(&value) => Ok(value),
-        Some(value) => Err(AppError::BadRequest(format!("Unknown timezone: {value:?}"))),
-    }
-}
-
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_activity_type, resolve_name, resolve_timezone, resolve_trip_kind};
+    use super::{resolve_activity_type, resolve_name, resolve_trip_kind};
     use crate::models::{ActivityType, TripKind};
     use time::macros::datetime;
 
@@ -496,38 +475,5 @@ mod tests {
     #[test]
     fn resolve_trip_kind_rejects_an_unrecognized_value() {
         assert!(resolve_trip_kind(Some("scheduled".to_string())).is_err());
-    }
-
-    // US-4: the trip's timezone assumption for photo-timestamp interpolation.
-
-    #[test]
-    fn resolve_timezone_uses_the_guess_when_missing() {
-        assert_eq!(
-            resolve_timezone(None, "Europe/Oslo".to_string()).unwrap(),
-            "Europe/Oslo"
-        );
-    }
-
-    #[test]
-    fn resolve_timezone_uses_the_guess_when_blank() {
-        assert_eq!(
-            resolve_timezone(Some("   ".to_string()), "Europe/Oslo".to_string()).unwrap(),
-            "Europe/Oslo"
-        );
-    }
-
-    #[test]
-    fn resolve_timezone_accepts_a_recognized_override() {
-        assert_eq!(
-            resolve_timezone(Some("Europe/Paris".to_string()), "Europe/Oslo".to_string()).unwrap(),
-            "Europe/Paris"
-        );
-    }
-
-    #[test]
-    fn resolve_timezone_rejects_an_unrecognized_override() {
-        assert!(
-            resolve_timezone(Some("Not/A_Zone".to_string()), "Europe/Oslo".to_string()).is_err()
-        );
     }
 }

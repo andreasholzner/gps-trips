@@ -27,9 +27,6 @@ pub struct StagedImport {
     /// The GPX track's own `<name>`, shown as-is so the owner can tell which
     /// file they picked.
     pub gpx_name: Option<String>,
-    /// The timezone guessed from the track's start coordinate (US-4,
-    /// ADR-0019), prefilled into the override field.
-    pub timezone: String,
     pub distance_m: f64,
     pub ascent_m: f64,
     pub duration_secs: Option<i64>,
@@ -51,8 +48,6 @@ pub struct ConfirmImport {
     pub activity_type: Option<String>,
     /// Blank or absent means `recorded` (US-31).
     pub kind: Option<String>,
-    /// Blank or absent means the timezone staging guessed from the track.
-    pub timezone: Option<String>,
 }
 
 /// What a confirmed import answers with: the trip that now exists.

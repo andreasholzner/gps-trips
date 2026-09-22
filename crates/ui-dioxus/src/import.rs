@@ -70,8 +70,6 @@ pub struct ConfirmForm {
     /// A kind's wire value; never empty, because the radios always have one
     /// chosen (US-31).
     pub kind: String,
-    /// An IANA name, or empty to accept whatever the archive guessed.
-    pub timezone: String,
 }
 
 impl ConfirmForm {
@@ -87,7 +85,6 @@ impl ConfirmForm {
             name: staged.suggested_name.clone(),
             activity: String::new(),
             kind: TripKind::Recorded.as_str().to_string(),
-            timezone: staged.timezone.clone(),
         }
     }
 
@@ -101,7 +98,6 @@ impl ConfirmForm {
             name: (!name.is_empty()).then(|| name.to_string()),
             activity_type: Some(self.activity.clone()),
             kind: Some(self.kind.clone()),
-            timezone: Some(self.timezone.clone()),
         }
     }
 }
@@ -444,17 +440,6 @@ fn ConfirmImportStep(
                         {kind.label()}
                     }
                 }
-            }
-
-            p {
-                label { r#for: "import-timezone", "Photo timezone" }
-                input {
-                    id: "import-timezone",
-                    r#type: "text",
-                    value: "{form.read().timezone}",
-                    oninput: move |event| form.write().timezone = event.value(),
-                }
-                small { "Guessed from where the track starts; used to place photos by time." }
             }
 
             p {

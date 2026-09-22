@@ -34,7 +34,7 @@ use crate::server::{
     gpx::TrackStats,
     import::{
         date_prefix, derive_track, read_gpx_field, resolve_activity_type, resolve_name,
-        resolve_timezone, resolve_trip_kind,
+        resolve_trip_kind,
     },
     repo::{self, insert_trip_in_tx, NewStagedImport, NewTrip},
     state::AppState,
@@ -109,7 +109,6 @@ pub async fn handle_stage_import(
         suggested_name,
         start_date,
         gpx_name: staged.gpx_name,
-        timezone: staged.guessed_tz,
         distance_m: staged.stats.distance_m,
         ascent_m: staged.stats.ascent_m,
         duration_secs: staged.stats.duration_secs,
@@ -118,7 +117,7 @@ pub async fn handle_stage_import(
 
 /// `POST /api/import/staged/:id/confirm` — phase two. Promotes the parked
 /// parse into a trip carrying the owner's name, activity type (US-11), kind
-/// (US-31) and timezone (US-4).
+/// (US-31).
 ///
 /// Reading the staged row, deleting it and inserting the trip all happen on
 /// one transaction, which gives two properties worth having: a double submit
@@ -144,9 +143,9 @@ pub async fn handle_confirm_import(
 
     let activity = resolve_activity_type(confirm.activity_type)?;
     let kind = resolve_trip_kind(confirm.kind)?;
-    // Resolved before the name, which reads the track's start *date* in it —
-    // and the owner may have overridden the zone on this very form.
-    let tz_name = resolve_timezone(confirm.timezone, staged.guessed_tz)?;
+    // The zone the track starts in, which the name's date prefix is read in
+    // (US-64: placement reads the track's own offsets, not this).
+    let tz_name = staged.guessed_tz;
     let name = resolve_name(
         confirm.name,
         staged.gpx_name,

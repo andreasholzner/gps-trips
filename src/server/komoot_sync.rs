@@ -399,10 +399,7 @@ async fn sync_one_tour(
         );
     }
 
-    let ctx = TripPhotoContext {
-        timed_points: &derived.timed_points,
-        tz_name: Some(&derived.guessed_tz),
-    };
+    let ctx = TripPhotoContext::new(&derived.timed_points, Some(&derived.guessed_tz));
 
     let mut tx = pool.begin().await?;
     let trip_id = repo::insert_trip_in_tx(

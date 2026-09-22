@@ -92,19 +92,16 @@ async fn us12_the_suggested_date_is_the_day_the_track_was_ridden() {
 
     assert_eq!(staged.suggested_name, "2024-06-02 Midnight Ride");
     assert_eq!(staged.start_date.as_deref(), Some("2024-06-02"));
-    assert_eq!(staged.timezone, "Europe/Oslo");
 }
 
 #[tokio::test]
-async fn us12_the_suggestion_carries_the_guessed_timezone_and_the_tracks_stats() {
-    // The confirm form prefills its timezone override with the guess
-    // (US-4, ADR-0019), and shows what was parsed so the owner can tell they
+async fn us12_the_suggestion_carries_the_tracks_stats() {
+    // The confirm form shows what was parsed, so the owner can tell they
     // picked the right file.
     let (app, _dir) = test_app().await;
 
     let staged = stage_import(&app, SAMPLE_GPX).await;
 
-    assert_eq!(staged.timezone, "Europe/Oslo");
     assert!(staged.distance_m > 0.0, "{staged:?}");
     assert!(staged.ascent_m > 0.0, "{staged:?}");
     assert_eq!(staged.duration_secs, Some(3600));
@@ -156,14 +153,16 @@ async fn us12_confirming_creates_the_trip_the_owner_described() {
     let id = confirm_ok(
         &app,
         staged.staging_id,
-        r#"{"name":"2024-06-01 Nordmarka","activity_type":"hiking","kind":"planned","timezone":"Europe/Berlin"}"#,
+        r#"{"name":"2024-06-01 Nordmarka","activity_type":"hiking","kind":"planned"}"#,
     )
     .await;
 
     let trip = trip(&app, id).await;
     assert_eq!(trip.name, "2024-06-01 Nordmarka");
     assert_eq!(trip.activity_type.as_str(), "hiking");
-    assert_eq!(trip.tz_name.as_deref(), Some("Europe/Berlin"));
+    // US-64: the trip's zone is the one its track starts in, never an
+    // answer on this form — photos are placed by the track's own offsets.
+    assert_eq!(trip.tz_name.as_deref(), Some("Europe/Oslo"));
     assert!(
         trip.distance_m > 0.0,
         "the stats came from the staged parse"

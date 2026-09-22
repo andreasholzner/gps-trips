@@ -74,10 +74,7 @@ mod tests {
     use crate::server::thumbnail::fixtures::valid_jpeg_bytes;
 
     fn no_track_ctx() -> TripPhotoContext<'static> {
-        TripPhotoContext {
-            timed_points: &[],
-            tz_name: None,
-        }
+        TripPhotoContext::new(&[], None)
     }
 
     fn test_store() -> (Arc<dyn BlobStore>, tempfile::TempDir) {
