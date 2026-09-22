@@ -10,10 +10,11 @@ use serde::Serialize;
 use trip_archive_types::TripSummary;
 
 /// How opaque a lone trip's mark is, and the floor no mark goes below. The
-/// floor keeps a large list visible at all; the ceiling keeps a single mark
-/// from hiding the map under it.
+/// floor keeps every mark visible on its own — zoomed in, where marks no
+/// longer overlap, each one is drawn at exactly this — and the ceiling keeps
+/// a single mark from hiding the map under it.
 const MAX_OPACITY: f64 = 0.6;
-const MIN_OPACITY: f64 = 0.05;
+const MIN_OPACITY: f64 = 0.25;
 
 /// What the region map draws: every mark at the same opacity.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -115,6 +116,8 @@ mod tests {
 
     #[test]
     fn a_huge_list_stays_visible() {
-        assert_eq!(opacity_for(100_000), MIN_OPACITY);
+        // A lone mark in a big archive must still read as a mark once zoomed
+        // in, where nothing overlaps it.
+        assert_eq!(opacity_for(100_000), 0.25);
     }
 }
