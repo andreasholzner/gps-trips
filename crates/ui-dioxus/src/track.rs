@@ -4,7 +4,8 @@
 //! verbatim by `GET /api/trips/:id/track.geojson` — geometry for the map and
 //! two parallel arrays for the elevation chart, in one fetch (ADR-0025).
 //! Unlike the JSON API's other shapes it has no struct on the server side to
-//! share (`geojson::build_track_geojson` writes it untyped), so what follows
+//! share (`geojson::build_track_geojson` writes it untyped, and
+//! `geojson::with_utc_offsets` adds to it as it is served), so what follows
 //! describes only the parts this screen draws; the test parses a blob shaped
 //! exactly as the server writes one, which is what keeps the two in step.
 //!
@@ -13,9 +14,11 @@
 //! so it lives here where `cargo test` reaches it.
 
 use serde::Deserialize;
+use time::UtcOffset;
 
-/// A track as stored. `properties.timestamps` is the server's own (US-4 reads
-/// it back to place photos) and is deliberately not described here.
+use crate::format;
+
+/// A track as served.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Track {
     pub geometry: Geometry,
@@ -36,6 +39,16 @@ pub struct Properties {
     pub cumulative_distance_m: Vec<f64>,
     #[serde(default)]
     pub elevation_m: Vec<f64>,
+    /// One RFC-3339 UTC instant per point, `""` for a point the GPX gave no
+    /// time (US-62's readout; US-4 reads the same array to place photos).
+    #[serde(default)]
+    pub timestamps: Vec<String>,
+    /// Where the UTC offset changes along the track, by point index:
+    /// `[[0, 7200], [1841, 10800]]`, seconds east of UTC, `null` from an index
+    /// whose zone the archive could not resolve (US-62). Resolved on the
+    /// server, which owns the timezone lookups (ADR-0019).
+    #[serde(default)]
+    pub utc_offsets: Vec<(usize, Option<i32>)>,
 }
 
 /// The track as Leaflet takes it: `[lat, lon]` pairs, in track order. A
@@ -82,11 +95,14 @@ pub fn elevation_series(track: &Track) -> Option<(Vec<f64>, Vec<f64>)> {
 ///
 /// `position` is `None` where the track carries no drawable position for that
 /// sample — the map then marks nothing rather than marking the wrong point.
+/// `time` is when the point was recorded, already rendered in the offset it
+/// was in (US-62); `None` for a point the GPX gave no time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverPoint {
     pub distance_m: f64,
     pub elevation_m: f64,
     pub position: Option<[f64; 2]>,
+    pub time: Option<String>,
 }
 
 /// The chart's samples, in the chart's own order, so the index the cursor
@@ -105,6 +121,7 @@ pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
         return Vec::new();
     };
     let positions = &track.geometry.coordinates;
+    let with_date = crosses_a_date(track);
     track
         .properties
         .cumulative_distance_m
@@ -118,8 +135,55 @@ pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
                 Some(&[lon, lat, ..]) => Some([lat, lon]),
                 _ => None,
             },
+            time: track
+                .properties
+                .timestamps
+                .get(i)
+                .and_then(|timestamp| format::instant(timestamp))
+                .map(|at| format::clock(at, offset_at(track, i), with_date)),
         })
         .collect()
+}
+
+/// Whether any sample has a time to read out (US-62). A track with none drops
+/// the readout's time rather than show a dash that can never fill.
+pub fn has_times(points: &[HoverPoint]) -> bool {
+    points.iter().any(|point| point.time.is_some())
+}
+
+/// The offset in force at point `index`: the last change at or before it.
+/// `None` — read as UTC, and labelled so — where the archive could not
+/// resolve the zone, or said nothing about offsets at all.
+fn offset_at(track: &Track, index: usize) -> Option<UtcOffset> {
+    let changes = &track.properties.utc_offsets;
+    let (_, seconds) = changes
+        .iter()
+        .take_while(|&&(from, _)| from <= index)
+        .last()?;
+    UtcOffset::from_whole_seconds((*seconds)?).ok()
+}
+
+/// Whether the track's first and last recorded times fall on different local
+/// dates (US-62). A trip that never crossed midnight is read out as a clock
+/// time alone, rather than repeating its date on every reading.
+fn crosses_a_date(track: &Track) -> bool {
+    let local_date = |(index, timestamp): (usize, &String)| {
+        let at = format::instant(timestamp)?;
+        Some(
+            at.to_offset(offset_at(track, index).unwrap_or(UtcOffset::UTC))
+                .date(),
+        )
+    };
+    let mut dates = track
+        .properties
+        .timestamps
+        .iter()
+        .enumerate()
+        .filter_map(local_date);
+    match (dates.next(), dates.next_back()) {
+        (Some(first), Some(last)) => first != last,
+        _ => false,
+    }
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -128,9 +192,9 @@ pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
 mod tests {
     use super::*;
 
-    /// A blob shaped exactly as the server stores one (`build_track_geojson`,
-    /// ADR-0003) — parsing it here is what keeps this reader honest about the
-    /// shape it is reading.
+    /// A blob shaped exactly as the server serves one (`build_track_geojson`,
+    /// ADR-0003, and `with_utc_offsets`) — parsing it here is what keeps this
+    /// reader honest about the shape it is reading.
     const STORED_TRACK: &str = r#"{
         "type": "Feature",
         "geometry": {
@@ -140,7 +204,8 @@ mod tests {
         "properties": {
             "cumulative_distance_m": [0.0, 1234.0],
             "elevation_m": [12.0, 30.0],
-            "timestamps": ["2026-07-11T09:30:00Z", "2026-07-11T09:35:00Z"]
+            "timestamps": ["2026-07-11T09:30:00Z", "2026-07-11T09:35:00Z"],
+            "utc_offsets": [[0, 7200]]
         }
     }"#;
 
@@ -262,5 +327,110 @@ mod tests {
         )
         .unwrap();
         assert_eq!(elevation_series(&lopsided), None);
+    }
+
+    // ── US-62: the time of the hovered point ─────────────────────────────
+
+    /// A three-point track with the given timestamps and offset changes.
+    fn timed_track(timestamps: [&str; 3], utc_offsets: &str) -> Track {
+        serde_json::from_str(&format!(
+            r#"{{"geometry": {{"coordinates": [[25.5, 69.4, 0.0], [26.5, 69.1, 0.0], [27.0, 68.9, 0.0]]}},
+                "properties": {{"cumulative_distance_m": [0.0, 1.0, 2.0],
+                               "elevation_m": [0.0, 0.0, 0.0],
+                               "timestamps": {timestamps:?},
+                               "utc_offsets": {utc_offsets}}}}}"#
+        ))
+        .unwrap()
+    }
+
+    fn times(track: &Track) -> Vec<Option<String>> {
+        hover_points(track)
+            .into_iter()
+            .map(|point| point.time)
+            .collect()
+    }
+
+    #[test]
+    fn a_hovered_point_says_when_it_was_in_the_offset_it_was_in() {
+        let points = hover_points(&stored_track());
+
+        assert_eq!(points[0].time.as_deref(), Some("11:30 (+02:00)"));
+        assert_eq!(points[1].time.as_deref(), Some("11:35 (+02:00)"));
+    }
+
+    #[test]
+    fn a_point_across_a_border_is_read_in_the_offset_on_its_side() {
+        // Finnmark into Finnish Lapland: the third point is an hour ahead.
+        let track = timed_track(
+            [
+                "2026-07-11T08:00:00Z",
+                "2026-07-11T09:00:00Z",
+                "2026-07-11T10:00:00Z",
+            ],
+            "[[0, 7200], [2, 10800]]",
+        );
+
+        assert_eq!(
+            times(&track),
+            vec![
+                Some("10:00 (+02:00)".to_string()),
+                Some("11:00 (+02:00)".to_string()),
+                Some("13:00 (+03:00)".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_track_that_crosses_midnight_dates_every_reading() {
+        let track = timed_track(
+            [
+                "2026-07-11T21:00:00Z",
+                "2026-07-11T21:30:00Z",
+                "2026-07-11T22:30:00Z",
+            ],
+            "[[0, 7200]]",
+        );
+
+        assert_eq!(
+            times(&track),
+            vec![
+                Some("11 Jul 23:00 (+02:00)".to_string()),
+                Some("11 Jul 23:30 (+02:00)".to_string()),
+                Some("12 Jul 00:30 (+02:00)".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_point_with_no_time_has_none_rather_than_an_invented_one() {
+        let track = timed_track(
+            ["2026-07-11T08:00:00Z", "", "2026-07-11T10:00:00Z"],
+            "[[0, 7200]]",
+        );
+
+        assert_eq!(times(&track)[1], None);
+        assert!(has_times(&hover_points(&track)));
+    }
+
+    #[test]
+    fn a_point_whose_zone_is_unknown_is_read_as_labelled_utc() {
+        let track = timed_track(
+            [
+                "2026-07-11T08:00:00Z",
+                "2026-07-11T09:00:00Z",
+                "2026-07-11T10:00:00Z",
+            ],
+            "[[0, 7200], [1, null]]",
+        );
+
+        assert_eq!(times(&track)[1].as_deref(), Some("09:00 UTC"));
+        assert_eq!(times(&track)[2].as_deref(), Some("10:00 UTC"));
+    }
+
+    #[test]
+    fn a_track_with_no_times_has_none_to_read_out() {
+        let track = timed_track(["", "", ""], "[]");
+
+        assert!(!has_times(&hover_points(&track)));
     }
 }

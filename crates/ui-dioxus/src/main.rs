@@ -47,6 +47,8 @@ use menu::{AppShell, SignOut};
 /// the components. `app.css` holds only what Pico has no opinion about.
 const PICO_CSS: Asset = asset!("/assets/pico.classless.min.css");
 const APP_CSS: Asset = asset!("/assets/app.css");
+/// The detail screen's own layout, apart so neither sheet outgrows the size cap.
+const DETAIL_CSS: Asset = asset!("/assets/detail.css");
 
 /// Leaflet and OSM raster tiles, kept from ADR-0005 and vendored rather than
 /// fetched from a CDN (US-10). Bundled with `asset!` so it ships inside the
@@ -217,6 +219,7 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "stylesheet", href: PICO_CSS }
         document::Link { rel: "stylesheet", href: APP_CSS }
+        document::Link { rel: "stylesheet", href: DETAIL_CSS }
         // Injected asynchronously, so anything using `L` waits for it
         // (interop.rs) rather than assuming load order.
         document::Link { rel: "stylesheet", href: LEAFLET_CSS }

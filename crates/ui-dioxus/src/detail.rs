@@ -3,19 +3,19 @@
 //! server-rendered page (ADR-0012's migration rule).
 
 use dioxus::prelude::*;
-// The screen is `TripDetail`; so is the shape it shows. Aliasing the data
-// keeps both readable in one file.
-use trip_archive_types::TripDetail as Trip;
 
 use crate::api::{self, ApiClient};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
-use crate::format;
-use crate::interop;
-use crate::photos::{self, AddPhotos, PhotoGallery, PhotoMarker};
-use crate::track::{self, Track};
+use crate::photos::{self, AddPhotos, PhotoGallery};
 use crate::trip_tags::TripTags;
 use trip_archive_types::PhotoResponse;
+
+mod stats;
+mod track_views;
+
+use stats::TripStats;
+use track_views::TrackSection;
 
 /// The screen. `id` comes from the route (`/trips/:id`), so a link, a
 /// bookmark and a reload all land on the same trip.
@@ -114,247 +114,13 @@ pub fn TripDetail(id: i64) -> Element {
         }
     }
 }
-
-/// The track on an OSM map and the elevation profile below it (US-7), from
-/// the one fetch that carries both (ADR-0025).
-///
-/// A track that will not load costs the map and the chart, not the screen:
-/// the stats, the gallery and the edit controls around it are unaffected.
-#[component]
-fn TrackSection(id: i64, markers: Vec<PhotoMarker>) -> Element {
-    let archive = use_context::<Signal<ApiClient>>();
-    let track = use_resource(use_reactive!(|id| async move {
-        api::get_track(&archive(), id).await
-    }));
-
-    rsx! {
-        match &*track.read_unchecked() {
-            None => rsx! { p { "Loading the track…" } },
-            Some(Err(err)) => rsx! { p { class: "error", "Could not load the track: {err}" } },
-            Some(Ok(track)) => rsx! {
-                TrackViews { track: track.clone(), markers: markers.clone() }
-            },
-        }
-    }
-}
-
-/// The two widgets themselves, once there is a track to draw. Split from the
-/// fetch above so each starts its script exactly once, when it mounts with
-/// the values it draws — never on a re-render of the screen around it.
-///
-/// This is also where the hover (US-59) turns around: the chart reports the
-/// index the cursor is on, and the index is resolved *here*, in Rust, into
-/// the position the map marks and the values the readout shows. The chart's
-/// index and the polyline's are not the same point (`track::hover_points`),
-/// which is the whole reason the resolution does not happen in either script.
-#[component]
-fn TrackViews(track: Track, markers: Vec<PhotoMarker>) -> Element {
-    let points = track::polyline(&track);
-    let series = track::elevation_series(&track);
-    let samples = track::hover_points(&track);
-    let hovered = use_signal(|| None::<usize>);
-    let hovered_at = hovered().and_then(|i| samples.get(i).and_then(|sample| sample.position));
-
-    rsx! {
-        TrackMap { points, markers, hovered_at }
-        if let Some((distance_km, elevation_m)) = series {
-            ElevationChart { distance_km, elevation_m, hovered }
-            HoverReadout { points: samples, hovered: hovered() }
-        }
-    }
-}
-
-/// The map container. Rendered empty and never given children: Leaflet owns
-/// this subtree from the moment it initialises (ADR-0025).
-#[component]
-fn TrackMap(
-    points: Vec<[f64; 2]>,
-    markers: Vec<PhotoMarker>,
-    hovered_at: Option<[f64; 2]>,
-) -> Element {
-    // The handle is the channel, so it is held for as long as the map should
-    // keep taking messages — which is now the component's whole life, not
-    // just until the first payload lands (US-59).
-    let mut handle = use_signal(|| None::<document::Eval>);
-
-    // Redrawn whenever the line changes, not only when the component first
-    // mounts: the router shows a different trip through this same component,
-    // and a plain `use_future` would leave the previous trip's track on the
-    // map. The script is written to be drawn into twice (`interop::track`),
-    // and replacing the handle here closes the superseded script's channel,
-    // which is how that one learns to stop.
-    use_future(use_reactive!(|points, markers| async move {
-        handle.set(Some(interop::start_track_map(points, markers)));
-    }));
-
-    // Sent on every change of the hovered point, and again when a redraw
-    // replaces the handle — a fresh map must not be left without the mark
-    // the cursor is still asking for.
-    use_effect(use_reactive!(|hovered_at| {
-        if let Some(map) = handle.read().as_ref() {
-            interop::mark_on_track_map(map, hovered_at);
-        }
-    }));
-
-    rsx! { div { id: "track-map", class: "track-map" } }
-}
-
-/// The elevation chart's container, on the same terms as the map's — and the
-/// source of the hovered index, which it reports until the channel closes.
-#[component]
-fn ElevationChart(
-    distance_km: Vec<f64>,
-    elevation_m: Vec<f64>,
-    hovered: Signal<Option<usize>>,
-) -> Element {
-    use_future(use_reactive!(|distance_km, elevation_m| {
-        let mut hovered = hovered;
-        async move {
-            let mut chart = interop::start_elevation_chart(distance_km, elevation_m);
-            loop {
-                match chart.recv::<Option<usize>>().await {
-                    Ok(index) => hovered.set(index),
-                    // The channel closed (a redraw, or the screen going away)
-                    // or said something this end cannot read. Either way this
-                    // chart reports nothing further, and the mark it last
-                    // asked for is cleared rather than left behind.
-                    Err(err) => {
-                        dioxus::logger::tracing::debug!("the chart stopped reporting: {err}");
-                        hovered.set(None);
-                        break;
-                    }
-                }
-            }
-        }
-    }));
-
-    rsx! { div { id: "elevation", class: "elevation" } }
-}
-
-/// What the cursor is on, under the chart (US-59): the distance and elevation
-/// of the hovered sample, through the same formatting as the stats above, so
-/// the two read alike. Dashes when the cursor is not on the chart — the same
-/// dash the stats use for a value there is none of.
-///
-/// This is uPlot's own legend, rebuilt as ordinary markup: the stock one is
-/// the control that hides the series when clicked, and its marker square
-/// reads as a checkbox.
-#[component]
-fn HoverReadout(points: Vec<track::HoverPoint>, hovered: Option<usize>) -> Element {
-    let at = hovered.and_then(|index| points.get(index));
-
-    rsx! {
-        p { id: "chart-readout", class: "chart-readout",
-            "At cursor: "
-            span { id: "readout-distance",
-                {at.map_or_else(|| "—".to_string(), |sample| format::km(sample.distance_m))}
-            }
-            " · "
-            span { id: "readout-elevation",
-                {format::metres(at.map(|sample| sample.elevation_m))}
-            }
-        }
-    }
-}
-
-/// The trip's name and its stats — every one of them computed at import and
-/// never entered by hand (US-8); this screen only reports them.
-#[component]
-fn TripStats(trip: Trip) -> Element {
-    rsx! {
-        h1 { id: "trip-name", "{trip.name}" }
-        p {
-            "Activity: "
-            span { id: "trip-activity", "{trip.activity_type.label()}" }
-        }
-        dl { class: "stats",
-            dt { "Start" }
-            dd { {format::or_dash(trip.start_time.as_deref())} }
-            dt { "Distance" }
-            dd { {format::km(trip.distance_m)} }
-            dt { "Ascent" }
-            dd { {format::metres(trip.ascent_m)} }
-            dt { "Descent" }
-            dd { {format::metres(trip.descent_m)} }
-            dt { "Duration" }
-            dd { {format::duration(trip.duration_secs)} }
-            // US-4 places a photo without GPS by matching its timestamp to
-            // the track, in this timezone — so the screen says which one it
-            // assumed, and a photo in an odd place is explicable.
-            dt { "Photo timestamp timezone" }
-            dd { {format::or_dash(trip.tz_name.as_deref())} }
-        }
-    }
-}
-
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{import_sample, render, render_against_archive, serve_test_archive};
+    use crate::test_support::{import_sample, render_against_archive, serve_test_archive};
     use trip_archive_types::ActivityType;
-
-    /// A trip as the detail endpoint returns it, for the component-level
-    /// tests — no server needed to assert what a screen shows.
-    fn a_trip(name: &str) -> Trip {
-        Trip {
-            id: 1,
-            name: name.to_string(),
-            activity_type: ActivityType::Hiking,
-            tz_name: Some("Europe/Oslo".to_string()),
-            start_time: Some("2026-07-11T09:30:00Z".to_string()),
-            start_date: Some("2026-07-11".to_string()),
-            end_time: Some("2026-07-11T13:15:00Z".to_string()),
-            distance_m: 12_345.0,
-            ascent_m: Some(410.0),
-            descent_m: Some(395.0),
-            duration_secs: Some(13_500),
-            min_lat: Some(59.9),
-            min_lon: Some(10.7),
-            max_lat: Some(60.0),
-            max_lon: Some(10.8),
-            komoot: None,
-        }
-    }
-
-    // US-7: the trip's own numbers, around the map and the gallery that
-    // follow in later phases. US-8 computed them at import; the screen
-    // reports them.
-    #[test]
-    fn the_screen_shows_the_trips_name_and_computed_stats() {
-        let trip = a_trip("Oslo Hills Walk");
-
-        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
-
-        assert!(html.contains("Oslo Hills Walk"), "{html}");
-        assert!(html.contains(ActivityType::Hiking.label()), "{html}");
-        assert!(html.contains("12.35 km"), "{html}");
-        assert!(html.contains("410 m"), "{html}");
-        assert!(html.contains("395 m"), "{html}");
-        assert!(html.contains("03:45:00"), "{html}");
-        assert!(html.contains("2026-07-11T09:30:00Z"), "{html}");
-        // US-4 places photos by the trip's assumed timezone; the screen says
-        // which one it is, so a photo in the wrong place is explicable.
-        assert!(html.contains("Europe/Oslo"), "{html}");
-    }
-
-    #[test]
-    fn a_trip_missing_optional_stats_shows_dashes_not_blanks() {
-        let trip = Trip {
-            start_time: None,
-            ascent_m: None,
-            descent_m: None,
-            duration_secs: None,
-            tz_name: None,
-            ..a_trip("Bare Trip")
-        };
-
-        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
-
-        assert!(html.contains("Bare Trip"), "{html}");
-        assert!(html.contains("—"), "{html}");
-    }
 
     // The whole screen against a real archive: nothing mocked (ADR-0012).
     #[tokio::test]
@@ -399,58 +165,6 @@ mod tests {
             html.contains(r#"<div id="elevation" class="elevation"></div>"#),
             "an empty chart container — the fixture track has elevations: {html}"
         );
-    }
-
-    // ── US-59: the readout under the chart ───────────────────────────────
-
-    fn a_sample(distance_m: f64, elevation_m: f64) -> track::HoverPoint {
-        track::HoverPoint {
-            distance_m,
-            elevation_m,
-            position: Some([59.91, 10.75]),
-        }
-    }
-
-    #[test]
-    fn the_readout_claims_no_position_until_the_cursor_is_on_the_chart() {
-        let points = vec![a_sample(0.0, 12.0), a_sample(1_234.0, 340.0)];
-
-        let html = render(move || {
-            rsx! { HoverReadout { points: points.clone(), hovered: None } }
-        });
-
-        assert!(html.contains("At cursor"), "{html}");
-        // Dashes, and the same dash the stats use for a value there is none of.
-        assert!(html.contains('—'), "{html}");
-        assert!(!html.contains("1.23 km"), "{html}");
-    }
-
-    #[test]
-    fn the_readout_shows_the_hovered_sample_the_way_the_stats_do() {
-        // Through `format::km` and `format::metres`, so a distance under the
-        // chart reads exactly like the distance above it (US-59).
-        let points = vec![a_sample(0.0, 12.0), a_sample(1_234.0, 340.0)];
-
-        let html = render(move || {
-            rsx! { HoverReadout { points: points.clone(), hovered: Some(1) } }
-        });
-
-        assert!(html.contains("1.23 km"), "{html}");
-        assert!(html.contains("340 m"), "{html}");
-    }
-
-    #[test]
-    fn a_hovered_index_the_chart_no_longer_has_reads_as_nothing() {
-        // The index and the series arrive on different paths: a chart drawn
-        // for the previous trip can report an index this one is too short
-        // for, and that must read as "no position" rather than panic.
-        let points = vec![a_sample(0.0, 12.0)];
-
-        let html = render(move || {
-            rsx! { HoverReadout { points: points.clone(), hovered: Some(7) } }
-        });
-
-        assert!(html.contains('—'), "{html}");
     }
 
     // US-15: the screen offers the edit, and saving it re-reads the trip.
