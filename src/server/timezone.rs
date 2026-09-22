@@ -146,6 +146,24 @@ fn in_force(changes: Vec<(usize, Option<UtcOffset>)>) -> Vec<(usize, UtcOffset)>
     transitions
 }
 
+/// The UTC offset a photo taken at `at` is captioned in (US-62): the zone of
+/// its own position where it has one, the trip's zone where it does not — the
+/// same fallback placement makes for such a photo (US-4). `None` if the one
+/// that applies does not resolve, and the caption then says UTC.
+pub fn photo_offset(
+    position: Option<(f64, f64)>,
+    tz_name: Option<&str>,
+    at: OffsetDateTime,
+) -> Option<UtcOffset> {
+    match position {
+        Some((lat, lon)) => offset_at(lon, lat, at),
+        None => {
+            let tz = time_tz::timezones::get_by_name(tz_name?)?;
+            Some(at.to_timezone(tz).offset())
+        }
+    }
+}
+
 /// The UTC offset in force at a coordinate at an instant — the geography
 /// lookup and the DST lookup, composed. `None` if this build's tzdata does not
 /// recognize the name the geo lookup returned.
@@ -347,6 +365,33 @@ mod tests {
     }
 
     // ── US-62: the offsets in force along a track, as it is served ─────────
+
+    #[test]
+    fn a_photo_is_captioned_in_the_zone_of_its_own_position() {
+        // Taken in Inari on a trip whose zone is Oslo's: Helsinki's +03:00.
+        let at = datetime!(2024-06-01 10:00 UTC);
+        assert_eq!(
+            photo_offset(Some((INARI.1, INARI.0)), Some("Europe/Oslo"), at),
+            Some(UtcOffset::from_hms(3, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn a_photo_without_a_position_is_captioned_in_the_trips_zone() {
+        let at = datetime!(2024-01-15 10:00 UTC);
+        assert_eq!(
+            photo_offset(None, Some("Europe/Oslo"), at),
+            Some(UtcOffset::from_hms(1, 0, 0).unwrap()),
+            "Oslo in January, DST-aware"
+        );
+    }
+
+    #[test]
+    fn a_photo_with_nothing_to_resolve_its_zone_by_has_no_offset() {
+        let at = datetime!(2024-06-01 10:00 UTC);
+        assert_eq!(photo_offset(None, None, at), None);
+        assert_eq!(photo_offset(None, Some("Not/A_Zone"), at), None);
+    }
 
     fn hours(h: i8) -> UtcOffset {
         UtcOffset::from_hms(h, 0, 0).unwrap()

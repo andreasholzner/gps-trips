@@ -2,7 +2,7 @@
 //! `trip` module.
 
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 
 use crate::models::{LocationSource, Photo};
 
@@ -22,6 +22,9 @@ pub struct NewPhoto<'a> {
     pub lat: Option<f64>,
     pub lon: Option<f64>,
     pub location_source: LocationSource,
+    /// When the photo was taken (US-62), stored as UTC whatever offset it
+    /// arrives in (ADR-0009).
+    pub taken_at: Option<OffsetDateTime>,
 }
 
 /// Insert one photo row associating it with `trip_id` (US-2). Runs on the
@@ -36,8 +39,8 @@ pub async fn insert_photo(
     let id = sqlx::query(
         r#"INSERT INTO photo
                (trip_id, original_name, content_type, byte_len, blob_key, thumbnail_key,
-                created_at, lat, lon, location_source)
-           VALUES (?,?,?,?,?,?,?,?,?,?)"#,
+                created_at, lat, lon, location_source, taken_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)"#,
     )
     .bind(trip_id)
     .bind(photo.original_name)
@@ -49,6 +52,11 @@ pub async fn insert_photo(
     .bind(photo.lat)
     .bind(photo.lon)
     .bind(photo.location_source)
+    .bind(
+        photo
+            .taken_at
+            .map(|t| to_rfc3339(t.to_offset(UtcOffset::UTC))),
+    )
     .execute(&mut **tx)
     .await?
     .last_insert_rowid();
@@ -71,7 +79,7 @@ pub async fn count_photos(
 pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, sqlx::Error> {
     sqlx::query(
         r#"SELECT id, trip_id, original_name, content_type, byte_len, blob_key, thumbnail_key,
-                  created_at, lat, lon, location_source
+                  created_at, lat, lon, location_source, taken_at
            FROM photo WHERE trip_id = ? ORDER BY id"#,
     )
     .bind(trip_id)
@@ -87,6 +95,7 @@ pub async fn list_photos(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Photo>, 
         lat: row.get("lat"),
         lon: row.get("lon"),
         location_source: row.get("location_source"),
+        taken_at: row.get("taken_at"),
     })
     .fetch_all(pool)
     .await
@@ -139,6 +148,7 @@ mod tests {
                 lat: None,
                 lon: None,
                 location_source: LocationSource::None,
+                taken_at: None,
             },
         )
         .await
@@ -169,6 +179,7 @@ mod tests {
                 lat: Some(lat),
                 lon: Some(lon),
                 location_source: LocationSource::Exif,
+                taken_at: None,
             },
         )
         .await
@@ -288,6 +299,37 @@ mod tests {
     // ── US-5: generated thumbnails ────────────────────────────────────────
 
     #[tokio::test]
+    async fn us62_a_photos_capture_time_is_stored_as_utc() {
+        // Placement hands over an instant in whatever offset it read the clock
+        // at; what is stored is UTC (ADR-0009).
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+
+        let mut tx = db.pool.begin().await.unwrap();
+        insert_photo(
+            &mut tx,
+            trip_id,
+            &NewPhoto {
+                original_name: "a.jpg",
+                content_type: Some("image/jpeg"),
+                byte_len: 10,
+                blob_key: "trips/1/0000-a.jpg",
+                thumbnail_key: None,
+                lat: None,
+                lon: None,
+                location_source: LocationSource::None,
+                taken_at: Some(time::macros::datetime!(2024-06-01 10:15 +02:00)),
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+
+        let photos = list_photos(&db.pool, trip_id).await.unwrap();
+        assert_eq!(photos[0].taken_at.as_deref(), Some("2024-06-01T08:15:00Z"));
+    }
+
+    #[tokio::test]
     async fn us5_insert_and_list_photo_round_trips_the_thumbnail_key() {
         let db = TestDb::new().await;
         let trip_id = insert_sample_trip(&db.pool).await;
@@ -305,6 +347,7 @@ mod tests {
                 lat: None,
                 lon: None,
                 location_source: LocationSource::None,
+                taken_at: None,
             },
         )
         .await

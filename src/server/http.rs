@@ -11,8 +11,8 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
 use crate::models::{
-    ExportTrip, PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail,
-    TripSummary,
+    ExportTrip, Photo, PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
+    TripDetail, TripSummary,
 };
 use crate::server::{
     auth, backup, delete,
@@ -30,7 +30,9 @@ use crate::server::{
         handle_add_trip_tag, handle_bulk_add_trip_tags, handle_list_all_tags,
         handle_list_trip_tags, handle_remove_trip_tag,
     },
+    timezone,
 };
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Build the application router. Shared by `main` and the integration tests so
 /// both exercise the exact same routing (ADR-0012).
@@ -388,9 +390,9 @@ async fn list_trip_photos(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<PhotoResponse>>, AppError> {
-    if repo::get_trip(&state.pool, id).await?.is_none() {
-        return Err(AppError::NotFound);
-    }
+    let trip = repo::get_trip(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let photos = repo::list_photos(&state.pool, id)
         .await?
         .into_iter()
@@ -401,10 +403,19 @@ async fn list_trip_photos(
                 .as_deref()
                 .map(|k| state.store.url_for(k))
                 .unwrap_or_else(|| url.clone());
-            PhotoResponse::from_photo(p, url, thumbnail_url)
+            let taken_offset_secs = taken_offset(&p, trip.tz_name.as_deref());
+            PhotoResponse::from_photo(p, url, thumbnail_url, taken_offset_secs)
         })
         .collect();
     Ok(Json(photos))
+}
+
+/// The offset a photo's caption is shown in (US-62, `timezone::photo_offset`),
+/// in seconds — `None` for a photo with no capture time to take it at.
+fn taken_offset(photo: &Photo, tz_name: Option<&str>) -> Option<i32> {
+    let taken_at = OffsetDateTime::parse(photo.taken_at.as_deref()?, &Rfc3339).ok()?;
+    let position = photo.lat.zip(photo.lon);
+    timezone::photo_offset(position, tz_name, taken_at).map(|offset| offset.whole_seconds())
 }
 
 /// GET `/media/*path` — serve a photo blob from the `BlobStore` (US-7).

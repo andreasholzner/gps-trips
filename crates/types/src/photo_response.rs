@@ -27,6 +27,13 @@ pub struct PhotoResponse {
     pub content_type: Option<String>,
     pub byte_len: i64,
     pub created_at: String,
+    /// When the photo was taken, RFC-3339 UTC (US-62).
+    pub taken_at: Option<String>,
+    /// The UTC offset, in seconds, in force where and when the photo was
+    /// taken — from its own position where it has one, the trip's zone where
+    /// it does not (US-62). `None` when neither resolves: the caption then
+    /// says its time is UTC rather than invent a zone.
+    pub taken_offset_secs: Option<i32>,
     pub url: String,
     pub thumbnail_url: String,
     pub lat: Option<f64>,
@@ -36,10 +43,16 @@ pub struct PhotoResponse {
 
 impl PhotoResponse {
     /// Project a stored record into its wire shape, with the serving URLs the
-    /// blob store computed. Field by field on purpose: a new field on either
+    /// blob store computed, and the offset the photo was taken
+    /// at — which needs the server's timezone lookups (US-62). Field by field on purpose: a new field on either
     /// type is a compile error here until it is decided which side it belongs
     /// to (ADR-0015).
-    pub fn from_photo(photo: Photo, url: String, thumbnail_url: String) -> Self {
+    pub fn from_photo(
+        photo: Photo,
+        url: String,
+        thumbnail_url: String,
+        taken_offset_secs: Option<i32>,
+    ) -> Self {
         Self {
             id: photo.id,
             trip_id: photo.trip_id,
@@ -47,6 +60,8 @@ impl PhotoResponse {
             content_type: photo.content_type,
             byte_len: photo.byte_len,
             created_at: photo.created_at,
+            taken_at: photo.taken_at,
+            taken_offset_secs,
             url,
             thumbnail_url,
             lat: photo.lat,

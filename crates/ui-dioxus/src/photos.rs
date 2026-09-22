@@ -269,6 +269,8 @@ mod tests {
             content_type: Some("image/jpeg".to_string()),
             byte_len: 1024,
             created_at: "2026-07-11T09:30:00Z".to_string(),
+            taken_at: None,
+            taken_offset_secs: None,
             url: format!("/media/trips/1/{name}"),
             thumbnail_url: format!("/media/trips/1/thumb-{name}"),
             lat: at.map(|(lat, _)| lat),

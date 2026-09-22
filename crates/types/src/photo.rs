@@ -20,6 +20,11 @@ pub struct Photo {
     pub blob_key: String,
     pub thumbnail_key: Option<String>,
     pub created_at: String,
+    /// When the photo was taken, RFC-3339 UTC (US-62, ADR-0009): its EXIF
+    /// capture time resolved to an instant, the way placement resolves it.
+    /// `None` for a photo whose EXIF names none — or one stored before this
+    /// was kept, until the backfill has read it back.
+    pub taken_at: Option<String>,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
     pub location_source: LocationSource,

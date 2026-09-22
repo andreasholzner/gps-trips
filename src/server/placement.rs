@@ -89,14 +89,25 @@ pub fn resolve_placement(
     if let Some(pos) = metadata.gps {
         return (Some(pos.lat), Some(pos.lon), LocationSource::Exif);
     }
-    match metadata
-        .capture_time
-        .and_then(|c| capture_time_to_utc(&c, ctx))
+    match capture_instant(&metadata, ctx)
         .and_then(|at| gpx::interpolate_position(ctx.timed_points, at))
     {
         Some((lat, lon)) => (Some(lat), Some(lon), LocationSource::Interpolated),
         None => (None, None, LocationSource::None),
     }
+}
+
+/// The instant a photo was taken, as placement reads it (US-4/US-64) — kept
+/// on the photo for its caption (US-62), so the two can never disagree about
+/// when it was. `None` for a photo with no capture time, or one no reading of
+/// the clock resolves.
+pub fn capture_instant(
+    metadata: &location::PhotoMetadata,
+    ctx: &TripPhotoContext<'_>,
+) -> Option<OffsetDateTime> {
+    metadata
+        .capture_time
+        .and_then(|c| capture_time_to_utc(&c, ctx))
 }
 
 /// Resolve an EXIF capture time to UTC (ADR-0009): an embedded
@@ -197,6 +208,40 @@ mod tests {
             }),
             orientation: None,
         }
+    }
+
+    // ── US-62: the instant kept for the caption ───────────────────────────
+
+    #[test]
+    fn capture_instant_is_the_instant_placement_reads_the_clock_as() {
+        let track = sample_track();
+        let metadata = photo_taken_at(datetime!(2024-06-01 11:00));
+
+        assert_eq!(
+            capture_instant(&metadata, &track_ctx(&track)),
+            Some(datetime!(2024-06-01 09:00 UTC))
+        );
+    }
+
+    #[test]
+    fn capture_instant_is_known_even_off_the_track() {
+        // Placement cannot use it, but the caption can: the trip's zone
+        // still says what instant 23:00 was.
+        let track = sample_track();
+        let metadata = photo_taken_at(datetime!(2024-06-01 23:00));
+
+        assert_eq!(
+            capture_instant(&metadata, &track_ctx(&track)),
+            Some(datetime!(2024-06-01 21:00 UTC))
+        );
+    }
+
+    #[test]
+    fn capture_instant_is_none_without_a_capture_time() {
+        assert_eq!(
+            capture_instant(&PhotoMetadata::default(), &track_ctx(&sample_track())),
+            None
+        );
     }
 
     // ── US-3: EXIF GPS ────────────────────────────────────────────────────

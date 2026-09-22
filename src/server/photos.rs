@@ -18,7 +18,7 @@ use crate::models::LocationSource;
 use crate::server::{
     error::AppError,
     location,
-    placement::{resolve_placement, TripPhotoContext},
+    placement::{capture_instant, resolve_placement, TripPhotoContext},
     repo::{self, NewPhoto},
     storage::BlobStore,
     thumbnail,
@@ -107,6 +107,7 @@ pub async fn store_photos(
     for photo in photos {
         let (lat, lon, location_source) =
             resolve_placement(photo.metadata, ctx, photo.known_location);
+        let taken_at = capture_instant(&photo.metadata, ctx);
         // A re-encoded copy is a JPEG whatever the upload was, and its key's
         // extension is what `content_type_from_path` (`http.rs`) serves it by.
         let key = if photo.reencoded {
@@ -162,6 +163,7 @@ pub async fn store_photos(
                 lat,
                 lon,
                 location_source,
+                taken_at,
             },
         )
         .await?;

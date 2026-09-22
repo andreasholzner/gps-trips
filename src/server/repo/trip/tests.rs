@@ -260,6 +260,7 @@ async fn us9_delete_trip_via_the_repo_function_cascades_to_track_and_photos() {
             lat: None,
             lon: None,
             location_source: LocationSource::None,
+            taken_at: None,
         },
     )
     .await
