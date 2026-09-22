@@ -196,7 +196,8 @@ pub async fn list_trips(
         "SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type, \
          t.start_time AS start_time, t.distance_m AS distance_m, t.ascent_m AS ascent_m, \
          t.duration_secs AS duration_secs, t.trip_kind AS trip_kind, \
-         l.privacy_status AS privacy_status \
+         l.privacy_status AS privacy_status, \
+         t.min_lat AS min_lat, t.min_lon AS min_lon, t.max_lat AS max_lat, t.max_lon AS max_lon \
          FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id WHERE 1 = 1",
     );
     if let Some(activity_type) = filter.activity_type {
@@ -287,6 +288,10 @@ pub async fn list_trips(
             duration_secs: row.get("duration_secs"),
             trip_kind: row.get("trip_kind"),
             privacy_status: row.get("privacy_status"),
+            min_lat: row.get("min_lat"),
+            min_lon: row.get("min_lon"),
+            max_lat: row.get("max_lat"),
+            max_lon: row.get("max_lon"),
         })
         .fetch_all(pool)
         .await?;

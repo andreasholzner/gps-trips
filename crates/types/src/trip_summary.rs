@@ -23,4 +23,10 @@ pub struct TripSummary {
     /// and for a linked one whose privacy no sync has read yet; the list page
     /// shows a dash either way.
     pub privacy_status: Option<KomootPrivacy>,
+    /// The trip's stored bounding box (US-63), which the list's map marks
+    /// the trip by. `None` for a trip whose track had no points.
+    pub min_lat: Option<f64>,
+    pub min_lon: Option<f64>,
+    pub max_lat: Option<f64>,
+    pub max_lon: Option<f64>,
 }

@@ -110,6 +110,10 @@ mod tests {
             duration_secs: Some(3_725),
             trip_kind: TripKind::Recorded,
             privacy_status: None,
+            min_lat: Some(59.9),
+            min_lon: Some(10.7),
+            max_lat: Some(60.0),
+            max_lon: Some(10.9),
         }
     }
 
