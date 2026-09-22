@@ -10,44 +10,9 @@
 // These assertions are the ones that moved off the server-rendered detail
 // page when US-42 deleted it: coverage transferred, it did not evaporate.
 import { expect, signIn, test } from "./session.mjs";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { GEOTAGGED_JPEG, ownTrips } from "./trips.mjs";
 
-const SAMPLE_GPX = readFileSync(
-  fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)),
-);
-
-/// A geotagged JPEG (US-3): the fixture the server's own tests use, so the
-/// EXIF path here is the real one.
-const GEOTAGGED_JPEG = readFileSync(
-  fileURLToPath(new URL("../fixtures/geotagged.jpg", import.meta.url)),
-);
-
-/// Import a trip through the real API and return its id, from the redirect —
-/// which US-42 repointed at the SPA's own screen.
-async function importTrip(request, name) {
-  const response = await request.post("/api/import", {
-    maxRedirects: 0,
-    multipart: {
-      gpx: { name: "track.gpx", mimeType: "application/gpx+xml", buffer: SAMPLE_GPX },
-      name,
-    },
-  });
-  expect(response.status(), `importing ${name}`).toBe(303);
-  return Number(response.headers()["location"].replace("/app/trips/", ""));
-}
-
-/// Every trip these tests import, so they can be taken away again. The suite
-/// shares one archive: a trip left behind here is a row the list spec did not
-/// seed and does not expect.
-const created = [];
-
-/// A trip of this test's own, so one test's edits cannot reach another's.
-async function ownTrip(request, label) {
-  const id = await importTrip(request, `${label} ${Math.random().toString(36).slice(2, 8)}`);
-  created.push(id);
-  return id;
-}
+const ownTrip = ownTrips(test);
 
 /// The chart's x range, and the band a drag draws across it. A zoom redraws
 /// a canvas and the band is uPlot's own element, so the widget is the only
@@ -69,13 +34,6 @@ const selectionWidth = (page) =>
 // (`session.mjs`).
 test.beforeEach(async ({ page }) => {
   await signIn(page.request);
-});
-
-test.afterAll(async ({ request }) => {
-  // Best effort, and 404 is a fine outcome — the delete test removes its own.
-  for (const id of created.splice(0)) {
-    await request.delete(`/api/trips/${id}`);
-  }
 });
 
 // US-7: "shows the track on an OSM map, an elevation profile, and a photo
