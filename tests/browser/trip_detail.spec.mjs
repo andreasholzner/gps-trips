@@ -382,13 +382,16 @@ test("a photo added later appears in the gallery (US-2)", async ({ page, request
   const id = await ownTrip(request, "Photo Trip");
   await page.goto(`/app/trips/${id}`);
   await expect(page.getByText("No photos yet.")).toBeVisible();
+  // US-62: the form is behind a button of its own, closed until asked for.
+  await expect(page.locator("#add-photos-input")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add photos" }).click();
 
   await page.locator("#add-photos-input").setInputFiles({
     name: "added-later.jpg",
     mimeType: "image/jpeg",
     buffer: GEOTAGGED_JPEG,
   });
-  await page.getByRole("button", { name: "Add photos" }).click();
+  await page.getByRole("button", { name: "Upload" }).click();
 
   await expect(page.getByRole("img", { name: "added-later.jpg" })).toBeVisible();
   // The picker no longer names a file it has already uploaded, so the button

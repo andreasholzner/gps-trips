@@ -151,3 +151,26 @@
   margin: 0;
   padding: 0.25rem 0.75rem;
 }
+
+/* The occasional controls, one quiet row at the foot of the screen (US-62).
+   Deleting's confirmation replaces its button in the row, and a failure
+   message takes a line of its own. */
+.trip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: calc(var(--pico-spacing) * 2);
+}
+
+.trip-actions > p {
+  margin: 0;
+}
+
+.trip-actions > .error {
+  flex-basis: 100%;
+}
+
+.add-photos {
+  margin-top: var(--pico-spacing);
+}

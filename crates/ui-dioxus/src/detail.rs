@@ -5,15 +5,15 @@
 use dioxus::prelude::*;
 
 use crate::api::{self, ApiClient};
-use crate::delete::DeleteTrip;
-use crate::edit::EditTrip;
-use crate::photos::{self, AddPhotos, PhotoGallery};
+use crate::photos::{self, PhotoGallery};
 use crate::trip_tags::TripTags;
 use trip_archive_types::PhotoResponse;
 
+mod actions;
 mod stats;
 mod track_views;
 
+use actions::TripActions;
 use stats::TripStats;
 use track_views::TrackSection;
 
@@ -94,7 +94,6 @@ pub fn TripDetail(id: i64) -> Element {
             },
             Some((_, Ok(trip))) => rsx! {
                 TripStats { trip: trip.clone() }
-                EditTrip { trip: trip.clone(), on_saved: move |_| trip_resource.restart() }
                 TripTags { id }
                 TrackSection {
                     id,
@@ -105,11 +104,11 @@ pub fn TripDetail(id: i64) -> Element {
                     base_url: archive().base_url().to_string(),
                     error: photos_error.clone(),
                 }
-                AddPhotos { id, on_added: move |_| photo_list.restart() }
-                p {
-                    a { href: api::original_gpx_url(&archive(), id), "Download original GPX" }
+                TripActions {
+                    trip: trip.clone(),
+                    on_saved: move |_| trip_resource.restart(),
+                    on_photos_added: move |_| photo_list.restart(),
                 }
-                DeleteTrip { id }
             },
         }
     }

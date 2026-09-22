@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, KomootLink, KomootPrivacy, TripDetail as Trip};
 
 use crate::api::{self, ApiClient, TripEdit};
+use crate::overlay::Overlay;
 
 /// The form's fields, as strings, exactly as the inputs hold them.
 #[derive(Clone, Debug, PartialEq)]
@@ -73,6 +74,10 @@ pub fn changes(trip: &Trip, form: &EditForm) -> TripEdit {
 
 /// Editing, folded away until the owner asks for it. Opening builds the form
 /// afresh from the trip, so a cancelled edit leaves nothing behind.
+///
+/// The button sits in the quiet row at the foot of the screen (US-62), a long
+/// scroll from the name and activity it changes, so the form opens over the
+/// screen rather than beside either.
 #[component]
 pub fn EditTrip(trip: Trip, on_saved: EventHandler<()>) -> Element {
     let mut open = use_signal(|| false);
@@ -86,22 +91,25 @@ pub fn EditTrip(trip: Trip, on_saved: EventHandler<()>) -> Element {
     }));
 
     rsx! {
-        p {
-            button {
-                id: "edit-trip",
-                r#type: "button",
-                onclick: move |_| open.toggle(),
-                if open() { "Cancel" } else { "Edit name / activity" }
-            }
+        button {
+            id: "edit-trip",
+            r#type: "button",
+            class: "quiet",
+            onclick: move |_| open.set(true),
+            "Edit name / activity"
         }
         if open() {
-            EditTripForm {
-                trip,
-                on_saved: move |_| {
-                    open.set(false);
-                    on_saved.call(());
-                },
-                on_cancel: move |_| open.set(false),
+            Overlay { label: "Edit trip", on_close: move |_| open.set(false),
+                div { class: "panel",
+                    EditTripForm {
+                        trip,
+                        on_saved: move |_| {
+                            open.set(false);
+                            on_saved.call(());
+                        },
+                        on_cancel: move |_| open.set(false),
+                    }
+                }
             }
         }
     }
@@ -198,7 +206,16 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                         }
                     }
                 }
-                button { r#type: "submit", id: "edit-trip-save", "Save" }
+                div { class: "form-actions",
+                    button { r#type: "submit", id: "edit-trip-save", "Save" }
+                    button {
+                        r#type: "button",
+                        id: "edit-trip-cancel",
+                        class: "quiet",
+                        onclick: move |_| on_cancel.call(()),
+                        "Cancel"
+                    }
+                }
             }
             if let Some(message) = error() {
                 p { class: "error", "Could not save the changes: {message}" }
@@ -350,6 +367,36 @@ mod tests {
         // Every activity the owner may choose, plus the unspecified one.
         assert!(html.contains(ActivityType::Cycling.label()), "{html}");
         assert!(html.contains(ActivityType::Unknown.label()), "{html}");
+    }
+
+    // US-62: the form opens over the screen, so it carries its own way out.
+    #[test]
+    fn the_form_can_be_left_without_saving() {
+        let trip = a_trip(ActivityType::Hiking, None);
+
+        let html = render(move || {
+            rsx! {
+                EditTripForm {
+                    trip: trip.clone(),
+                    on_saved: move |_| {},
+                    on_cancel: move |_| {},
+                }
+            }
+        });
+
+        assert!(html.contains(r#"id="edit-trip-cancel""#), "{html}");
+    }
+
+    #[test]
+    fn editing_is_offered_but_not_open() {
+        let trip = a_trip(ActivityType::Hiking, None);
+
+        let html = render(move || {
+            rsx! { EditTrip { trip: trip.clone(), on_saved: move |_| {} } }
+        });
+
+        assert!(html.contains(r#"id="edit-trip""#), "{html}");
+        assert!(!html.contains("edit-trip-form"), "{html}");
     }
 
     #[test]

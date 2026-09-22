@@ -60,19 +60,17 @@ pub fn DeleteTrip(id: i64) -> Element {
                 on_cancel: move |_| arming.set(false),
             }
         } else {
-            p {
-                button {
-                    id: "delete-trip",
-                    r#type: "button",
-                    class: "danger",
-                    // The previous attempt's failure is not this one's:
-                    // leaving it up would read as though this had failed too.
-                    onclick: move |_| {
-                        error.set(None);
-                        arming.set(true);
-                    },
-                    "Delete trip"
-                }
+            button {
+                id: "delete-trip",
+                r#type: "button",
+                class: "quiet danger",
+                // The previous attempt's failure is not this one's:
+                // leaving it up would read as though this had failed too.
+                onclick: move |_| {
+                    error.set(None);
+                    arming.set(true);
+                },
+                "Delete trip"
             }
         }
         if let Some(message) = error() {

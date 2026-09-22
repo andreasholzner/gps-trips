@@ -245,7 +245,7 @@ pub fn AddPhotos(id: i64, on_added: EventHandler<()>) -> Element {
                     chosen.set(uploads);
                 },
             }
-            button { r#type: "submit", "Add photos" }
+            button { r#type: "submit", "Upload" }
         }
         if let Some(message) = status() {
             p { class: "error", "{message}" }
@@ -555,6 +555,8 @@ mod tests {
 
         assert!(html.contains(r#"type="file""#), "{html}");
         assert!(html.contains("multiple"), "{html}");
-        assert!(html.contains("Add photos"), "{html}");
+        // The action row's "Add photos" is what opens this; the form's own
+        // button says what it does next (US-62).
+        assert!(html.contains("Upload"), "{html}");
     }
 }

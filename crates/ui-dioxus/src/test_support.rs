@@ -24,6 +24,8 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
+use trip_archive_types::{ActivityType, TripDetail};
+
 use crate::api::ApiClient;
 
 /// A view to render, as a closure — so a test can pass a component with
@@ -291,4 +293,27 @@ async fn serve_archive(
     });
 
     (ApiClient::new(base_url).with_token(token()), state, dir)
+}
+
+/// A trip as the detail endpoint returns it, for the component-level
+/// tests — no server needed to assert what a screen shows.
+pub fn a_trip(name: &str) -> TripDetail {
+    TripDetail {
+        id: 1,
+        name: name.to_string(),
+        activity_type: ActivityType::Hiking,
+        tz_name: Some("Europe/Oslo".to_string()),
+        start_time: Some("2026-07-11T09:30:00Z".to_string()),
+        start_date: Some("2026-07-11".to_string()),
+        end_time: Some("2026-07-11T13:15:00Z".to_string()),
+        distance_m: 12_345.0,
+        ascent_m: Some(410.0),
+        descent_m: Some(395.0),
+        duration_secs: Some(13_500),
+        min_lat: Some(59.9),
+        min_lon: Some(10.7),
+        max_lat: Some(60.0),
+        max_lon: Some(10.8),
+        komoot: None,
+    }
 }

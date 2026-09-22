@@ -22,6 +22,7 @@ mod komoot;
 mod list;
 mod login;
 mod menu;
+mod overlay;
 mod pager;
 mod photos;
 mod region;

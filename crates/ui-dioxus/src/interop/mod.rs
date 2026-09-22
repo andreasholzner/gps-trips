@@ -53,3 +53,17 @@ pub async fn clear_photo_picker() {
         dioxus::logger::tracing::error!("could not clear the photo picker: {err}");
     }
 }
+
+/// Hold the page behind an overlay still, or let it go again (US-62).
+///
+/// A class on `body`, which `app.css` turns into `overflow: hidden` — the
+/// body is outside anything Dioxus renders. Two fixed scripts rather than one
+/// with the flag spliced in (ADR-0025).
+pub fn hold_page_scroll(held: bool) {
+    let script = if held {
+        r#"document.body.classList.add("overlay-open");"#
+    } else {
+        r#"document.body.classList.remove("overlay-open");"#
+    };
+    let _ = document::eval(script);
+}
