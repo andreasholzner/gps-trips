@@ -11,8 +11,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config;
 use crate::models::{
-    ExportTrip, Photo, PhotoResponse, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
-    TripDetail, TripSummary,
+    ExportTrip, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary,
 };
 use crate::server::{
     auth, backup, delete,
@@ -22,7 +21,9 @@ use crate::server::{
     geojson,
     import::{handle_add_photos, handle_import},
     komoot::KomootClient,
-    komoot_sync, paths, repo,
+    komoot_sync, paths,
+    photo_api::{handle_place_photo, list_trip_photos},
+    repo,
     session::{handle_login, handle_logout, handle_session},
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
@@ -30,9 +31,7 @@ use crate::server::{
         handle_add_trip_tag, handle_bulk_add_trip_tags, handle_list_all_tags,
         handle_list_trip_tags, handle_remove_trip_tag,
     },
-    timezone,
 };
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Build the application router. Shared by `main` and the integration tests so
 /// both exercise the exact same routing (ADR-0012).
@@ -95,6 +94,11 @@ pub fn router(state: AppState) -> Router {
                     config::server::PHOTO_IMPORT_BODY_LIMIT,
                 ))
                 .get(list_trip_photos),
+        )
+        // US-30: place one of them on the map by hand.
+        .route(
+            "/api/trips/:id/photos/:photo_id",
+            axum::routing::patch(handle_place_photo),
         )
         // US-33: tag a trip (POST/GET) and untag it (DELETE).
         .route(
@@ -381,41 +385,6 @@ async fn handle_delete_trip(
         return Err(AppError::NotFound);
     }
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// GET `/api/trips/:id/photos` — the trip's photos as JSON (US-2/US-7).
-/// Each photo includes a `url` the gallery can use to fetch the image bytes.
-/// 404 if the trip does not exist.
-async fn list_trip_photos(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Json<Vec<PhotoResponse>>, AppError> {
-    let trip = repo::get_trip(&state.pool, id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    let photos = repo::list_photos(&state.pool, id)
-        .await?
-        .into_iter()
-        .map(|p| {
-            let url = state.store.url_for(&p.blob_key);
-            let thumbnail_url = p
-                .thumbnail_key
-                .as_deref()
-                .map(|k| state.store.url_for(k))
-                .unwrap_or_else(|| url.clone());
-            let taken_offset_secs = taken_offset(&p, trip.tz_name.as_deref());
-            PhotoResponse::from_photo(p, url, thumbnail_url, taken_offset_secs)
-        })
-        .collect();
-    Ok(Json(photos))
-}
-
-/// The offset a photo's caption is shown in (US-62, `timezone::photo_offset`),
-/// in seconds — `None` for a photo with no capture time to take it at.
-fn taken_offset(photo: &Photo, tz_name: Option<&str>) -> Option<i32> {
-    let taken_at = OffsetDateTime::parse(photo.taken_at.as_deref()?, &Rfc3339).ok()?;
-    let position = photo.lat.zip(photo.lon);
-    timezone::photo_offset(position, tz_name, taken_at).map(|offset| offset.whole_seconds())
 }
 
 /// GET `/media/*path` — serve a photo blob from the `BlobStore` (US-7).

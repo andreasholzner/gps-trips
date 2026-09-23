@@ -18,6 +18,7 @@ mod us22_sync_candidates_api;
 mod us25_sync_halts_on_failure;
 mod us26_sync_blocks_concurrent_edits;
 mod us2_photos;
+mod us30_manual_photo_placement;
 mod us31_trip_kind_import;
 mod us32_trip_kind_tabs;
 mod us33_tag_trips;

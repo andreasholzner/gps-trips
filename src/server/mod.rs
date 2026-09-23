@@ -15,6 +15,7 @@ pub mod komoot_sport;
 pub mod komoot_sync;
 pub mod location;
 pub mod paths;
+pub mod photo_api;
 pub mod photo_backfill;
 pub mod photos;
 pub mod placement;

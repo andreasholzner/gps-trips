@@ -154,7 +154,7 @@ C4Component
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the shared-password gate: resolves a principal from the session cookie or a Bearer token onto every request, and refuses anything outside its allowlist.")
         Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password (Argon2id, under a salt kept in the data directory), so nothing is stored, a leaked token allows no password guessing, and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
-        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add; tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
+        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
         Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX and parks it in import_staging; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
@@ -234,7 +234,7 @@ C4Component
     Rel(detail, gallery, "Embeds")
 
     Rel(list, server, "GET /api/trips (+filters)", "JSON")
-    Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos", "JSON")
+    Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos; PATCH a photo's position", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
     Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")
     Rel(gallery, server, "GET /media/* (thumbnails)", "HTTPS")

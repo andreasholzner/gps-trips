@@ -20,4 +20,7 @@ pub enum LocationSource {
     /// record, US-22) rather than derived from this app's own EXIF/
     /// interpolation pipeline.
     Provided,
+    /// Placed by the owner on the map (US-30), overriding whichever of the
+    /// above the photo had.
+    Manual,
 }

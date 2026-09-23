@@ -115,6 +115,32 @@ pub async fn set_photo_taken_at(
     Ok(())
 }
 
+/// Put a photo where the owner placed it on the map (US-30), whatever
+/// position it had: `location_source` becomes `manual`. Only through the trip
+/// it belongs to — `None` when `trip_id` has no photo `photo_id`, so a
+/// mistyped trip in the path cannot move another trip's photo. Returns the
+/// photo as it now stands.
+pub async fn place_photo(
+    pool: &SqlitePool,
+    trip_id: i64,
+    photo_id: i64,
+    lat: f64,
+    lon: f64,
+) -> Result<Option<Photo>, sqlx::Error> {
+    sqlx::query(&format!(
+        "UPDATE photo SET lat = ?, lon = ?, location_source = ? \
+         WHERE id = ? AND trip_id = ? RETURNING {PHOTO_COLUMNS}"
+    ))
+    .bind(lat)
+    .bind(lon)
+    .bind(LocationSource::Manual)
+    .bind(photo_id)
+    .bind(trip_id)
+    .map(row_to_photo)
+    .fetch_optional(pool)
+    .await
+}
+
 fn row_to_photo(row: SqliteRow) -> Photo {
     Photo {
         id: row.get("id"),
@@ -325,6 +351,40 @@ mod tests {
         assert_eq!(p.lat, None);
         assert_eq!(p.lon, None);
         assert_eq!(p.location_source, LocationSource::None);
+    }
+
+    // ── US-30: placed by hand ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn us30_placing_a_photo_overwrites_its_position_and_marks_it_manual() {
+        let db = TestDb::new().await;
+        let trip_id = insert_sample_trip(&db.pool).await;
+        let id = add_geotagged_photo(&db.pool, trip_id, "a.jpg", "k/a", 10, 45.5, 10.26).await;
+
+        let placed = place_photo(&db.pool, trip_id, id, 59.95, 10.8)
+            .await
+            .unwrap()
+            .expect("the photo");
+
+        assert_eq!((placed.lat, placed.lon), (Some(59.95), Some(10.8)));
+        assert_eq!(placed.location_source, LocationSource::Manual);
+        let stored = &list_photos(&db.pool, trip_id).await.unwrap()[0];
+        assert_eq!((stored.lat, stored.lon), (Some(59.95), Some(10.8)));
+        assert_eq!(stored.location_source, LocationSource::Manual);
+    }
+
+    #[tokio::test]
+    async fn us30_a_photo_is_not_placed_through_another_trip() {
+        let db = TestDb::new().await;
+        let own = insert_sample_trip(&db.pool).await;
+        let other = insert_sample_trip(&db.pool).await;
+        let id = add_photo(&db.pool, own, "a.jpg", "k/a", 10).await;
+
+        let placed = place_photo(&db.pool, other, id, 59.95, 10.8).await.unwrap();
+
+        assert!(placed.is_none());
+        let stored = &list_photos(&db.pool, own).await.unwrap()[0];
+        assert_eq!(stored.location_source, LocationSource::None);
     }
 
     // ── US-5: generated thumbnails ────────────────────────────────────────

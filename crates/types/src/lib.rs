@@ -23,6 +23,7 @@ mod komoot_privacy;
 mod komoot_sync;
 mod location_source;
 mod photo;
+mod photo_placement;
 mod photo_response;
 mod session;
 mod staged_import;
@@ -42,6 +43,7 @@ pub use komoot_sync::{
 };
 pub use location_source::LocationSource;
 pub use photo::Photo;
+pub use photo_placement::PhotoPlacement;
 pub use photo_response::PhotoResponse;
 pub use session::{Identity, Login, Principal, Session};
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};

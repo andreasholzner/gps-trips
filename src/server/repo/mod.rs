@@ -15,8 +15,8 @@ mod trip;
 pub use bulk_edit::set_activity_type;
 pub use export::list_export_trips;
 pub use photo::{
-    count_photos, insert_photo, list_photos, list_photos_without_taken_at, set_photo_taken_at,
-    NewPhoto,
+    count_photos, insert_photo, list_photos, list_photos_without_taken_at, place_photo,
+    set_photo_taken_at, NewPhoto,
 };
 pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,
