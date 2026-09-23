@@ -352,6 +352,9 @@ test("a photo added later appears in the gallery (US-2)", async ({ page, request
   await page.getByRole("button", { name: "Upload" }).click();
 
   await expect(page.getByRole("img", { name: "added-later.jpg" })).toBeVisible();
+  // US-3: the geotagged photo reaches the map without a reload — the map is
+  // redrawn with the photos it is handed, not only the ones it started with.
+  await expect(page.locator('#track-map path[fill="#d6336c"]')).toBeVisible();
   // The picker no longer names a file it has already uploaded, so the button
   // does not contradict it.
   await expect(page.locator("#add-photos-input")).toHaveValue("");

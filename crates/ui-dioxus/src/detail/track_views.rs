@@ -92,8 +92,13 @@ fn TrackMap(
     //
     // The same channel brings a photo tapped in a popup back (US-62), and is
     // read for as long as this draw is the current one: a redraw restarts
-    // this future, and the superseded loop goes with it.
-    use_future(use_reactive!(|points, markers| async move {
+    // this task, and the superseded loop goes with it.
+    //
+    // A resource rather than a future, though it yields nothing: a future
+    // does not restart when `use_reactive!`'s props change, so the map kept
+    // the markers it was first drawn with — a photo added or placed (US-30)
+    // stayed where it was until the page was reloaded.
+    let _draw = use_resource(use_reactive!(|points, markers| async move {
         let mut map = interop::start_track_map(points, markers.clone());
         handle.set(Some(map));
         while let Ok(tap) = map.recv::<PopupTap>().await {
