@@ -37,6 +37,7 @@ mod us54_downscale;
 mod us5_thumbnails;
 mod us62_trip_page;
 mod us63_trip_list;
+mod us66_find_trips_to_tidy;
 mod us6_trip_list;
 mod us7_trip_detail;
 mod us9_delete_trip;

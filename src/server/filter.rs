@@ -47,6 +47,12 @@ pub struct TripFilterQuery {
     /// exact parameter shape ADR-0008 fixes. Kept as a raw string like every
     /// other field here, and split/validated in `parse_filter`.
     pub bbox: Option<String>,
+    /// Only trips without a proper name (US-66): `true`, or blank/absent for
+    /// no filter.
+    pub unnamed: Option<String>,
+    /// Only trips with photos left unplaced (US-66): `true`, or blank/absent
+    /// for no filter.
+    pub unplaced: Option<String>,
 }
 
 /// Parse a raw query into a `TripFilter`, validating each field at this HTTP
@@ -99,6 +105,8 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
 
     let tags = parse_tags(query.tags.as_deref())?;
     let region = parse_optional_bbox(query.bbox.as_deref())?;
+    let unnamed = parse_flag("unnamed", query.unnamed.as_deref())?;
+    let unplaced_photos = parse_flag("unplaced", query.unplaced.as_deref())?;
 
     Ok(TripFilter {
         activity_type,
@@ -110,7 +118,23 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         trip_kind,
         tags,
         region,
+        unnamed,
+        unplaced_photos,
     })
+}
+
+/// Blank → `false` ("no filter"); `true` → the filter is on. Anything else,
+/// `false` included, is a 400: the UI only ever sends `true` or leaves the
+/// parameter out, so another value is a hand-crafted request that would
+/// otherwise be silently ignored.
+fn parse_flag(name: &str, s: Option<&str>) -> Result<bool, AppError> {
+    match s.map(str::trim) {
+        None | Some("") => Ok(false),
+        Some("true") => Ok(true),
+        Some(value) => Err(AppError::BadRequest(format!(
+            "invalid {name} (expected true): {value:?}"
+        ))),
+    }
 }
 
 /// Blank → `None` ("no region selected", which is what the filter form's

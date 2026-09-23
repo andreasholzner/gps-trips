@@ -640,6 +640,7 @@ async fn us6_list_trips_does_not_require_track_geometry() {
 // 500-line cap.
 mod filter;
 mod region;
+mod tidy;
 
 // ── US-32: distinguish recorded from planned trips ───────────────────────
 

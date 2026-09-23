@@ -22,6 +22,8 @@ fn empty_query_produces_no_filters() {
     assert!(filter.trip_kind.is_none());
     assert!(filter.tags.is_empty());
     assert!(filter.region.is_none());
+    assert!(!filter.unnamed);
+    assert!(!filter.unplaced_photos);
 }
 
 #[test]
@@ -356,4 +358,40 @@ fn name_query_is_trimmed() {
         parse_filter(&q).unwrap().name_query.as_deref(),
         Some("oslo")
     );
+}
+
+// ── US-66: trips to tidy up ──────────────────────────────────────────
+
+#[test]
+fn blank_unnamed_and_unplaced_mean_no_filter() {
+    let q = query(|q| {
+        q.unnamed = Some(String::new());
+        q.unplaced = Some("  ".to_string());
+    });
+    let filter = parse_filter(&q).unwrap();
+    assert!(!filter.unnamed);
+    assert!(!filter.unplaced_photos);
+}
+
+#[test]
+fn true_turns_the_unnamed_and_unplaced_filters_on() {
+    let q = query(|q| {
+        q.unnamed = Some("true".to_string());
+        q.unplaced = Some(" true ".to_string());
+    });
+    let filter = parse_filter(&q).unwrap();
+    assert!(filter.unnamed);
+    assert!(filter.unplaced_photos);
+}
+
+#[test]
+fn an_unrecognized_unnamed_value_is_rejected_with_bad_request() {
+    let q = query(|q| q.unnamed = Some("yes".to_string()));
+    assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
+}
+
+#[test]
+fn an_unrecognized_unplaced_value_is_rejected_with_bad_request() {
+    let q = query(|q| q.unplaced = Some("false".to_string()));
+    assert!(matches!(parse_filter(&q), Err(AppError::BadRequest(_))));
 }

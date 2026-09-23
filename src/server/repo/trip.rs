@@ -5,12 +5,16 @@ use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::models::{
-    ActivityType, BoundingBox, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary,
+    ActivityType, BoundingBox, KomootLink, KomootPrivacy, LocationSource, TripDetail, TripKind,
+    TripSummary,
 };
 use crate::server::gpx::TrackStats;
 use crate::server::import::date_prefix;
 
 use super::to_rfc3339;
+
+mod proper_name;
+use proper_name::has_proper_name;
 
 /// Fields for a new trip + its derived geometry and original GPX file
 /// (mirrors `NewPhoto` in the sibling `photo` module). `trip_kind`
@@ -147,6 +151,13 @@ pub struct TripFilter {
     /// deliberately coarse test (ADR-0011): a trip whose box overlaps but
     /// whose track never enters the region is an accepted false positive.
     pub region: Option<BoundingBox>,
+    /// Keep only trips without a proper name (US-66, see
+    /// [`has_proper_name`]). Applied in Rust after the SQL-filtered fetch,
+    /// like `name_query`: SQL cannot tell a real date from a malformed one.
+    pub unnamed: bool,
+    /// Keep only trips with at least one photo left unplaced (US-66) —
+    /// `location_source = none`, what US-4 leaves a photo it could not place.
+    pub unplaced_photos: bool,
 }
 
 /// `"[year]-[month]-[day]"` — must match `filter::parse_filter`'s format,
@@ -275,6 +286,17 @@ pub async fn list_trips(
             .push_bind(unique_tags.len() as i64)
             .push(")");
     }
+    if filter.unplaced_photos {
+        // `EXISTS` rather than a join, so a trip with several unplaced
+        // photos is still listed once; served by `idx_photo_trip`.
+        query
+            .push(
+                " AND EXISTS (SELECT 1 FROM photo p WHERE p.trip_id = t.id \
+                 AND p.location_source = ",
+            )
+            .push_bind(LocationSource::None)
+            .push(")");
+    }
     query.push(" ORDER BY t.start_time DESC, t.id DESC");
 
     let trips: Vec<TripSummary> = query
@@ -297,16 +319,12 @@ pub async fn list_trips(
         .fetch_all(pool)
         .await?;
 
-    Ok(match &filter.name_query {
-        Some(q) => {
-            let q = q.to_lowercase();
-            trips
-                .into_iter()
-                .filter(|t| t.name.to_lowercase().contains(&q))
-                .collect()
-        }
-        None => trips,
-    })
+    let q = filter.name_query.as_deref().map(str::to_lowercase);
+    Ok(trips
+        .into_iter()
+        .filter(|t| q.as_ref().is_none_or(|q| t.name.to_lowercase().contains(q)))
+        .filter(|t| !filter.unnamed || !has_proper_name(&t.name))
+        .collect())
 }
 
 /// Fetch a trip's track geometry as the stored GeoJSON string (US-7), or `None`
