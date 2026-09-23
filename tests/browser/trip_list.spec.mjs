@@ -440,3 +440,39 @@ test.describe("paging (US-63)", () => {
     await expect(page).not.toHaveURL(/page=/);
   });
 });
+
+// US-66's "Unnamed" filter. Ticking it is a real `change` event. Its one
+// properly named trip is seeded here and removed again afterwards, so every
+// other test in this file keeps its two-trip archive — whose names carry no
+// date, and so are exactly the trips this filter keeps.
+test.describe("trips to tidy up (US-66)", () => {
+  let dated;
+
+  test.beforeAll(async ({ request }) => {
+    dated = await importTrip(request, { name: "2024-06-01 Oslo Dated Walk" });
+  });
+
+  test.afterAll(async ({ request }) => {
+    expect((await request.delete(`/api/trips/${dated}`)).status()).toBe(204);
+  });
+
+  test("ticking Unnamed keeps the trips without a proper name, across a reload", async ({
+    page,
+  }) => {
+    await page.goto("/app/?q=walk");
+    await expect(rows(page)).toHaveCount(2);
+
+    await page.getByText("More filters").click();
+    await page.getByRole("checkbox", { name: "Unnamed" }).check();
+
+    await expect(rows(page)).toHaveCount(1);
+    await expect(rows(page).first()).toContainText("Oslo Hills Walk");
+    await expect(page).toHaveURL(/[?&]unnamed=true/);
+
+    await page.reload();
+
+    await expect(rows(page)).toHaveCount(1);
+    await page.getByText("More filters").click();
+    await expect(page.getByRole("checkbox", { name: "Unnamed" })).toBeChecked();
+  });
+});

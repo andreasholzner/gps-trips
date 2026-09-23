@@ -1,4 +1,4 @@
-//! The trip list's filter controls (US-13/US-32/US-38). US-14's region is
+//! The trip list's filter controls (US-13/US-32/US-38/US-66). US-14's region is
 //! drawn on the map above the table ([`crate::region`], US-63).
 //!
 //! Split out of `list.rs` by US-61, which reshaped a stack of four full-width
@@ -19,8 +19,8 @@ use crate::filters::Filters;
 ///
 /// The split is by how often a filter is reached for, not by what it does:
 /// the tab, the name search and the activity are on the toolbar, always
-/// visible; the dates, the distances and the tags sit behind
-/// "More filters", so the table starts near the top of a desktop screen
+/// visible; the dates, the distances, the tidy-up checkboxes (US-66) and
+/// the tags sit behind "More filters", so the table starts near the top of a desktop screen
 /// instead of below a stack of fieldsets (US-61).
 #[component]
 pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
@@ -131,6 +131,23 @@ fn MoreFilters(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                     value: "{filters.read().max_dist}",
                     oninput: move |event| filters.write().max_dist = event.value(),
                 }
+            }
+            // The trips still to tidy up (US-66).
+            label {
+                input {
+                    r#type: "checkbox",
+                    checked: filters.read().unnamed,
+                    onchange: move |event| filters.write().unnamed = event.checked(),
+                }
+                "Unnamed"
+            }
+            label {
+                input {
+                    r#type: "checkbox",
+                    checked: filters.read().unplaced,
+                    onchange: move |event| filters.write().unplaced = event.checked(),
+                }
+                "Unplaced photos"
             }
         }
         TagFilter { filters, all_tags }
@@ -255,7 +272,15 @@ mod tests {
 
         let disclosure = html.split_once("<details").expect("no disclosure").1;
         assert!(disclosure.contains("More filters"), "{html}");
-        for expected in ["From", "To", "Min km", "Max km", "alpine"] {
+        for expected in [
+            "From",
+            "To",
+            "Min km",
+            "Max km",
+            "Unnamed",
+            "Unplaced photos",
+            "alpine",
+        ] {
             assert!(disclosure.contains(expected), "missing {expected}: {html}");
         }
         // Closed to begin with: the table starts near the top on an ordinary
@@ -284,6 +309,34 @@ mod tests {
         assert!(html.contains("2026-07-01"), "{html}");
         assert!(html.contains("42"), "{html}");
         assert!(html.contains("checked"), "the chosen tag is ticked: {html}");
+    }
+
+    // US-66: the tidy-up filters arriving in a shared link are ticked. No
+    // tags here, so the only boxes that can be checked are these two.
+    #[test]
+    fn the_tidy_up_filters_from_a_shared_link_are_ticked() {
+        for (unnamed, unplaced) in [(true, false), (false, true)] {
+            let html = render(move || {
+                let filters = Signal::new(Filters {
+                    unnamed,
+                    unplaced,
+                    ..Default::default()
+                });
+                rsx! { FilterBar { filters, all_tags: Vec::new() } }
+            });
+
+            let ticked = html
+                .split("<label")
+                .filter(|label| label.contains("checked"));
+            let ticked: Vec<_> = ticked.collect();
+            assert_eq!(ticked.len(), 1, "{html}");
+            let expected = if unnamed {
+                "Unnamed"
+            } else {
+                "Unplaced photos"
+            };
+            assert!(ticked[0].contains(expected), "{html}");
+        }
     }
 
     // The tag filter (US-38): one checkbox per known tag, the chosen ones

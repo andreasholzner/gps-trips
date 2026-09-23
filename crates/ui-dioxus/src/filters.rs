@@ -33,6 +33,11 @@ pub struct Filters {
     /// and to the server unchanged, and the map is the only thing that has
     /// to know it is four numbers.
     pub bbox: String,
+    /// Only trips without a proper name (US-66) — what counts as one is the
+    /// server's to decide.
+    pub unnamed: bool,
+    /// Only trips with photos left unplaced (US-66).
+    pub unplaced: bool,
 }
 
 impl Default for Filters {
@@ -47,6 +52,8 @@ impl Default for Filters {
             max_dist: String::new(),
             tags: Vec::new(),
             bbox: String::new(),
+            unnamed: false,
+            unplaced: false,
         }
     }
 }
@@ -81,6 +88,11 @@ impl Filters {
             // because a tag name can never contain a comma (US-33).
             params.push(("tags", self.tags.join(",")));
         }
+        for (name, on) in [("unnamed", self.unnamed), ("unplaced", self.unplaced)] {
+            if on {
+                params.push((name, "true".to_string()));
+            }
+        }
         let query: Vec<String> = params
             .iter()
             .map(|(name, value)| format!("{name}={}", encode(value)))
@@ -110,6 +122,8 @@ impl Filters {
                 "min_dist" => filters.min_dist = value,
                 "max_dist" => filters.max_dist = value,
                 "bbox" => filters.bbox = value,
+                "unnamed" => filters.unnamed = value == "true",
+                "unplaced" => filters.unplaced = value == "true",
                 "tags" => {
                     filters.tags = value
                         .split(',')
@@ -128,6 +142,8 @@ impl Filters {
     pub fn any_set(&self) -> bool {
         self.activity.is_some()
             || !self.tags.is_empty()
+            || self.unnamed
+            || self.unplaced
             || [
                 &self.q,
                 &self.from,
@@ -253,6 +269,8 @@ mod tests {
             max_dist: "40".to_string(),
             tags: Vec::new(),
             bbox: String::new(),
+            unnamed: false,
+            unplaced: false,
         };
 
         assert_eq!(
@@ -300,6 +318,8 @@ mod tests {
             max_dist: "40".to_string(),
             tags: vec!["alpine".to_string(), "summer".to_string()],
             bbox: String::new(),
+            unnamed: true,
+            unplaced: true,
         };
 
         assert_eq!(Filters::from_query(&filters.to_query()), filters);
@@ -340,6 +360,50 @@ mod tests {
 
         assert!(filters.any_set());
         assert!(!Filters::default().any_set());
+    }
+
+    #[test]
+    fn the_tidy_up_filters_travel_as_true_flags() {
+        // US-66: the server takes `true` or nothing.
+        let filters = Filters {
+            unnamed: true,
+            unplaced: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            filters.to_query(),
+            "kind=recorded&unnamed=true&unplaced=true"
+        );
+        assert!(filters.any_set());
+    }
+
+    #[test]
+    fn each_tidy_up_filter_counts_as_a_filter_on_its_own() {
+        // Otherwise an empty result reads "no trips yet" instead of "nothing
+        // matches your filters" (US-66).
+        for filters in [
+            Filters {
+                unnamed: true,
+                ..Default::default()
+            },
+            Filters {
+                unplaced: true,
+                ..Default::default()
+            },
+        ] {
+            assert!(filters.any_set(), "{filters:?}");
+        }
+    }
+
+    #[test]
+    fn a_tidy_up_flag_with_another_value_is_not_applied() {
+        // A hand-edited URL yields a working list rather than the 400 the
+        // server would answer `unnamed=yes` with.
+        let filters = Filters::from_query("unnamed=yes&unplaced=true");
+
+        assert!(!filters.unnamed);
+        assert!(filters.unplaced);
     }
 
     #[test]
