@@ -248,6 +248,28 @@ nav.tabs button:not(:disabled) {
   align-items: end;
 }
 
+/* A checkbox among the fields (US-66): as tall as an input and ending as far
+   above the cell's foot as one does — the input's own bottom margin plus the
+   one Pico gives the label around it — so where it shares a line with them
+   the grid's `align-items: end` centres the box on their inputs rather than
+   dropping it onto the margin under them. The height is Pico's own for an
+   input. */
+.filter-fields > .filter-check {
+  display: flex;
+  align-items: center;
+  min-height: calc(
+    1rem * var(--pico-line-height) + var(--pico-form-element-spacing-vertical) * 2 +
+      var(--pico-border-width) * 2
+  );
+  margin-bottom: calc(var(--pico-spacing) * 1.375);
+}
+
+/* Pico nudges a checkbox up to sit on a line of text; centred by the flex
+   row above, the nudge would only put it off-centre. */
+.filter-fields > .filter-check input {
+  margin-top: 0;
+}
+
 /* Tag checkboxes read as a row of choices, not a column of form rows. */
 .tag-choices {
   display: flex;

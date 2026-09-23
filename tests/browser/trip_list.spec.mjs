@@ -475,4 +475,24 @@ test.describe("trips to tidy up (US-66)", () => {
     await page.getByText("More filters").click();
     await expect(page.getByRole("checkbox", { name: "Unnamed" })).toBeChecked();
   });
+
+  // Layout, which only a browser computes: where the boxes share a line with
+  // the date and distance fields, they sit level with those fields' inputs,
+  // not down on the margin under them.
+  test("the checkboxes line up with the fields beside them", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/app/");
+    await page.getByText("More filters").click();
+
+    const middle = (locator) =>
+      locator.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        return (box.top + box.bottom) / 2;
+      });
+    const field = await middle(page.getByLabel("Max km"));
+    for (const name of ["Unnamed", "Unplaced photos"]) {
+      const box = await middle(page.getByRole("checkbox", { name }));
+      expect(Math.abs(box - field), name).toBeLessThanOrEqual(1);
+    }
+  });
 });

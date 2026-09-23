@@ -133,7 +133,7 @@ fn MoreFilters(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                 }
             }
             // The trips still to tidy up (US-66).
-            label {
+            label { class: "filter-check",
                 input {
                     r#type: "checkbox",
                     checked: filters.read().unnamed,
@@ -141,7 +141,7 @@ fn MoreFilters(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                 }
                 "Unnamed"
             }
-            label {
+            label { class: "filter-check",
                 input {
                     r#type: "checkbox",
                     checked: filters.read().unplaced,
