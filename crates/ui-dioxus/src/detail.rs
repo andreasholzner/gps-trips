@@ -7,6 +7,7 @@ use dioxus::prelude::*;
 use crate::api::{self, ApiClient};
 use crate::gallery::PhotoGallery;
 use crate::photos::{self, PhotoView};
+use crate::placing::PlacePhoto;
 use crate::trip_tags::TripTags;
 use crate::viewer::PhotoViewer;
 use trip_archive_types::PhotoResponse;
@@ -77,9 +78,14 @@ pub fn TripDetail(id: i64) -> Element {
     // opened (US-62). The router shows the next trip through this same
     // scope, and a viewer left open would browse the previous trip's photos.
     let mut viewing = use_signal(|| None::<(Vec<PhotoView>, usize)>);
+    // The photo being placed by hand (US-30), which the viewer hands over to.
+    // Closed on a change of trip for the same reason as the viewer: its
+    // photo belongs to the trip being left.
+    let mut placing = use_signal(|| None::<PhotoView>);
     use_effect(use_reactive!(|id| {
         let _ = id;
         viewing.set(None);
+        placing.set(None);
     }));
 
     rsx! {
@@ -125,7 +131,28 @@ pub fn TripDetail(id: i64) -> Element {
                     on_photos_added: move |_| photo_list.restart(),
                 }
                 if let Some((photos, start)) = viewing() {
-                    PhotoViewer { photos, start, on_close: move |_| viewing.set(None) }
+                    PhotoViewer {
+                        photos,
+                        start,
+                        on_close: move |_| viewing.set(None),
+                        on_place: move |photo| {
+                            viewing.set(None);
+                            placing.set(Some(photo));
+                        },
+                    }
+                }
+                if let Some(photo) = placing() {
+                    PlacePhoto {
+                        id,
+                        photo,
+                        // Re-read, so the markers, the gallery and the
+                        // captions' offsets all follow the photo.
+                        on_placed: move |_| {
+                            placing.set(None);
+                            photo_list.restart();
+                        },
+                        on_close: move |_| placing.set(None),
+                    }
                 }
             },
         }

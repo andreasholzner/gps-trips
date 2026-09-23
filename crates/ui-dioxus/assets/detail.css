@@ -271,3 +271,20 @@
   opacity: 0.35;
   cursor: default;
 }
+
+/* Placing a photo by hand (US-30): a card wide enough to find the spot on,
+   with the map sized here because Leaflet lays out into nothing without a
+   real height — shorter on a short screen, so Save stays in reach. */
+.placing .panel {
+  width: min(48rem, calc(100% - 2rem));
+}
+
+.place-map {
+  height: min(24rem, 55vh);
+  width: 100%;
+  margin-bottom: var(--pico-spacing);
+}
+
+.placing .warning {
+  color: var(--pico-del-color);
+}

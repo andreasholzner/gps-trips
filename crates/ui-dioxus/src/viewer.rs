@@ -35,9 +35,16 @@ pub fn swipe(dx: f64) -> isize {
 }
 
 /// The viewer, open on `photos[start]`. Rendered only while it is open; the
-/// screen that opens it closes it through `on_close`.
+/// screen that opens it closes it through `on_close`. Where the screen can
+/// place a photo by hand (US-30), `on_place` is told which one to place, and
+/// the viewer offers to.
 #[component]
-pub fn PhotoViewer(photos: Vec<PhotoView>, start: usize, on_close: EventHandler<()>) -> Element {
+pub fn PhotoViewer(
+    photos: Vec<PhotoView>,
+    start: usize,
+    on_close: EventHandler<()>,
+    on_place: Option<EventHandler<PhotoView>>,
+) -> Element {
     let len = photos.len();
     let mut at = use_signal(|| step(start, len, 0));
     // Where the finger went down, while it is down.
@@ -94,6 +101,17 @@ pub fn PhotoViewer(photos: Vec<PhotoView>, start: usize, on_close: EventHandler<
                     onclick: move |_| go(1),
                     "Next ›"
                 }
+                if let Some(on_place) = on_place {
+                    button {
+                        id: "viewer-place-photo",
+                        r#type: "button",
+                        onclick: {
+                            let photo = photo.clone();
+                            move |_| on_place.call(photo.clone())
+                        },
+                        "Place on map"
+                    }
+                }
                 button {
                     id: "viewer-close",
                     r#type: "button",
@@ -118,6 +136,9 @@ mod tests {
             url: format!("http://archive.test/media/{name}"),
             name: name.to_string(),
             caption: Some("10:15 (+02:00)".to_string()),
+            id: 1,
+            position: None,
+            source: trip_archive_types::LocationSource::None,
         }
     }
 
@@ -177,6 +198,33 @@ mod tests {
         let html = viewer(photos, 0);
 
         assert!(!html.contains("viewer-caption"), "{html}");
+    }
+
+    // US-30: placing starts from the photo being looked at — from the gallery
+    // too, which is the only way to reach a photo that is not on the map.
+    #[test]
+    fn the_viewer_offers_to_place_the_photo_when_the_screen_can() {
+        let photos = set(&["a.jpg"]);
+        let html = render(move || {
+            rsx! {
+                PhotoViewer {
+                    photos: photos.clone(),
+                    start: 0,
+                    on_close: move |_| {},
+                    on_place: move |_| {},
+                }
+            }
+        });
+
+        assert!(html.contains(r#"id="viewer-place-photo""#), "{html}");
+        assert!(html.contains("Place on map"), "{html}");
+    }
+
+    #[test]
+    fn the_viewer_offers_no_placing_where_nothing_would_take_it() {
+        let html = viewer(set(&["a.jpg"]), 0);
+
+        assert!(!html.contains("viewer-place-photo"), "{html}");
     }
 
     #[test]

@@ -26,6 +26,7 @@ mod menu;
 mod overlay;
 mod pager;
 mod photos;
+mod placing;
 mod region;
 #[cfg(test)]
 mod test_support;

@@ -19,11 +19,14 @@
 //!   series — and passes them in, where all of it stays unit-testable.
 //!
 //! Each widget lives in its own file here: the list's region map and its
-//! heat marks, and the detail screen's track map and elevation chart.
+//! heat marks, the detail screen's track map and elevation chart, and the
+//! map a photo is placed on by hand.
 
+mod place;
 mod region;
 mod track;
 
+pub use place::start_place_map;
 pub use region::{bbox_corners, bbox_param, draw_heat_marks, show_region, start_region_map};
 pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};
 
@@ -59,11 +62,24 @@ pub async fn clear_photo_picker() {
 /// A class on `body`, which `app.css` turns into `overflow: hidden` — the
 /// body is outside anything Dioxus renders. Two fixed scripts rather than one
 /// with the flag spliced in (ADR-0025).
+///
+/// Counted rather than toggled: one overlay can hand over to the next in a
+/// single render — the viewer to the placing map (US-30) — and whether the
+/// closing one lets go before or after the opening one holds is not this
+/// crate's to decide. The page is let go when the last one closes.
 pub fn hold_page_scroll(held: bool) {
     let script = if held {
-        r#"document.body.classList.add("overlay-open");"#
+        r#"
+        const held = Number(document.body.dataset.overlays || 0) + 1;
+        document.body.dataset.overlays = String(held);
+        document.body.classList.add("overlay-open");
+        "#
     } else {
-        r#"document.body.classList.remove("overlay-open");"#
+        r#"
+        const held = Math.max(Number(document.body.dataset.overlays || 0) - 1, 0);
+        document.body.dataset.overlays = String(held);
+        if (held === 0) document.body.classList.remove("overlay-open");
+        "#
     };
     let _ = document::eval(script);
 }

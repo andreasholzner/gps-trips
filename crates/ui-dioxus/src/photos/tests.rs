@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::test_support::{a_photo, import_sample, render, serve_test_archive};
+use trip_archive_types::LocationSource;
 
 // US-3 and US-4: a photo is on the map when it has a position, however it
 // got one. US-4's unplaced photo — outside the track's time range — has
@@ -114,12 +115,20 @@ fn the_viewer_is_given_every_photo_in_gallery_order_at_full_size() {
                 url: "http://archive.test/media/trips/1/first.jpg".to_string(),
                 name: "first.jpg".to_string(),
                 caption: Some("10:15 (+02:00)".to_string()),
+                // US-30: which photo it is, and where it is and why, for
+                // placing it by hand from the viewer.
+                id: 1,
+                position: None,
+                source: LocationSource::None,
             },
             PhotoView {
                 thumbnail_url: "http://archive.test/media/trips/1/thumb-second.jpg".to_string(),
                 url: "http://archive.test/media/trips/1/second.jpg".to_string(),
                 name: "second.jpg".to_string(),
                 caption: None,
+                id: 2,
+                position: Some([59.91, 10.75]),
+                source: LocationSource::Exif,
             },
         ]
     );

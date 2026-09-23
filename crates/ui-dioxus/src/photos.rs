@@ -5,7 +5,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use time::UtcOffset;
-use trip_archive_types::PhotoResponse;
+use trip_archive_types::{LocationSource, PhotoResponse};
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::format;
@@ -33,12 +33,19 @@ pub struct PhotoMarker {
 /// at the size the archive holds it (ADR-0026's bounded copy), what to call
 /// it, and when it was taken. Serialized because a marker's photos travel to
 /// the map's drawing script, and back as the set to browse.
+///
+/// The viewer also offers to place the photo by hand (US-30), which needs to
+/// know which photo it is, where it is now, and how that was decided.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct PhotoView {
     pub thumbnail_url: String,
     pub url: String,
     pub name: String,
     pub caption: Option<String>,
+    pub id: i64,
+    /// `[lat, lon]`, as the map scripts take positions.
+    pub position: Option<[f64; 2]>,
+    pub source: LocationSource,
 }
 
 /// Every photo as the viewer browses the gallery: all of them, in gallery
@@ -57,6 +64,9 @@ fn view_of(base_url: &str, photo: &PhotoResponse, with_date: bool) -> PhotoView 
         url: absolute(base_url, &photo.url),
         name: photo.original_name.clone(),
         caption: caption(photo, with_date),
+        id: photo.id,
+        position: photo.lat.zip(photo.lon).map(|(lat, lon)| [lat, lon]),
+        source: photo.location_source,
     }
 }
 

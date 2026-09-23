@@ -12,8 +12,8 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{
-    ActivityType, ConfirmImport, ErrorResponse, ImportedTrip, PhotoResponse, StagedImport,
-    SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
+    ActivityType, ConfirmImport, ErrorResponse, ImportedTrip, PhotoPlacement, PhotoResponse,
+    StagedImport, SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
 };
 
 use crate::track::Track;
@@ -138,6 +138,29 @@ pub async fn list_tags(archive: &ApiClient) -> Result<Vec<Tag>, ApiError> {
 /// carrying the URLs to fetch its image and its thumbnail (US-5).
 pub async fn list_photos(archive: &ApiClient, id: i64) -> Result<Vec<PhotoResponse>, ApiError> {
     get_json(archive, archive.url(&format!("/api/trips/{id}/photos"))).await
+}
+
+/// `PATCH /api/trips/:id/photos/:photo_id` — put a photo where the owner
+/// placed it on the map (US-30). Answers with the photo as it now stands.
+pub async fn place_photo(
+    archive: &ApiClient,
+    id: i64,
+    photo_id: i64,
+    at: PhotoPlacement,
+) -> Result<PhotoResponse, ApiError> {
+    let url = archive.url(&format!("/api/trips/{id}/photos/{photo_id}"));
+    let response = archive
+        .patch(&url)
+        .json(&at)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+
+    ok_or_error(archive, &url, response)
+        .await?
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
 }
 
 /// One photo on its way to the archive: the name the file was chosen under,

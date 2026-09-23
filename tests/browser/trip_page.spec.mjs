@@ -235,3 +235,88 @@ test("the quiet controls stay readable under the pointer (US-62)", async ({ page
       .toBe(pageText);
   }
 });
+
+// ── Placing a photo by hand (US-30) ─────────────────────────────────────────
+
+/// Where the track map's photo markers are, as `[lat, lon]` — drawn by
+/// Leaflet, so only its own layers can say.
+const markerPositions = (page) =>
+  page.evaluate(() =>
+    window.tripArchiveWidgets["track-map"].photoMarkers
+      .getLayers()
+      .map((marker) => {
+        const at = marker.getLatLng();
+        return [at.lat, at.lng];
+      }),
+  );
+
+/// The stored photo named `name`.
+async function storedPhoto(request, id, name) {
+  const photos = await (await request.get(`/api/trips/${id}/photos`)).json();
+  return photos.find((photo) => photo.original_name === name);
+}
+
+// Real clicks on a map `document::eval` drew — both exemptions.
+test("a geotagged photo is moved by hand, after a warning (US-30)", async ({ page, request }) => {
+  const id = await ownTrip(request, "Placed Trip");
+  await addPhotos(request, id, [["moved.jpg", GEOTAGGED_JPEG]]);
+  const before = await storedPhoto(request, id, "moved.jpg");
+  await page.goto(`/app/trips/${id}`);
+
+  await page.getByTitle("Open moved.jpg").click();
+  await page.getByRole("button", { name: "Place on map" }).click();
+  const placing = page.getByRole("dialog", { name: "Place moved.jpg" });
+  await expect(placing).toBeVisible();
+  // The viewer handed over to it rather than staying open underneath.
+  await expect(page.getByRole("dialog", { name: "Photo viewer" })).toHaveCount(0);
+  await expect(placing.locator("#place-warning")).toContainText("GPS");
+  await expect(placing.locator("#place-map path[stroke=\"#3367d6\"]")).toBeVisible();
+  await expect(placing.locator("#place-map .place-current")).toHaveCount(1);
+  await expect(placing.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  const map = await placing.locator("#place-map").boundingBox();
+  await page.mouse.click(map.x + map.width * 0.2, map.y + map.height * 0.25);
+  await expect(placing.locator("#place-map .place-picked")).toHaveCount(1);
+  await placing.getByRole("button", { name: "Save" }).click();
+
+  await expect(placing).toHaveCount(0);
+  // Handed from one overlay to the next and closed: the page scrolls again.
+  await expect(page.locator("body")).not.toHaveClass(/overlay-open/);
+  const after = await storedPhoto(request, id, "moved.jpg");
+  expect(after.location_source).toBe("manual");
+  expect([after.lat, after.lon]).not.toEqual([before.lat, before.lon]);
+  // And the track map's marker went with it.
+  await expect
+    .poll(() => markerPositions(page))
+    .toEqual([[after.lat, after.lon]]);
+});
+
+test("a photo the map could not place is placed without a warning (US-30)", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Unplaced Trip");
+  await addPhotos(request, id, [["lost.jpg", UNPLACED_JPEG]]);
+  await page.goto(`/app/trips/${id}`);
+  await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
+  expect(await markerPositions(page)).toEqual([]);
+
+  // From the gallery: it is on no marker to be opened from.
+  await page.getByTitle("Open lost.jpg").click();
+  await page.getByRole("button", { name: "Place on map" }).click();
+  const placing = page.getByRole("dialog", { name: "Place lost.jpg" });
+  await expect(placing.locator("#place-map.leaflet-container")).toBeVisible();
+  await expect(placing.locator("#place-warning")).toHaveCount(0);
+  await expect(placing.locator("#place-map .place-current")).toHaveCount(0);
+
+  const map = await placing.locator("#place-map").boundingBox();
+  await page.mouse.click(map.x + map.width / 2, map.y + map.height / 2);
+  await placing.getByRole("button", { name: "Save" }).click();
+
+  await expect(placing).toHaveCount(0);
+  const placed = await storedPhoto(request, id, "lost.jpg");
+  expect(placed.location_source).toBe("manual");
+  await expect
+    .poll(() => markerPositions(page))
+    .toEqual([[placed.lat, placed.lon]]);
+});
