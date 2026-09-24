@@ -6542,7 +6542,7 @@ dependencies = [
 
 [[package]]
 name = "trip-archive"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -6580,7 +6580,7 @@ dependencies = [
 
 [[package]]
 name = "trip-archive-types"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6657,7 +6657,7 @@ dependencies = [
 
 [[package]]
 name = "ui-dioxus"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.7.9",
  "dioxus",
