@@ -293,6 +293,26 @@ nav.tabs button:not(:disabled) {
   margin-bottom: 0.5rem;
 }
 
+/* The heading row of the trip list, with the version this page was built
+   with in its top-right corner (US-68): small and muted like "Clear filters"
+   while it matches the server's, red once a deploy has overtaken it. */
+.list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.app-version {
+  color: var(--pico-muted-color);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.app-version.outdated {
+  color: var(--pico-del-color);
+}
+
 /* The trip list's pager (US-63), under the table. Pico spreads a `nav`'s
    children to its edges; previous, the place and next read as one control. */
 nav.pager {

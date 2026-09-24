@@ -15,6 +15,7 @@
 //! its own response type where the shapes genuinely coincide.
 
 mod activity_type;
+mod app_version;
 mod bounding_box;
 mod error_response;
 mod export_trip;
@@ -33,6 +34,7 @@ mod trip_kind;
 mod trip_summary;
 
 pub use activity_type::ActivityType;
+pub use app_version::{AppVersion, VERSION};
 pub use bounding_box::BoundingBox;
 pub use error_response::ErrorResponse;
 pub use export_trip::ExportTrip;

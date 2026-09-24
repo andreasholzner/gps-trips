@@ -52,4 +52,10 @@ if [[ -n "$volume" ]]; then
     echo "Snapshot of $volume created."
 fi
 
-exec fly deploy --app "$FLY_APP" --ha=false --remote-only
+# The version the trip list shows (US-68): the commit's date in UTC and its
+# short hash. Worked out here because the image is built without `.git`;
+# the clean-tree check above is what makes it name what is deployed.
+version="$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%d) · $(git rev-parse --short HEAD)"
+
+exec fly deploy --app "$FLY_APP" --ha=false --remote-only \
+    --build-arg "TRIP_ARCHIVE_VERSION=$version"

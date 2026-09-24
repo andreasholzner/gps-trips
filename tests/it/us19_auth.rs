@@ -132,6 +132,7 @@ const ROUTES: &[(Method, &str, bool)] = &[
     (Method::POST, "/api/komoot/sync", false),
     (Method::GET, "/api/backup/database", false),
     (Method::GET, "/api/export/trips", false),
+    (Method::GET, "/api/version", false),
     (Method::GET, "/media/trips/1/photo.jpg", false),
     (Method::GET, "/app/", true),
     (Method::GET, "/app/assets/app.css", true),

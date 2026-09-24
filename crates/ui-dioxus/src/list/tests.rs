@@ -399,3 +399,59 @@ async fn the_list_screen_reports_an_empty_archive() {
 
     assert!(html.contains("No trips yet"), "{html}");
 }
+
+// ── US-68's version ──────────────────────────────────────────────────
+
+#[test]
+fn a_client_matching_the_server_is_not_outdated() {
+    assert!(!is_outdated(
+        "2026-09-24 · e45c25a",
+        Some("2026-09-24 · e45c25a")
+    ));
+}
+
+#[test]
+fn a_client_differing_from_the_server_is_outdated() {
+    assert!(is_outdated(
+        "2026-09-24 · e45c25a",
+        Some("2026-09-25 · 0b1c2d3")
+    ));
+}
+
+#[test]
+fn a_server_version_that_could_not_be_fetched_claims_no_mismatch() {
+    assert!(!is_outdated("2026-09-24 · e45c25a", None));
+}
+
+#[test]
+fn an_up_to_date_version_is_shown_quietly() {
+    let html = render(|| rsx! { VersionLabel { outdated: false } });
+
+    assert!(html.contains(r#"class="app-version""#), "{html}");
+    assert!(html.contains(trip_archive_types::VERSION), "{html}");
+}
+
+#[test]
+fn an_outdated_version_is_marked() {
+    let html = render(|| rsx! { VersionLabel { outdated: true } });
+
+    assert!(html.contains(r#"class="app-version outdated""#), "{html}");
+    assert!(html.contains(trip_archive_types::VERSION), "{html}");
+}
+
+// US-68 against a real server: built together, the two agree, and the list
+// shows its version beside the heading.
+#[tokio::test]
+async fn the_list_shows_the_version_it_was_built_with() {
+    let (archive, _dir) = serve_test_archive().await;
+
+    let html = render_against_archive(
+        &archive,
+        || rsx! { TripList {} },
+        |html| html.contains("No trips yet"),
+    )
+    .await;
+
+    assert!(html.contains(r#"class="app-version""#), "{html}");
+    assert!(html.contains(trip_archive_types::VERSION), "{html}");
+}

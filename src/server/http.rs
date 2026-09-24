@@ -12,7 +12,8 @@ use tower_http::set_header::SetResponseHeader;
 
 use crate::config;
 use crate::models::{
-    ExportTrip, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail, TripSummary,
+    AppVersion, ExportTrip, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail,
+    TripSummary,
 };
 use crate::server::{
     auth, backup, delete,
@@ -127,6 +128,9 @@ pub fn router(state: AppState) -> Router {
         // US-51: every trip, unfiltered, for the laptop's `qmapshack_export`;
         // the geometry of the trips it writes comes from `track.geojson`.
         .route("/api/export/trips", get(export_trips_api))
+        // US-68: the version this server was built with, which the SPA
+        // compares with its own.
+        .route("/api/version", get(version_api))
         // US-44: what a bookmark to the old review page now means.
         .route("/komoot/sync", get(sync_page_moved))
         // US-22: review + trigger a Komoot "Sync now" pull.
@@ -242,6 +246,13 @@ async fn export_trips_api(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ExportTrip>>, AppError> {
     Ok(Json(repo::list_export_trips(&state.pool).await?))
+}
+
+/// GET `/api/version` (US-68).
+async fn version_api() -> Json<AppVersion> {
+    Json(AppVersion {
+        version: crate::models::VERSION.to_owned(),
+    })
 }
 
 /// GET `/import` — where the server-rendered import form used to be

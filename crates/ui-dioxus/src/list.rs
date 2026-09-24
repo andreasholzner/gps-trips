@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::TripKind;
+use trip_archive_types::{TripKind, VERSION};
 
 use crate::api::{self, ApiClient};
 use crate::bulk_activity::BulkActivityPanel;
@@ -87,9 +87,22 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         Some(Ok(trips)) => Some(heat::marks(trips)),
         _ => None,
     };
+    // Whether a deploy has happened since this page loaded (US-68). Until
+    // the server answers, or if it cannot, nothing says so.
+    let server_version = use_resource(move || async move { api::server_version(&archive()).await });
+    let outdated = is_outdated(
+        VERSION,
+        server_version
+            .read_unchecked()
+            .as_ref()
+            .and_then(|version| version.as_deref().ok()),
+    );
 
     rsx! {
-        h1 { "Trips" }
+        div { class: "list-heading",
+            h1 { "Trips" }
+            VersionLabel { outdated }
+        }
         FilterBar { filters, all_tags: all_tags.clone() }
         RegionFilter { filters, marks }
         if let (Some(total), Some(Ok(shown))) = (total, trips.read_unchecked().as_ref()) {
@@ -124,6 +137,27 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
                 Pager { page, len: trips.len() }
             },
         }
+    }
+}
+
+/// Whether this page was built from another version than the server's
+/// (US-68). An unknown server version is no evidence of a mismatch.
+fn is_outdated(client: &str, server: Option<&str>) -> bool {
+    server.is_some_and(|server| server != client)
+}
+
+/// The version this page was built with (US-68): muted like the toolbar's
+/// "Clear filters", red once the server runs another one — which a reload
+/// fetches, since the app shell is never cached (US-67).
+#[component]
+fn VersionLabel(outdated: bool) -> Element {
+    let class = if outdated {
+        "app-version outdated"
+    } else {
+        "app-version"
+    };
+    rsx! {
+        span { class, "{VERSION}" }
     }
 }
 

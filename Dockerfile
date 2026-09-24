@@ -39,6 +39,11 @@ RUN set -eu; \
 WORKDIR /src
 COPY . .
 
+# What the trip list shows as the version (US-68), from `scripts/deploy.sh`;
+# the server and the SPA both read it at compile time.
+ARG TRIP_ARCHIVE_VERSION=dev
+ENV TRIP_ARCHIVE_VERSION=${TRIP_ARCHIVE_VERSION}
+
 # `target/` is a cache mount, so the artifacts are copied out to /out within
 # the same step. `target/dx` is wiped first, as in CI: dx keeps earlier
 # content-hashed artifacts there, and copying would carry them along.

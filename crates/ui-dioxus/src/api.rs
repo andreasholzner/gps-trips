@@ -12,8 +12,9 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use trip_archive_types::{
-    ActivityType, ConfirmImport, ErrorResponse, ImportedTrip, PhotoPlacement, PhotoResponse,
-    StagedImport, SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail, TripSummary,
+    ActivityType, AppVersion, ConfirmImport, ErrorResponse, ImportedTrip, PhotoPlacement,
+    PhotoResponse, StagedImport, SyncCandidates, SyncRequest, SyncResponse, Tag, TripDetail,
+    TripSummary,
 };
 
 use crate::track::Track;
@@ -132,6 +133,13 @@ pub async fn get_track(archive: &ApiClient, id: i64) -> Result<Track, ApiError> 
 /// and the bulk-tag suggestions (US-34).
 pub async fn list_tags(archive: &ApiClient) -> Result<Vec<Tag>, ApiError> {
     get_json(archive, archive.url("/api/tags")).await
+}
+
+/// `GET /api/version` — the version the server was built with (US-68).
+pub async fn server_version(archive: &ApiClient) -> Result<String, ApiError> {
+    get_json::<AppVersion>(archive, archive.url("/api/version"))
+        .await
+        .map(|reported| reported.version)
 }
 
 /// `GET /api/trips/:id/photos` — the trip's photos (US-2/US-7), each already
