@@ -42,8 +42,9 @@ pub fn AppShell() -> Element {
 #[component]
 pub fn AppMenu() -> Element {
     let mut open = use_signal(|| false);
-    // Absent on the host target and on Android, where signing out is not
-    // offered at all; `App` provides it on the web.
+    // Absent on the host target, on Android and in the web app installed
+    // there, where signing out is not offered at all; `App` provides it in a
+    // browser tab.
     let sign_out = try_use_context::<SignOut>();
 
     rsx! {
@@ -88,15 +89,8 @@ pub fn AppMenu() -> Element {
                     onclick: move |_| open.set(false),
                     "Sync with Komoot"
                 }
-                // Web only, deliberately. Signing out is a "leave this device
-                // clean while I am still holding it" action, which is a
-                // browser situation: the archive can be opened in one you are
-                // about to walk away from. The Android app cannot be, and the
-                // case where its access *should* be revoked — a lost or
-                // stolen phone — is the one case where no button on that
-                // phone can be reached. Rotating the password is the answer
-                // there, and it is the answer whether or not this exists
-                // (US-16).
+                // In a browser tab only, deliberately — `offers_sign_out`
+                // in main.rs says why (US-16, US-67).
                 if let Some(SignOut(sign_out)) = sign_out {
                     button {
                         r#type: "button",

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- icon.svg for Android's launcher (US-67), the source of
+       icon-maskable-512.png in ../public: the launcher crops an icon into its
+       own shape, so the background bleeds to the edges and the drawing is
+       shrunk into the central safe zone (a circle of 80 % of the width). -->
+  <defs>
+    <!-- A slight wobble, so the globe reads as drawn by hand. -->
+    <filter id="sketch" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7"/>
+      <feDisplacementMap in="SourceGraphic" scale="7"/>
+    </filter>
+    <clipPath id="earth"><circle cx="256" cy="256" r="200"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="#ffffff"/>
+  <g id="drawing" transform="translate(256 256) scale(0.78) translate(-256 -256)">
+    <g fill="none" stroke="#8fb3cc" stroke-width="9" stroke-linecap="round" filter="url(#sketch)">
+      <circle cx="256" cy="256" r="200"/>
+      <g clip-path="url(#earth)">
+        <!-- Meridians -->
+        <ellipse cx="256" cy="256" rx="72" ry="200"/>
+        <ellipse cx="256" cy="256" rx="145" ry="200"/>
+        <line x1="256" y1="56" x2="256" y2="456"/>
+        <!-- Parallels -->
+        <line x1="56" y1="256" x2="456" y2="256"/>
+        <path d="M 84 156 Q 256 186 428 156"/>
+        <path d="M 84 356 Q 256 326 428 356"/>
+      </g>
+    </g>
+    <text x="256" y="256" dy="0.35em" text-anchor="middle"
+          font-family="Liberation Sans, Arial, Helvetica, sans-serif" font-weight="700"
+          font-size="210" letter-spacing="-6" fill="#0172ad"
+          stroke="#ffffff" stroke-width="18" stroke-linejoin="round" paint-order="stroke">TA</text>
+  </g>
+</svg>

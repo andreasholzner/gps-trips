@@ -141,6 +141,9 @@ fn App() -> Element {
     // whatever a screen fetched next, so it is watched here rather than
     // handled screen by screen.
     let mut refused = use_signal(|| false);
+    // Settled before `access` leaves `Resolving`, so the menu never shows
+    // the control and then loses it.
+    let mut sign_out_offered = use_signal(|| false);
 
     use_effect(move || {
         if refused() {
@@ -168,36 +171,13 @@ fn App() -> Element {
                 notice: Some(err.to_string()),
             },
         };
+        sign_out_offered.set(offers_sign_out(
+            cfg!(feature = "web"),
+            installed_on_android().await,
+        ));
         archive.set(client);
         access.set(resolved);
     });
-
-    // Signing out is offered on the web and nowhere else, deliberately. It is
-    // a "leave this device clean while I am still holding it" action, which is
-    // a browser situation: the archive can be opened in one you are about to
-    // walk away from. The Android app cannot be, and the case where its access
-    // *should* be revoked — a lost or stolen phone — is the one case where no
-    // button on that phone can be reached. Rotating the password is the answer
-    // there, and it is the answer whether or not this exists (US-16).
-    //
-    // It reaches the menu as context rather than as props: the menu is
-    // rendered by the router, which hands its layouts nothing, and this keeps
-    // `Access` the business of this module alone.
-    if cfg!(feature = "web") {
-        use_context_provider(|| {
-            SignOut(Callback::new(move |_| {
-                spawn(async move {
-                    let client = archive();
-                    // Whether the archive heard or not, this client is done
-                    // with the session: clearing it locally is what signing
-                    // out means here.
-                    let _ = api::logout(&client).await;
-                    archive.set(ApiClient::new(client.base_url()).reporting_refusals_to(refused));
-                    access.set(Access::SignedOut { notice: None });
-                });
-            }))
-        });
-    }
 
     use_context_provider(|| archive);
 
@@ -217,6 +197,9 @@ fn App() -> Element {
                 },
             }
         },
+        Access::SignedIn if sign_out_offered() => rsx! {
+            WithSignOut { archive, access, refused, Router::<Route> {} }
+        },
         Access::SignedIn => rsx! { Router::<Route> {} },
     };
 
@@ -233,6 +216,61 @@ fn App() -> Element {
 
         main { {body} }
     }
+}
+
+/// Whether signing out is offered, which it is in a browser tab and nowhere
+/// else, deliberately. It is a "leave this device clean while I am still
+/// holding it" action, which is a browser situation: the archive can be
+/// opened in one you are about to walk away from. The Android app (US-16)
+/// and the web app installed on an Android phone (US-67) cannot be, and the
+/// case where their access *should* be revoked — a lost or stolen phone — is
+/// the one case where no button on that phone can be reached. Rotating the
+/// password is the answer there, and it is the answer whether or not this
+/// exists.
+fn offers_sign_out(web: bool, installed_on_android: bool) -> bool {
+    web && !installed_on_android
+}
+
+/// Whether the web build is running as the app installed on an Android
+/// home screen (US-67) rather than in a browser tab. Always `false` off the
+/// web, where there is no such distinction to make.
+async fn installed_on_android() -> bool {
+    if cfg!(target_arch = "wasm32") {
+        let mut eval = document::eval(
+            "dioxus.send(window.matchMedia('(display-mode: standalone)').matches \
+             && /Android/i.test(navigator.userAgent));",
+        );
+        eval.recv::<bool>().await.unwrap_or(false)
+    } else {
+        false
+    }
+}
+
+/// Hands the menu its sign-out control, where [`offers_sign_out`] says there
+/// is one. As context rather than as props: the menu is rendered by the
+/// router, which hands its layouts nothing, and this keeps `Access` the
+/// business of this module alone.
+#[component]
+fn WithSignOut(
+    archive: Signal<ApiClient>,
+    access: Signal<Access>,
+    refused: Signal<bool>,
+    children: Element,
+) -> Element {
+    use_context_provider(|| {
+        SignOut(Callback::new(move |_| {
+            spawn(async move {
+                let client = archive();
+                // Whether the archive heard or not, this client is done with
+                // the session: clearing it locally is what signing out means
+                // here.
+                let _ = api::logout(&client).await;
+                archive.set(ApiClient::new(client.base_url()).reporting_refusals_to(refused));
+                access.set(Access::SignedOut { notice: None });
+            });
+        }))
+    });
+    rsx! { {children} }
 }
 
 /// The page's own origin on the web: `reqwest` — unlike a browser `fetch`
@@ -325,5 +363,20 @@ mod route_tests {
             panic!("the bare path must be the list screen")
         };
         assert_eq!(filters, Filters::default());
+    }
+}
+
+#[cfg(test)]
+mod sign_out_tests {
+    use super::offers_sign_out;
+
+    #[test]
+    fn a_browser_tab_offers_signing_out_the_app_installed_on_android_does_not() {
+        // US-19 / US-67: the installed app is a phone app like US-16's, so a
+        // lost phone is answered by rotating the password, not by a button.
+        assert!(offers_sign_out(true, false));
+        assert!(!offers_sign_out(true, true));
+        // The Android build never offered it (US-16).
+        assert!(!offers_sign_out(false, false));
     }
 }

@@ -17,7 +17,9 @@ static files, plus an Android app from the same source). That SPA now exists as
 filtering, tagging and the region map (US-41, US-52); the trip detail screen with its map,
 elevation profile, gallery, editing, tagging and delete (US-42); the two-step import, which
 uploads the GPX first so the archive can suggest a `YYYY-mm-dd`-prefixed name (US-43/US-12);
-and the Komoot sync review (US-44).
+and the Komoot sync review (US-44). Its web app manifest lets Chrome on Android install it on
+the home screen, where it opens as an app of its own (US-67); there is no service worker, so
+it is online-only, as ADR-0023 accepts.
 
 The intentionally throwaway proof-of-concept is gone with the last of those. No route renders
 HTML the server built; every path one of its pages answered — `/`, `/trips/:id`, `/import`,
@@ -125,8 +127,8 @@ C4Container
 - The **track GeoJSON lives in the DB** (a blob in the `track` table), not in the photo store —
   see [ADR-0003](./adr/0003-track-as-geojson-blob-in-sqlite.md). Only photos are external blobs
   ([ADR-0007](./adr/0007-blobstore-abstraction.md)).
-- The API is JSON-first so a future Android/PWA client is additive
-  ([ADR-0008](./adr/0008-json-first-api.md)).
+- The API is JSON-first, so the installed web app (US-67) and the native Android app (US-16)
+  are additive clients of it ([ADR-0008](./adr/0008-json-first-api.md)).
 - The CLI binaries are thin shells over the same library crate as the server. `komoot_backfill`
   opens the SQLite file directly and goes through the same import pipeline, and
   `photo_taken_at_backfill` resolves capture times the way ingestion does; inside the server, an

@@ -3,6 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- What makes Chrome offer to install the archive (US-67). These files
+         come from `public/`, which `dx` copies into the bundle unhashed, so
+         their URLs are fixed. -->
+    <link rel="manifest" href="/app/manifest.webmanifest" />
+    <meta name="theme-color" content="#0172ad" />
+    <link rel="icon" type="image/png" href="/app/icon-192.png" />
   </head>
   <body>
     <div id="main"></div>

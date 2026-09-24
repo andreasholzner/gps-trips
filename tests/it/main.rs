@@ -39,6 +39,7 @@ mod us5_thumbnails;
 mod us62_trip_page;
 mod us63_trip_list;
 mod us66_find_trips_to_tidy;
+mod us67_install_on_android;
 mod us6_trip_list;
 mod us7_trip_detail;
 mod us9_delete_trip;
