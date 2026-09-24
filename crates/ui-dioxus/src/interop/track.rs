@@ -263,6 +263,16 @@ const ELEVATION_SCRIPT: &str = r##"
       return null;
     };
 
+    // The axes in the page's own colours. uPlot draws them into its canvas,
+    // where CSS cannot reach, in black unless told otherwise — unreadable on
+    // the dark scheme. Functions rather than colours, because uPlot calls
+    // them on every draw: a repaint after the scheme changes picks up the
+    // new ones.
+    const pico = (name) => getComputedStyle(el).getPropertyValue(name).trim();
+    const text = () => pico("--pico-color");
+    const line = () => pico("--pico-muted-border-color");
+    const themed = { stroke: text, ticks: { stroke: line }, grid: { stroke: line } };
+
     // The index last reported to Rust. uPlot fires `setCursor` on every
     // pointer move; only a move onto a different sample is news.
     let reported;
@@ -299,7 +309,10 @@ const ELEVATION_SCRIPT: &str = r##"
           { label: "Distance (km)" },
           { label: "Elevation (m)", stroke: "#3367d6", width: 2 },
         ],
-        axes: [{ label: "Distance (km)" }, { label: "Elevation (m)" }],
+        axes: [
+          { label: "Distance (km)", ...themed },
+          { label: "Elevation (m)", ...themed },
+        ],
       },
       [distanceKm, elevationM],
       el,
@@ -307,6 +320,16 @@ const ELEVATION_SCRIPT: &str = r##"
 
     const chart = widgets[CONTAINER];
     const over = el.querySelector(".u-over");
+
+    // Repaint when the colour scheme changes under an open chart. One
+    // listener per page, reaching whichever chart is current, so redrawing
+    // for another trip adds none.
+    if (!widgets.elevationThemeListener) {
+      widgets.elevationThemeListener = () => widgets[CONTAINER]?.redraw(false, true);
+      window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .addEventListener("change", widgets.elevationThemeListener);
+    }
 
     // A tap places the cursor. uPlot only ever positions it on a move, and a
     // tap is a `pointerdown` and a `pointerup` with nothing in between, so
