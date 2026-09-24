@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::{fs::ServeFileSystemResponseBody, ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeader;
 
 use crate::config;
 use crate::models::{
@@ -143,7 +144,9 @@ pub fn router(state: AppState) -> Router {
         // "binary + adjacent public/ folder" is a deployable unit startable
         // from anywhere (ADR-0016). Unknown paths under it fall back to the
         // app shell, so the SPA's own routes survive a reload or a shared
-        // link.
+        // link — except under `assets/`, where `dx` puts its content-hashed
+        // files and an unknown name is one a deploy replaced.
+        .nest_service("/app/assets", hashed_assets_service(paths::spa_dir()))
         .nest_service("/app", spa_service(paths::spa_dir()))
         // US-19's gate, over the whole router rather than over a list of
         // protected routes: a route added below is protected by default, and
@@ -160,9 +163,44 @@ pub fn router(state: AppState) -> Router {
 /// Serve a single-page-app bundle: its files where they exist, its
 /// `index.html` for everything else. A directory that was never built simply
 /// answers 404, the same way a missing assets dir does.
-fn spa_service(dir: std::path::PathBuf) -> ServeDir<ServeFile> {
+///
+/// Everything here keeps its name across deploys, so the browser checks
+/// with the archive each time it uses one. Left to guess at a lifetime, it
+/// may run the previous deploy's app for hours after a new one — the
+/// installed app on a phone included (US-67).
+fn spa_service(dir: std::path::PathBuf) -> SetResponseHeader<ServeDir<ServeFile>, HeaderValue> {
     let index = dir.join("index.html");
-    ServeDir::new(dir).fallback(ServeFile::new(index))
+    SetResponseHeader::overriding(
+        ServeDir::new(dir).fallback(ServeFile::new(index)),
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache"),
+    )
+}
+
+/// Serve the bundle's content-hashed files, which `dx` puts under
+/// `assets/`. A name changes whenever its content does, so a copy the
+/// browser holds is never out of date and is kept for as long as it likes.
+/// No fallback to the app shell: an unknown name here is one an earlier
+/// deploy's app asks for, and a 404 is the answer — not HTML where a script
+/// was expected, and not one to keep.
+fn hashed_assets_service(spa_dir: std::path::PathBuf) -> SetResponseHeader<ServeDir, CacheIfFound> {
+    SetResponseHeader::overriding(
+        ServeDir::new(spa_dir.join("assets")),
+        header::CACHE_CONTROL,
+        cache_if_found as CacheIfFound,
+    )
+}
+
+type CacheIfFound = fn(&axum::http::Response<ServeFileSystemResponseBody>) -> Option<HeaderValue>;
+
+/// A year, the conventional "forever": only a file that was found.
+fn cache_if_found(
+    response: &axum::http::Response<ServeFileSystemResponseBody>,
+) -> Option<HeaderValue> {
+    response
+        .status()
+        .is_success()
+        .then(|| HeaderValue::from_static("public, max-age=31536000, immutable"))
 }
 
 /// GET `/` — the archive's home, which is now the SPA (US-52).
