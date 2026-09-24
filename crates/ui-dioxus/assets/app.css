@@ -370,6 +370,12 @@ nav.pager {
   }
 }
 
+/* Armed for drawing (US-65): a finger on the map draws, and the browser
+   neither scrolls nor pinch-zooms the page from under it. */
+.region-map.region-drawing {
+  touch-action: none;
+}
+
 /* Staged tag names, before they are applied (US-34). */
 .chips {
   display: flex;

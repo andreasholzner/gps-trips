@@ -22,15 +22,12 @@ use crate::interop;
 /// the map on screen costs, and it is paid on purpose.
 #[component]
 pub fn RegionFilter(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Element {
+    let armed = use_signal(|| false);
     rsx! {
         section { class: "region",
-            RegionMap { filters, marks }
+            RegionMap { filters, marks, armed }
             p { class: "region-controls",
-                button {
-                    r#type: "button",
-                    id: "region-select",
-                    "Select area"
-                }
+                SelectArea { armed }
                 button {
                     r#type: "button",
                     id: "region-clear",
@@ -49,10 +46,28 @@ pub fn RegionFilter(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Eleme
     }
 }
 
-/// The map itself: draws the rectangle the filters already hold and the
-/// marks it is handed, and writes back every rectangle the owner drags.
+/// Arms the map for drawing, or backs out of it (US-65). While armed a drag
+/// draws rather than pans — by finger as much as by mouse — so the button
+/// says so, and pressing it again is the way back. Drawing a rectangle
+/// disarms it too.
 #[component]
-fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Element {
+fn SelectArea(armed: Signal<bool>) -> Element {
+    rsx! {
+        button {
+            r#type: "button",
+            id: "region-select",
+            aria_pressed: "{armed}",
+            onclick: move |_| armed.toggle(),
+            if armed() { "Cancel selection" } else { "Select area" }
+        }
+    }
+}
+
+/// The map itself: draws the rectangle the filters already hold and the
+/// marks it is handed, and writes back every rectangle the owner drags
+/// while `armed`.
+#[component]
+fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>, armed: Signal<bool>) -> Element {
     let mut handle = use_signal(|| None::<document::Eval>);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new rectangle causes — the filters change, the list
@@ -64,7 +79,10 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Element {
         handle.set(Some(map));
         loop {
             match map.recv::<[f64; 4]>().await {
-                Ok(corners) => filters.write().bbox = interop::bbox_param(corners),
+                Ok(corners) => {
+                    filters.write().bbox = interop::bbox_param(corners);
+                    armed.set(false);
+                }
                 Err(err) => {
                     dioxus::logger::tracing::error!("the region map stopped reporting: {err}");
                     break;
@@ -81,6 +99,14 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Element {
         let corners = interop::bbox_corners(&region.read());
         if let Some(map) = handle.read().as_ref() {
             interop::show_region(map, corners);
+        }
+    });
+
+    // Rust holds whether drawing is armed; the map only follows (ADR-0025).
+    use_effect(move || {
+        let armed = armed();
+        if let Some(map) = handle.read().as_ref() {
+            interop::arm_region_map(map, armed);
         }
     });
 
@@ -121,5 +147,18 @@ mod tests {
         for control in ["Select area", "Clear region", "Fit to trips"] {
             assert!(html.contains(control), "{control}: {html}");
         }
+    }
+
+    #[test]
+    fn select_area_says_when_it_is_armed_and_offers_a_way_back() {
+        // US-65: once armed, a drag draws instead of panning, so the owner
+        // must be able to see that and back out of it.
+        let idle = render(|| rsx! { SelectArea { armed: Signal::new(false) } });
+        let armed = render(|| rsx! { SelectArea { armed: Signal::new(true) } });
+
+        assert!(idle.contains("Select area"), "{idle}");
+        assert!(idle.contains(r#"aria-pressed="false""#), "{idle}");
+        assert!(armed.contains("Cancel selection"), "{armed}");
+        assert!(armed.contains(r#"aria-pressed="true""#), "{armed}");
     }
 }

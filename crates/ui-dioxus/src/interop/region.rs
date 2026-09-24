@@ -10,9 +10,9 @@ use crate::heat::HeatMarks;
 /// readable.
 const BBOX_DECIMALS: usize = 6;
 
-/// The region map (US-52/US-14, US-63). Draws into `#region-map`, restores
-/// the rectangle it is given, and reports every finished drag back as four
-/// numbers: `[west, south, east, north]`.
+/// The region map (US-52/US-14, US-63, US-65). Draws into `#region-map`,
+/// restores the rectangle it is given, and reports every finished drag while
+/// armed back as four numbers: `[west, south, east, north]`.
 ///
 /// Its channel carries [`MapMessage`]s: the rectangle the filters hold —
 /// first when the map starts, then whenever the region changes, including
@@ -65,36 +65,81 @@ const REGION_MAP_SCRIPT: &str = r##"
 
     map.fitBounds(EUROPE);
 
-    // Drawing is armed by the owner, so an ordinary drag still pans the map.
+    // The rectangle the filters hold, put back when a drag comes to nothing.
+    let held = null;
+    const restore = () => {
+      if (held) show(held);
+      else {
+        rect?.remove();
+        rect = null;
+      }
+    };
+
+    // Drawing is armed from Rust (US-65), so an ordinary drag still pans the
+    // map. While armed, one pointer draws — mouse, finger or pen alike — and
+    // everything else a touch could do to the map is off: panning, pinch
+    // zoom and the two-finger pan that comes with it, and, through
+    // `region-drawing`'s `touch-action: none`, the browser's own pinch of
+    // the page.
     let drawing = false;
     let origin = null;
-    document.getElementById("region-select")?.addEventListener("click", () => {
-      drawing = true;
-      map.dragging.disable();
-    });
+    let pointer = null;
+    const arm = (on) => {
+      drawing = on;
+      if (!on && pointer !== null) {
+        pointer = null;
+        restore();
+      }
+      el.classList.toggle("region-drawing", on);
+      for (const handler of [map.dragging, map.touchZoom]) {
+        if (on) handler.disable();
+        else handler.enable();
+      }
+    };
 
-    map.on("mousedown", (e) => {
-      if (!drawing) return;
-      origin = e.latlng;
-      show([origin, origin]);
+    // A tap, or a slip of the finger, is not a region: anything narrower or
+    // lower than this on screen is dropped, and the map stays armed.
+    const MIN_SIDE = 5;
+
+    el.addEventListener("pointerdown", (e) => {
+      if (!drawing || !e.isPrimary || pointer !== null) return;
+      // The zoom buttons keep their clicks.
+      if (e.target.closest(".leaflet-control")) return;
+      e.preventDefault();
+      pointer = e.pointerId;
+      origin = map.mouseEventToContainerPoint(e);
+      // Captured, so a pointer lifted outside the map still ends the drag
+      // rather than stranding a rectangle the filters do not hold.
+      el.setPointerCapture(pointer);
+      const at = map.containerPointToLatLng(origin);
+      show([at, at]);
     });
-    map.on("mousemove", (e) => {
-      if (!drawing || !origin) return;
-      show([origin, e.latlng]);
+    el.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== pointer) return;
+      show([map.containerPointToLatLng(origin), map.mouseEventToLatLng(e)]);
     });
-    // On the document, not the map: a mouseup outside the map never reaches
-    // Leaflet, which would strand a rectangle the filters do not hold.
-    document.addEventListener("mouseup", () => {
-      if (!drawing || !origin) return;
-      const w = map.wrapLatLngBounds(rect.getBounds());
+    el.addEventListener("pointerup", (e) => {
+      if (e.pointerId !== pointer) return;
+      pointer = null;
+      const end = map.mouseEventToContainerPoint(e);
+      if (Math.abs(end.x - origin.x) < MIN_SIDE || Math.abs(end.y - origin.y) < MIN_SIDE) {
+        restore();
+        return;
+      }
+      const w = map.wrapLatLngBounds(L.latLngBounds(
+        map.containerPointToLatLng(origin), map.containerPointToLatLng(end),
+      ));
       const clampLat = (n) => Math.min(90, Math.max(-90, n));
-      origin = null;
-      drawing = false;
-      map.dragging.enable();
       dioxus.send([
         w.getWest(), clampLat(w.getSouth()),
         w.getEast(), clampLat(w.getNorth()),
       ]);
+    });
+    // Taken away by the browser — a call coming in, say: not a region.
+    el.addEventListener("pointercancel", (e) => {
+      if (e.pointerId !== pointer) return;
+      pointer = null;
+      restore();
     });
 
     // Only now read the channel — after the map is interactive, never
@@ -118,17 +163,17 @@ const REGION_MAP_SCRIPT: &str = r##"
         // The rectangle follows the filters, so clearing the region —
         // by "Clear region" or by "Clear filters" — takes it off the map.
         const region = message.region;
-        if (!region) {
-          rect?.remove();
-          rect = null;
-          continue;
-        }
-        const bounds = [[region[1], region[0]], [region[3], region[2]]];
-        show(bounds);
+        held = region && [[region[1], region[0]], [region[3], region[2]]];
+        // Not over a rectangle still being drawn; it is put back when that
+        // drag ends.
+        if (pointer === null) restore();
+        if (!held) continue;
         if (!fitted) {
-          map.fitBounds(bounds, { padding: [20, 20] });
+          map.fitBounds(held, { padding: [20, 20] });
           fitted = true;
         }
+      } else if ("armed" in message) {
+        arm(message.armed);
       } else if ("marks" in message) {
         heat.clearLayers();
         points = message.marks.points;
@@ -151,11 +196,12 @@ const REGION_MAP_SCRIPT: &str = r##"
 "##;
 
 /// What Rust tells the region map, keyed by kind: `{"region": [..]}` (or
-/// `null` for none) and `{"marks": {..}}`.
+/// `null` for none), `{"armed": bool}` and `{"marks": {..}}`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum MapMessage<'a> {
     Region(Option<[f64; 4]>),
+    Armed(bool),
     Marks(&'a HeatMarks),
 }
 
@@ -176,6 +222,14 @@ pub fn start_region_map(restore: Option<[f64; 4]>) -> document::Eval {
 pub fn show_region(map: &document::Eval, region: Option<[f64; 4]>) {
     if let Err(err) = map.send(MapMessage::Region(region)) {
         dioxus::logger::tracing::error!("could not show the region on the map: {err}");
+    }
+}
+
+/// Arm the region map for drawing, or disarm it (US-65): while armed, a drag
+/// draws a rectangle instead of panning.
+pub fn arm_region_map(map: &document::Eval, armed: bool) {
+    if let Err(err) = map.send(MapMessage::Armed(armed)) {
+        dioxus::logger::tracing::error!("could not arm the region map: {err}");
     }
 }
 
@@ -233,6 +287,9 @@ mod tests {
             marks,
             serde_json::json!({ "marks": { "points": [[60.0, 11.0]], "opacity": 0.6 } })
         );
+        // US-65: arming and disarming "Select area" is Rust's to decide.
+        let armed = serde_json::to_value(MapMessage::Armed(true)).unwrap();
+        assert_eq!(armed, serde_json::json!({ "armed": true }));
     }
 
     #[test]
