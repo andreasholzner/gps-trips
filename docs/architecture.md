@@ -87,7 +87,7 @@ C4Container
     Person(recipient, "Share recipient", "Holds a share's link; no account")
 
     System_Boundary(ta, "Trip Archive (self-hosted)") {
-        Container(spa, "Web UI", "Rust → WASM (Dioxus, client-side rendered) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import, filter and komoot-sync UI — the entire UI. Runs in the browser.")
+        Container(spa, "Web UI", "Rust → WASM (Dioxus, client-side rendered) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import, filter, komoot-sync and shares UI — the entire UI. Runs in the browser.")
         Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files, and nothing else — no server-rendered pages since US-44. Handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
         ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links, shares. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
@@ -159,7 +159,7 @@ C4Component
     Container_Boundary(server, "Application Server") {
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the gate: resolves a principal onto every request — the owner from the session cookie or a Bearer token, a share from the token in a /s/<token>/… path — and refuses anything outside its allowlist.")
         Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password (Argon2id, under a salt kept in the data directory), so nothing is stored, a leaked token allows no password guessing, and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
-        Component(share, "Share Handlers", "Rust / Axum", "US-53: POST /api/shares (the owner's); the read-only route set under /s/:token — the share's title and trips, each trip's detail, track, photos and GPX, and photo blobs — each checking that the trip or blob is one the share names. Recipients get their own response types. No owner handler is reachable from here.")
+        Component(share, "Share Handlers", "Rust / Axum", "US-53: POST /api/shares (the owner's), and US-69's GET /api/shares and DELETE /api/shares/:id — listing the active shares and stopping one, which deletes it; the read-only route set under /s/:token — the share's title and trips, each trip's detail, track, photos and GPX, and photo blobs — each checking that the trip or blob is one the share names. Recipients get their own response types. No owner handler is reachable from here.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
@@ -179,8 +179,8 @@ C4Component
     Rel(router, import, "Multipart upload requests")
 
     Rel(router, sync, "GET + POST /api/komoot/sync")
-    Rel(router, share, "POST /api/shares; GET /s/:token/…")
-    Rel(share, repo, "Resolve the share; read the trips it names")
+    Rel(router, share, "POST/GET /api/shares; DELETE /api/shares/:id; GET /s/:token/…")
+    Rel(share, repo, "Resolve the share; read the trips it names; list and stop shares")
     Rel(share, store, "Serve the shared trips' photos")
     Rel(import, gpx, "Parse + derive stats")
     Rel(import, photo, "Process photos")
@@ -229,6 +229,7 @@ C4Component
         Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, sharing, downloading the original GPX, and deleting the trip.")
         Component(shared, "Shared Trips", "Dioxus", "US-53: what a share's link opens, with no login and no menu — the share's title, every track on one overview map and the trips' list, and each trip read-only: stats, map, elevation, gallery, GPX download. Reads through a client that puts every call under /s/<token>.")
         Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): upload the GPX, then confirm the suggested date-prefixed name, activity type and kind; photos follow in batches with a progress count.")
+        Component(shares, "Shares Screen", "Dioxus", "US-69: every active share — its title, the trips it reaches, when it was made and until when it works — with its link to copy again and stopping it after a confirmation.")
         Component(komootsync, "Komoot Sync Screen", "Dioxus", "US-44: lists the tours Komoot has that the archive does not, labeled by kind, none ticked; says how many edits/deletes the run will push first; reports the run, naming the tour that halted it (US-25).")
         Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
         Component(elev, "Elevation Chart", "Dioxus + uPlot", "Elevation vs distance/time, drawn through `document::eval`.")
@@ -240,6 +241,7 @@ C4Component
     Rel(approuter, detail, "Route")
     Rel(approuter, importform, "Route")
     Rel(approuter, komootsync, "Route")
+    Rel(approuter, shares, "Route")
     Rel(approuter, shared, "Route (/s/:token)")
     Rel(detail, map, "Embeds")
     Rel(detail, elev, "Embeds")
@@ -250,6 +252,7 @@ C4Component
 
     Rel(list, server, "GET /api/trips (+filters); POST /api/shares", "JSON")
     Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos; PATCH a photo's position; POST /api/shares", "JSON")
+    Rel(shares, server, "GET /api/shares; DELETE /api/shares/:id", "JSON")
     Rel(shared, server, "GET /s/:token/api/… and /s/:token/media/*", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
     Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")
