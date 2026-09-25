@@ -10,9 +10,10 @@ use crate::api::{self, ApiClient};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
 use crate::photos::AddPhotos;
-use crate::share::ShareForm;
+use crate::share::ShareDialog;
 
-/// The row, and the add-photos or share form under it once asked for. `on_saved` and
+/// The row, the add-photos form under it once asked for, and the share
+/// options over the screen. `on_saved` and
 /// `on_photos_added` tell the screen what to re-read.
 #[component]
 pub fn TripActions(
@@ -46,8 +47,8 @@ pub fn TripActions(
                 id: "share-trip",
                 r#type: "button",
                 class: "quiet",
-                onclick: move |_| sharing.toggle(),
-                if sharing() { "Cancel sharing" } else { "Share" }
+                onclick: move |_| sharing.set(true),
+                "Share"
             }
             a { class: "quiet", href: api::original_gpx_url(&archive(), id), "Download original GPX" }
             DeleteTrip { id }
@@ -56,7 +57,7 @@ pub fn TripActions(
             AddPhotos { id, on_added: move |_| on_photos_added.call(()) }
         }
         if sharing() {
-            ShareForm { trip_ids: vec![id] }
+            ShareDialog { trip_ids: vec![id], on_close: move |_| sharing.set(false) }
         }
     }
 }
@@ -106,6 +107,7 @@ mod tests {
 
         assert!(!html.contains("add-photos-input"), "{html}");
         assert!(!html.contains("edit-trip-form"), "{html}");
+        assert!(!html.contains(r#"name="share-label""#), "{html}");
     }
 
     #[test]

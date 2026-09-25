@@ -60,12 +60,14 @@ pub fn BulkActivityPanel(selected: Signal<BTreeSet<i64>>, on_applied: EventHandl
                         option { key: "{activity}", value: activity.as_str(), "{activity.label()}" }
                     }
                 }
-                button {
-                    r#type: "button",
-                    disabled: chosen().is_none(),
-                    onclick: move |_| confirming.set(true),
-                    "Set for {count} selected"
-                }
+            }
+            // On its own line, as tagging's "Apply" is, so the two panels'
+            // rows line up side by side.
+            button {
+                r#type: "button",
+                disabled: chosen().is_none(),
+                onclick: move |_| confirming.set(true),
+                "Set for {count} selected"
             }
 
             if let (true, Some(activity)) = (confirming(), chosen()) {

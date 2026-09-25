@@ -496,3 +496,29 @@ test.describe("trips to tidy up (US-66)", () => {
     }
   });
 });
+
+// Layout, which only a browser computes: side by side, the panels for the
+// selected trips put their entry rows level and their buttons level, and a
+// button in a row sits level with the field beside it.
+test("the panels for the selected trips line up", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/");
+  await page.locator("table thead input[type=checkbox]").check();
+
+  const middle = (locator) =>
+    locator.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return (box.top + box.bottom) / 2;
+    });
+  const entry = await middle(page.getByPlaceholder("add a tag"));
+  for (const [what, control] of [
+    ["Add", page.getByRole("button", { name: "Add", exact: true })],
+    ["the activity", page.getByLabel("Activity for selected trips")],
+    ["Share", page.locator("#share-selected")],
+  ]) {
+    expect(Math.abs((await middle(control)) - entry), what).toBeLessThanOrEqual(1);
+  }
+  const apply = await middle(page.getByRole("button", { name: /^Apply to/ }));
+  const set = await middle(page.getByRole("button", { name: /^Set for/ }));
+  expect(Math.abs(set - apply)).toBeLessThanOrEqual(1);
+});

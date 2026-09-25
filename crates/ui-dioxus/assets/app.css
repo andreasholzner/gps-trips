@@ -384,6 +384,11 @@ nav.pager {
   margin-bottom: 0.5rem;
 }
 
+/* No chips yet: no row, so what follows starts where it would without one. */
+.chips:empty {
+  display: none;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -507,18 +512,31 @@ body.overlay-open {
 }
 
 .tag-entry input,
-.tag-entry select {
-  flex: 1 1 12rem;
-  max-width: 22rem;
+.tag-entry select,
+.tag-entry button {
   margin-bottom: 0;
 }
 
-/* Tagging the selected trips and setting their activity (US-34, US-63):
-   side by side where there is room, stacked on a phone. */
+.tag-entry input,
+.tag-entry select {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+}
+
+/* Tagging the selected trips, setting their activity and sharing them
+   (US-34, US-63, US-53): side by side where there is room, stacked on a
+   phone. Each panel is a legend, one entry row and the button that applies
+   it, so the rows line up across the panels. The entry row carries the
+   spacing its controls' own margins used to — Pico's bottom margin on a
+   button inside a centred flex row is what lifted it off its input. */
 .bulk-panels {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
   gap: 0 1rem;
+}
+
+.bulk-panels .tag-entry {
+  margin-bottom: var(--pico-spacing);
 }
 
 .error {

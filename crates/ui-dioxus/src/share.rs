@@ -1,6 +1,7 @@
 //! Sharing trips (US-53), the owner's side: a label, an expiry, and the link
 //! that comes back. The same form serves the trip list's selection and a
-//! trip's own page.
+//! trip's own page, in an overlay on both: sharing is occasional, and its
+//! options would otherwise sit open beside the controls used every day.
 
 use std::collections::BTreeSet;
 
@@ -10,19 +11,55 @@ use trip_archive_types::{CreateShare, ShareExpiry};
 use crate::api::{self, ApiClient};
 use crate::format;
 use crate::interop;
+use crate::overlay::Overlay;
 
 /// Sharing the trips selected on the list screen, beside tagging them and
-/// setting their activity. Appears only once trips are selected.
+/// setting their activity. Appears only once trips are selected, as one
+/// button that opens the options.
 #[component]
 pub fn ShareSelectedPanel(selected: Signal<BTreeSet<i64>>) -> Element {
+    let mut open = use_signal(|| false);
     let trip_ids: Vec<i64> = selected.read().iter().copied().collect();
     if trip_ids.is_empty() {
         return rsx! {};
     }
+    let count = trip_ids.len();
     rsx! {
         fieldset {
             legend { "Share selected trips" }
-            ShareForm { trip_ids }
+            div { class: "tag-entry",
+                button {
+                    id: "share-selected",
+                    r#type: "button",
+                    onclick: move |_| open.set(true),
+                    "Share {count} selected…"
+                }
+            }
+        }
+        if open() {
+            ShareDialog { trip_ids, on_close: move |_| open.set(false) }
+        }
+    }
+}
+
+/// The share options over the screen, for `trip_ids`.
+#[component]
+pub fn ShareDialog(trip_ids: Vec<i64>, on_close: EventHandler<()>) -> Element {
+    rsx! {
+        Overlay { label: "Share trips", on_close: move |_| on_close.call(()),
+            div { class: "panel",
+                h2 { "Share" }
+                ShareForm { trip_ids }
+                div { class: "form-actions",
+                    button {
+                        id: "close-share",
+                        r#type: "button",
+                        class: "quiet",
+                        onclick: move |_| on_close.call(()),
+                        "Close"
+                    }
+                }
+            }
         }
     }
 }
@@ -188,11 +225,33 @@ mod tests {
         assert!(!html.contains("Share selected trips"), "{html}");
 
         let html = render(|| {
-            let selected = use_signal(|| BTreeSet::from([4]));
+            let selected = use_signal(|| BTreeSet::from([4, 5]));
             rsx! { ShareSelectedPanel { selected } }
         });
         assert!(html.contains("Share selected trips"), "{html}");
-        assert!(html.contains("Make a link to this trip"), "{html}");
+        assert!(html.contains(r#"id="share-selected""#), "{html}");
+        assert!(html.contains("Share 2 selected…"), "{html}");
+    }
+
+    #[test]
+    fn the_share_options_stay_closed_until_asked_for() {
+        // Sharing is occasional, so its options sit in an overlay rather
+        // than beside tagging and setting the activity.
+        let html = render(|| {
+            let selected = use_signal(|| BTreeSet::from([4]));
+            rsx! { ShareSelectedPanel { selected } }
+        });
+        assert!(!html.contains(r#"name="share-label""#), "{html}");
+        assert!(!html.contains(r#"role="dialog""#), "{html}");
+    }
+
+    #[test]
+    fn the_share_options_open_in_a_dialog() {
+        let html = render(|| rsx! { ShareDialog { trip_ids: vec![1, 2], on_close: move |_| {} } });
+        assert!(html.contains(r#"role="dialog""#), "{html}");
+        assert!(html.contains(r#"name="share-label""#), "{html}");
+        assert!(html.contains("Make a link to 2 trips"), "{html}");
+        assert!(html.contains(r#"id="close-share""#), "{html}");
     }
 
     #[test]
