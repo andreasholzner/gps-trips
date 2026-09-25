@@ -58,14 +58,18 @@ impl std::fmt::Debug for Session {
 /// resolved by the gate on every request and put into the request's
 /// extensions, rather than a yes/no.
 ///
-/// A closed set of strings on the wire, so an enum (ADR-0018). Two variants
-/// today; sharing (US-53) adds a third — a capability link scoped to named
-/// trips — which is exactly why the gate resolves this instead of a boolean.
+/// A closed set on the wire, so an enum (ADR-0018).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Principal {
     Owner,
     Anonymous,
+    /// Someone holding a share's link (US-53): read-only, and only for the
+    /// trips that share names. Resolved from the link alone — never from a
+    /// cookie — and only on the share's own routes.
+    Share {
+        share_id: i64,
+    },
 }
 
 /// What `GET /api/session` answers with (US-19): who the caller is, for a

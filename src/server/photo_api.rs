@@ -70,11 +70,22 @@ pub async fn handle_place_photo(
 /// A stored photo in its wire shape: the serving URLs from the blob store,
 /// and the offset its caption is shown in.
 fn respond(state: &AppState, photo: Photo, tz_name: Option<&str>) -> PhotoResponse {
-    let url = state.store.url_for(&photo.blob_key);
+    respond_under(state, "", photo, tz_name)
+}
+
+/// [`respond`], with the serving URLs under `prefix` — a share's own
+/// (US-53), so an `<img src>` carries the link's credential.
+pub(crate) fn respond_under(
+    state: &AppState,
+    prefix: &str,
+    photo: Photo,
+    tz_name: Option<&str>,
+) -> PhotoResponse {
+    let url = format!("{prefix}{}", state.store.url_for(&photo.blob_key));
     let thumbnail_url = photo
         .thumbnail_key
         .as_deref()
-        .map(|k| state.store.url_for(k))
+        .map(|k| format!("{prefix}{}", state.store.url_for(k)))
         .unwrap_or_else(|| url.clone());
     let taken_offset_secs = taken_offset(&photo, tz_name);
     PhotoResponse::from_photo(photo, url, thumbnail_url, taken_offset_secs)

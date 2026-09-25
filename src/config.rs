@@ -139,6 +139,20 @@ pub mod komoot {
     pub const PAGE_SIZE: u32 = 200;
 }
 
+/// Shares — read-only links to a few trips (US-53).
+pub mod share {
+    /// Random bytes in a share's token: 256 bits, so a link cannot be guessed
+    /// however many are tried.
+    pub const TOKEN_BYTES: usize = 32;
+    /// Where a share's own routes live: `/s/<token>/…`.
+    pub const PATH_PREFIX: &str = "/s/";
+    /// The lifetimes the owner picks between.
+    pub const ONE_MONTH: time::Duration = time::Duration::days(30);
+    pub const SIX_MONTHS: time::Duration = time::Duration::days(182);
+    /// Longest label, in characters — it is a title, not a message.
+    pub const LABEL_MAX_CHARS: usize = 100;
+}
+
 /// The stored copy of each photo (US-54, ADR-0026).
 pub mod photo {
     /// Maximum long-edge dimension of the stored copy, in pixels. A photo

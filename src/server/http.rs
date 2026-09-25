@@ -27,6 +27,7 @@ use crate::server::{
     photo_api::{handle_place_photo, list_trip_photos},
     repo,
     session::{handle_login, handle_logout, handle_session},
+    share::{self, handle_create_share},
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
     tags::{
@@ -119,6 +120,9 @@ pub fn router(state: AppState) -> Router {
             post(handle_bulk_set_activity_type),
         )
         .route("/api/tags", get(handle_list_all_tags))
+        // US-53: share a few trips through a link; what the link reaches is
+        // the share router's own, merged below.
+        .route("/api/shares", post(handle_create_share))
         // US-40: a consistent snapshot of the database, for the laptop's
         // `backup` command; the photos it names come from `/media/*path`.
         .route(
@@ -150,6 +154,11 @@ pub fn router(state: AppState) -> Router {
         // app shell, so the SPA's own routes survive a reload or a shared
         // link — except under `assets/`, where `dx` puts its content-hashed
         // files and an unknown name is one a deploy replaced.
+        .merge(share::router())
+        // Whatever no route answers, in the same JSON as every refusal
+        // (ADR-0008) — so an unknown path under a live share reads exactly
+        // like a share that does not exist (US-53).
+        .fallback(|| async { AppError::NotFound })
         .nest_service("/app/assets", hashed_assets_service(paths::spa_dir()))
         .nest_service("/app", spa_service(paths::spa_dir()))
         // US-19's gate, over the whole router rather than over a list of
@@ -384,6 +393,12 @@ async fn download_gpx(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
+    gpx_response(&state, id).await
+}
+
+/// The GPX download, for whichever route has decided the caller may have it
+/// — the owner's, or a share's (US-53).
+pub(crate) async fn gpx_response(state: &AppState, id: i64) -> Result<Response, AppError> {
     let gpx = repo::get_original_gpx(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
@@ -407,6 +422,11 @@ async fn track_geojson(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
+    track_response(&state, id).await
+}
+
+/// The track, on the same terms as [`gpx_response`].
+pub(crate) async fn track_response(state: &AppState, id: i64) -> Result<Response, AppError> {
     let geojson = repo::get_track_geojson(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
@@ -443,6 +463,11 @@ async fn serve_media(
     State(state): State<AppState>,
     Path(path): Path<String>,
 ) -> Result<Response, AppError> {
+    media_response(&state, path).await
+}
+
+/// A blob, on the same terms as [`gpx_response`].
+pub(crate) async fn media_response(state: &AppState, path: String) -> Result<Response, AppError> {
     let content_type = content_type_from_path(&path);
     let store = Arc::clone(&state.store);
     let bytes = tokio::task::spawn_blocking(move || store.get(&path))

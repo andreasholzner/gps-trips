@@ -38,7 +38,7 @@ use time::OffsetDateTime;
 
 use crate::config;
 use crate::models::{Principal, Session};
-use crate::server::{error::AppError, state::AppState};
+use crate::server::{error::AppError, repo, state::AppState};
 
 mod salt;
 pub use salt::Salt;
@@ -380,6 +380,23 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
     // Read once at the boundary and passed onward as a value — the pattern
     // ADR-0012's 2026-07-24 amendment settled on instead of a clock trait.
     let now = OffsetDateTime::now_utc();
+
+    // A share's routes answer to its link alone (US-53): no cookie and no
+    // `Bearer` is read there, so the owner's session neither widens a share
+    // nor is needed for one. A token that opens nothing answers exactly as a
+    // route that does not exist.
+    if let Some(token) = share_token(request.uri().path()) {
+        return match repo::resolve_share(&state.pool, token, now).await {
+            Ok(Some(share_id)) => {
+                request
+                    .extensions_mut()
+                    .insert(Principal::Share { share_id });
+                next.run(request).await
+            }
+            Ok(None) => AppError::NotFound.into_response(),
+            Err(err) => AppError::from(err).into_response(),
+        };
+    }
     let (principal, source, expires_at) = match resolve(&state.auth, request.headers(), now) {
         Some((session, source)) => (session.principal, Some(source), Some(session.expires_at)),
         None => (Principal::Anonymous, None, None),
@@ -415,6 +432,13 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
         }
     }
     response
+}
+
+/// The token of a path under a share's prefix (`/s/<token>/…`), if it is one.
+fn share_token(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix(config::share::PATH_PREFIX)?;
+    let token = rest.split('/').next().unwrap_or_default();
+    (!token.is_empty()).then_some(token)
 }
 
 /// Whether a response already carries a session cookie of its own.

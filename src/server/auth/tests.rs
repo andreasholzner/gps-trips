@@ -458,3 +458,15 @@ fn us19_the_cookie_is_httponly_secure_and_samesite_lax() {
 fn us19_signing_out_clears_the_cookie() {
     assert!(cleared_cookie().contains("Max-Age=0"));
 }
+
+// ── Shares (US-53) ───────────────────────────────────────────────────────────
+
+#[test]
+fn us53_a_share_path_yields_its_token() {
+    assert_eq!(share_token("/s/abc/api/share"), Some("abc"));
+    assert_eq!(share_token("/s/abc"), Some("abc"));
+    assert_eq!(share_token("/s/"), None);
+    assert_eq!(share_token("/s//api/share"), None);
+    assert_eq!(share_token("/api/s/abc"), None);
+    assert_eq!(share_token("/sx/abc"), None);
+}

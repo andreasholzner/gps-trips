@@ -128,6 +128,10 @@ const ROUTES: &[(Method, &str, bool)] = &[
     (Method::DELETE, "/api/trips/1/tags/1", false),
     (Method::POST, "/api/trips/tags", false),
     (Method::GET, "/api/tags", false),
+    (Method::POST, "/api/shares", false),
+    // A share's own routes answer to its link, not to a session (US-53):
+    // an unknown one is a 404, never a 401.
+    (Method::GET, "/s/unknown/api/share", true),
     (Method::GET, "/api/komoot/sync", false),
     (Method::POST, "/api/komoot/sync", false),
     (Method::GET, "/api/backup/database", false),

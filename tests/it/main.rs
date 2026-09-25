@@ -34,6 +34,7 @@ mod us47_graceful_shutdown;
 mod us4_photo_timestamp_interpolation;
 mod us51_export_api;
 mod us51_remote_export;
+mod us53_share;
 mod us54_downscale;
 mod us5_thumbnails;
 mod us62_trip_page;

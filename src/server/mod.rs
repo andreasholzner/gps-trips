@@ -22,6 +22,7 @@ pub mod placement;
 pub mod qmapshack;
 pub mod repo;
 pub mod session;
+pub mod share;
 pub mod staged_import;
 pub mod state;
 pub mod storage;

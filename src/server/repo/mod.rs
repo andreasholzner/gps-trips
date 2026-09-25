@@ -8,6 +8,7 @@ mod bulk_edit;
 mod export;
 pub mod komoot;
 mod photo;
+mod share;
 mod staging;
 mod tag;
 mod trip;
@@ -17,6 +18,10 @@ pub use export::list_export_trips;
 pub use photo::{
     count_photos, insert_photo, list_photos, list_photos_without_taken_at, place_photo,
     set_photo_taken_at, NewPhoto,
+};
+pub use share::{
+    insert_share, list_shared_trips, resolve_share, share_covers_blob, share_covers_trip,
+    share_label, NewShare,
 };
 pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,
@@ -35,7 +40,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Format a timestamp as RFC-3339 for storage. Formatting a valid `OffsetDateTime`
 /// with the well-known RFC-3339 description cannot fail, so a failure is a bug.
-fn to_rfc3339(t: OffsetDateTime) -> String {
+pub(crate) fn to_rfc3339(t: OffsetDateTime) -> String {
     t.format(&Rfc3339)
         .expect("RFC-3339 formatting of a valid OffsetDateTime never fails")
 }
