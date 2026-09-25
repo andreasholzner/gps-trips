@@ -30,6 +30,7 @@ mod placing;
 mod region;
 mod share;
 mod shared;
+mod shares;
 #[cfg(test)]
 mod test_support;
 mod track;
@@ -46,6 +47,7 @@ use list::TripList;
 use login::Login;
 use menu::{AppShell, SignOut};
 use shared::{Shared, SharedTripDetail};
+use shares::Shares;
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -101,6 +103,9 @@ enum Route {
     /// redirect is a straight move under `/app`.
     #[route("/komoot/sync")]
     KomootSync {},
+    /// The owner's shares, and stopping one (US-69).
+    #[route("/shares")]
+    Shares {},
     #[end_layout]
     /// What a share's link opens (US-53): outside the owner's menu, since
     /// its recipient has none of what the menu offers.

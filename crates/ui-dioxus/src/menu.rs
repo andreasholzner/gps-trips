@@ -89,6 +89,11 @@ pub fn AppMenu() -> Element {
                     onclick: move |_| open.set(false),
                     "Sync with Komoot"
                 }
+                Link {
+                    to: Route::Shares {},
+                    onclick: move |_| open.set(false),
+                    "Shares"
+                }
                 // In a browser tab only, deliberately — `offers_sign_out`
                 // in main.rs says why (US-16, US-67).
                 if let Some(SignOut(sign_out)) = sign_out {
@@ -134,6 +139,9 @@ mod tests {
         // middle-click, copy link — work as they do anywhere else.
         assert!(html.contains(r#"href="/import""#), "{html}");
         assert!(html.contains(r#"href="/komoot/sync""#), "{html}");
+        // US-69: the links handed out, and stopping one.
+        assert!(html.contains("Shares"), "{html}");
+        assert!(html.contains(r#"href="/shares""#), "{html}");
         // The unfiltered list, spelled the way the router spells it: the
         // default filters are part of that URL (US-52), so the way home is
         // asked of the route rather than written out here.

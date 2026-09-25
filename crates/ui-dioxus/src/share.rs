@@ -102,7 +102,7 @@ pub fn ShareForm(trip_ids: Vec<i64>) -> Element {
                 {create_label(count)}
             }
             if let Some((url, expires_at)) = link() {
-                ShareLink { url, expires_at }
+                ShareLink { url, expires_at, id: "share-link".to_string() }
             }
             if let Some(message) = message() {
                 p { class: "error", "{message}" }
@@ -119,9 +119,11 @@ pub fn create_label(count: usize) -> String {
     }
 }
 
-/// The link that was made, ready to copy, and until when it works.
+/// A share's link, ready to copy, and until when it works — the one just
+/// made, or one on the owner's list of shares (US-69), where several sit on
+/// one page and so none takes the element id.
 #[component]
-fn ShareLink(url: String, expires_at: Option<String>) -> Element {
+pub fn ShareLink(url: String, expires_at: Option<String>, id: Option<String>) -> Element {
     let until = match expires_at.as_deref() {
         Some(at) => format!("It works until {}.", format::date(Some(at))),
         None => "It works until you stop it.".to_string(),
@@ -129,7 +131,7 @@ fn ShareLink(url: String, expires_at: Option<String>) -> Element {
     rsx! {
         div { class: "share-link",
             input {
-                id: "share-link",
+                id,
                 r#type: "text",
                 readonly: true,
                 "aria-label": "Share link",
