@@ -39,6 +39,7 @@ C4Context
     title System Context — Trip Archive
 
     Person(owner, "Owner", "The single user. Records and plans trips in komoot, then archives and browses them here.")
+    Person(recipient, "Share recipient", "Anyone the owner sent a share's link to (US-53). No account.")
 
     System(tripArchive, "Trip Archive", "Self-hosted web app to organize trips: GPS tracks + photos on a map, with stats, search and filtering.")
 
@@ -49,7 +50,8 @@ C4Context
     System_Ext(garmin, "Garmin Connect [planned]", "Alternate source of recorded activities.")
 
     Rel(owner, komoot, "Records, plans, discovers; exports GPX")
-    Rel(owner, tripArchive, "Imports GPX + photos, browses/searches/edits trips", "HTTPS / web browser")
+    Rel(owner, tripArchive, "Imports GPX + photos, browses/searches/edits trips; shares a few", "HTTPS / web browser")
+    Rel(recipient, tripArchive, "Views the shared trips, downloads their GPX", "HTTPS / web browser")
     Rel(tripArchive, osm, "Fetches map tiles", "HTTPS")
     Rel(tripArchive, owncloud, "Stores/serves photo blobs [planned]", "WebDAV")
     Rel(tripArchive, garmin, "Imports activities [planned]", "HTTPS API")
@@ -82,11 +84,12 @@ C4Container
     title Container diagram — Trip Archive
 
     Person(owner, "Owner", "Single user, via a web browser")
+    Person(recipient, "Share recipient", "Holds a share's link; no account")
 
     System_Boundary(ta, "Trip Archive (self-hosted)") {
         Container(spa, "Web UI", "Rust → WASM (Dioxus, client-side rendered) + vendored Leaflet & uPlot", "Renders trip list, detail map, elevation chart, gallery, import, filter and komoot-sync UI — the entire UI. Runs in the browser.")
         Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files, and nothing else — no server-rendered pages since US-44. Handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
-        ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links. Always on local disk.")
+        ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links, shares. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
         Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "Runs on the laptop: one-way reconcile of every trip into a QMapShack database, reading the archive through the JSON API; run manually or from cron, never from inside the app. TOML config for archive URL, target path + folder mapping; rolling backups; version gate.")
         Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23). Runs inside the deployed instance, against its volume.")
@@ -102,6 +105,7 @@ C4Container
     System_Ext(backupdisk, "Backup disk", "External disk the owner's borg jobs archive")
 
     Rel(owner, spa, "Uses", "HTTPS")
+    Rel(recipient, spa, "Opens a share's link", "HTTPS")
     Rel(owner, komoot, "Exports GPX from")
     Rel(spa, server, "Loads pages; calls JSON API; uploads GPX+photos (multipart)", "HTTPS / JSON")
     Rel(server, db, "Reads/writes trip, track, photo, tag rows", "sqlx (SQL)")
@@ -153,8 +157,9 @@ C4Component
     Container(blobs, "Photo Store", "filesystem")
 
     Container_Boundary(server, "Application Server") {
-        Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the shared-password gate: resolves a principal from the session cookie or a Bearer token onto every request, and refuses anything outside its allowlist.")
+        Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the gate: resolves a principal onto every request — the owner from the session cookie or a Bearer token, a share from the token in a /s/<token>/… path — and refuses anything outside its allowlist.")
         Component(auth, "Session Gate", "Rust / tower middleware", "US-19: one shared password, no accounts. POST/GET/DELETE /api/session sign in, report the principal and sign out; the session is an HMAC over its own expiry under a key derived from the password (Argon2id, under a salt kept in the data directory), so nothing is stored, a leaked token allows no password guessing, and rotating the password revokes everything. Deny-by-default; logins rate-limited by a global lockout.")
+        Component(share, "Share Handlers", "Rust / Axum", "US-53: POST /api/shares (the owner's); the read-only route set under /s/:token — the share's title and trips, each trip's detail, track, photos and GPX, and photo blobs — each checking that the trip or blob is one the share names. Recipients get their own response types. No owner handler is reachable from here.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
@@ -164,7 +169,7 @@ C4Component
         Component(gpx, "GPX Parser & Stats", "gpx + geo", "Parse track; compute distance, ascent/descent, duration, bbox, start/end.")
         Component(photo, "Photo Ingestion", "Rust (kamadak-exif, image, rayon)", "EXIF GPS/time, thumbnail, time-match to track.")
         Component(geojson, "GeoJSON Builder", "serde_json", "Build track LineString blob with elevation + distance/time arrays.")
-        Component(repo, "Repositories", "sqlx", "trip/track/photo/tag/komoot-link persistence; filter (incl. tags) & bbox-overlap queries.")
+        Component(repo, "Repositories", "sqlx", "trip/track/photo/tag/komoot-link/share persistence; filter (incl. tags) & bbox-overlap queries.")
         Component(store, "BlobStore (LocalDisk)", "Rust trait", "put/get/url_for for photo originals & thumbnails.")
     }
 
@@ -174,6 +179,9 @@ C4Component
     Rel(router, import, "Multipart upload requests")
 
     Rel(router, sync, "GET + POST /api/komoot/sync")
+    Rel(router, share, "POST /api/shares; GET /s/:token/…")
+    Rel(share, repo, "Resolve the share; read the trips it names")
+    Rel(share, store, "Serve the shared trips' photos")
     Rel(import, gpx, "Parse + derive stats")
     Rel(import, photo, "Process photos")
     Rel(import, geojson, "Build track blob")
@@ -218,7 +226,8 @@ C4Component
     Container_Boundary(spa, "Web UI") {
         Component(approuter, "App Router", "dioxus_router", "Client-side routing between pages.")
         Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
-        Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, downloading the original GPX, and deleting the trip.")
+        Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, sharing, downloading the original GPX, and deleting the trip.")
+        Component(shared, "Shared Trips", "Dioxus", "US-53: what a share's link opens, with no login and no menu — the share's title, every track on one overview map and the trips' list, and each trip read-only: stats, map, elevation, gallery, GPX download. Reads through a client that puts every call under /s/<token>.")
         Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): upload the GPX, then confirm the suggested date-prefixed name, activity type and kind; photos follow in batches with a progress count.")
         Component(komootsync, "Komoot Sync Screen", "Dioxus", "US-44: lists the tours Komoot has that the archive does not, labeled by kind, none ticked; says how many edits/deletes the run will push first; reports the run, naming the tour that halted it (US-25).")
         Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
@@ -231,17 +240,23 @@ C4Component
     Rel(approuter, detail, "Route")
     Rel(approuter, importform, "Route")
     Rel(approuter, komootsync, "Route")
+    Rel(approuter, shared, "Route (/s/:token)")
     Rel(detail, map, "Embeds")
     Rel(detail, elev, "Embeds")
     Rel(detail, gallery, "Embeds")
+    Rel(shared, map, "Embeds")
+    Rel(shared, elev, "Embeds")
+    Rel(shared, gallery, "Embeds")
 
-    Rel(list, server, "GET /api/trips (+filters)", "JSON")
-    Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos; PATCH a photo's position", "JSON")
+    Rel(list, server, "GET /api/trips (+filters); POST /api/shares", "JSON")
+    Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos; PATCH a photo's position; POST /api/shares", "JSON")
+    Rel(shared, server, "GET /s/:token/api/… and /s/:token/media/*", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
     Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")
     Rel(gallery, server, "GET /media/* (thumbnails)", "HTTPS")
     Rel(map, osm, "Fetch tiles", "HTTPS")
     Rel(list, osm, "Fetch tiles (region-select map, US-14)", "HTTPS")
+    Rel(shared, osm, "Fetch tiles (overview map, US-53)", "HTTPS")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
@@ -292,7 +307,7 @@ C4Component
 | Import Handler / Photo Ingestion                 | [ADR-0004](./adr/0004-import-via-axum-multipart.md)                                                    |
 | Trip API Handlers (JSON)                         | [ADR-0008](./adr/0008-json-first-api.md)                                                               |
 | Clock seam (UTC)                                 | [ADR-0009](./adr/0009-utc-timestamp-normalization.md)                                                  |
-| Session Gate / auth middleware                   | [ADR-0010](./adr/0010-single-user-optional-auth.md) + its 2026-09-02 amendment                          |
+| Session Gate / auth middleware; Share Handlers   | [ADR-0010](./adr/0010-single-user-optional-auth.md) + its 2026-09-02 amendment                          |
 | Filter/region queries in Repositories            | [ADR-0011](./adr/0011-filtering-search-geo-queries.md)                                                 |
 | Trait seams as test mocks                        | [ADR-0012](./adr/0012-tdd-test-strategy.md)                                                            |
 | Static assets served next to the binary          | [ADR-0016](./adr/0016-assets-relative-to-executable.md)                                                |
