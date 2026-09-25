@@ -1,7 +1,8 @@
 //! US-53 — shares: read-only access to a few trips through a link.
 //!
-//! Two halves. The owner creates a share (`POST /api/shares`), behind the
-//! gate like every owner route. The recipient reaches a route set of the
+//! Two halves. The owner creates a share (`POST /api/shares`), lists the
+//! active ones (`GET /api/shares`) and stops one (`DELETE /api/shares/:id`,
+//! US-69), behind the gate like every owner route. The recipient reaches a route set of the
 //! share's own under `/s/:token`, where the gate has already turned the token
 //! into a [`Principal::Share`] — or answered 404 for one that opens nothing.
 //! These routes are read-only by construction, and each checks that the trip
@@ -19,8 +20,8 @@ use time::OffsetDateTime;
 
 use crate::config;
 use crate::models::{
-    CreateShare, CreatedShare, PhotoResponse, Principal, ShareExpiry, ShareOverview, SharedTrip,
-    TripDetail,
+    ActiveShare, CreateShare, CreatedShare, PhotoResponse, Principal, ShareExpiry, ShareOverview,
+    SharedTrip, TripDetail,
 };
 use crate::server::{
     error::AppError,
@@ -89,6 +90,30 @@ pub async fn handle_create_share(
             expires_at: expires_at.map(repo::to_rfc3339),
         }),
     ))
+}
+
+/// GET `/api/shares` — every share that still opens something, newest
+/// first (US-69).
+pub async fn handle_list_shares(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ActiveShare>>, AppError> {
+    Ok(Json(
+        repo::list_active_shares(&state.pool, OffsetDateTime::now_utc()).await?,
+    ))
+}
+
+/// DELETE `/api/shares/:id` — stop a share (US-69): its link answers as an
+/// unknown one from the next request on. 204; 404 for a share that is not
+/// active, so stopping one twice is not a success.
+pub async fn handle_stop_share(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, AppError> {
+    if repo::stop_share(&state.pool, id, OffsetDateTime::now_utc()).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(AppError::NotFound)
+    }
 }
 
 /// When a share chosen at `now` stops working.

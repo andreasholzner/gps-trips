@@ -129,6 +129,8 @@ const ROUTES: &[(Method, &str, bool)] = &[
     (Method::POST, "/api/trips/tags", false),
     (Method::GET, "/api/tags", false),
     (Method::POST, "/api/shares", false),
+    (Method::GET, "/api/shares", false),
+    (Method::DELETE, "/api/shares/1", false),
     // A share's own routes answer to its link, not to a session (US-53):
     // an unknown one is a 404, never a 401.
     (Method::GET, "/s/unknown/api/share", true),

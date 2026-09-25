@@ -27,7 +27,7 @@ use crate::server::{
     photo_api::{handle_place_photo, list_trip_photos},
     repo,
     session::{handle_login, handle_logout, handle_session},
-    share::{self, handle_create_share},
+    share::{self, handle_create_share, handle_list_shares, handle_stop_share},
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
     tags::{
@@ -121,8 +121,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/tags", get(handle_list_all_tags))
         // US-53: share a few trips through a link; what the link reaches is
-        // the share router's own, merged below.
-        .route("/api/shares", post(handle_create_share))
+        // the share router's own, merged below. US-69: list and stop them.
+        .route(
+            "/api/shares",
+            post(handle_create_share).get(handle_list_shares),
+        )
+        .route("/api/shares/:id", axum::routing::delete(handle_stop_share))
         // US-40: a consistent snapshot of the database, for the laptop's
         // `backup` command; the photos it names come from `/media/*path`.
         .route(

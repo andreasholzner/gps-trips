@@ -1,4 +1,5 @@
-//! Shares (US-53): a token, the trips it reaches, and when it stops.
+//! Shares (US-53): a token, the trips it reaches, and when it stops; and
+//! the owner's list of them, from which one is stopped (US-69).
 //!
 //! Every read here is scoped by the share's id, which only the gate hands
 //! out, and only for a token that resolved — so a handler that reads through
@@ -8,7 +9,7 @@ use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use super::to_rfc3339;
-use crate::models::SharedTripSummary;
+use crate::models::{ActiveShare, SharedTripSummary};
 
 /// A share as the owner asks for it; the token is minted by the caller.
 pub struct NewShare<'a> {
@@ -59,15 +60,80 @@ pub async fn resolve_share(
     .bind(token)
     .fetch_optional(pool)
     .await?;
-    // Compared as instants, not as strings: RFC-3339 text only sorts like
-    // time when every value has the same precision.
-    Ok(row.and_then(|(id, expires_at)| match expires_at {
-        None => Some(id),
-        Some(at) => OffsetDateTime::parse(&at, &Rfc3339)
-            .ok()
-            .filter(|at| *at > now)
-            .map(|_| id),
-    }))
+    Ok(row.and_then(|(id, expires_at)| still_open(expires_at.as_deref(), now).then_some(id)))
+}
+
+/// Whether a share expiring at `expires_at` still opens at `now`. Compared
+/// as instants, not as strings: RFC-3339 text only sorts like time when
+/// every value has the same precision. An unreadable expiry opens nothing.
+fn still_open(expires_at: Option<&str>, now: OffsetDateTime) -> bool {
+    expires_at.is_none_or(|at| OffsetDateTime::parse(at, &Rfc3339).is_ok_and(|at| at > now))
+}
+
+/// Every share that opens something at `now` — the same test
+/// [`resolve_share`] applies — newest first, each with its trips' names in
+/// the order the recipient sees them.
+pub async fn list_active_shares(
+    pool: &SqlitePool,
+    now: OffsetDateTime,
+) -> Result<Vec<ActiveShare>, sqlx::Error> {
+    // The inner join leaves out a share with no trips. Ids only grow, so the
+    // highest is the newest without comparing timestamps as text.
+    let rows = sqlx::query(
+        r#"SELECT s.id, s.token, s.label, s.created_at, s.expires_at, t.name
+           FROM share s
+           JOIN share_trip st ON st.share_id = s.id
+           JOIN trip t ON t.id = st.trip_id
+           ORDER BY s.id DESC, t.start_time IS NULL, t.start_time, t.id"#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut shares: Vec<ActiveShare> = Vec::new();
+    for row in rows {
+        let id: i64 = row.get("id");
+        let name: String = row.get("name");
+        match shares.last_mut() {
+            Some(share) if share.id == id => share.trip_names.push(name),
+            _ => shares.push(ActiveShare {
+                id,
+                token: row.get("token"),
+                label: row.get("label"),
+                trip_names: vec![name],
+                created_at: row.get("created_at"),
+                expires_at: row.get("expires_at"),
+            }),
+        }
+    }
+    shares.retain(|share| still_open(share.expires_at.as_deref(), now));
+    Ok(shares)
+}
+
+/// Stop share `id`: its row goes, and with it every `share_trip` row, so
+/// its token resolves to nothing from the next request on. Only a share
+/// that still opens something at `now` is stopped; `false` for any other,
+/// so stopping one twice is not a success.
+pub async fn stop_share(
+    pool: &SqlitePool,
+    id: i64,
+    now: OffsetDateTime,
+) -> Result<bool, sqlx::Error> {
+    let found: Option<Option<String>> = sqlx::query_scalar(
+        r#"SELECT s.expires_at FROM share s
+           WHERE s.id = ?
+             AND EXISTS (SELECT 1 FROM share_trip st WHERE st.share_id = s.id)"#,
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    if !found.is_some_and(|expires_at| still_open(expires_at.as_deref(), now)) {
+        return Ok(false);
+    }
+    let deleted = sqlx::query("DELETE FROM share WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(deleted.rows_affected() > 0)
 }
 
 /// Whether `share_id` reaches `trip_id`.

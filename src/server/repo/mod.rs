@@ -20,8 +20,8 @@ pub use photo::{
     set_photo_taken_at, NewPhoto,
 };
 pub use share::{
-    insert_share, list_shared_trips, resolve_share, share_covers_blob, share_covers_trip,
-    share_label, NewShare,
+    insert_share, list_active_shares, list_shared_trips, resolve_share, share_covers_blob,
+    share_covers_trip, share_label, stop_share, NewShare,
 };
 pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,

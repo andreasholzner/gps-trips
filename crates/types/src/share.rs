@@ -82,6 +82,37 @@ impl std::fmt::Debug for CreatedShare {
     }
 }
 
+/// One row of `GET /api/shares` (US-69): a share that still opens
+/// something, as the owner administers it. The token is here so the owner
+/// can copy the link again; the id is what stopping it names, so the token
+/// never has to sit in a URL.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActiveShare {
+    pub id: i64,
+    pub token: String,
+    pub label: Option<String>,
+    /// The trips it reaches, oldest first — as the recipient sees them.
+    pub trip_names: Vec<String>,
+    /// RFC-3339 UTC (ADR-0009).
+    pub created_at: String,
+    /// RFC-3339 UTC; `None` for a share that never expires.
+    pub expires_at: Option<String>,
+}
+
+/// Redacted, like [`CreatedShare`].
+impl std::fmt::Debug for ActiveShare {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ActiveShare")
+            .field("id", &self.id)
+            .field("token", &"<redacted>")
+            .field("label", &self.label)
+            .field("trip_names", &self.trip_names)
+            .field("created_at", &self.created_at)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
 /// What the recipient lands on: the share's title and its trips, oldest
 /// first.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -160,6 +191,22 @@ mod tests {
         assert!(
             serde_json::from_str::<CreateShare>(r#"{"trip_ids":[1],"expiry":"forever"}"#).is_err()
         );
+    }
+
+    #[test]
+    fn us69_an_active_share_never_prints_its_token() {
+        let printed = format!(
+            "{:?}",
+            ActiveShare {
+                id: 1,
+                token: "secret-token".to_string(),
+                label: None,
+                trip_names: vec!["Walk".to_string()],
+                created_at: "2026-09-25T12:00:00Z".to_string(),
+                expires_at: None,
+            }
+        );
+        assert!(!printed.contains("secret-token"), "got {printed}");
     }
 
     #[test]

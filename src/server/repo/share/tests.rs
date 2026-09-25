@@ -1,7 +1,7 @@
 //! US-53 — the share repository, against a real SQLite file (ADR-0012).
 
 use super::*;
-use crate::models::{ActivityType, LocationSource, TripKind};
+use crate::models::{ActiveShare, ActivityType, LocationSource, TripKind};
 use crate::server::db::testing::TestDb;
 use crate::server::geojson::build_track_geojson;
 use crate::server::gpx::{compute_stats, parse_gpx};
@@ -124,22 +124,6 @@ async fn us53_deleting_a_trip_takes_it_out_of_the_share_and_an_emptied_share_end
 }
 
 #[tokio::test]
-async fn us53_a_deleted_share_row_ends_the_share() {
-    // What stopping a share will do (US-69).
-    let db = TestDb::new().await;
-    let trip = a_trip(&db.pool, "Oslo").await;
-    let id = a_share(&db.pool, "tok", &[trip], None).await;
-
-    sqlx::query("DELETE FROM share WHERE id = ?")
-        .bind(id)
-        .execute(&db.pool)
-        .await
-        .unwrap();
-    assert_eq!(resolve_share(&db.pool, "tok", noon()).await.unwrap(), None);
-    assert!(!share_covers_trip(&db.pool, id, trip).await.unwrap());
-}
-
-#[tokio::test]
 async fn us53_a_share_covers_only_the_trips_it_names() {
     let db = TestDb::new().await;
     let shared = a_trip(&db.pool, "Shared").await;
@@ -215,4 +199,86 @@ async fn us53_a_repeated_trip_is_stored_once() {
     let trip = a_trip(&db.pool, "Oslo").await;
     let id = a_share(&db.pool, "tok", &[trip, trip], None).await;
     assert_eq!(list_shared_trips(&db.pool, id).await.unwrap().len(), 1);
+}
+
+// ── US-69: listing and stopping ──────────────────────────────────────────────
+
+fn tokens(shares: &[ActiveShare]) -> Vec<&str> {
+    shares.iter().map(|share| share.token.as_str()).collect()
+}
+
+#[tokio::test]
+async fn us69_an_active_share_is_listed_with_its_trips_and_dates() {
+    let db = TestDb::new().await;
+    let first = a_trip(&db.pool, "First").await;
+    let _other = a_trip(&db.pool, "Not shared").await;
+    let second = a_trip(&db.pool, "Second").await;
+    let expires = noon() + time::Duration::days(30);
+    let id = a_share(&db.pool, "tok", &[second, first], Some(expires)).await;
+
+    let shares = list_active_shares(&db.pool, noon()).await.unwrap();
+    assert_eq!(
+        shares,
+        [ActiveShare {
+            id,
+            token: "tok".to_string(),
+            label: Some("For Kari".to_string()),
+            trip_names: vec!["First".to_string(), "Second".to_string()],
+            created_at: to_rfc3339(noon()),
+            expires_at: Some(to_rfc3339(expires)),
+        }]
+    );
+}
+
+#[tokio::test]
+async fn us69_the_newest_share_is_listed_first() {
+    let db = TestDb::new().await;
+    let trip = a_trip(&db.pool, "Oslo").await;
+    a_share(&db.pool, "older", &[trip], None).await;
+    a_share(&db.pool, "newer", &[trip], None).await;
+
+    let shares = list_active_shares(&db.pool, noon()).await.unwrap();
+    assert_eq!(tokens(&shares), ["newer", "older"]);
+}
+
+#[tokio::test]
+async fn us69_an_expired_or_emptied_share_leaves_the_list() {
+    let db = TestDb::new().await;
+    let kept = a_trip(&db.pool, "Kept").await;
+    let deleted = a_trip(&db.pool, "Deleted").await;
+    a_share(&db.pool, "live", &[kept], None).await;
+    a_share(&db.pool, "expired", &[kept], Some(noon())).await;
+    a_share(&db.pool, "emptied", &[deleted], None).await;
+    delete_trip(&db.pool, deleted).await.unwrap();
+
+    let shares = list_active_shares(&db.pool, noon()).await.unwrap();
+    assert_eq!(tokens(&shares), ["live"]);
+}
+
+#[tokio::test]
+async fn us69_stopping_a_share_ends_it_and_takes_its_trips_with_it() {
+    let db = TestDb::new().await;
+    let trip = a_trip(&db.pool, "Oslo").await;
+    let id = a_share(&db.pool, "tok", &[trip], None).await;
+
+    assert!(stop_share(&db.pool, id, noon()).await.unwrap());
+    assert_eq!(resolve_share(&db.pool, "tok", noon()).await.unwrap(), None);
+    assert!(!share_covers_trip(&db.pool, id, trip).await.unwrap());
+    assert!(list_active_shares(&db.pool, noon())
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn us69_only_an_active_share_can_be_stopped() {
+    let db = TestDb::new().await;
+    let trip = a_trip(&db.pool, "Oslo").await;
+    let stopped = a_share(&db.pool, "stopped", &[trip], None).await;
+    stop_share(&db.pool, stopped, noon()).await.unwrap();
+    let expired = a_share(&db.pool, "expired", &[trip], Some(noon())).await;
+
+    assert!(!stop_share(&db.pool, stopped, noon()).await.unwrap());
+    assert!(!stop_share(&db.pool, expired, noon()).await.unwrap());
+    assert!(!stop_share(&db.pool, 999, noon()).await.unwrap());
 }
