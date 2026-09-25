@@ -1,5 +1,5 @@
 //! The occasional controls, in one quiet row at the foot of the detail screen
-//! (US-62): edit, add photos, download the original GPX, delete. Each used to
+//! (US-62): edit, add photos, share (US-53), download the original GPX, delete. Each used to
 //! be a full-width primary button, with the add-photos form open besides; now
 //! nothing is open until it is asked for.
 
@@ -10,8 +10,9 @@ use crate::api::{self, ApiClient};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
 use crate::photos::AddPhotos;
+use crate::share::ShareForm;
 
-/// The row, and the add-photos form under it once asked for. `on_saved` and
+/// The row, and the add-photos or share form under it once asked for. `on_saved` and
 /// `on_photos_added` tell the screen what to re-read.
 #[component]
 pub fn TripActions(
@@ -22,11 +23,13 @@ pub fn TripActions(
     let archive = use_context::<Signal<ApiClient>>();
     let id = trip.id;
     let mut adding_photos = use_signal(|| false);
+    let mut sharing = use_signal(|| false);
     // The router shows the next trip through this same scope; a form opened
     // for one trip must not stay open, aimed at the next.
     use_effect(use_reactive!(|id| {
         let _ = id;
         adding_photos.set(false);
+        sharing.set(false);
     }));
 
     rsx! {
@@ -39,11 +42,21 @@ pub fn TripActions(
                 onclick: move |_| adding_photos.toggle(),
                 if adding_photos() { "Cancel adding" } else { "Add photos" }
             }
+            button {
+                id: "share-trip",
+                r#type: "button",
+                class: "quiet",
+                onclick: move |_| sharing.toggle(),
+                if sharing() { "Cancel sharing" } else { "Share" }
+            }
             a { class: "quiet", href: api::original_gpx_url(&archive(), id), "Download original GPX" }
             DeleteTrip { id }
         }
         if adding_photos() {
             AddPhotos { id, on_added: move |_| on_photos_added.call(()) }
+        }
+        if sharing() {
+            ShareForm { trip_ids: vec![id] }
         }
     }
 }
@@ -73,6 +86,7 @@ mod tests {
         for control in [
             r#"id="edit-trip""#,
             r#"id="add-photos""#,
+            r#"id="share-trip""#,
             "/gpx",
             r#"id="delete-trip""#,
         ] {

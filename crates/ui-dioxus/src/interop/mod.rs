@@ -19,13 +19,15 @@
 //!   series — and passes them in, where all of it stays unit-testable.
 //!
 //! Each widget lives in its own file here: the list's region map and its
-//! heat marks, the detail screen's track map and elevation chart, and the
-//! map a photo is placed on by hand.
+//! heat marks, the detail screen's track map and elevation chart, the
+//! map a photo is placed on by hand, and the map a share opens on.
 
+mod overview;
 mod place;
 mod region;
 mod track;
 
+pub use overview::{start_overview_map, OverviewLine};
 pub use place::start_place_map;
 pub use region::{
     arm_region_map, bbox_corners, bbox_param, draw_heat_marks, show_region, start_region_map,
@@ -56,6 +58,25 @@ pub async fn clear_photo_picker() {
     );
     if let Err(err) = eval.recv::<bool>().await {
         dioxus::logger::tracing::error!("could not clear the photo picker: {err}");
+    }
+}
+
+/// Put `text` on the clipboard — a share's link (US-53). The text crosses
+/// the channel rather than being spliced into the script (ADR-0025).
+pub async fn copy_to_clipboard(text: String) {
+    let mut eval = document::eval(
+        r#"
+        const text = await dioxus.recv();
+        try {
+          await navigator.clipboard.writeText(text);
+          dioxus.send(true);
+        } catch {
+          dioxus.send(false);
+        }
+        "#,
+    );
+    if eval.send(text).is_err() || !eval.recv::<bool>().await.unwrap_or(false) {
+        dioxus::logger::tracing::error!("could not copy to the clipboard");
     }
 }
 

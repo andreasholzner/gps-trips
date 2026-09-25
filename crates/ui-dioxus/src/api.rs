@@ -21,9 +21,11 @@ use crate::track::Track;
 
 mod client;
 mod session;
+mod share;
 
 pub use client::ApiClient;
 pub use session::{login, logout, session};
+pub use share::{create_share, get_shared_trip, share_link, share_overview};
 
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]

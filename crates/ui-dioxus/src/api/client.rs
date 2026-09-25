@@ -35,6 +35,10 @@ pub struct ApiClient {
     /// `None` for a client nobody is watching, which is every client in a
     /// test that is about something else.
     refused: Option<Signal<bool>>,
+    /// The share this client reads through, if it is a recipient's (US-53):
+    /// every call then goes to the share's own routes, `/s/<token>/…`, and
+    /// the link is the only credential.
+    share: Option<String>,
 }
 
 /// The token is redacted: this client is held for the life of the app and
@@ -46,6 +50,7 @@ impl std::fmt::Debug for ApiClient {
         f.debug_struct("ApiClient")
             .field("base_url", &self.base_url)
             .field("signed_in", &self.token.is_some())
+            .field("shared", &self.share.is_some())
             .finish()
     }
 }
@@ -56,6 +61,15 @@ impl ApiClient {
             base_url: base_url.into(),
             token: None,
             refused: None,
+            share: None,
+        }
+    }
+
+    /// The same archive, read through the share `token` opens (US-53).
+    pub fn for_share(self, token: impl Into<String>) -> Self {
+        Self {
+            share: Some(token.into()),
+            ..self
         }
     }
 
@@ -103,7 +117,10 @@ impl ApiClient {
     }
 
     pub(super) fn url(&self, path: &str) -> String {
-        format!("{}{path}", self.base_url)
+        match &self.share {
+            Some(token) => format!("{}/s/{token}{path}", self.base_url),
+            None => format!("{}{path}", self.base_url),
+        }
     }
 
     /// A request already carrying the session, where this client holds one.
@@ -129,5 +146,36 @@ impl ApiClient {
 
     pub(super) fn delete(&self, url: &str) -> reqwest::RequestBuilder {
         self.request(reqwest::Method::DELETE, url)
+    }
+}
+
+// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn us53_a_share_client_reaches_the_shares_own_routes() {
+        let owner = ApiClient::new("https://archive.example");
+        assert_eq!(
+            owner.url("/api/trips/1"),
+            "https://archive.example/api/trips/1"
+        );
+
+        let shared = owner.for_share("abc");
+        assert_eq!(
+            shared.url("/api/trips/1"),
+            "https://archive.example/s/abc/api/trips/1"
+        );
+        // The origin stays the origin: the photos come back already
+        // addressed through the share, and are joined to this.
+        assert_eq!(shared.base_url(), "https://archive.example");
+    }
+
+    #[test]
+    fn us53_a_share_client_never_prints_its_token() {
+        let printed = format!("{:?}", ApiClient::new("x").for_share("secret-token"));
+        assert!(!printed.contains("secret-token"), "{printed}");
     }
 }

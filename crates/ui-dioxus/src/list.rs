@@ -16,6 +16,7 @@ use crate::format;
 use crate::heat;
 use crate::pager::{self, Pager};
 use crate::region::RegionFilter;
+use crate::share::ShareSelectedPanel;
 use crate::trip_table::TripTable;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
@@ -108,8 +109,8 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         if let (Some(total), Some(Ok(shown))) = (total, trips.read_unchecked().as_ref()) {
             TripCounts { shown: shown.len(), total, kind: kind(), page: page() }
         }
-        // What to do with the selected trips: tag them (US-34), or give
-        // them all one activity (US-63).
+        // What to do with the selected trips: tag them (US-34), give them
+        // all one activity (US-63), or share them (US-53).
         div { class: "bulk-panels",
             BulkTagPanel {
                 selected,
@@ -124,6 +125,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             }
             // An activity-filtered list may no longer hold the trips.
             BulkActivityPanel { selected, on_applied: move |_| trips.restart() }
+            ShareSelectedPanel { selected }
         }
         match &*trips.read_unchecked() {
             None => rsx! { p { "Loading…" } },

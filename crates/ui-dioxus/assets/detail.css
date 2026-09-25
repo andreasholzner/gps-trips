@@ -288,3 +288,16 @@
 .placing .warning {
   color: var(--pico-del-color);
 }
+
+/* A share's own page (US-53): every shared track on one map, and the
+   share's title above a trip, muted like the date beside its name. */
+.overview-map {
+  height: min(480px, 60vh);
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.share-title {
+  color: var(--pico-muted-color);
+  margin-bottom: 0.25rem;
+}

@@ -28,6 +28,8 @@ mod pager;
 mod photos;
 mod placing;
 mod region;
+mod share;
+mod shared;
 #[cfg(test)]
 mod test_support;
 mod track;
@@ -43,6 +45,7 @@ use komoot::KomootSync;
 use list::TripList;
 use login::Login;
 use menu::{AppShell, SignOut};
+use shared::{Shared, SharedTripDetail};
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -98,6 +101,14 @@ enum Route {
     /// redirect is a straight move under `/app`.
     #[route("/komoot/sync")]
     KomootSync {},
+    #[end_layout]
+    /// What a share's link opens (US-53): outside the owner's menu, since
+    /// its recipient has none of what the menu offers.
+    #[route("/s/:token")]
+    Shared { token: String },
+    /// One trip of a share of several.
+    #[route("/s/:token/trips/:id")]
+    SharedTripDetail { token: String, id: i64 },
 }
 
 fn main() {
@@ -120,6 +131,9 @@ enum Access {
         notice: Option<String>,
     },
     SignedIn,
+    /// Opened through a share's link (US-53): no session is asked for or
+    /// used, whether or not the browser holds one.
+    Shared,
 }
 
 /// What the login screen says when a session ends mid-use. Rotating the
@@ -161,7 +175,13 @@ fn App() -> Element {
     });
 
     use_future(move || async move {
-        let client = ApiClient::new(resolve_origin().await).reporting_refusals_to(refused);
+        let origin = resolve_origin().await;
+        if let Some(token) = shared_token(&resolve_path().await) {
+            archive.set(ApiClient::new(origin).for_share(token));
+            access.set(Access::Shared);
+            return;
+        }
+        let client = ApiClient::new(origin).reporting_refusals_to(refused);
         // One request answers both questions: a session, or the gate's 401
         // saying there is none (US-19).
         let resolved = match api::session(&client).await {
@@ -200,7 +220,7 @@ fn App() -> Element {
         Access::SignedIn if sign_out_offered() => rsx! {
             WithSignOut { archive, access, refused, Router::<Route> {} }
         },
-        Access::SignedIn => rsx! { Router::<Route> {} },
+        Access::SignedIn | Access::Shared => rsx! { Router::<Route> {} },
     };
 
     rsx! {
@@ -285,6 +305,27 @@ async fn resolve_origin() -> String {
         String::new()
     }
 }
+/// The page's path on the web, which says whether it was opened through a
+/// share's link. Empty elsewhere: the Android app is the owner's alone.
+async fn resolve_path() -> String {
+    if cfg!(target_arch = "wasm32") {
+        let mut eval = document::eval("dioxus.send(window.location.pathname);");
+        eval.recv::<String>().await.unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+/// The token of a share's link (`/app/s/<token>…`), if the page is one.
+fn shared_token(path: &str) -> Option<String> {
+    let rest = path
+        .strip_prefix("/app")
+        .unwrap_or(path)
+        .strip_prefix("/s/")?;
+    let token = rest.split('/').next().unwrap_or_default();
+    (!token.is_empty()).then(|| token.to_string())
+}
+
 // Appended to main.rs as a test module.
 #[cfg(test)]
 mod route_tests {
@@ -354,6 +395,36 @@ mod route_tests {
             matches!(parsed, Route::KomootSync {}),
             "a komoot URL must parse back to the sync screen; url was {url:?}"
         );
+    }
+
+    #[test]
+    fn us53_a_share_link_names_its_token() {
+        assert_eq!(shared_token("/app/s/abc").as_deref(), Some("abc"));
+        assert_eq!(shared_token("/app/s/abc/trips/4").as_deref(), Some("abc"));
+        assert_eq!(shared_token("/app/s/"), None);
+        assert_eq!(shared_token("/app/trips/4"), None);
+        assert_eq!(shared_token("/app/"), None);
+    }
+
+    #[test]
+    fn us53_the_share_routes_round_trip() {
+        let url = Route::SharedTripDetail {
+            token: "abc".to_string(),
+            id: 4,
+        }
+        .to_string();
+        assert_eq!(url, "/s/abc/trips/4");
+        assert!(matches!(
+            Route::from_str(&url),
+            Ok(Route::SharedTripDetail { id: 4, .. })
+        ));
+        let url = Route::Shared {
+            token: "abc".to_string(),
+        }
+        .to_string();
+        assert_eq!(url, "/s/abc");
+        // What `share_link` hands out, under the bundle's base path.
+        assert_eq!(shared_token(&format!("/app{url}")).as_deref(), Some("abc"));
     }
 
     #[test]
