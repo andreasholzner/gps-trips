@@ -370,6 +370,14 @@ nav.pager {
   }
 }
 
+/* Select area, Clear region, Fit to trips: a row of buttons with room
+   between them, wrapping on a phone. */
+.region-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 /* Armed for drawing (US-65): a finger on the map draws, and the browser
    neither scrolls nor pinch-zooms the page from under it. */
 .region-map.region-drawing {

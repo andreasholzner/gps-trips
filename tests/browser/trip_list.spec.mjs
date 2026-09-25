@@ -522,3 +522,19 @@ test("the panels for the selected trips line up", async ({ page }) => {
   const set = await middle(page.getByRole("button", { name: /^Set for/ }));
   expect(Math.abs(set - apply)).toBeLessThanOrEqual(1);
 });
+
+// Layout, which only a browser computes: the region map's buttons stand
+// apart rather than touching (US-63).
+test("the region map's buttons do not touch", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/");
+
+  const boxes = [];
+  for (const id of ["#region-select", "#region-clear", "#region-fit"]) {
+    boxes.push(await page.locator(id).boundingBox());
+  }
+  for (let i = 1; i < boxes.length; i++) {
+    const gap = boxes[i].x - (boxes[i - 1].x + boxes[i - 1].width);
+    expect(gap, `gap before button ${i + 1}`).toBeGreaterThanOrEqual(8);
+  }
+});
