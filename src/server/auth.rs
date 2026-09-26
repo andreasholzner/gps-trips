@@ -328,6 +328,24 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 
 // ── The gate ─────────────────────────────────────────────────────────────────
 
+/// Who made a request, as the gate decided it — put on every response, so
+/// the access log (US-70) records the gate's answer rather than working one
+/// out again. Richer than [`Principal`] in the two ways only a record needs:
+/// a share carries its label, and a share link that opened nothing is told
+/// apart from a caller with no credential at all.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Caller {
+    Owner,
+    Anonymous,
+    Share {
+        id: i64,
+        label: Option<String>,
+    },
+    /// A share link that is unknown, expired, stopped or emptied — or one
+    /// the archive could not look up.
+    UnknownLink,
+}
+
 /// Where a request's credential came from — the cookie is the only one worth
 /// refreshing, since a `Bearer` client keeps its own token.
 #[derive(Clone, Copy, PartialEq)]
@@ -387,14 +405,21 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
     // route that does not exist.
     if let Some(token) = share_token(request.uri().path()) {
         return match repo::resolve_share(&state.pool, token, now).await {
-            Ok(Some(share_id)) => {
+            Ok(Some(share)) => {
                 request
                     .extensions_mut()
-                    .insert(Principal::Share { share_id });
-                next.run(request).await
+                    .insert(Principal::Share { share_id: share.id });
+                let response = next.run(request).await;
+                naming(
+                    response,
+                    Caller::Share {
+                        id: share.id,
+                        label: share.label,
+                    },
+                )
             }
-            Ok(None) => AppError::NotFound.into_response(),
-            Err(err) => AppError::from(err).into_response(),
+            Ok(None) => naming(AppError::NotFound.into_response(), Caller::UnknownLink),
+            Err(err) => naming(AppError::from(err).into_response(), Caller::UnknownLink),
         };
     }
     let (principal, source, expires_at) = match resolve(&state.auth, request.headers(), now) {
@@ -403,11 +428,15 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
     };
 
     if principal == Principal::Anonymous && !is_public(request.method(), request.uri().path()) {
-        return AppError::Unauthorized.into_response();
+        return naming(AppError::Unauthorized.into_response(), Caller::Anonymous);
     }
 
     request.extensions_mut().insert(principal);
     let mut response = next.run(request).await;
+    response.extensions_mut().insert(match principal {
+        Principal::Owner => Caller::Owner,
+        _ => Caller::Anonymous,
+    });
 
     // The sliding half of the lifetime: a cookie past the halfway mark comes
     // back renewed, so a phone in any kind of regular use never meets the
@@ -431,6 +460,12 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
             }
         }
     }
+    response
+}
+
+/// `response`, carrying who made the request it answers.
+fn naming(mut response: Response, caller: Caller) -> Response {
+    response.extensions_mut().insert(caller);
     response
 }
 

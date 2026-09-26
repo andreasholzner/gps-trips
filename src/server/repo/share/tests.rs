@@ -82,12 +82,30 @@ async fn us53_a_token_resolves_to_its_share() {
     let id = a_share(&db.pool, "tok", &[trip], None).await;
 
     assert_eq!(
-        resolve_share(&db.pool, "tok", noon()).await.unwrap(),
+        resolve_share(&db.pool, "tok", noon())
+            .await
+            .unwrap()
+            .map(|share| share.id),
         Some(id)
     );
     assert_eq!(
         resolve_share(&db.pool, "other", noon()).await.unwrap(),
         None
+    );
+}
+
+#[tokio::test]
+async fn us70_a_resolved_share_carries_its_label() {
+    let db = TestDb::new().await;
+    let trip = a_trip(&db.pool, "Oslo").await;
+    let id = a_share(&db.pool, "tok", &[trip], None).await;
+
+    assert_eq!(
+        resolve_share(&db.pool, "tok", noon()).await.unwrap(),
+        Some(ResolvedShare {
+            id,
+            label: Some("For Kari".to_string()),
+        })
     );
 }
 
@@ -99,7 +117,10 @@ async fn us53_an_expired_share_does_not_resolve() {
     let id = a_share(&db.pool, "tok", &[trip], Some(expires)).await;
 
     assert_eq!(
-        resolve_share(&db.pool, "tok", noon()).await.unwrap(),
+        resolve_share(&db.pool, "tok", noon())
+            .await
+            .unwrap()
+            .map(|share| share.id),
         Some(id)
     );
     assert_eq!(resolve_share(&db.pool, "tok", expires).await.unwrap(), None);
@@ -115,7 +136,10 @@ async fn us53_deleting_a_trip_takes_it_out_of_the_share_and_an_emptied_share_end
     delete_trip(&db.pool, first).await.unwrap();
     assert!(!share_covers_trip(&db.pool, id, first).await.unwrap());
     assert_eq!(
-        resolve_share(&db.pool, "tok", noon()).await.unwrap(),
+        resolve_share(&db.pool, "tok", noon())
+            .await
+            .unwrap()
+            .map(|share| share.id),
         Some(id)
     );
 

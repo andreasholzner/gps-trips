@@ -21,7 +21,7 @@ pub use photo::{
 };
 pub use share::{
     insert_share, list_active_shares, list_shared_trips, resolve_share, share_covers_blob,
-    share_covers_trip, share_label, stop_share, NewShare,
+    share_covers_trip, share_label, stop_share, NewShare, ResolvedShare,
 };
 pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,

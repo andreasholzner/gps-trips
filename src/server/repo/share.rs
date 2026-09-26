@@ -45,6 +45,14 @@ pub async fn insert_share(pool: &SqlitePool, share: &NewShare<'_>) -> Result<i64
     Ok(id)
 }
 
+/// A share a token opened: its id, which scopes every read the recipient's
+/// routes make, and its label, which names it in the access log (US-70).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedShare {
+    pub id: i64,
+    pub label: Option<String>,
+}
+
 /// The share `token` opens at `now`: one that exists, has not expired and
 /// still reaches a trip. Anything else is `None`, and deliberately the same
 /// `None` — a link must not tell a stranger whether it ever worked.
@@ -52,16 +60,18 @@ pub async fn resolve_share(
     pool: &SqlitePool,
     token: &str,
     now: OffsetDateTime,
-) -> Result<Option<i64>, sqlx::Error> {
-    let row: Option<(i64, Option<String>)> = sqlx::query_as(
-        r#"SELECT s.id, s.expires_at FROM share s
+) -> Result<Option<ResolvedShare>, sqlx::Error> {
+    let row: Option<(i64, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT s.id, s.label, s.expires_at FROM share s
            WHERE s.token = ?
              AND EXISTS (SELECT 1 FROM share_trip st WHERE st.share_id = s.id)"#,
     )
     .bind(token)
     .fetch_optional(pool)
     .await?;
-    Ok(row.and_then(|(id, expires_at)| still_open(expires_at.as_deref(), now).then_some(id)))
+    Ok(row.and_then(|(id, label, expires_at)| {
+        still_open(expires_at.as_deref(), now).then_some(ResolvedShare { id, label })
+    }))
 }
 
 /// Whether a share expiring at `expires_at` still opens at `now`. Compared
