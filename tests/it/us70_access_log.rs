@@ -24,6 +24,10 @@
 //! * *loading a share's page counts as that share, not as an anonymous
 //!   caller* — `us70_loading_a_shares_page_counts_as_the_share`; the owner
 //!   previewing their own link stays the owner, so it counts as no opening.
+//! * *the Shares screen shows, per active share, how often its link was
+//!   opened, when last, and on which devices* —
+//!   `us70_the_owner_sees_how_often_a_link_was_opened` (the screen itself is
+//!   asserted in the UI crate).
 //! * *a stopped share's records stay, label included* —
 //!   `us70_a_stopped_shares_records_keep_its_label`.
 
@@ -532,4 +536,30 @@ async fn us70_a_stopped_shares_records_keep_its_label() {
         .collect();
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].5.as_deref(), Some("For Kari"));
+}
+
+#[tokio::test]
+async fn us70_the_owner_sees_how_often_a_link_was_opened() {
+    let (app, state, _dir) = app_with_state().await;
+    let id = common::import_sample(&app).await;
+    let created = share(&app, &[id], Some("For Kari")).await;
+    for agent in ["Phone", "Phone", "Laptop"] {
+        common::send_unauthenticated(
+            &app,
+            request_with(
+                &format!("/app/s/{}", created.token),
+                &[("user-agent", agent)],
+            ),
+        )
+        .await;
+    }
+    state.access_log.flush().await;
+
+    let listed: Vec<trip_archive::models::ActiveShare> =
+        serde_json::from_str(&common::body_string(common::get(&app, "/api/shares").await).await)
+            .unwrap();
+
+    assert_eq!(listed[0].opens, 3);
+    assert!(listed[0].last_opened_at.is_some());
+    assert_eq!(listed[0].user_agents, ["Laptop", "Phone"]);
 }

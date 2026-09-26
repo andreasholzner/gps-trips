@@ -277,7 +277,72 @@ async fn us69_an_active_share_is_listed_with_its_trips_and_dates() {
             trip_names: vec!["First".to_string(), "Second".to_string()],
             created_at: to_rfc3339(noon()),
             expires_at: Some(to_rfc3339(expires)),
+            opens: 0,
+            last_opened_at: None,
+            user_agents: Vec::new(),
         }]
+    );
+}
+
+#[tokio::test]
+async fn us70_an_active_share_reports_how_its_link_was_used() {
+    use crate::server::access_log::AccessRecord;
+    use crate::server::auth::Caller;
+
+    let db = TestDb::new().await;
+    let trip = a_trip(&db.pool, "Oslo").await;
+    let id = a_share(&db.pool, "tok", &[trip], None).await;
+    let other = a_share(&db.pool, "other", &[trip], None).await;
+    let record = |minutes: i64, path: &str, caller: Caller, agent: &str| AccessRecord {
+        at: noon() + time::Duration::minutes(minutes),
+        method: "GET".to_string(),
+        path: path.to_string(),
+        status: 200,
+        duration_ms: 1,
+        caller,
+        ip: None,
+        user_agent: Some(agent.to_string()),
+    };
+    let ours = || Caller::Share {
+        id,
+        label: Some("For Kari".to_string()),
+    };
+    crate::server::repo::insert_access_records(
+        &db.pool,
+        &[
+            record(1, "/app/s/…", ours(), "Phone"),
+            // What the page then reads is the same visit, not another.
+            record(1, "/s/…/api/share", ours(), "Phone"),
+            record(2, "/app/s/…/trips/1", ours(), "Laptop"),
+            record(3, "/app/s/…", ours(), "Phone"),
+            // Another share's opening, and the owner's preview, are not ours.
+            record(
+                4,
+                "/app/s/…",
+                Caller::Share {
+                    id: other,
+                    label: None,
+                },
+                "Tablet",
+            ),
+            record(5, "/app/s/…", Caller::Owner, "Desktop"),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let shares = list_active_shares(&db.pool, noon()).await.unwrap();
+    let ours = shares.iter().find(|share| share.id == id).unwrap();
+    assert_eq!(ours.opens, 3);
+    assert_eq!(
+        ours.last_opened_at,
+        Some(to_rfc3339(noon() + time::Duration::minutes(3)))
+    );
+    assert_eq!(ours.user_agents, ["Laptop", "Phone"]);
+    let theirs = shares.iter().find(|share| share.id == other).unwrap();
+    assert_eq!(
+        (theirs.opens, theirs.user_agents.clone()),
+        (1, vec!["Tablet".to_string()])
     );
 }
 

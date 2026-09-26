@@ -97,6 +97,14 @@ pub struct ActiveShare {
     pub created_at: String,
     /// RFC-3339 UTC; `None` for a share that never expires.
     pub expires_at: Option<String>,
+    /// How often its link was opened (US-70): each load of a share's screen
+    /// by someone other than the owner. What the screen then reads is part
+    /// of the same opening.
+    pub opens: i64,
+    /// RFC-3339 UTC; `None` until the link is first opened.
+    pub last_opened_at: Option<String>,
+    /// The user agents it was opened with, each once, in text order.
+    pub user_agents: Vec<String>,
 }
 
 /// Redacted, like [`CreatedShare`].
@@ -109,6 +117,9 @@ impl std::fmt::Debug for ActiveShare {
             .field("trip_names", &self.trip_names)
             .field("created_at", &self.created_at)
             .field("expires_at", &self.expires_at)
+            .field("opens", &self.opens)
+            .field("last_opened_at", &self.last_opened_at)
+            .field("user_agents", &self.user_agents)
             .finish()
     }
 }
@@ -208,6 +219,9 @@ mod tests {
                 trip_names: vec!["Walk".to_string()],
                 created_at: "2026-09-25T12:00:00Z".to_string(),
                 expires_at: None,
+                opens: 0,
+                last_opened_at: None,
+                user_agents: Vec::new(),
             }
         );
         assert!(!printed.contains("secret-token"), "got {printed}");

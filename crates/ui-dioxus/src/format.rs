@@ -38,6 +38,44 @@ pub fn or_dash(value: Option<&str>) -> String {
     value.map_or_else(dash, str::to_string)
 }
 
+/// A user agent as the owner reads it (US-70): the device, then the
+/// browser — "iPhone · Safari". Each is looked for in the order that tells
+/// look-alikes apart: an iPhone also claims to be "like Mac OS X", Android
+/// is a Linux, Edge and Chrome both say "Safari". One that names neither is
+/// shown as it came.
+pub fn device(user_agent: &str) -> String {
+    let has = |needle: &str| user_agent.contains(needle);
+    let system = [
+        ("iPhone", "iPhone"),
+        ("iPad", "iPad"),
+        ("Android", "Android"),
+        ("CrOS", "ChromeOS"),
+        ("Windows", "Windows"),
+        ("Macintosh", "Mac"),
+        ("Linux", "Linux"),
+    ]
+    .into_iter()
+    .find(|(needle, _)| has(needle))
+    .map(|(_, name)| name);
+    let browser = [
+        ("Edg", "Edge"),
+        ("OPR/", "Opera"),
+        ("Firefox/", "Firefox"),
+        ("FxiOS", "Firefox"),
+        ("CriOS", "Chrome"),
+        ("Chrome/", "Chrome"),
+        ("Safari/", "Safari"),
+    ]
+    .into_iter()
+    .find(|(needle, _)| has(needle))
+    .map(|(_, name)| name);
+    match (system, browser) {
+        (Some(system), Some(browser)) => format!("{system} · {browser}"),
+        (Some(one), None) | (None, Some(one)) => one.to_string(),
+        (None, None) => user_agent.to_string(),
+    }
+}
+
 /// A linked Komoot tour's privacy (US-35), or a dash for a trip that never
 /// came from Komoot — and for a linked one whose privacy no sync has read
 /// yet. A privacy Komoot reported that the archive couldn't map shows as
@@ -123,6 +161,39 @@ fn dash() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn us70_a_user_agent_is_named_by_its_device_and_browser() {
+        for (agent, device) in [
+            (
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 \
+                 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+                "iPhone · Safari",
+            ),
+            (
+                "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) \
+                 Chrome/140.0.0.0 Mobile Safari/537.36",
+                "Android · Chrome",
+            ),
+            (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
+                 Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
+                "Windows · Edge",
+            ),
+            (
+                "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0",
+                "Linux · Firefox",
+            ),
+            (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
+                 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+                "Mac · Safari",
+            ),
+            ("curl/8.9.1", "curl/8.9.1"),
+        ] {
+            assert_eq!(super::device(agent), device, "{agent}");
+        }
+    }
 
     #[test]
     fn distances_are_shown_in_kilometres() {

@@ -67,12 +67,14 @@ fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
     let trips = share.trip_names.join(", ");
     let created = format::date(Some(&share.created_at));
     let url = api::share_link(&archive(), &share.token);
+    let used = usage(&share);
 
     rsx! {
         article { class: "share", id: "share-{id}",
             h2 { "{title}" }
             p { "{trips}" }
             p { class: "muted", "Created {created}" }
+            p { class: "share-usage", "{used}" }
             ShareLink { url, expires_at: share.expires_at.clone() }
             if arming() {
                 ConfirmStop {
@@ -110,6 +112,33 @@ fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
                 p { class: "error", "Could not stop this share: {message}" }
             }
         }
+    }
+}
+
+/// How the link was used (US-70): how often it was opened, when last, and
+/// on what.
+fn usage(share: &ActiveShare) -> String {
+    if share.opens == 0 {
+        return "Not opened yet".to_string();
+    }
+    let times = if share.opens == 1 {
+        "once".to_string()
+    } else {
+        format!("{} times", share.opens)
+    };
+    let last = format::date(share.last_opened_at.as_deref());
+    // Two user agents can be the same device and browser in different
+    // versions; the owner is told each once.
+    let mut devices: Vec<String> = Vec::new();
+    for device in share.user_agents.iter().map(|agent| format::device(agent)) {
+        if !devices.contains(&device) {
+            devices.push(device);
+        }
+    }
+    if devices.is_empty() {
+        format!("Opened {times}, last on {last}")
+    } else {
+        format!("Opened {times}, last on {last} · {}", devices.join(", "))
     }
 }
 
@@ -152,7 +181,42 @@ mod tests {
             trip_names: vec!["Day one".to_string(), "Day two".to_string()],
             created_at: "2026-09-25T12:00:00Z".to_string(),
             expires_at: expires_at.map(str::to_string),
+            opens: 0,
+            last_opened_at: None,
+            user_agents: Vec::new(),
         }
+    }
+
+    #[test]
+    fn us70_a_share_says_how_often_its_link_was_opened_and_on_what() {
+        let html = render(|| {
+            let share = ActiveShare {
+                opens: 3,
+                last_opened_at: Some("2026-09-26T08:15:00Z".to_string()),
+                user_agents: vec![
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) \
+                     AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+                        .to_string(),
+                ],
+                ..a_share(7, None, None)
+            };
+            rsx! { ShareRow { share, on_stopped: move |_| {} } }
+        });
+
+        assert!(
+            html.contains("Opened 3 times, last on 2026-09-26"),
+            "{html}"
+        );
+        assert!(html.contains("iPhone · Safari"), "{html}");
+    }
+
+    #[test]
+    fn us70_a_share_nobody_opened_says_so() {
+        let html = render(|| {
+            rsx! { ShareRow { share: a_share(7, None, None), on_stopped: move |_| {} } }
+        });
+
+        assert!(html.contains("Not opened yet"), "{html}");
     }
 
     #[test]

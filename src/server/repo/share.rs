@@ -84,7 +84,7 @@ fn still_open(expires_at: Option<&str>, now: OffsetDateTime) -> bool {
 
 /// Every share that opens something at `now` — the same test
 /// [`resolve_share`] applies — newest first, each with its trips' names in
-/// the order the recipient sees them.
+/// the order the recipient sees them, and how its link was used (US-70).
 pub async fn list_active_shares(
     pool: &SqlitePool,
     now: OffsetDateTime,
@@ -114,10 +114,23 @@ pub async fn list_active_shares(
                 trip_names: vec![name],
                 created_at: row.get("created_at"),
                 expires_at: row.get("expires_at"),
+                opens: 0,
+                last_opened_at: None,
+                user_agents: Vec::new(),
             }),
         }
     }
     shares.retain(|share| still_open(share.expires_at.as_deref(), now));
+
+    // How each link was used (US-70), from the access log.
+    let mut usage = super::access::share_usage(pool).await?;
+    for share in &mut shares {
+        if let Some(used) = usage.remove(&share.id) {
+            share.opens = used.opens;
+            share.last_opened_at = used.last_opened_at;
+            share.user_agents = used.user_agents;
+        }
+    }
     Ok(shares)
 }
 
