@@ -46,14 +46,32 @@ impl LocalDisk {
         Self { root: root.into() }
     }
 
-    fn path_for(&self, key: &str) -> PathBuf {
-        self.root.join(key)
+    /// Where `key` lives — only ever strictly under `root`. `Path::join`
+    /// would follow `..` out of it, and an absolute key would replace it
+    /// outright, so any other key is refused rather than resolved.
+    fn path_for(&self, key: &str) -> io::Result<PathBuf> {
+        if is_safe_key(key) {
+            Ok(self.root.join(key))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("not a blob key: {key:?}"),
+            ))
+        }
     }
+}
+
+/// Whether `key` names a path strictly inside a store's root: `/`-separated
+/// plain names, none of them empty, `.` or `..`. Keys arrive from request
+/// paths as well as from the database, so this is checked on every access.
+pub fn is_safe_key(key: &str) -> bool {
+    key.split('/')
+        .all(|segment| !matches!(segment, "" | "." | ".."))
 }
 
 impl BlobStore for LocalDisk {
     fn put(&self, key: &str, bytes: &[u8]) -> io::Result<()> {
-        let path = self.path_for(key);
+        let path = self.path_for(key)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -61,11 +79,11 @@ impl BlobStore for LocalDisk {
     }
 
     fn get(&self, key: &str) -> io::Result<Vec<u8>> {
-        std::fs::read(self.path_for(key))
+        std::fs::read(self.path_for(key)?)
     }
 
     fn delete(&self, key: &str) -> io::Result<()> {
-        match std::fs::remove_file(self.path_for(key)) {
+        match std::fs::remove_file(self.path_for(key)?) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e),
@@ -122,6 +140,32 @@ mod tests {
             store.url_for("trips/1/0000-a.jpg"),
             "/media/trips/1/0000-a.jpg"
         );
+    }
+
+    #[test]
+    fn a_key_that_leaves_the_root_names_no_blob() {
+        let (store, dir) = local_disk();
+        store.put("trips/1/0000-a.jpg", b"inside").unwrap();
+        std::fs::write(dir.path().join("secret"), b"outside").unwrap();
+        let secret = dir.path().join("secret").display().to_string();
+
+        for key in ["../secret", "trips/../../secret", secret.as_str(), "", "."] {
+            let err = store.get(key).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{key:?}");
+        }
+        assert!(store.put("../escaped", b"x").is_err());
+        assert!(!dir.path().join("escaped").exists());
+        assert!(store.delete("../secret").is_err());
+        assert!(dir.path().join("secret").exists());
+    }
+
+    #[test]
+    fn only_plain_relative_segments_make_a_safe_key() {
+        assert!(is_safe_key("trips/1/0000-a.jpg"));
+        assert!(is_safe_key("trips/1/thumbs/0000-a..jpg"));
+        for bad in ["", "/etc/passwd", "a//b", "a/", "./a", "a/../b", "..", "."] {
+            assert!(!is_safe_key(bad), "{bad:?}");
+        }
     }
 
     // ── US-9: delete a trip (and its files) ──────────────────────────────

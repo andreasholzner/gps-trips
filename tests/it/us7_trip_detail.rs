@@ -151,3 +151,22 @@ async fn us7_media_endpoint_returns_404_for_missing_blob() {
     let response = get(&app, "/media/trips/999/0000-nope.jpg").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn us7_media_serves_nothing_outside_the_photo_store() {
+    let (app, dir) = test_app().await;
+    // The database sits beside the photo store, and exists.
+    let db = dir.path().join("test.db").display().to_string();
+    assert!(std::path::Path::new(&db).is_file());
+
+    for uri in [
+        "/media/../test.db".to_string(),
+        "/media/..%2Ftest.db".to_string(),
+        format!("/media/{}", db.replace('/', "%2F")),
+        "/media/%2Fetc%2Fhostname".to_string(),
+        "/media/%2Fproc%2Fself%2Fenviron".to_string(),
+    ] {
+        let response = get(&app, &uri).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+    }
+}

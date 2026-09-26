@@ -28,6 +28,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::config::storage::{BLOBS_SUBDIR, DB_FILENAME};
 use crate::server::archive_client::{checked, ArchiveClient, ClientError};
+use crate::server::storage::is_safe_key;
 
 /// What one run needs. No `Debug`: it carries the password.
 pub struct Options {
@@ -145,13 +146,10 @@ async fn photo_keys(snapshot: &Path) -> Result<Vec<String>, BackupError> {
 }
 
 /// A key becomes both a path under the backup directory and URL segments, so
-/// it may only name a path strictly inside it: `/`-separated plain names, none
-/// of them empty, `.` or `..`.
+/// it may only name a path strictly inside it — the rule the store itself
+/// keys by.
 fn validate_key(key: &str) -> Result<(), BackupError> {
-    let plain_names = key
-        .split('/')
-        .all(|segment| !matches!(segment, "" | "." | ".."));
-    if plain_names {
+    if is_safe_key(key) {
         Ok(())
     } else {
         Err(BackupError::UnsafeKey(key.to_owned()))

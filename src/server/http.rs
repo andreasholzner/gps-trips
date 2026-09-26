@@ -462,7 +462,8 @@ async fn handle_delete_trip(
 
 /// GET `/media/*path` — serve a photo blob from the `BlobStore` (US-7).
 /// The path is the blob key as emitted by `BlobStore::url_for`. Returns 404
-/// when the key does not exist, 500 for any other I/O error.
+/// when the key does not exist or is not a key at all (one that would climb
+/// out of the store), 500 for any other I/O error.
 async fn serve_media(
     State(state): State<AppState>,
     Path(path): Path<String>,
@@ -477,12 +478,9 @@ pub(crate) async fn media_response(state: &AppState, path: String) -> Result<Res
     let bytes = tokio::task::spawn_blocking(move || store.get(&path))
         .await
         .expect("blob store task panicked")
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                AppError::NotFound
-            } else {
-                AppError::Storage(e)
-            }
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidInput => AppError::NotFound,
+            _ => AppError::Storage(e),
         })?;
     Ok(([(header::CONTENT_TYPE, content_type)], bytes).into_response())
 }
