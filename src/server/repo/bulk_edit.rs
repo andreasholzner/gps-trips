@@ -5,6 +5,7 @@
 use sqlx::SqlitePool;
 
 use crate::models::ActivityType;
+use crate::server::db;
 
 /// Set `activity_type` on every trip in `trip_ids` (US-63), in one
 /// transaction, queueing a Komoot push for each linked one — the same
@@ -18,7 +19,7 @@ pub async fn set_activity_type(
     trip_ids: &[i64],
     activity_type: ActivityType,
 ) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     for &id in trip_ids {
         let updated = sqlx::query("UPDATE trip SET activity_type = ? WHERE id = ?")
             .bind(activity_type)

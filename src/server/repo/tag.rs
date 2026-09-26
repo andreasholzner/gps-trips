@@ -4,6 +4,7 @@
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 
 use crate::models::Tag;
+use crate::server::db;
 
 /// Get the id of the tag named `name` (already normalized by the caller),
 /// creating it if it doesn't exist yet (US-33: "using a new tag creates the
@@ -108,7 +109,7 @@ pub async fn bulk_add_trip_tags(
     trip_ids: &[i64],
     tag_names: &[String],
 ) -> Result<Vec<Tag>, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     let mut tags = Vec::with_capacity(tag_names.len());
     let mut seen = std::collections::HashSet::with_capacity(tag_names.len());
 

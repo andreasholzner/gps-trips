@@ -23,6 +23,7 @@ use crate::config;
 use crate::config::komoot::PAGE_SIZE;
 use crate::models::{KomootPrivacy, SelectedTour, SyncCandidate, TripKind};
 use crate::server::{
+    db,
     error::AppError,
     import::derive_track,
     komoot::{KomootClient, KomootError, KomootPhoto, KomootTourSummary, TourUpdate},
@@ -401,7 +402,7 @@ async fn sync_one_tour(
 
     let ctx = TripPhotoContext::new(&derived.timed_points, Some(&derived.guessed_tz));
 
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     let trip_id = repo::insert_trip_in_tx(
         &mut tx,
         &repo::NewTrip {

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 
 use crate::models::{ActivityType, KomootPrivacy, TripKind};
+use crate::server::db;
 
 /// Every `komoot_tour_id` already linked to a trip (or pending Komoot-side
 /// deletion) — the anti-join dedup set US-22's "Sync now" filters Komoot's
@@ -123,7 +124,7 @@ pub async fn refresh_privacy_from_listing(
     pool: &SqlitePool,
     listed: &[(&str, KomootPrivacy)],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     for (komoot_tour_id, privacy) in listed {
         sqlx::query(
             "UPDATE trip_komoot_link SET privacy_status = ? \

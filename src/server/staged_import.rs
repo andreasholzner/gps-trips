@@ -30,6 +30,7 @@ use time::OffsetDateTime;
 use crate::config;
 use crate::models::{ConfirmImport, ImportedTrip, StagedImport};
 use crate::server::{
+    db,
     error::AppError,
     gpx::TrackStats,
     import::{
@@ -133,7 +134,7 @@ pub async fn handle_confirm_import(
     Path(staging_id): Path<i64>,
     Json(confirm): Json<ConfirmImport>,
 ) -> Result<impl IntoResponse, AppError> {
-    let mut tx = state.pool.begin().await?;
+    let mut tx = db::begin_write(&state.pool).await?;
 
     let row = repo::take_staged_import_in_tx(&mut tx, staging_id)
         .await?

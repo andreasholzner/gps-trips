@@ -11,6 +11,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use super::to_rfc3339;
 use super::trip::local_start_date;
 use crate::models::{ActiveShare, SharedTripSummary};
+use crate::server::db;
 
 /// A share as the owner asks for it; the token is minted by the caller.
 pub struct NewShare<'a> {
@@ -24,7 +25,7 @@ pub struct NewShare<'a> {
 /// Store a share and the trips it reaches, in one transaction. The caller
 /// has checked the trips exist.
 pub async fn insert_share(pool: &SqlitePool, share: &NewShare<'_>) -> Result<i64, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO share (token, label, created_at, expires_at) VALUES (?, ?, ?, ?) RETURNING id",
     )

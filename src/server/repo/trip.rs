@@ -8,6 +8,7 @@ use crate::models::{
     ActivityType, BoundingBox, KomootLink, KomootPrivacy, LocationSource, TripDetail, TripKind,
     TripSummary,
 };
+use crate::server::db;
 use crate::server::gpx::TrackStats;
 use crate::server::import::date_prefix;
 
@@ -37,7 +38,7 @@ pub struct NewTrip<'a> {
 /// Insert a new trip together with its derived geometry and the original GPX
 /// file, in a single transaction (ADR-0003). Returns the new trip id.
 pub async fn insert_trip(pool: &SqlitePool, trip: &NewTrip<'_>) -> Result<i64, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     let trip_id = insert_trip_in_tx(&mut tx, trip).await?;
     tx.commit().await?;
     Ok(trip_id)
@@ -399,7 +400,7 @@ pub async fn get_track_geojson(pool: &SqlitePool, id: i64) -> Result<Option<Stri
 /// the next "Sync now" push phase (`komoot_sync::push_pending_deletes`)
 /// successfully calls Komoot's delete-tour API and removes it.
 pub async fn delete_trip(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
 
     sqlx::query("UPDATE trip_komoot_link SET delete_pending = 1 WHERE trip_id = ?")
         .bind(id)
@@ -497,7 +498,7 @@ pub async fn update_trip(
     id: i64,
     edit: &TripEdit<'_>,
 ) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     let result = sqlx::query(
         "UPDATE trip SET name = COALESCE(?, name), activity_type = COALESCE(?, activity_type) WHERE id = ?",
     )

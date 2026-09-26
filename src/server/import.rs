@@ -7,10 +7,11 @@ use time::OffsetDateTime;
 
 use crate::models::{ActivityType, TripDetail, TripKind};
 use crate::server::{
+    db,
     error::{AppError, ImportError},
     geojson::{self, build_track_geojson},
     gpx::{self, compute_stats, parse_gpx, TimedPoint, TrackStats},
-    photos::{ingest_photos, UploadedPhoto},
+    photos::{prepare_photos, store_photos, UploadedPhoto},
     placement::TripPhotoContext,
     repo::{self, insert_trip_in_tx, NewTrip},
     state::AppState,
@@ -109,8 +110,10 @@ pub async fn handle_import(
     let name = resolve_name(form_name, derived.name, derived.stats.start_time, &tz_name);
 
     // Trip, track and photos commit in one transaction, so a failed import
-    // leaves no trip behind (reliability NFR; ADR-0004).
-    let mut tx = state.pool.begin().await?;
+    // leaves no trip behind (reliability NFR; ADR-0004). The photos are
+    // prepared first, so the transaction is open only while storing.
+    let photos = prepare_photos(photos).await;
+    let mut tx = db::begin_write(&state.pool).await?;
     let trip_id = insert_trip_in_tx(
         &mut tx,
         &NewTrip {
@@ -125,7 +128,7 @@ pub async fn handle_import(
     )
     .await?;
     let ctx = TripPhotoContext::new(&derived.timed_points, Some(&tz_name));
-    ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
+    store_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
     Ok(Redirect::to(&format!("/app/trips/{trip_id}")))
@@ -165,8 +168,9 @@ pub async fn handle_add_photos(
     let (timed_points, tz_name) = resolve_photo_context(&state.pool, trip_id, trip).await?;
 
     let ctx = TripPhotoContext::new(&timed_points, Some(&tz_name));
-    let mut tx = state.pool.begin().await?;
-    ingest_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
+    let photos = prepare_photos(photos).await;
+    let mut tx = db::begin_write(&state.pool).await?;
+    store_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)

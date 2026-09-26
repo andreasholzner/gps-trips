@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use super::to_rfc3339;
 use crate::server::access_log::AccessRecord;
 use crate::server::auth::Caller;
+use crate::server::db;
 
 /// Store `records` in one transaction, each user agent once. The IP address
 /// a record carries for the stdout line is not stored.
@@ -13,7 +14,7 @@ pub async fn insert_access_records(
     pool: &SqlitePool,
     records: &[AccessRecord],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db::begin_write(pool).await?;
     for record in records {
         let user_agent_id: Option<i64> = match &record.user_agent {
             Some(agent) => Some(

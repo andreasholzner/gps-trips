@@ -72,7 +72,19 @@ pub async fn prepare_photo(photo: UploadedPhoto) -> PreparedPhoto {
     }
 }
 
-/// [`prepare_photo`] each upload, then [`store_photos`] them.
+/// [`prepare_photo`] each upload, one at a time. Done before the
+/// transaction that stores them begins: the decoding and resizing take
+/// seconds for a batch, and a writing transaction holds the database's write
+/// lock for as long as it is open.
+pub async fn prepare_photos(photos: Vec<UploadedPhoto>) -> Vec<PreparedPhoto> {
+    let mut prepared = Vec::with_capacity(photos.len());
+    for photo in photos {
+        prepared.push(prepare_photo(photo).await);
+    }
+    prepared
+}
+
+/// [`prepare_photos`], then [`store_photos`] them.
 pub async fn ingest_photos(
     tx: &mut Transaction<'_, Sqlite>,
     store: &Arc<dyn BlobStore>,
@@ -80,10 +92,7 @@ pub async fn ingest_photos(
     ctx: &TripPhotoContext<'_>,
     photos: Vec<UploadedPhoto>,
 ) -> Result<Vec<i64>, AppError> {
-    let mut prepared = Vec::with_capacity(photos.len());
-    for photo in photos {
-        prepared.push(prepare_photo(photo).await);
-    }
+    let prepared = prepare_photos(photos).await;
     store_photos(tx, store, trip_id, ctx, prepared).await
 }
 
