@@ -38,7 +38,7 @@ directory, so this pair can be copied anywhere and started from any directory
 | `TRIP_ARCHIVE_ASSETS_DIR` | `public/` next to the binary | Override the static assets location (e.g. if packaging into `/usr/share/trip-archive` while the binary lives in `/usr/bin`).                                                                                               |
 | `TRIP_ARCHIVE_BIND_ADDR`  | `127.0.0.1:3000`             | The address to listen on, as `IP:port` (US-45). Loopback unless set, so a laptop run is never reachable from the network by accident; the container sets `0.0.0.0:3000`. Anything else than an `IP:port` refuses the boot. |
 | `TRIP_ARCHIVE_PASSWORD`   | **none — required**          | The one shared password (US-19, [ADR-0010](./adr/0010-single-user-optional-auth.md)). Missing or empty and the server refuses to start — see below.                                                                        |
-| `RUST_LOG`                | `trip_archive=info`          | Standard `tracing-subscriber` env filter.                                                                                                                                                                                  |
+| `RUST_LOG`                | `trip_archive=info`          | Standard `tracing-subscriber` env filter. The access log (US-70) is the target `trip_archive::access`: `…,trip_archive::access=debug` adds the bundle's own files, `=off` silences the lines (the database record is kept either way).                                                                                                                                                                                  |
 | `KOMOOT_EMAIL`            | unset                        | Komoot account email (US-22/US-27, [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)). Optional — see below.                                                                                                      |
 | `KOMOOT_PASSWORD`         | unset                        | Komoot account password. Optional — see below.                                                                                                                                                                             |
 
@@ -215,6 +215,34 @@ sqlite3 /data/trip-archive.db
 ```
 
 `fly ssh console` needs a running machine; any request wakes it.
+
+### The access log
+
+Every request is one line in `fly logs`, saying who made it (US-70) — the owner, a share with
+its id and label, an anonymous caller, or a link that opens nothing. A share's token is never
+in it; the IP address and user agent are:
+
+```sh
+fly logs --app "$FLY_APP" | grep 'trip_archive::access'        # everything
+fly logs --app "$FLY_APP" | grep 'who=share'                   # the shared links only
+```
+
+The platform keeps these lines only for a short while. The database keeps every request but the
+bundle's own files — without the IP address — for as long as the archive exists, and the backup
+carries it. The Shares screen shows how often each active share was opened, when last and on
+what; anything else is a query, on the machine or on a backup copy:
+
+```sql
+-- Each share's openings, stopped shares included, by the label they had.
+SELECT share_id, share_label, COUNT(*), MIN(at), MAX(at)
+FROM access_log WHERE caller = 'share' AND path LIKE '/app/s/%'
+GROUP BY share_id ORDER BY share_id;
+
+-- Everything one share's link was used for.
+SELECT l.at, l.method, l.path, l.status, u.value
+FROM access_log l LEFT JOIN user_agent u ON u.id = l.user_agent_id
+WHERE l.share_id = 7 ORDER BY l.id;
+```
 
 ### Backups
 
