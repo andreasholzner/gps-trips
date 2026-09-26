@@ -463,10 +463,20 @@ fn us19_signing_out_clears_the_cookie() {
 
 #[test]
 fn us53_a_share_path_yields_its_token() {
-    assert_eq!(share_token("/s/abc/api/share"), Some("abc"));
-    assert_eq!(share_token("/s/abc"), Some("abc"));
-    assert_eq!(share_token("/s/"), None);
-    assert_eq!(share_token("/s//api/share"), None);
-    assert_eq!(share_token("/api/s/abc"), None);
-    assert_eq!(share_token("/sx/abc"), None);
+    const PREFIX: &str = config::share::PATH_PREFIX;
+    assert_eq!(token_under("/s/abc/api/share", PREFIX), Some("abc"));
+    assert_eq!(token_under("/s/abc", PREFIX), Some("abc"));
+    assert_eq!(token_under("/s/", PREFIX), None);
+    assert_eq!(token_under("/s//api/share", PREFIX), None);
+    assert_eq!(token_under("/api/s/abc", PREFIX), None);
+    assert_eq!(token_under("/sx/abc", PREFIX), None);
+}
+
+#[test]
+fn us70_a_share_page_path_yields_its_token() {
+    const PREFIX: &str = config::share::PAGE_PREFIX;
+    assert_eq!(token_under("/app/s/abc", PREFIX), Some("abc"));
+    assert_eq!(token_under("/app/s/abc/trips/3", PREFIX), Some("abc"));
+    assert_eq!(token_under("/app/s/", PREFIX), None);
+    assert_eq!(token_under("/app/trips/3", PREFIX), None);
 }

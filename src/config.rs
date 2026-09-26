@@ -173,6 +173,8 @@ pub mod share {
     pub const TOKEN_BYTES: usize = 32;
     /// Where a share's own routes live: `/s/<token>/…`.
     pub const PATH_PREFIX: &str = "/s/";
+    /// Where the SPA shows a share's screens: `/app/s/<token>…`.
+    pub const PAGE_PREFIX: &str = "/app/s/";
     /// The lifetimes the owner picks between.
     pub const ONE_MONTH: time::Duration = time::Duration::days(30);
     pub const SIX_MONTHS: time::Duration = time::Duration::days(182);

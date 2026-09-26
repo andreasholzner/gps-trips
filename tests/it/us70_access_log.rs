@@ -21,6 +21,9 @@
 //!   never an IP address* — `us70_each_request_is_stored_with_who_made_it`,
 //!   `us70_no_ip_address_and_no_token_is_stored` and
 //!   `us70_bundle_files_are_not_stored`.
+//! * *loading a share's page counts as that share, not as an anonymous
+//!   caller* — `us70_loading_a_shares_page_counts_as_the_share`; the owner
+//!   previewing their own link stays the owner, so it counts as no opening.
 //! * *a stopped share's records stay, label included* —
 //!   `us70_a_stopped_shares_records_keep_its_label`.
 
@@ -227,6 +230,29 @@ async fn stored(state: &AppState) -> Vec<Stored> {
     .fetch_all(&state.pool)
     .await
     .unwrap()
+}
+
+#[tokio::test]
+async fn us70_loading_a_shares_page_counts_as_the_share() {
+    let (app, _dir) = common::test_app().await;
+    let id = common::import_sample(&app).await;
+    let created = share(&app, &[id], Some("For Kari")).await;
+    let the_share = Caller::Share {
+        id: share_id(&app, &created.token).await,
+        label: Some("For Kari".to_string()),
+    };
+
+    for uri in [
+        format!("/app/s/{}", created.token),
+        format!("/app/s/{}/trips/{id}", created.token),
+    ] {
+        assert_eq!(caller(&visit(&app, &uri).await), the_share, "{uri}");
+    }
+    let unknown = visit(&app, &format!("/app/s/{}", "0".repeat(64))).await;
+    assert_eq!(caller(&unknown), Caller::UnknownLink);
+
+    let preview = common::get(&app, &format!("/app/s/{}", created.token)).await;
+    assert_eq!(caller(&preview), Caller::Owner);
 }
 
 // ── The line on stdout ───────────────────────────────────────────────────────

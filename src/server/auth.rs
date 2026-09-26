@@ -403,7 +403,7 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
     // `Bearer` is read there, so the owner's session neither widens a share
     // nor is needed for one. A token that opens nothing answers exactly as a
     // route that does not exist.
-    if let Some(token) = share_token(request.uri().path()) {
+    if let Some(token) = token_under(request.uri().path(), config::share::PATH_PREFIX) {
         return match repo::resolve_share(&state.pool, token, now).await {
             Ok(Some(share)) => {
                 request
@@ -431,12 +431,26 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
         return naming(AppError::Unauthorized.into_response(), Caller::Anonymous);
     }
 
+    // A share's screens are the SPA's, public like the rest of it — but
+    // loading one is its link being opened, so the access log names the
+    // share (US-70). The owner previewing their own link stays the owner.
+    let page_token = token_under(request.uri().path(), config::share::PAGE_PREFIX)
+        .filter(|_| principal != Principal::Owner)
+        .map(str::to_string);
     request.extensions_mut().insert(principal);
     let mut response = next.run(request).await;
-    response.extensions_mut().insert(match principal {
-        Principal::Owner => Caller::Owner,
-        _ => Caller::Anonymous,
-    });
+    let caller = match (principal, page_token) {
+        (Principal::Owner, _) => Caller::Owner,
+        (_, Some(token)) => match repo::resolve_share(&state.pool, &token, now).await {
+            Ok(Some(share)) => Caller::Share {
+                id: share.id,
+                label: share.label,
+            },
+            Ok(None) | Err(_) => Caller::UnknownLink,
+        },
+        (_, None) => Caller::Anonymous,
+    };
+    response.extensions_mut().insert(caller);
 
     // The sliding half of the lifetime: a cookie past the halfway mark comes
     // back renewed, so a phone in any kind of regular use never meets the
@@ -469,9 +483,10 @@ fn naming(mut response: Response, caller: Caller) -> Response {
     response
 }
 
-/// The token of a path under a share's prefix (`/s/<token>/…`), if it is one.
-fn share_token(path: &str) -> Option<&str> {
-    let rest = path.strip_prefix(config::share::PATH_PREFIX)?;
+/// The share token of a path under `prefix` — a share's routes
+/// (`/s/<token>/…`) or its screens (`/app/s/<token>…`) — if it is one.
+fn token_under<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    let rest = path.strip_prefix(prefix)?;
     let token = rest.split('/').next().unwrap_or_default();
     (!token.is_empty()).then_some(token)
 }

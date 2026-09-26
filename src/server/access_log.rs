@@ -41,9 +41,6 @@ const CLIENT_IP_HEADER: &str = "fly-client-ip";
 /// nothing about how the archive is used, and are most of a page load's.
 const BUNDLE_ASSETS_PREFIX: &str = "/app/assets/";
 
-/// The SPA's own route for a share's screens (US-53): `/app/s/<token>…`.
-const SHARE_PAGE_PREFIX: &str = "/app/s/";
-
 /// What the log says about one request.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessRecord {
@@ -147,7 +144,7 @@ fn client_ip(headers: &HeaderMap, peer: Option<&ConnectInfo<SocketAddr>>) -> Opt
 /// `path` with a share's token blanked out, wherever one sits: the data
 /// routes' `/s/<token>/…` and the screens' `/app/s/<token>…`.
 pub fn redact(path: &str) -> String {
-    for prefix in [config::share::PATH_PREFIX, SHARE_PAGE_PREFIX] {
+    for prefix in [config::share::PATH_PREFIX, config::share::PAGE_PREFIX] {
         if let Some(rest) = path.strip_prefix(prefix) {
             let after_token = rest.find('/').map_or("", |i| &rest[i..]);
             if rest.len() > after_token.len() {
