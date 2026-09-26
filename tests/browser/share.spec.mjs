@@ -81,6 +81,38 @@ test("a share of several opens on a map of every track, and a line opens its tri
   await recipient.context.close();
 });
 
+test("a trip's name on the share's map is shown as text, never run as markup (US-53)", async ({
+  request,
+  browser,
+  baseURL,
+}) => {
+  // A name as a GPX `<name>` or a Komoot title can carry it — neither is the
+  // owner's own typing.
+  const markup = `<img src="x" onerror="window.__injected = true">`;
+  const first = await trip(request, markup);
+  const second = await trip(request, "Day two");
+  const name = (await (await request.get(`/api/trips/${first}`)).json()).name;
+  const created = await request.post("/api/shares", {
+    data: { trip_ids: [first, second], label: "Markup" },
+  });
+  expect(created.status(), "creating the share").toBe(201);
+  const { token } = await created.json();
+
+  const recipient = await recipientPage(browser, baseURL);
+  await recipient.page.goto(`/app/s/${token}`);
+  const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
+  await expect(lines).toHaveCount(2);
+  for (const line of await lines.all()) {
+    await line.dispatchEvent("mouseover");
+  }
+
+  const tooltips = recipient.page.locator("#overview-map .leaflet-tooltip");
+  await expect(tooltips.filter({ hasText: name })).toHaveCount(1);
+  await expect(recipient.page.locator("#overview-map .leaflet-tooltip img")).toHaveCount(0);
+  expect(await recipient.page.evaluate(() => window.__injected)).toBeUndefined();
+  await recipient.context.close();
+});
+
 test("a link that opens nothing says so (US-53)", async ({ browser, baseURL }) => {
   const recipient = await recipientPage(browser, baseURL);
   await recipient.page.goto(`/app/s/${"0".repeat(64)}`);

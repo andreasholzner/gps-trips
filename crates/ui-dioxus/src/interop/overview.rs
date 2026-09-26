@@ -42,7 +42,9 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     for (const line of view.lines || []) {
       if (line.points.length === 0) continue;
       const drawn = L.polyline(line.points, { color: "#3367d6", weight: 4 }).addTo(map);
-      drawn.bindTooltip(line.name, { sticky: true });
+      // A node, not the string: Leaflet puts a string tooltip in as HTML, and
+      // a trip's name comes from a GPX `<name>` or a Komoot title.
+      drawn.bindTooltip(document.createTextNode(line.name), { sticky: true });
       drawn.on("click", () => {
         try {
           dioxus.send(line.id);
