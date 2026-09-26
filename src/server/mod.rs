@@ -1,3 +1,4 @@
+pub mod access_log;
 pub mod archive_client;
 pub mod auth;
 pub mod backup;

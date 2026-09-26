@@ -45,9 +45,14 @@ async fn main() -> anyhow::Result<()> {
         "Trip Archive listening on http://{}",
         listener.local_addr()?
     );
-    axum::serve(listener, app)
-        .with_graceful_shutdown(stop_signal())
-        .await?;
+    // With the peer's address, for the access log of a run with no proxy in
+    // front of it (US-70).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(stop_signal())
+    .await?;
 
     // Every request has finished. Closing the last connection is what makes
     // SQLite checkpoint the WAL into the database file and remove it (US-47).

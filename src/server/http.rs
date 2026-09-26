@@ -16,7 +16,7 @@ use crate::models::{
     TripSummary,
 };
 use crate::server::{
-    auth, backup, delete,
+    access_log, auth, backup, delete,
     edit::{handle_bulk_set_activity_type, handle_edit_trip},
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
@@ -174,6 +174,9 @@ pub fn router(state: AppState) -> Router {
             state.clone(),
             auth::gate,
         ))
+        // US-70: outside the gate, so it sees the caller the gate named on
+        // every response — refusals included.
+        .layer(axum::middleware::from_fn(access_log::log))
         // Outermost, so the gate's own refusals carry it too.
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
