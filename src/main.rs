@@ -32,12 +32,9 @@ async fn main() -> anyhow::Result<()> {
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();
-    let app = server::http::router(server::state::AppState::new(
-        pool.clone(),
-        store,
-        komoot,
-        auth,
-    ));
+    let state = server::state::AppState::new(pool.clone(), store, komoot, auth);
+    let access_log = state.access_log.clone();
+    let app = server::http::router(state);
 
     let listener = TcpListener::bind(addr).await?;
     // The bound address rather than the configured one: they differ for port 0.
@@ -54,8 +51,10 @@ async fn main() -> anyhow::Result<()> {
     .with_graceful_shutdown(stop_signal())
     .await?;
 
-    // Every request has finished. Closing the last connection is what makes
+    // Every request has finished; the last of their records go in before
+    // the database closes (US-70). Closing the last connection is what makes
     // SQLite checkpoint the WAL into the database file and remove it (US-47).
+    access_log.flush().await;
     pool.close().await;
     tracing::info!("Trip Archive stopped");
     Ok(())

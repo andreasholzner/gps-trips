@@ -155,6 +155,17 @@ pub mod komoot {
     pub const PAGE_SIZE: u32 = 200;
 }
 
+/// The access log (US-70).
+pub mod access_log {
+    /// Records waiting for the writer. A request hands its record over
+    /// without waiting; one arriving while this many are queued is dropped
+    /// rather than delaying the request — a burst far beyond any page load,
+    /// or a database that has stopped answering.
+    pub const QUEUE_CAPACITY: usize = 10_000;
+    /// Records written per transaction, at most.
+    pub const BATCH_SIZE: usize = 500;
+}
+
 /// Shares — read-only links to a few trips (US-53).
 pub mod share {
     /// Random bytes in a share's token: 256 bits, so a link cannot be guessed

@@ -2,24 +2,32 @@
 //! it, so the owner can see how the archive is used and tell a share's
 //! requests from their own.
 //!
+//! Every request but the bundle's own files is also stored in the database
+//! ([`AccessLog`]), without the caller's IP address, so the owner can look
+//! back further than the platform keeps stdout.
+//!
 //! Layered outside the gate, which names the caller on every response
 //! ([`Caller`]); this records that answer rather than deciding again. What
-//! never reaches a line: a share's token (the link's whole credential —
-//! blanked out of the path), the session cookie, the `Authorization` header,
-//! any request body, and the query string.
+//! never reaches a line or a row: a share's token (the link's whole
+//! credential — blanked out of the path), the session cookie, the
+//! `Authorization` header, any request body, and the query string.
 
 use std::net::SocketAddr;
 use std::time::Instant;
 
 use axum::{
-    extract::{ConnectInfo, Request},
+    extract::{ConnectInfo, Request, State},
     http::{header, HeaderMap},
     middleware::Next,
     response::Response,
 };
+use time::OffsetDateTime;
 
 use crate::config;
-use crate::server::auth::Caller;
+use crate::server::{auth::Caller, state::AppState};
+
+mod writer;
+pub use writer::AccessLog;
 
 /// The log target, so `RUST_LOG` can raise or silence the access log on its
 /// own: `trip_archive::access=debug` adds the bundle's files.
@@ -39,12 +47,15 @@ const SHARE_PAGE_PREFIX: &str = "/app/s/";
 /// What the log says about one request.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessRecord {
+    /// When the request arrived.
+    pub at: OffsetDateTime,
     pub method: String,
     /// The path with any share token blanked out ([`redact`]).
     pub path: String,
     pub status: u16,
     pub duration_ms: u64,
     pub caller: Caller,
+    /// For the stdout line only; never stored.
     pub ip: Option<String>,
     pub user_agent: Option<String>,
 }
@@ -82,9 +93,12 @@ impl AccessRecord {
 }
 
 /// The middleware: time the request, then log it with the caller the gate
-/// named. A response the gate never saw — none today — is logged as
+/// named — on stdout, and in the database unless it is one of the bundle's
+/// files. A response the gate never saw — none today — is logged as
 /// anonymous rather than not at all.
-pub async fn log(request: Request, next: Next) -> Response {
+pub async fn log(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    // Read once at the boundary (ADR-0012's 2026-07-24 amendment).
+    let at = OffsetDateTime::now_utc();
     let started = Instant::now();
     let method = request.method().to_string();
     let path = redact(request.uri().path());
@@ -98,6 +112,7 @@ pub async fn log(request: Request, next: Next) -> Response {
     let response = next.run(request).await;
 
     let record = AccessRecord {
+        at,
         method,
         path,
         status: response.status().as_u16(),
@@ -114,6 +129,7 @@ pub async fn log(request: Request, next: Next) -> Response {
         tracing::debug!(target: TARGET, "{}", record.line());
     } else {
         tracing::info!(target: TARGET, "{}", record.line());
+        state.access_log.record(record);
     }
     response
 }
@@ -184,6 +200,7 @@ mod tests {
 
     fn record(caller: Caller) -> AccessRecord {
         AccessRecord {
+            at: OffsetDateTime::now_utc(),
             method: "GET".to_string(),
             path: "/api/trips".to_string(),
             status: 200,

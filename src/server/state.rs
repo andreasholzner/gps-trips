@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use sqlx::SqlitePool;
 
+use crate::server::access_log::AccessLog;
 use crate::server::auth::Auth;
 use crate::server::komoot::KomootClient;
 use crate::server::storage::BlobStore;
@@ -24,6 +25,9 @@ pub struct AppState {
     /// without a password, so every request — in production and in the
     /// tests, which build the same router — passes through the same gate.
     pub auth: Auth,
+    /// Where each request's record goes to be stored (US-70), off the
+    /// request's own path.
+    pub access_log: AccessLog,
     /// US-26/ADR-0021: true while a "Sync now" run is in flight — guards
     /// `PATCH`/`DELETE /api/trips/:id` and a second concurrent sync against
     /// racing the push phase's read of `edit_pending`/`delete_pending`. A
@@ -44,6 +48,7 @@ pub struct AppState {
 pub const SYNC_IN_PROGRESS_MSG: &str = "a Komoot sync is in progress; try again shortly";
 
 impl AppState {
+    /// Starts the access log's writer, so it needs a Tokio runtime to run on.
     pub fn new(
         pool: SqlitePool,
         store: Arc<dyn BlobStore>,
@@ -51,6 +56,7 @@ impl AppState {
         auth: Auth,
     ) -> Self {
         Self {
+            access_log: AccessLog::spawn(pool.clone()),
             pool,
             store,
             komoot,

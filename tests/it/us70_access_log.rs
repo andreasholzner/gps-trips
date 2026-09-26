@@ -16,6 +16,13 @@
 //!   `us70_no_credential_reaches_the_log`.
 //! * *the bundle's content-hashed files are not logged at the level the
 //!   rest is* — `us70_bundle_files_are_logged_only_when_debugging`.
+//! * *every request except the bundle's files is stored: time, method, path,
+//!   status, duration, who made it, the share's label and the user agent —
+//!   never an IP address* — `us70_each_request_is_stored_with_who_made_it`,
+//!   `us70_no_ip_address_and_no_token_is_stored` and
+//!   `us70_bundle_files_are_not_stored`.
+//! * *a stopped share's records stay, label included* —
+//!   `us70_a_stopped_shares_records_keep_its_label`.
 
 use crate::common;
 
@@ -30,6 +37,7 @@ use std::sync::{Arc, Mutex};
 use tracing::level_filters::LevelFilter;
 use trip_archive::models::CreatedShare;
 use trip_archive::server::auth::Caller;
+use trip_archive::server::{db, http, state::AppState, storage::LocalDisk};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -187,6 +195,40 @@ async fn us70_a_share_without_a_label_is_named_by_its_id_alone() {
     );
 }
 
+/// An app whose state the test keeps, to flush the access log and read the
+/// table it writes.
+async fn app_with_state() -> (Router, AppState, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::create_pool(&dir.path().join("test.db")).await.unwrap();
+    let store = std::sync::Arc::new(LocalDisk::new(dir.path().join("blobs")));
+    let state = AppState::new(pool, store, None, common::test_auth());
+    (http::router(state.clone()), state, dir)
+}
+
+/// Every stored record, oldest first, as
+/// `(method, path, status, caller, share_id, share_label, user_agent)`.
+type Stored = (
+    String,
+    String,
+    i64,
+    String,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+);
+
+async fn stored(state: &AppState) -> Vec<Stored> {
+    state.access_log.flush().await;
+    sqlx::query_as(
+        r#"SELECT l.method, l.path, l.status, l.caller, l.share_id, l.share_label, u.value
+           FROM access_log l LEFT JOIN user_agent u ON u.id = l.user_agent_id
+           ORDER BY l.id"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap()
+}
+
 // ── The line on stdout ───────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -313,4 +355,155 @@ async fn us70_bundle_files_are_logged_only_when_debugging() {
     let (_guard, log) = capture(LevelFilter::DEBUG);
     visit(&app, asset).await;
     assert_eq!(access_lines(&log).len(), 1);
+}
+
+// ── The stored record ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn us70_each_request_is_stored_with_who_made_it() {
+    let (app, state, _dir) = app_with_state().await;
+    let id = common::import_sample(&app).await;
+    let created = share(&app, &[id], Some("For Kari")).await;
+    let share_id = share_id(&app, &created.token).await;
+    let before = stored(&state).await.len();
+
+    let phone = [("user-agent", "Mozilla/5.0 (iPhone)")];
+    common::send(
+        &app,
+        request_with("/api/trips", &[("user-agent", "Firefox")]),
+    )
+    .await;
+    for _ in 0..2 {
+        common::send_unauthenticated(
+            &app,
+            request_with(&format!("/s/{}/api/share", created.token), &phone),
+        )
+        .await;
+    }
+    visit(&app, "/api/trips").await;
+    visit(&app, &format!("/s/{}/api/share", "0".repeat(64))).await;
+
+    let rows = stored(&state).await.split_off(before);
+    let share = |ua: &str| {
+        (
+            "GET".to_string(),
+            "/s/…/api/share".to_string(),
+            200,
+            "share".to_string(),
+            Some(share_id),
+            Some("For Kari".to_string()),
+            Some(ua.to_string()),
+        )
+    };
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "GET".to_string(),
+                "/api/trips".to_string(),
+                200,
+                "owner".to_string(),
+                None,
+                None,
+                Some("Firefox".to_string()),
+            ),
+            share("Mozilla/5.0 (iPhone)"),
+            share("Mozilla/5.0 (iPhone)"),
+            (
+                "GET".to_string(),
+                "/api/trips".to_string(),
+                401,
+                "anonymous".to_string(),
+                None,
+                None,
+                None,
+            ),
+            (
+                "GET".to_string(),
+                "/s/…/api/share".to_string(),
+                404,
+                "unknown_link".to_string(),
+                None,
+                None,
+                None,
+            ),
+        ]
+    );
+    // A user agent is stored once, however many requests it made.
+    let agents: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_agent WHERE value = 'Mozilla/5.0 (iPhone)'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+    assert_eq!(agents, 1);
+}
+
+#[tokio::test]
+async fn us70_no_ip_address_and_no_token_is_stored() {
+    let (app, state, _dir) = app_with_state().await;
+    let id = common::import_sample(&app).await;
+    let created = share(&app, &[id], Some("For Kari")).await;
+
+    common::send_unauthenticated(
+        &app,
+        request_with(
+            &format!("/s/{}/api/share", created.token),
+            &[("fly-client-ip", "203.0.113.9")],
+        ),
+    )
+    .await;
+    visit(&app, &format!("/app/s/{}", created.token)).await;
+    state.access_log.flush().await;
+
+    let columns: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info('access_log')")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap();
+    assert!(
+        !columns.iter().any(|column| column.contains("ip")),
+        "{columns:?}"
+    );
+    let dump: Vec<String> = sqlx::query_scalar(
+        r#"SELECT concat_ws('|', at, method, path, status, duration_ms, caller,
+                            share_id, share_label, user_agent_id)
+           FROM access_log"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap();
+    for row in &dump {
+        assert!(!row.contains(&created.token), "{row}");
+        assert!(!row.contains("203.0.113.9"), "{row}");
+    }
+}
+
+#[tokio::test]
+async fn us70_bundle_files_are_not_stored() {
+    let (app, state, _dir) = app_with_state().await;
+
+    visit(&app, "/app/assets/ui-dioxus-dxh0123456789abcdef.js").await;
+    visit(&app, "/app/").await;
+
+    let paths: Vec<String> = stored(&state).await.into_iter().map(|row| row.1).collect();
+    assert_eq!(paths, ["/app/"]);
+}
+
+#[tokio::test]
+async fn us70_a_stopped_shares_records_keep_its_label() {
+    let (app, state, _dir) = app_with_state().await;
+    let id = common::import_sample(&app).await;
+    let created = share(&app, &[id], Some("For Kari")).await;
+    let share_id = share_id(&app, &created.token).await;
+    visit(&app, &format!("/s/{}/api/share", created.token)).await;
+
+    common::delete(&app, &format!("/api/shares/{share_id}")).await;
+
+    let kept: Vec<Stored> = stored(&state)
+        .await
+        .into_iter()
+        .filter(|row| row.4 == Some(share_id))
+        .collect();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].5.as_deref(), Some("For Kari"));
 }

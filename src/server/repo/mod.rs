@@ -4,6 +4,7 @@
 //! Re-exported flat here so existing call sites (`repo::insert_trip`,
 //! `repo::list_photos`, ...) are unaffected by the split.
 
+mod access;
 mod bulk_edit;
 mod export;
 pub mod komoot;
@@ -13,6 +14,7 @@ mod staging;
 mod tag;
 mod trip;
 
+pub use access::insert_access_records;
 pub use bulk_edit::set_activity_type;
 pub use export::list_export_trips;
 pub use photo::{

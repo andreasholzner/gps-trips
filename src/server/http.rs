@@ -176,7 +176,10 @@ pub fn router(state: AppState) -> Router {
         ))
         // US-70: outside the gate, so it sees the caller the gate named on
         // every response — refusals included.
-        .layer(axum::middleware::from_fn(access_log::log))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            access_log::log,
+        ))
         // Outermost, so the gate's own refusals carry it too.
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
