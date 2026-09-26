@@ -128,6 +128,10 @@ pub struct SharedTripSummary {
     pub name: String,
     pub activity_type: ActivityType,
     pub start_time: Option<String>,
+    /// The local date the trip started on, `YYYY-MM-DD` — in its own
+    /// timezone, as `TripDetail::start_date` is, so the list and the trip's
+    /// page give it the same day. `None` for a track with no timestamps.
+    pub start_date: Option<String>,
     pub distance_m: f64,
     pub ascent_m: Option<f64>,
     pub duration_secs: Option<i64>,

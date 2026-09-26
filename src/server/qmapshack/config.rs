@@ -208,7 +208,7 @@ impl ExportConfig {
         &self,
         activity: ActivityType,
         kind: TripKind,
-        start_time: Option<&str>,
+        start_date: Option<&str>,
     ) -> Vec<String> {
         self.template
             .iter()
@@ -217,10 +217,10 @@ impl ExportConfig {
                     .iter()
                     .map(|piece| match piece {
                         Piece::Literal(text) => text.clone(),
-                        // RFC-3339 always starts "YYYY-" (ADR-0009); a
-                        // malformed value falls back to the undated bucket
-                        // (`get` also covers a non-char-boundary byte 4).
-                        Piece::Year => match start_time.and_then(|t| t.get(..4)) {
+                        // A date starts "YYYY-"; a malformed value falls
+                        // back to the undated bucket (`get` also covers a
+                        // non-char-boundary byte 4).
+                        Piece::Year => match start_date.and_then(|t| t.get(..4)) {
                             Some(year) => year.to_string(),
                             None => self.undated.clone(),
                         },

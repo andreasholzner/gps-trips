@@ -194,6 +194,33 @@ async fn us53_the_shared_trips_are_listed_with_the_label() {
 }
 
 #[tokio::test]
+async fn us53_a_shared_trip_is_dated_where_it_started() {
+    let db = TestDb::new().await;
+    let late = crate::server::gpx::TrackStats {
+        start_time: Some(time::macros::datetime!(2024-06-01 22:30 UTC)),
+        ..compute_stats(&parse_gpx(SAMPLE_GPX).unwrap().points)
+    };
+    let trip = insert_trip(
+        &db.pool,
+        &NewTrip {
+            name: "Midnight Ride",
+            activity_type: ActivityType::Cycling,
+            tz_name: "Europe/Oslo",
+            stats: &late,
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
+    )
+    .await
+    .unwrap();
+    let id = a_share(&db.pool, "tok", &[trip], None).await;
+
+    let trips = list_shared_trips(&db.pool, id).await.unwrap();
+    assert_eq!(trips[0].start_date.as_deref(), Some("2024-06-02"));
+}
+
+#[tokio::test]
 async fn us53_a_repeated_trip_is_stored_once() {
     let db = TestDb::new().await;
     let trip = a_trip(&db.pool, "Oslo").await;

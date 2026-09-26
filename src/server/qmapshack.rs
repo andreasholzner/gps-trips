@@ -211,7 +211,7 @@ async fn reconcile_trip(
     let folder_path = cfg.resolve_folder_path(
         trip.activity_type,
         trip.trip_kind,
-        trip.start_time.as_deref(),
+        local_start_date(trip).as_deref(),
     );
     let folder_id = match folder_ids.get(&folder_path) {
         Some(id) => *id,
@@ -386,12 +386,20 @@ async fn remove_stale_items(
 /// QMapShack's trigger) and `trk.desc` — every attribute the archive holds
 /// beyond name/geometry, since QMapShack has no structured slots for them
 /// (ADR-0022 field scope; trips have no free-text description of their own).
+/// The day the trip started on where it started — the date its page and
+/// the archive's list give it, rather than UTC's.
+fn local_start_date(trip: &ExportTrip) -> Option<String> {
+    crate::server::repo::local_start_date(trip.start_time.as_deref(), trip.tz_name.as_deref())
+}
+
 fn item_comment(trip: &ExportTrip) -> String {
     let mut head = Vec::new();
     if let Some(start) = &trip.start_time {
-        // Stored rows are full RFC-3339, but never let a malformed one
-        // panic — the date prefix degrades to whatever is there.
-        head.push(start.get(..10).unwrap_or(start).to_string());
+        // The local date; stored rows are full RFC-3339, but never let a
+        // malformed one panic — the date degrades to whatever is there.
+        head.push(
+            local_start_date(trip).unwrap_or_else(|| start.get(..10).unwrap_or(start).to_string()),
+        );
     }
     head.push(trip.activity_type.label().to_string());
     head.push(trip.trip_kind.as_str().to_string());
@@ -467,6 +475,19 @@ mod tests {
              Tags: fjell, telt\n\
              Timezone: Europe/Oslo\n\
              Exported from trip-archive (trip 42)"
+        );
+    }
+
+    #[test]
+    fn a_trip_is_dated_where_it_started_not_in_utc() {
+        // Half an hour into the new year in Oslo, still the old one in UTC —
+        // the date and year folder must agree with the trip's own page.
+        let trip = trip(Some("2024-12-31T23:30:00Z"));
+        assert_eq!(local_start_date(&trip).as_deref(), Some("2025-01-01"));
+        assert!(
+            item_comment(&trip).starts_with("2025-01-01 · "),
+            "{}",
+            item_comment(&trip)
         );
     }
 

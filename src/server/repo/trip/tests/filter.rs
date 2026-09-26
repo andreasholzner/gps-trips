@@ -1,5 +1,6 @@
 //! US-13 — filter the trip list by activity type, date interval, distance,
-//! and free search of the name. Split out of the parent `tests.rs` (US-1/
+//! and free search of the name — and the local date both the date filter
+//! and the list read a trip by. Split out of the parent `tests.rs` (US-1/
 //! US-6/US-7/US-9/US-15/US-21's tests) purely to keep that file under the
 //! repo's 500-line cap. US-14's region tests are the sibling `region.rs`.
 
@@ -71,54 +72,97 @@ async fn us13_max_dist_is_inclusive_of_the_boundary() {
     assert_eq!(names, vec!["AtBoundary", "Shorter"]);
 }
 
-#[tokio::test]
-async fn us13_date_range_is_inclusive_of_both_boundaries() {
-    let db = TestDb::new().await;
-    insert_trip_with(
-        &db.pool,
-        "Before",
-        ActivityType::Hiking,
-        1_000.0,
-        datetime!(2024-05-31 23:59 UTC),
+/// As [`insert_trip_with`], in a timezone of the test's choosing.
+async fn insert_trip_in(pool: &SqlitePool, name: &str, tz_name: &str, start: OffsetDateTime) {
+    insert_trip(
+        pool,
+        &NewTrip {
+            name,
+            activity_type: ActivityType::Hiking,
+            tz_name,
+            stats: &stats(1_000.0, start),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
     )
-    .await;
-    insert_trip_with(
-        &db.pool,
-        "From",
-        ActivityType::Hiking,
-        1_000.0,
-        datetime!(2024-06-01 00:00 UTC),
-    )
-    .await;
-    insert_trip_with(
-        &db.pool,
-        "To",
-        ActivityType::Hiking,
-        1_000.0,
-        datetime!(2024-06-05 23:59 UTC),
-    )
-    .await;
-    insert_trip_with(
-        &db.pool,
-        "After",
-        ActivityType::Hiking,
-        1_000.0,
-        datetime!(2024-06-06 00:00 UTC),
-    )
-    .await;
+    .await
+    .unwrap();
+}
 
+async fn names_between(pool: &SqlitePool, from: &str, to: &str) -> Vec<String> {
     let filter = TripFilter {
-        from: Some("2024-06-01".to_string()),
-        to: Some("2024-06-05".to_string()),
+        from: Some(from.to_string()),
+        to: Some(to.to_string()),
         ..Default::default()
     };
-    let names: Vec<_> = list_trips(&db.pool, &filter)
+    list_trips(pool, &filter)
         .await
         .unwrap()
-        .iter()
-        .map(|t| t.name.clone())
-        .collect();
-    assert_eq!(names, vec!["To", "From"]);
+        .into_iter()
+        .map(|t| t.name)
+        .collect()
+}
+
+#[tokio::test]
+async fn us13_date_range_is_inclusive_of_both_boundaries() {
+    // The boundaries are the trips' own midnights — Oslo is UTC+2 in June.
+    let db = TestDb::new().await;
+    for (name, start) in [
+        ("Before", datetime!(2024-05-31 21:59 UTC)),
+        ("From", datetime!(2024-05-31 22:00 UTC)),
+        ("To", datetime!(2024-06-05 21:59 UTC)),
+        ("After", datetime!(2024-06-05 22:00 UTC)),
+    ] {
+        insert_trip_in(&db.pool, name, "Europe/Oslo", start).await;
+    }
+
+    assert_eq!(
+        names_between(&db.pool, "2024-06-01", "2024-06-05").await,
+        vec!["To", "From"]
+    );
+}
+
+#[tokio::test]
+async fn us13_the_date_range_reads_each_trip_on_the_day_it_was_where_it_was() {
+    // One instant: early morning in Oslo, still the evening before in New York.
+    let db = TestDb::new().await;
+    let at = datetime!(2024-06-01 02:00 UTC);
+    insert_trip_in(&db.pool, "Oslo", "Europe/Oslo", at).await;
+    insert_trip_in(&db.pool, "New York", "America/New_York", at).await;
+
+    assert_eq!(
+        names_between(&db.pool, "2024-06-01", "2024-06-01").await,
+        vec!["Oslo"]
+    );
+    assert_eq!(
+        names_between(&db.pool, "2024-05-31", "2024-05-31").await,
+        vec!["New York"]
+    );
+}
+
+#[tokio::test]
+async fn us6_a_listed_trip_is_dated_where_it_started() {
+    // Half past midnight in Oslo, still the evening before in UTC — the date
+    // the trip's page and its suggested name (US-12, US-62) give it.
+    let db = TestDb::new().await;
+    insert_trip(
+        &db.pool,
+        &NewTrip {
+            name: "Midnight Ride",
+            activity_type: ActivityType::Cycling,
+            tz_name: "Europe/Oslo",
+            stats: &stats_at(datetime!(2024-06-01 22:30 UTC)),
+            geojson: "{}",
+            gpx: b"x",
+            trip_kind: TripKind::Recorded,
+        },
+    )
+    .await
+    .unwrap();
+
+    let trips = list_trips(&db.pool, &TripFilter::default()).await.unwrap();
+    assert_eq!(trips[0].start_date.as_deref(), Some("2024-06-02"));
 }
 
 #[tokio::test]

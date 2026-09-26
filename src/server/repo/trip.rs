@@ -124,9 +124,9 @@ pub async fn get_original_gpx(
 #[derive(Debug, Default)]
 pub struct TripFilter {
     pub activity_type: Option<ActivityType>,
-    /// Inclusive, `"YYYY-MM-DD"`.
+    /// Inclusive, `"YYYY-MM-DD"`, compared with each trip's local start date.
     pub from: Option<String>,
-    /// Inclusive, `"YYYY-MM-DD"`.
+    /// Inclusive, `"YYYY-MM-DD"`, compared with each trip's local start date.
     pub to: Option<String>,
     pub min_dist_m: Option<f64>,
     pub max_dist_m: Option<f64>,
@@ -182,6 +182,26 @@ fn next_day(date: &str) -> Option<String> {
         .ok()
 }
 
+/// The calendar day before `date`, on the same terms as [`next_day`].
+fn previous_day(date: &str) -> Option<String> {
+    time::Date::parse(date, DATE_FORMAT)
+        .ok()?
+        .previous_day()?
+        .format(DATE_FORMAT)
+        .ok()
+}
+
+/// The local date a trip started on (US-62): `start_time` read in
+/// `tz_name`, the way US-12's suggested name reads it, so every screen and
+/// the date filter give a trip the same day. A trip with no zone of its own
+/// is read in UTC.
+pub fn local_start_date(start_time: Option<&str>, tz_name: Option<&str>) -> Option<String> {
+    date_prefix(
+        start_time.and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok()),
+        tz_name.unwrap_or("UTC"),
+    )
+}
+
 /// List trips as lightweight summaries, most recent first (US-6), optionally
 /// narrowed by `filter` (US-13, ADR-0011). Reads the `trip` table plus each
 /// trip's Komoot link row (US-35) — never the track geometry — so it stays
@@ -206,7 +226,8 @@ pub async fn list_trips(
     // a NULL `trip_id` and therefore joins onto nothing.
     let mut query = sqlx::QueryBuilder::new(
         "SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type, \
-         t.start_time AS start_time, t.distance_m AS distance_m, t.ascent_m AS ascent_m, \
+         t.start_time AS start_time, t.tz_name AS tz_name, \
+         t.distance_m AS distance_m, t.ascent_m AS ascent_m, \
          t.duration_secs AS duration_secs, t.trip_kind AS trip_kind, \
          l.privacy_status AS privacy_status, \
          t.min_lat AS min_lat, t.min_lon AS min_lon, t.max_lat AS max_lat, t.max_lon AS max_lon \
@@ -220,16 +241,22 @@ pub async fn list_trips(
     if let Some(trip_kind) = filter.trip_kind {
         query.push(" AND t.trip_kind = ").push_bind(trip_kind);
     }
+    // A date is the trip's own local one, which SQL cannot compute without
+    // the zone's rules; but no zone is a whole day away from UTC, so a day's
+    // margin on each side keeps the index narrowing the rows, and the exact
+    // test on `start_date` below decides.
     if let Some(from) = &filter.from {
-        query
-            .push(" AND t.start_time >= ")
-            .push_bind(format!("{from}T00:00:00"));
+        if let Some(before) = previous_day(from) {
+            query
+                .push(" AND t.start_time >= ")
+                .push_bind(format!("{before}T00:00:00"));
+        }
     }
     if let Some(to) = &filter.to {
-        if let Some(next) = next_day(to) {
+        if let Some(after) = next_day(to).as_deref().and_then(next_day) {
             query
                 .push(" AND t.start_time < ")
-                .push_bind(format!("{next}T00:00:00"));
+                .push_bind(format!("{after}T00:00:00"));
         }
     }
     if let Some(region) = filter.region {
@@ -301,27 +328,45 @@ pub async fn list_trips(
 
     let trips: Vec<TripSummary> = query
         .build()
-        .map(|row: SqliteRow| TripSummary {
-            id: row.get("id"),
-            name: row.get("name"),
-            activity_type: row.get("activity_type"),
-            start_time: row.get("start_time"),
-            distance_m: row.get("distance_m"),
-            ascent_m: row.get("ascent_m"),
-            duration_secs: row.get("duration_secs"),
-            trip_kind: row.get("trip_kind"),
-            privacy_status: row.get("privacy_status"),
-            min_lat: row.get("min_lat"),
-            min_lon: row.get("min_lon"),
-            max_lat: row.get("max_lat"),
-            max_lon: row.get("max_lon"),
+        .map(|row: SqliteRow| {
+            let start_time: Option<String> = row.get("start_time");
+            let tz_name: Option<String> = row.get("tz_name");
+            TripSummary {
+                id: row.get("id"),
+                name: row.get("name"),
+                activity_type: row.get("activity_type"),
+                start_date: local_start_date(start_time.as_deref(), tz_name.as_deref()),
+                start_time,
+                distance_m: row.get("distance_m"),
+                ascent_m: row.get("ascent_m"),
+                duration_secs: row.get("duration_secs"),
+                trip_kind: row.get("trip_kind"),
+                privacy_status: row.get("privacy_status"),
+                min_lat: row.get("min_lat"),
+                min_lon: row.get("min_lon"),
+                max_lat: row.get("max_lat"),
+                max_lon: row.get("max_lon"),
+            }
         })
         .fetch_all(pool)
         .await?;
 
+    // Missing a date, a trip matches no date bound — as a NULL `start_time`
+    // never did.
+    let in_range = |date: Option<&str>| {
+        filter
+            .from
+            .as_deref()
+            .is_none_or(|from| date.is_some_and(|d| d >= from))
+            && filter
+                .to
+                .as_deref()
+                .is_none_or(|to| date.is_some_and(|d| d <= to))
+    };
     let q = filter.name_query.as_deref().map(str::to_lowercase);
     Ok(trips
         .into_iter()
+        .filter(|t| in_range(t.start_date.as_deref()))
         .filter(|t| q.as_ref().is_none_or(|q| t.name.to_lowercase().contains(q)))
         .filter(|t| !filter.unnamed || !has_proper_name(&t.name))
         .collect())
@@ -482,12 +527,7 @@ fn row_to_detail(row: SqliteRow) -> TripDetail {
     let tz_name: Option<String> = row.get("tz_name");
     // Derived here rather than stored, the way US-12 derives the name's
     // prefix, so the two cannot disagree (US-62).
-    let start_date = date_prefix(
-        start_time
-            .as_deref()
-            .and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok()),
-        tz_name.as_deref().unwrap_or("UTC"),
-    );
+    let start_date = local_start_date(start_time.as_deref(), tz_name.as_deref());
     TripDetail {
         id: row.get("id"),
         name: row.get("name"),

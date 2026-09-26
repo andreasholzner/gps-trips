@@ -9,6 +9,7 @@ use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use super::to_rfc3339;
+use super::trip::local_start_date;
 use crate::models::{ActiveShare, SharedTripSummary};
 
 /// A share as the owner asks for it; the token is minted by the caller.
@@ -189,8 +190,8 @@ pub async fn list_shared_trips(
     share_id: i64,
 ) -> Result<Vec<SharedTripSummary>, sqlx::Error> {
     sqlx::query(
-        r#"SELECT t.id, t.name, t.activity_type, t.start_time, t.distance_m, t.ascent_m,
-                  t.duration_secs
+        r#"SELECT t.id, t.name, t.activity_type, t.start_time, t.tz_name, t.distance_m,
+                  t.ascent_m, t.duration_secs
            FROM trip t JOIN share_trip st ON st.trip_id = t.id
            WHERE st.share_id = ?
            ORDER BY t.start_time IS NULL, t.start_time, t.id"#,
@@ -202,11 +203,14 @@ pub async fn list_shared_trips(
 }
 
 fn row_to_shared_summary(row: SqliteRow) -> SharedTripSummary {
+    let start_time: Option<String> = row.get("start_time");
+    let tz_name: Option<String> = row.get("tz_name");
     SharedTripSummary {
         id: row.get("id"),
         name: row.get("name"),
         activity_type: row.get("activity_type"),
-        start_time: row.get("start_time"),
+        start_date: local_start_date(start_time.as_deref(), tz_name.as_deref()),
+        start_time,
         distance_m: row.get("distance_m"),
         ascent_m: row.get("ascent_m"),
         duration_secs: row.get("duration_secs"),

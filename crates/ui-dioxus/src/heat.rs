@@ -69,6 +69,7 @@ mod tests {
             name: "Trip".to_string(),
             activity_type: ActivityType::Hiking,
             start_time: None,
+            start_date: None,
             distance_m: 1_000.0,
             ascent_m: None,
             duration_secs: None,

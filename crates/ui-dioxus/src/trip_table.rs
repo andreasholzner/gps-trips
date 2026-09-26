@@ -79,7 +79,7 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
                             Link { to: Route::TripDetail { id: trip.id }, "{trip.name}" }
                         }
                         td { "{trip.activity_type.label()}" }
-                        td { class: "num", {format::date(trip.start_time.as_deref())} }
+                        td { class: "num", {format::or_dash(trip.start_date.as_deref())} }
                         td { class: "num", {format::km(trip.distance_m)} }
                         td { class: "num", {format::metres(trip.ascent_m)} }
                         td { class: "num", {format::duration(trip.duration_secs)} }
@@ -105,7 +105,10 @@ mod tests {
             id,
             name: name.to_string(),
             activity_type: ActivityType::Hiking,
-            start_time: Some("2026-07-11T09:30:00Z".to_string()),
+            // Half past midnight on the 11th where the trip was; UTC still
+            // on the 10th.
+            start_time: Some("2026-07-10T22:30:00Z".to_string()),
+            start_date: Some("2026-07-11".to_string()),
             distance_m: 12_345.0,
             ascent_m: Some(410.0),
             duration_secs: Some(3_725),
@@ -137,6 +140,10 @@ mod tests {
         // now, an SPA route once US-42 lands.
         assert!(html.contains("/trips/1"), "{html}");
         assert!(html.contains("2026-07-11"), "{html}");
+        assert!(
+            !html.contains("2026-07-10"),
+            "dated where it started: {html}"
+        );
         assert!(html.contains("12.35 km"), "{html}");
         assert!(html.contains("410 m"), "{html}");
         assert!(html.contains("01:02:05"), "{html}");

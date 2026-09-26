@@ -94,7 +94,7 @@ fn SharedTrips(token: String, overview: ShareOverview) -> Element {
                                 "{trip.name}"
                             }
                         }
-                        td { {format::date(trip.start_time.as_deref())} }
+                        td { {format::or_dash(trip.start_date.as_deref())} }
                         td { "{trip.activity_type.label()}" }
                         td { {format::km(trip.distance_m)} }
                     }

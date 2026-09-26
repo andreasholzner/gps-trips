@@ -2,7 +2,9 @@
 
 use super::*;
 use crate::api::create_share;
-use crate::test_support::{anonymous, import_sample, render_against_archive, serve_test_archive};
+use crate::test_support::{
+    anonymous, import_gpx, import_sample, render_against_archive, serve_test_archive,
+};
 use trip_archive_types::{ActivityType, CreateShare, ShareExpiry};
 
 /// Share `trip_ids` as the owner and return a recipient's client for it.
@@ -53,6 +55,33 @@ async fn us53_a_share_of_several_lists_them_under_its_title_and_a_map() {
         );
         assert!(html.contains(name), "{html}");
     }
+}
+
+#[tokio::test]
+async fn us53_a_shared_trip_is_dated_where_it_started() {
+    // Starts 22:30 UTC near Oslo: half past midnight the next day there.
+    const LATE_EVENING_GPX: &[u8] = include_bytes!("../../../../tests/fixtures/late_evening.gpx");
+    let (archive, _dir) = serve_test_archive().await;
+    let first = import_gpx(&archive, LATE_EVENING_GPX, &[("name", "Night ride")]).await;
+    // A second, so the share opens on its list rather than on the trip.
+    let second = import_gpx(&archive, LATE_EVENING_GPX, &[("name", "Night two")]).await;
+    let (recipient, token) = shared(&archive, vec![first, second], None).await;
+    let trip = crate::api::get_shared_trip(&recipient, first)
+        .await
+        .unwrap();
+    let local = trip.start_date.expect("a dated trip");
+    let utc = &trip.start_time.expect("a timed trip")[..10];
+    assert_ne!(local, utc, "the fixture must straddle midnight");
+
+    let html = render_against_archive(
+        &recipient,
+        move || rsx! { Shared { token: token.clone() } },
+        |html| html.contains("shared-trips"),
+    )
+    .await;
+
+    assert!(html.contains(&local), "{html}");
+    assert!(!html.contains(utc), "{html}");
 }
 
 /// The token as it appears in the rendered links.
@@ -121,6 +150,7 @@ fn us53_each_trip_whose_track_was_read_gets_a_line() {
         name: name.to_string(),
         activity_type: ActivityType::Hiking,
         start_time: None,
+        start_date: None,
         distance_m: 0.0,
         ascent_m: None,
         duration_secs: None,
