@@ -127,3 +127,54 @@ async fn us2_listing_photos_for_an_unknown_trip_returns_404() {
     let response = get(&app, "/api/trips/999/photos").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+/// A `LocalDisk` whose every write takes a while — long enough that two
+/// uploads racing for the same key would both be writing at once.
+struct SlowDisk(trip_archive::server::storage::LocalDisk);
+
+impl trip_archive::server::storage::BlobStore for SlowDisk {
+    fn put(&self, key: &str, bytes: &[u8]) -> std::io::Result<()> {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        self.0.put(key, bytes)
+    }
+    fn get(&self, key: &str) -> std::io::Result<Vec<u8>> {
+        self.0.get(key)
+    }
+    fn delete(&self, key: &str) -> std::io::Result<()> {
+        self.0.delete(key)
+    }
+    fn url_for(&self, key: &str) -> String {
+        self.0.url_for(key)
+    }
+}
+
+#[tokio::test]
+async fn us2_two_uploads_to_one_trip_at_once_keep_both_photos() {
+    // Same file name, different pictures — a double submit of two phones'
+    // "photo.jpg". Each must end up stored, and neither over the other.
+    use std::sync::Arc;
+    use trip_archive::server::{db, http, state::AppState, storage::LocalDisk};
+
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::create_pool(&dir.path().join("test.db")).await.unwrap();
+    let store = Arc::new(SlowDisk(LocalDisk::new(dir.path().join("blobs"))));
+    let app = http::router(AppState::new(pool, store, None, crate::common::test_auth()));
+    let id = import_sample(&app).await;
+
+    let (first, second) = tokio::join!(
+        send(&app, add_photos_request(id, &[("photo.jpg", PHOTO_A)])),
+        send(&app, add_photos_request(id, &[("photo.jpg", PHOTO_B)])),
+    );
+    assert_eq!(first.status(), StatusCode::NO_CONTENT);
+    assert_eq!(second.status(), StatusCode::NO_CONTENT);
+
+    let mut served = Vec::new();
+    for photo in photos_json(&app, id).await {
+        let response = get(&app, photo["url"].as_str().unwrap()).await;
+        served.push(crate::common::body_bytes(response).await);
+    }
+    served.sort();
+    let mut uploaded = vec![PHOTO_A.to_vec(), PHOTO_B.to_vec()];
+    uploaded.sort();
+    assert_eq!(served, uploaded);
+}

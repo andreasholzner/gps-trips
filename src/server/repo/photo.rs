@@ -65,10 +65,23 @@ pub async fn insert_photo(
 
 /// How many photos a trip already has — used to assign stable, non-colliding
 /// blob keys when photos are appended to a trip later (US-2).
+///
+/// Counted under the database's write lock, which the caller's transaction
+/// then keeps until it commits. The keys follow from this count and their
+/// files are written before the rows that name them, so two uploads to one
+/// trip counting at once would write the same key — the second overwriting
+/// the first's photo. Claiming the lock first makes the second wait, then
+/// count the first's photos too.
 pub async fn count_photos(
     tx: &mut Transaction<'_, Sqlite>,
     trip_id: i64,
 ) -> Result<i64, sqlx::Error> {
+    // A write that changes nothing: SQLite takes the write lock for the
+    // statement, not for the rows it touches.
+    sqlx::query("UPDATE trip SET id = id WHERE id = ?")
+        .bind(trip_id)
+        .execute(&mut **tx)
+        .await?;
     sqlx::query_scalar("SELECT COUNT(*) FROM photo WHERE trip_id = ?")
         .bind(trip_id)
         .fetch_one(&mut **tx)
