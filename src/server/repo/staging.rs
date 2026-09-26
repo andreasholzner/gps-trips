@@ -218,6 +218,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_handle_once_spent_never_names_another_parse() {
+        // Swept, taken or cancelled, a handle may still sit in a tab left
+        // open; confirming it must not promote whatever was parked since.
+        let db = TestDb::new().await;
+        let swept = stage(&db.pool, NOW - time::Duration::hours(48)).await;
+        sweep_staged_imports(&db.pool, NOW - time::Duration::hours(24))
+            .await
+            .expect("sweep");
+        let taken = stage(&db.pool, NOW).await;
+        let mut tx = db.pool.begin().await.expect("tx");
+        take_staged_import_in_tx(&mut tx, taken)
+            .await
+            .expect("take");
+        tx.commit().await.expect("commit");
+        let cancelled = stage(&db.pool, NOW).await;
+        delete_staged_import(&db.pool, cancelled)
+            .await
+            .expect("delete");
+
+        let next = stage(&db.pool, NOW).await;
+
+        for spent in [swept, taken, cancelled] {
+            assert_ne!(next, spent);
+        }
+    }
+
+    #[tokio::test]
     async fn cancelling_says_whether_there_was_anything_to_cancel() {
         let db = TestDb::new().await;
         let id = stage(&db.pool, NOW).await;
