@@ -9,15 +9,25 @@
 // screens render is asserted in `crates/ui-dioxus/src/shared/tests.rs`,
 // `share.rs` and `shares.rs`, and what a share reaches in
 // `tests/it/us53_share.rs` and `us69_shares.rs`.
-import { expect, signIn, test } from "./session.mjs";
+import { expect, signIn, test, watchCsp } from "./session.mjs";
 import { ownTrips } from "./trips.mjs";
 
 const trip = ownTrips(test);
 
-/// A browser with no session at all — the recipient's.
+/// A browser with no session at all — the recipient's. Watched for Content
+/// Security Policy refusals like every other page the suite drives.
 async function recipientPage(browser, baseURL) {
   const context = await browser.newContext({ baseURL });
-  return { context, page: await context.newPage() };
+  const page = await context.newPage();
+  const refused = watchCsp(page);
+  return {
+    context,
+    page,
+    close: async () => {
+      await context.close();
+      expect(refused, "Content Security Policy refusals").toEqual([]);
+    },
+  };
 }
 
 test("the owner shares a trip from its page, and the link opens it without a password (US-53)", async ({
@@ -46,7 +56,7 @@ test("the owner shares a trip from its page, and the link opens it without a pas
   await expect(recipient.page.locator("#login-password")).toHaveCount(0);
   await expect(recipient.page.locator("#share-trip")).toHaveCount(0);
   await expect(recipient.page.locator("#delete-trip")).toHaveCount(0);
-  await recipient.context.close();
+  await recipient.close();
 });
 
 test("a share of several opens on a map of every track, and a line opens its trip (US-53)", async ({
@@ -78,7 +88,7 @@ test("a share of several opens on a map of every track, and a line opens its tri
   // The title leads back to the share's list.
   await recipient.page.locator(".share-title a").click();
   await expect(recipient.page.locator("#shared-trips tbody tr")).toHaveCount(2);
-  await recipient.context.close();
+  await recipient.close();
 });
 
 test("a trip's name on the share's map is shown as text, never run as markup (US-53)", async ({
@@ -110,7 +120,34 @@ test("a trip's name on the share's map is shown as text, never run as markup (US
   await expect(tooltips.filter({ hasText: name })).toHaveCount(1);
   await expect(recipient.page.locator("#overview-map .leaflet-tooltip img")).toHaveCount(0);
   expect(await recipient.page.evaluate(() => window.__injected)).toBeUndefined();
-  await recipient.context.close();
+  await recipient.close();
+});
+
+test("markup that reaches a recipient's page runs no script (US-53)", async ({
+  browser,
+  baseURL,
+}) => {
+  // Not watched: a refusal is the outcome this asserts.
+  const context = await browser.newContext({ baseURL });
+  const page = await context.newPage();
+  await page.goto(`/app/s/${"0".repeat(64)}`);
+  await expect(page.locator(".error")).toBeVisible();
+
+  const refused = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        document.addEventListener("securitypolicyviolation", (event) =>
+          resolve(event.violatedDirective),
+        );
+        const holder = document.createElement("div");
+        holder.innerHTML = `<img src="data:," onerror="window.__injected = true">`;
+        document.body.appendChild(holder);
+        setTimeout(() => resolve(null), 2000);
+      }),
+  );
+  expect(refused).toMatch(/^script-src/);
+  expect(await page.evaluate(() => window.__injected)).toBeUndefined();
+  await context.close();
 });
 
 test("a link that opens nothing says so (US-53)", async ({ browser, baseURL }) => {
@@ -118,7 +155,7 @@ test("a link that opens nothing says so (US-53)", async ({ browser, baseURL }) =
   await recipient.page.goto(`/app/s/${"0".repeat(64)}`);
   await expect(recipient.page.locator(".error")).toContainText("This link does not work");
   await expect(recipient.page.locator("#login-password")).toHaveCount(0);
-  await recipient.context.close();
+  await recipient.close();
 });
 
 test("the owner stops a share from the shares screen, and its link then opens nothing (US-69)", async ({
@@ -147,5 +184,5 @@ test("the owner stops a share from the shares screen, and its link then opens no
   const recipient = await recipientPage(browser, baseURL);
   await recipient.page.goto(`/app/s/${token}`);
   await expect(recipient.page.locator(".error")).toContainText("This link does not work");
-  await recipient.context.close();
+  await recipient.close();
 });

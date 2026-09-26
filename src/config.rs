@@ -45,6 +45,22 @@ pub mod server {
     /// back to a half-finished import, short enough that abandoned ones do
     /// not accumulate. Swept on the way into the next staging request.
     pub const STAGED_IMPORT_TTL: time::Duration = time::Duration::hours(24);
+
+    /// The `Content-Security-Policy` every response carries. What the SPA
+    /// needs and no more: its own scripts, styles and API; OSM's tiles and
+    /// the `data:` icons Pico's CSS draws with. `'unsafe-eval'` because
+    /// `document::eval` (ADR-0025) runs its scripts through `new Function`;
+    /// inline scripts and event-handler attributes stay refused, which is
+    /// what stops markup that reaches the page from running.
+    pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
+        script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; \
+        style-src 'self'; \
+        img-src 'self' data: https://*.tile.openstreetmap.org; \
+        connect-src 'self'; \
+        object-src 'none'; \
+        base-uri 'none'; \
+        form-action 'self'; \
+        frame-ancestors 'none'";
 }
 
 /// The shared-password gate (US-19, [ADR-0010]'s 2026-09-02 amendment).

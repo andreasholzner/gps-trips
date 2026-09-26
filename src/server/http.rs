@@ -8,7 +8,7 @@ use axum::{
     Json, Router,
 };
 use tower_http::services::{fs::ServeFileSystemResponseBody, ServeDir, ServeFile};
-use tower_http::set_header::SetResponseHeader;
+use tower_http::set_header::{SetResponseHeader, SetResponseHeaderLayer};
 
 use crate::config;
 use crate::models::{
@@ -173,6 +173,11 @@ pub fn router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::gate,
+        ))
+        // Outermost, so the gate's own refusals carry it too.
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(config::server::CONTENT_SECURITY_POLICY),
         ))
         .with_state(state)
 }

@@ -162,3 +162,42 @@ async fn a_hashed_file_from_an_earlier_deploy_is_not_found() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert!(response.headers().get(header::CACHE_CONTROL).is_none());
 }
+
+/// The policy the app's shell, its API and its media answer with — the one
+/// value in `config`, so this asserts its presence and its load-bearing
+/// parts rather than restating it.
+#[tokio::test]
+async fn every_response_carries_the_content_security_policy() {
+    let responses = get_from_bundle(&["/app/", "/app/trips/1", HASHED_ASSET, "/api/version"]).await;
+    let (app, _dir) = common::test_app().await;
+    let anonymous = common::send_unauthenticated(
+        &app,
+        axum::http::Request::builder()
+            .uri("/api/trips")
+            .body(axum::body::Body::empty())
+            .unwrap(),
+    )
+    .await;
+
+    for response in responses.iter().chain([&anonymous]) {
+        let policy = response
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .expect("a Content-Security-Policy header")
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            policy,
+            trip_archive::config::server::CONTENT_SECURITY_POLICY
+        );
+    }
+    let policy = trip_archive::config::server::CONTENT_SECURITY_POLICY;
+    let script_src = policy
+        .split(';')
+        .map(str::trim)
+        .find(|directive| directive.starts_with("script-src "))
+        .expect("a script-src directive");
+    assert!(!script_src.contains("'unsafe-inline'"), "{script_src}");
+    assert!(policy.contains("frame-ancestors 'none'"), "{policy}");
+    assert!(policy.contains("object-src 'none'"), "{policy}");
+}

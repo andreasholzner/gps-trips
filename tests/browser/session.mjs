@@ -41,9 +41,29 @@ async function token(baseURL) {
   return value;
 }
 
-/// `test`, with the `request` fixture signed in. Specs import it from here
-/// instead of from `@playwright/test`, and their seeding calls are unchanged.
+/// Collect every Content Security Policy refusal `page` reports. Chromium
+/// reports each one on the console, across navigations, so this catches a
+/// policy that breaks the app wherever a spec happens to go.
+export function watchCsp(page) {
+  const refused = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("Content Security Policy")) {
+      refused.push(message.text());
+    }
+  });
+  return refused;
+}
+
+/// `test`, with the `request` fixture signed in and every `page` watched for
+/// Content Security Policy refusals — the whole suite doubles as the check
+/// that the policy leaves the app working. Specs import it from here instead
+/// of from `@playwright/test`, and their seeding calls are unchanged.
 export const test = base.extend({
+  page: async ({ page }, use) => {
+    const refused = watchCsp(page);
+    await use(page);
+    expect(refused, "Content Security Policy refusals").toEqual([]);
+  },
   request: async ({ playwright, baseURL }, use) => {
     const context = await playwright.request.newContext({
       baseURL,
