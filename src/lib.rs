@@ -1,8 +1,10 @@
 //! Trip Archive — a self-hosted komoot organization replacement.
 //!
-//! This crate currently implements **US-1: import a GPX file** (see
-//! `docs/requirements.md`). The HTTP surface is a plain Axum app; the Leptos
-//! front-end described in ADR-0001 arrives in a later milestone.
+//! The server crate: the Axum JSON API and the SQLite store behind it, plus
+//! the laptop commands (`backup`, `qmapshack_export`, the Komoot tools) under
+//! `src/bin`. The UI is the Dioxus SPA in `crates/ui-dioxus` (ADR-0024),
+//! which this server serves at `/app`. What is built, and why, is in
+//! `docs/requirements.md` and `docs/adr/`.
 
 pub mod config;
 pub mod server;
