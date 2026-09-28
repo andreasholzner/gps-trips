@@ -258,7 +258,7 @@ async function storedPhoto(request, id, name) {
 
 // Real clicks on a map `document::eval` drew — both exemptions.
 test("a geotagged photo is moved by hand, after a warning (US-30)", async ({ page, request }) => {
-  const id = await ownTrip(request, "Placed Trip");
+  const id = await ownTrip(request, "Placed Trip", "cycling");
   await addPhotos(request, id, [["moved.jpg", GEOTAGGED_JPEG]]);
   const before = await storedPhoto(request, id, "moved.jpg");
   await page.goto(`/app/trips/${id}`);
@@ -270,13 +270,17 @@ test("a geotagged photo is moved by hand, after a warning (US-30)", async ({ pag
   // The viewer handed over to it rather than staying open underneath.
   await expect(page.getByRole("dialog", { name: "Photo viewer" })).toHaveCount(0);
   await expect(placing.locator("#place-warning")).toContainText("GPS");
-  await expect(placing.locator("#place-map path[stroke=\"#3367d6\"]")).toBeVisible();
+  // The track in its activity's colour, cycling's blue, and the photo's
+  // marks in the track map's amber (US-75).
+  await expect(placing.locator("#place-map path[stroke=\"#1f4e9c\"]")).toBeVisible();
   await expect(placing.locator("#place-map .place-current")).toHaveCount(1);
+  await expect(placing.locator("#place-map .place-current")).toHaveAttribute("stroke", "#f5a623");
   await expect(placing.getByRole("button", { name: "Save" })).toBeDisabled();
 
   const map = await placing.locator("#place-map").boundingBox();
   await page.mouse.click(map.x + map.width * 0.2, map.y + map.height * 0.25);
   await expect(placing.locator("#place-map .place-picked")).toHaveCount(1);
+  await expect(placing.locator("#place-map .place-picked")).toHaveAttribute("fill", "#f5a623");
   await placing.getByRole("button", { name: "Save" }).click();
 
   await expect(placing).toHaveCount(0);

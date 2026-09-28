@@ -3,6 +3,9 @@
 
 use dioxus::prelude::*;
 
+use trip_archive_types::ActivityType;
+
+use crate::activity_color;
 use crate::api::{self, ApiClient};
 use crate::format;
 use crate::interop;
@@ -16,10 +19,12 @@ use crate::track::{self, Track};
 /// the stats, the gallery and the edit controls around it are unaffected.
 ///
 /// `on_open_photos` is told the set a photo tapped in a marker's popup opens
-/// the viewer on, and where in it to start (US-62).
+/// the viewer on, and where in it to start (US-62). `activity` colors the
+/// line (US-75).
 #[component]
 pub fn TrackSection(
     id: i64,
+    activity: ActivityType,
     markers: Vec<PhotoMarker>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
@@ -33,7 +38,7 @@ pub fn TrackSection(
             None => rsx! { p { "Loading the track…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load the track: {err}" } },
             Some(Ok(track)) => rsx! {
-                TrackViews { track: track.clone(), markers: markers.clone(), on_open_photos }
+                TrackViews { track: track.clone(), activity, markers: markers.clone(), on_open_photos }
             },
         }
     }
@@ -51,6 +56,7 @@ pub fn TrackSection(
 #[component]
 fn TrackViews(
     track: Track,
+    activity: ActivityType,
     markers: Vec<PhotoMarker>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
@@ -61,7 +67,7 @@ fn TrackViews(
     let hovered_at = hovered().and_then(|i| samples.get(i).and_then(|sample| sample.position));
 
     rsx! {
-        TrackMap { points, markers, hovered_at, on_open_photos }
+        TrackMap { points, color: activity_color::color(activity), markers, hovered_at, on_open_photos }
         if let Some((distance_km, elevation_m)) = series {
             ElevationChart { distance_km, elevation_m, hovered }
             HoverReadout { points: samples, hovered: hovered() }
@@ -74,6 +80,7 @@ fn TrackViews(
 #[component]
 fn TrackMap(
     points: Vec<[f64; 2]>,
+    color: &'static str,
     markers: Vec<PhotoMarker>,
     hovered_at: Option<[f64; 2]>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
@@ -98,8 +105,8 @@ fn TrackMap(
     // does not restart when `use_reactive!`'s props change, so the map kept
     // the markers it was first drawn with — a photo added or placed (US-30)
     // stayed where it was until the page was reloaded.
-    let _draw = use_resource(use_reactive!(|points, markers| async move {
-        let mut map = interop::start_track_map(points, markers.clone());
+    let _draw = use_resource(use_reactive!(|points, color, markers| async move {
+        let mut map = interop::start_track_map(points, color, markers.clone());
         handle.set(Some(map));
         while let Ok(tap) = map.recv::<PopupTap>().await {
             if let Some(opened) = photos::tapped(&markers, tap) {

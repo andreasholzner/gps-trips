@@ -6,10 +6,11 @@
 use dioxus::prelude::*;
 use serde::Serialize;
 
-/// Draws into `#place-map`, over OSM tiles: the track as a line, the photo's
-/// current position as a hollow ring, and — once the owner has tapped or
-/// clicked — a filled mark where the photo will go, moved by every later
-/// tap. Each pick is sent back as `[lat, lon]`.
+/// Draws into `#place-map`, over OSM tiles: the track as a line in its
+/// activity's color (US-75), the photo's current position as a hollow ring,
+/// and — once the owner has tapped or clicked — a filled mark where the
+/// photo will go, moved by every later tap. Both marks are the track map's
+/// photo amber. Each pick is sent back as `[lat, lon]`.
 ///
 /// The map is built afresh for every placement: the overlay that holds it is
 /// a new node each time it opens. A map left in the registry by an earlier
@@ -48,7 +49,7 @@ const PLACE_MAP_SCRIPT: &str = r##"
     const points = view.points || [];
     if (points.length > 0) {
       const line = L.polyline(points, {
-        color: "#3367d6",
+        color: view.color,
         weight: 3,
         interactive: false,
       }).addTo(map);
@@ -59,7 +60,7 @@ const PLACE_MAP_SCRIPT: &str = r##"
       // "goes here"; not interactive, so a tap on it still picks that spot.
       L.circleMarker(view.current, {
         radius: 8,
-        color: "#d6336c",
+        color: "#f5a623",
         weight: 3,
         fill: false,
         className: "place-current",
@@ -83,7 +84,7 @@ const PLACE_MAP_SCRIPT: &str = r##"
           radius: 7,
           color: "#ffffff",
           weight: 2,
-          fillColor: "#d6336c",
+          fillColor: "#f5a623",
           fillOpacity: 1,
           className: "place-picked",
           interactive: false,
@@ -97,20 +98,29 @@ const PLACE_MAP_SCRIPT: &str = r##"
     });
 "##;
 
-/// What the placing map shows: the track as `[lat, lon]` pairs, and where the
-/// photo is now, if anywhere.
+/// What the placing map shows: the track as `[lat, lon]` pairs and its
+/// color, and where the photo is now, if anywhere.
 #[derive(Serialize)]
 struct PlaceMapView {
     points: Vec<[f64; 2]>,
+    color: &'static str,
     current: Option<[f64; 2]>,
 }
 
 /// Start the placing map. The handle is the channel, and is read for the
 /// map's whole life: every pick arrives on it as `[lat, lon]`, exactly as
 /// Leaflet reports it — unwrapped, so possibly off the ±180° range.
-pub fn start_place_map(points: Vec<[f64; 2]>, current: Option<[f64; 2]>) -> document::Eval {
+pub fn start_place_map(
+    points: Vec<[f64; 2]>,
+    color: &'static str,
+    current: Option<[f64; 2]>,
+) -> document::Eval {
     let eval = document::eval(PLACE_MAP_SCRIPT);
-    if let Err(err) = eval.send(PlaceMapView { points, current }) {
+    if let Err(err) = eval.send(PlaceMapView {
+        points,
+        color,
+        current,
+    }) {
         dioxus::logger::tracing::error!("could not draw the placing map: {err}");
     }
     eval

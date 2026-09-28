@@ -176,12 +176,13 @@ const REGION_MAP_SCRIPT: &str = r##"
         arm(message.armed);
       } else if ("marks" in message) {
         heat.clearLayers();
-        points = message.marks.points;
-        for (const point of points) {
-          L.circleMarker(point, {
+        const marks = message.marks.marks;
+        points = marks.map((mark) => mark.at);
+        for (const mark of marks) {
+          L.circleMarker(mark.at, {
             radius: 8,
             stroke: false,
-            fillColor: "#d7301f",
+            fillColor: mark.color,
             fillOpacity: message.marks.opacity,
             interactive: false,
             className: "heat-mark",
@@ -267,6 +268,8 @@ pub fn bbox_corners(param: &str) -> Option<[f64; 4]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::heat::HeatMark;
+    use trip_archive_types::ActivityType;
 
     #[test]
     fn the_map_is_told_which_kind_of_message_it_is_reading() {
@@ -279,13 +282,21 @@ mod tests {
         let cleared = serde_json::to_value(MapMessage::Region(None)).unwrap();
         assert_eq!(cleared, serde_json::json!({ "region": null }));
         let marks = HeatMarks {
-            points: vec![[60.0, 11.0]],
+            marks: vec![HeatMark {
+                at: [60.0, 11.0],
+                activity: ActivityType::Hiking,
+                color: "#b2182b",
+            }],
             opacity: 0.6,
         };
         let marks = serde_json::to_value(MapMessage::Marks(&marks)).unwrap();
+        // The activity itself stays in Rust: the script draws the color.
         assert_eq!(
             marks,
-            serde_json::json!({ "marks": { "points": [[60.0, 11.0]], "opacity": 0.6 } })
+            serde_json::json!({ "marks": {
+                "marks": [{ "at": [60.0, 11.0], "color": "#b2182b" }],
+                "opacity": 0.6,
+            } })
         );
         // US-65: arming and disarming "Select area" is Rust's to decide.
         let armed = serde_json::to_value(MapMessage::Armed(true)).unwrap();

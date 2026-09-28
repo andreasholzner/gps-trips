@@ -167,7 +167,61 @@ fn us53_each_trip_whose_track_was_read_gets_a_line() {
         [OverviewLine {
             id: 2,
             name: "Two".to_string(),
+            color: "#b2182b",
             points: vec![[59.9, 10.7], [60.0, 10.8]],
         }]
+    );
+}
+
+#[test]
+fn us75_each_line_is_in_its_trips_activity_color() {
+    let trip = |id: i64, activity_type: ActivityType| SharedTripSummary {
+        id,
+        name: format!("Trip {id}"),
+        activity_type,
+        start_time: None,
+        start_date: None,
+        distance_m: 0.0,
+        ascent_m: None,
+        duration_secs: None,
+    };
+    let track: Track = serde_json::from_value(serde_json::json!({
+        "geometry": { "coordinates": [[10.7, 59.9, 0.0], [10.8, 60.0, 0.0]] }
+    }))
+    .unwrap();
+
+    let lines = overview_lines(
+        &[
+            trip(1, ActivityType::Kayaking),
+            trip(2, ActivityType::SnowShoe),
+        ],
+        &[(1, track.clone()), (2, track)],
+    );
+
+    let colors: Vec<_> = lines.iter().map(|line| line.color).collect();
+    assert_eq!(colors, ["#0e8a8a", "#e377d0"]);
+}
+
+#[tokio::test]
+async fn us75_a_share_of_several_activities_names_their_colors_under_the_map() {
+    let (archive, _dir) = serve_test_archive().await;
+    let first = import_sample(&archive, &[("name", "Walk"), ("activity_type", "hiking")]).await;
+    let second = import_sample(&archive, &[("name", "Ride"), ("activity_type", "cycling")]).await;
+    let (recipient, token) = shared(&archive, vec![first, second], None).await;
+
+    let html = render_against_archive(
+        &recipient,
+        move || rsx! { Shared { token: token.clone() } },
+        |html| html.contains("map-legend"),
+    )
+    .await;
+
+    assert!(
+        html.contains("Hiking") && html.contains("#b2182b"),
+        "{html}"
+    );
+    assert!(
+        html.contains("Cycling") && html.contains("#1f4e9c"),
+        "{html}"
     );
 }

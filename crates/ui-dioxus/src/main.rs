@@ -6,6 +6,7 @@
 
 use dioxus::prelude::*;
 
+mod activity_color;
 mod api;
 mod bulk_activity;
 mod bulk_tag;

@@ -55,6 +55,7 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
                 TripStats { trip: as_trip_detail(trip) }
                 TrackSection {
                     id,
+                    activity: trip.activity_type,
                     markers: photos::photo_markers(&base_url, photos.as_deref().unwrap_or(&[])),
                     on_open_photos: move |opened| viewing.set(Some(opened)),
                 }

@@ -1,13 +1,16 @@
 //! The trip list's heat map (US-63): one translucent mark per listed trip,
 //! so that where trips pile up the marks overlap and darken — a heat map by
-//! superposition rather than by plugin.
+//! superposition rather than by plugin. Each mark is in its trip's activity
+//! color (US-75).
 //!
 //! Which marks are drawn and how heavy each is gets decided here, where
 //! `cargo test` reaches it; the region map's script only draws what it is
 //! handed (ADR-0025).
 
 use serde::Serialize;
-use trip_archive_types::TripSummary;
+use trip_archive_types::{ActivityType, TripSummary};
+
+use crate::activity_color;
 
 /// How opaque a lone trip's mark is, and the floor no mark goes below. The
 /// floor keeps every mark visible on its own — zoomed in, where marks no
@@ -19,9 +22,26 @@ const MIN_OPACITY: f64 = 0.25;
 /// What the region map draws: every mark at the same opacity.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HeatMarks {
-    /// `[lat, lon]`, the order Leaflet takes.
-    pub points: Vec<[f64; 2]>,
+    pub marks: Vec<HeatMark>,
     pub opacity: f64,
+}
+
+/// One trip's mark.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HeatMark {
+    /// `[lat, lon]`, the order Leaflet takes.
+    pub at: [f64; 2],
+    /// Kept for the legend; the script only needs the color.
+    #[serde(skip)]
+    pub activity: ActivityType,
+    pub color: &'static str,
+}
+
+impl HeatMarks {
+    /// The activities of the trips that got a mark, for the legend.
+    pub fn activities(&self) -> Vec<ActivityType> {
+        self.marks.iter().map(|mark| mark.activity).collect()
+    }
 }
 
 /// One mark per trip, at the centre of its stored bounding box. The centre
@@ -32,19 +52,21 @@ pub struct HeatMarks {
 /// The opacity falls as `1/√n` with the number of marks, so a few trips
 /// stay clearly visible while hundreds do not merge into one solid blob.
 pub fn marks(trips: &[TripSummary]) -> HeatMarks {
-    let points: Vec<[f64; 2]> = trips
+    let marks: Vec<HeatMark> = trips
         .iter()
         .filter_map(
             |trip| match (trip.min_lat, trip.min_lon, trip.max_lat, trip.max_lon) {
-                (Some(min_lat), Some(min_lon), Some(max_lat), Some(max_lon)) => {
-                    Some([(min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0])
-                }
+                (Some(min_lat), Some(min_lon), Some(max_lat), Some(max_lon)) => Some(HeatMark {
+                    at: [(min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0],
+                    activity: trip.activity_type,
+                    color: activity_color::color(trip.activity_type),
+                }),
                 _ => None,
             },
         )
         .collect();
-    let opacity = opacity_for(points.len());
-    HeatMarks { points, opacity }
+    let opacity = opacity_for(marks.len());
+    HeatMarks { marks, opacity }
 }
 
 fn opacity_for(count: usize) -> f64 {
@@ -58,6 +80,10 @@ fn opacity_for(count: usize) -> f64 {
 mod tests {
     use super::*;
     use trip_archive_types::{ActivityType, TripKind};
+
+    fn positions(marks: &HeatMarks) -> Vec<[f64; 2]> {
+        marks.marks.iter().map(|mark| mark.at).collect()
+    }
 
     fn a_trip(bbox: Option<[f64; 4]>) -> TripSummary {
         let [min_lat, min_lon, max_lat, max_lon] = match bbox {
@@ -86,19 +112,41 @@ mod tests {
     fn a_trip_is_marked_at_the_centre_of_its_bounding_box() {
         let marks = marks(&[a_trip(Some([59.0, 10.0, 61.0, 12.0]))]);
 
-        assert_eq!(marks.points, vec![[60.0, 11.0]]);
+        assert_eq!(positions(&marks), vec![[60.0, 11.0]]);
+    }
+
+    #[test]
+    fn a_mark_is_in_its_trips_activity_color() {
+        // US-75.
+        let mut ride = a_trip(Some([47.0, 11.0, 47.5, 11.5]));
+        ride.activity_type = ActivityType::Cycling;
+
+        let marks = marks(&[a_trip(Some([59.0, 10.0, 61.0, 12.0])), ride]);
+
+        let colors: Vec<_> = marks.marks.iter().map(|mark| mark.color).collect();
+        assert_eq!(colors, ["#b2182b", "#1f4e9c"]);
+    }
+
+    #[test]
+    fn the_activities_shown_are_those_that_got_a_mark() {
+        let mut boxless = a_trip(None);
+        boxless.activity_type = ActivityType::Kayaking;
+
+        let marks = marks(&[a_trip(Some([59.0, 10.0, 61.0, 12.0])), boxless]);
+
+        assert_eq!(marks.activities(), vec![ActivityType::Hiking]);
     }
 
     #[test]
     fn a_trip_without_a_bounding_box_gets_no_mark() {
         let marks = marks(&[a_trip(None), a_trip(Some([47.0, 11.0, 47.5, 11.5]))]);
 
-        assert_eq!(marks.points, vec![[47.25, 11.25]]);
+        assert_eq!(positions(&marks), vec![[47.25, 11.25]]);
     }
 
     #[test]
     fn an_empty_list_draws_nothing() {
-        assert!(marks(&[]).points.is_empty());
+        assert!(marks(&[]).marks.is_empty());
     }
 
     #[test]

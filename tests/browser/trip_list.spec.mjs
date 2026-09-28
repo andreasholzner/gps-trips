@@ -270,10 +270,16 @@ test("the map marks every trip the filters match (US-63)", async ({ page }) => {
   await page.goto("/app/");
 
   await expect(marks).toHaveCount(2);
+  // Each in its trip's activity colour, named under the map (US-75).
+  await expect(page.locator('#region-map .heat-mark[fill="#b2182b"]')).toHaveCount(1);
+  await expect(page.locator('#region-map .heat-mark[fill="#1f4e9c"]')).toHaveCount(1);
+  await expect(page.locator(".map-legend li")).toHaveText(["Hiking", "Cycling"]);
 
   await page.getByRole("searchbox").fill("inn");
   await expect(rows(page)).toHaveCount(1);
   await expect(marks).toHaveCount(1);
+  // A single activity needs no legend.
+  await expect(page.locator(".map-legend")).toHaveCount(0);
 });
 
 // US-63: the view fits the marks once, then stays where the owner puts it

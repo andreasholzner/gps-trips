@@ -131,7 +131,7 @@ const TRACK_MAP_SCRIPT: &str = r##"
                 radius: 7,
                 color: "#ffffff",
                 weight: 2,
-                fillColor: "#d6336c",
+                fillColor: "#f5a623",
                 fillOpacity: 1,
               });
         return marker.bindPopup(popup);
@@ -140,7 +140,7 @@ const TRACK_MAP_SCRIPT: &str = r##"
 
     const points = view.points || [];
     if (points.length > 0) {
-      map.trackLine = L.polyline(points, { color: "#3367d6", weight: 3 }).addTo(map);
+      map.trackLine = L.polyline(points, { color: view.color, weight: 3 }).addTo(map);
     }
 
     // Framed on everything there is to see. A track with no drawable
@@ -196,7 +196,7 @@ const TRACK_MAP_SCRIPT: &str = r##"
         // marked, and an unfilled circle keeps the line visible under it.
         map.hoverMark = L.circleMarker(at, {
           radius: 8,
-          color: "#3367d6",
+          color: view.color,
           weight: 3,
           fill: false,
           className: "hover-mark",
@@ -357,26 +357,37 @@ const ELEVATION_SCRIPT: &str = r##"
     });
 "##;
 
-/// What the map shows: the track as `[lat, lon]` pairs, and a marker per
-/// group of photos taken at the same place (US-3/US-4, grouped by US-57).
-/// Sent as one value because it is one picture — a redraw with new markers
-/// must not lose the line.
+/// What the map shows: the track as `[lat, lon]` pairs in its activity's
+/// color (US-75), and a marker per group of photos taken at the same place
+/// (US-3/US-4, grouped by US-57). Sent as one value because it is one
+/// picture — a redraw with new markers must not lose the line.
 #[derive(Serialize)]
 struct TrackMapView {
     points: Vec<[f64; 2]>,
+    color: &'static str,
     markers: Vec<PhotoMarker>,
 }
 
-/// Start the track map with the line and the photo markers to draw.
+/// Start the track map with the line, its color, and the photo markers to
+/// draw. The point hovered on the elevation chart is marked in the line's
+/// color too.
 ///
 /// The returned handle is the channel: it must be kept alive until the
 /// script has taken the payload, so callers hold it for the life of the
 /// screen. It also carries a photo tapped in a popup back, as a
 /// [`PopupTap`](crate::photos::PopupTap) (US-62).
-pub fn start_track_map(points: Vec<[f64; 2]>, markers: Vec<PhotoMarker>) -> document::Eval {
+pub fn start_track_map(
+    points: Vec<[f64; 2]>,
+    color: &'static str,
+    markers: Vec<PhotoMarker>,
+) -> document::Eval {
     start(
         TRACK_MAP_SCRIPT,
-        TrackMapView { points, markers },
+        TrackMapView {
+            points,
+            color,
+            markers,
+        },
         "the track map",
     )
 }

@@ -6,6 +6,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ShareOverview, SharedTrip, SharedTripSummary, TripDetail};
 
+use crate::activity_color::{self, ActivityLegend};
 use crate::api::{self, ApiClient, ApiError};
 use crate::format;
 use crate::interop::{self, OverviewLine};
@@ -104,10 +105,12 @@ fn SharedTrips(token: String, overview: ShareOverview) -> Element {
     }
 }
 
-/// Every track on one map; clicking one opens that trip.
+/// Every track on one map; clicking one opens that trip. Under it, which
+/// color is which activity, for the lines actually drawn (US-75).
 #[component]
 fn OverviewMap(token: String, trips: Vec<SharedTripSummary>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
+    let mut shown = use_signal(Vec::new);
     let _draw = use_resource(move || {
         let trips = trips.clone();
         let token = token.clone();
@@ -120,6 +123,13 @@ fn OverviewMap(token: String, trips: Vec<SharedTripSummary>) -> Element {
                     tracks.push((trip.id, track));
                 }
             }
+            shown.set(
+                trips
+                    .iter()
+                    .filter(|trip| tracks.iter().any(|(id, _)| *id == trip.id))
+                    .map(|trip| trip.activity_type)
+                    .collect(),
+            );
             let mut map = interop::start_overview_map(overview_lines(&trips, &tracks));
             while let Ok(id) = map.recv::<i64>().await {
                 navigator().push(Route::SharedTripDetail {
@@ -129,10 +139,14 @@ fn OverviewMap(token: String, trips: Vec<SharedTripSummary>) -> Element {
             }
         }
     });
-    rsx! { div { id: "overview-map", class: "overview-map" } }
+    rsx! {
+        div { id: "overview-map", class: "overview-map" }
+        ActivityLegend { shown: shown() }
+    }
 }
 
-/// One line per trip whose track was read, named after the trip. `tracks`
+/// One line per trip whose track was read, named after the trip and in its
+/// activity's color (US-75). `tracks`
 /// lacks the ones that could not be read, so each is matched to its trip by
 /// id rather than by position.
 pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[(i64, Track)]) -> Vec<OverviewLine> {
@@ -143,6 +157,7 @@ pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[(i64, Track)]) -> V
             Some(OverviewLine {
                 id: trip.id,
                 name: trip.name.clone(),
+                color: activity_color::color(trip.activity_type),
                 points: track::polyline(track),
             })
         })

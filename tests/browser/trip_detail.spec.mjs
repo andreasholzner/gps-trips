@@ -44,7 +44,7 @@ test("the track, the elevation profile and a photo marker are drawn (US-7, US-3)
   page,
   request,
 }) => {
-  const id = await ownTrip(request, "Drawn Trip");
+  const id = await ownTrip(request, "Drawn Trip", "hiking");
   const uploaded = await request.post(`/api/trips/${id}/photos`, {
     multipart: {
       photos: { name: "geotagged.jpg", mimeType: "image/jpeg", buffer: GEOTAGGED_JPEG },
@@ -56,18 +56,20 @@ test("the track, the elevation profile and a photo marker are drawn (US-7, US-3)
 
   // Leaflet took the container over and drew the track on tiles it fetched.
   // The two overlays are told apart by their colours, which is all the DOM
-  // says about them: a line is a line and a marker is a circle.
+  // says about them: a line is a line and a marker is a circle. The line is
+  // in its activity's colour, hiking's red (US-75).
   await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
   await expect(page.locator("#track-map img.leaflet-tile").first()).toBeVisible();
-  await expect(page.locator('#track-map path[stroke="#3367d6"]')).toBeVisible();
+  await expect(page.locator('#track-map path[stroke="#b2182b"]')).toBeVisible();
 
   // uPlot drew the elevation profile into its own container.
   await expect(page.locator("#elevation canvas")).toBeVisible();
 
   // US-3: the geotagged photo is on the map, and in the gallery. A circle
   // marker drawn by Leaflet rather than fetched — its default pin is an image
-  // file the bundle deliberately does not ship.
-  await expect(page.locator('#track-map path[fill="#d6336c"]')).toBeVisible();
+  // file the bundle deliberately does not ship. Amber, which no activity
+  // uses (US-75).
+  await expect(page.locator('#track-map path[fill="#f5a623"]')).toBeVisible();
   await expect(page.getByRole("img", { name: "geotagged.jpg" })).toBeVisible();
 });
 
@@ -97,6 +99,8 @@ test("photos taken at the same place share one marker that shows them all (US-57
   const cluster = page.locator("#track-map .photo-cluster");
   await expect(cluster).toHaveCount(1);
   await expect(cluster).toHaveText("2");
+  // Amber, like a single photo's circle (US-75).
+  await expect(cluster).toHaveCSS("background-color", "rgb(245, 166, 35)");
 
   // A ring around the count: white all the way round, and the number in the
   // middle of it. Both were lost to CSS from outside this rule — Leaflet's
@@ -139,7 +143,7 @@ test("hovering the elevation profile reads out the point and marks it on the tra
   page,
   request,
 }) => {
-  const id = await ownTrip(request, "Hovered Trip");
+  const id = await ownTrip(request, "Hovered Trip", "kayaking");
   await page.goto(`/app/trips/${id}`);
   await expect(page.locator("#elevation canvas")).toBeVisible();
 
@@ -165,8 +169,10 @@ test("hovering the elevation profile reads out the point and marks it on the tra
   await expect(page.locator("#readout-distance")).toHaveText(/^\d+\.\d\d km$/);
   await expect(page.locator("#readout-elevation")).toHaveText(/^\d+ m$/);
   // The index reached Rust, was resolved to a position, and came back to the
-  // map as a mark on the track.
+  // map as a mark on the track — in the track's own colour, kayaking's
+  // teal: it is only ever drawn on this one trip's line (US-75).
   await expect(page.locator("#track-map .hover-mark")).toHaveCount(1);
+  await expect(page.locator("#track-map .hover-mark")).toHaveAttribute("stroke", "#0e8a8a");
 
   // Further along the chart is a different point of the track.
   const first = await page.locator("#readout-distance").textContent();
@@ -354,7 +360,7 @@ test("a photo added later appears in the gallery (US-2)", async ({ page, request
   await expect(page.getByRole("img", { name: "added-later.jpg" })).toBeVisible();
   // US-3: the geotagged photo reaches the map without a reload — the map is
   // redrawn with the photos it is handed, not only the ones it started with.
-  await expect(page.locator('#track-map path[fill="#d6336c"]')).toBeVisible();
+  await expect(page.locator('#track-map path[fill="#f5a623"]')).toBeVisible();
   // The picker no longer names a file it has already uploaded, so the button
   // does not contradict it.
   await expect(page.locator("#add-photos-input")).toHaveValue("");

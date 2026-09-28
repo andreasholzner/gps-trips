@@ -6,7 +6,8 @@
 use dioxus::prelude::*;
 use serde::Serialize;
 
-/// Draws into `#overview-map`, over OSM tiles, one line per trip, and sends
+/// Draws into `#overview-map`, over OSM tiles, one line per trip in the
+/// color it is given, and sends
 /// the trip's id back when its line is clicked or tapped. Drawn into once per
 /// mount; a map left in the registry by an earlier mount belongs to a
 /// container that is gone, and is removed — the track map's disposal rule.
@@ -41,7 +42,7 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     const bounds = L.latLngBounds([]);
     for (const line of view.lines || []) {
       if (line.points.length === 0) continue;
-      const drawn = L.polyline(line.points, { color: "#3367d6", weight: 4 }).addTo(map);
+      const drawn = L.polyline(line.points, { color: line.color, weight: 4 }).addTo(map);
       // A node, not the string: Leaflet puts a string tooltip in as HTML, and
       // a trip's name comes from a GPX `<name>` or a Komoot title.
       drawn.bindTooltip(document.createTextNode(line.name), { sticky: true });
@@ -64,6 +65,8 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
 pub struct OverviewLine {
     pub id: i64,
     pub name: String,
+    /// The trip's activity color (US-75).
+    pub color: &'static str,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
 }

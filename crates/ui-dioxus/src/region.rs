@@ -9,6 +9,7 @@
 
 use dioxus::prelude::*;
 
+use crate::activity_color::ActivityLegend;
 use crate::filters::Filters;
 use crate::heat::HeatMarks;
 use crate::interop;
@@ -25,7 +26,10 @@ pub fn RegionFilter(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Eleme
     let armed = use_signal(|| false);
     rsx! {
         section { class: "region",
-            RegionMap { filters, marks, armed }
+            RegionMap { filters, marks: marks.clone(), armed }
+            if let Some(marks) = &marks {
+                ActivityLegend { shown: marks.activities() }
+            }
             p { class: "region-controls",
                 SelectArea { armed }
                 button {
@@ -131,7 +135,9 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>, armed: Signal<b
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::heat::HeatMark;
     use crate::test_support::render;
+    use trip_archive_types::ActivityType;
 
     #[test]
     fn the_map_is_in_view_without_opening_anything() {
@@ -147,6 +153,34 @@ mod tests {
         for control in ["Select area", "Clear region", "Fit to trips"] {
             assert!(html.contains(control), "{control}: {html}");
         }
+    }
+
+    #[test]
+    fn the_map_names_the_colors_of_the_activities_it_marks() {
+        // US-75.
+        let html = render(|| {
+            let filters = Signal::new(Filters::default());
+            let marks = HeatMarks {
+                marks: [
+                    (ActivityType::Hiking, "#b2182b"),
+                    (ActivityType::Kayaking, "#0e8a8a"),
+                ]
+                .map(|(activity, color)| HeatMark {
+                    at: [60.0, 11.0],
+                    activity,
+                    color,
+                })
+                .to_vec(),
+                opacity: 0.6,
+            };
+            rsx! { RegionFilter { filters, marks: Some(marks) } }
+        });
+
+        assert!(html.contains("map-legend"), "{html}");
+        assert!(
+            html.contains("Hiking") && html.contains("Kayaking"),
+            "{html}"
+        );
     }
 
     #[test]

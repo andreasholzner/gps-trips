@@ -4,8 +4,9 @@
 //! position the archive worked out itself.
 
 use dioxus::prelude::*;
-use trip_archive_types::{LocationSource, PhotoPlacement};
+use trip_archive_types::{ActivityType, LocationSource, PhotoPlacement};
 
+use crate::activity_color;
 use crate::api::{self, ApiClient};
 use crate::interop;
 use crate::overlay::Overlay;
@@ -56,6 +57,7 @@ pub fn picked([lat, lon]: [f64; 2]) -> PhotoPlacement {
 #[component]
 pub fn PlacePhoto(
     id: i64,
+    activity: ActivityType,
     photo: PhotoView,
     on_placed: EventHandler<()>,
     on_close: EventHandler<()>,
@@ -81,11 +83,17 @@ pub fn PlacePhoto(
                     // still be placed, on the tiles alone.
                     Some(Err(err)) => rsx! {
                         p { class: "error", "Could not load the track: {err}" }
-                        PlaceMap { points: Vec::new(), current, on_pick: move |at| chosen.set(Some(picked(at))) }
+                        PlaceMap {
+                            points: Vec::new(),
+                            color: activity_color::color(activity),
+                            current,
+                            on_pick: move |at| chosen.set(Some(picked(at))),
+                        }
                     },
                     Some(Ok(track)) => rsx! {
                         PlaceMap {
                             points: track::polyline(track),
+                            color: activity_color::color(activity),
                             current,
                             on_pick: move |at| chosen.set(Some(picked(at))),
                         }
@@ -137,13 +145,14 @@ pub fn PlacePhoto(
 #[component]
 fn PlaceMap(
     points: Vec<[f64; 2]>,
+    color: &'static str,
     current: Option<[f64; 2]>,
     on_pick: EventHandler<[f64; 2]>,
 ) -> Element {
     use_future(move || {
         let points = points.clone();
         async move {
-            let mut map = interop::start_place_map(points, current);
+            let mut map = interop::start_place_map(points, color, current);
             while let Ok(at) = map.recv::<[f64; 2]>().await {
                 on_pick.call(at);
             }
@@ -226,7 +235,7 @@ mod tests {
             archive,
             move || {
                 rsx! {
-                    PlacePhoto { id, photo: photo.clone(), on_placed: move |_| {}, on_close: move |_| {} }
+                    PlacePhoto { id, activity: ActivityType::Hiking, photo: photo.clone(), on_placed: move |_| {}, on_close: move |_| {} }
                 }
             },
             |html| html.contains("place-map"),

@@ -64,8 +64,8 @@ test("a share of several opens on a map of every track, and a line opens its tri
   browser,
   baseURL,
 }) => {
-  const first = await trip(request, "Day one");
-  const second = await trip(request, "Day two");
+  const first = await trip(request, "Day one", "hiking");
+  const second = await trip(request, "Day two", "cycling");
   const created = await request.post("/api/shares", {
     data: { trip_ids: [first, second], label: "Lofoten" },
   });
@@ -77,6 +77,10 @@ test("a share of several opens on a map of every track, and a line opens its tri
   await expect(recipient.page.getByRole("heading", { name: "Lofoten" })).toBeVisible();
   const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
   await expect(lines).toHaveCount(2);
+  // Each in its activity's colour, and the legend says which is which (US-75).
+  await expect(recipient.page.locator('#overview-map path[stroke="#b2182b"]')).toHaveCount(1);
+  await expect(recipient.page.locator('#overview-map path[stroke="#1f4e9c"]')).toHaveCount(1);
+  await expect(recipient.page.locator(".map-legend li")).toHaveText(["Hiking", "Cycling"]);
 
   // Both fixtures are the same track, so either line is a trip of the share.
   // Dispatched on the line itself: a pointer aimed at the middle of a track's

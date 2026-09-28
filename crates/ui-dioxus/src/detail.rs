@@ -114,6 +114,7 @@ pub fn TripDetail(id: i64) -> Element {
                 TripTags { id }
                 TrackSection {
                     id,
+                    activity: trip.activity_type,
                     markers: photos::photo_markers(archive().base_url(), photos.as_deref().unwrap_or(&[])),
                     on_open_photos: move |opened| viewing.set(Some(opened)),
                 }
@@ -145,6 +146,7 @@ pub fn TripDetail(id: i64) -> Element {
                 if let Some(photo) = placing() {
                     PlacePhoto {
                         id,
+                        activity: trip.activity_type,
                         photo,
                         // Re-read, so the markers, the gallery and the
                         // captions' offsets all follow the photo.
