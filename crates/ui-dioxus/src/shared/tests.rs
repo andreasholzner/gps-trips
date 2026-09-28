@@ -167,15 +167,16 @@ fn us53_each_trip_whose_track_was_read_gets_a_line() {
         [OverviewLine {
             id: 2,
             name: "Two".to_string(),
-            color: "#b2182b",
+            // The share's second hiking trip (US-72).
+            color: "#9b2543",
             points: vec![[59.9, 10.7], [60.0, 10.8]],
         }]
     );
 }
 
-#[test]
-fn us75_each_line_is_in_its_trips_activity_color() {
-    let trip = |id: i64, activity_type: ActivityType| SharedTripSummary {
+/// A shared trip of `activity`, and a track to draw it with.
+fn summary(id: i64, activity_type: ActivityType) -> SharedTripSummary {
+    SharedTripSummary {
         id,
         name: format!("Trip {id}"),
         activity_type,
@@ -184,22 +185,64 @@ fn us75_each_line_is_in_its_trips_activity_color() {
         distance_m: 0.0,
         ascent_m: None,
         duration_secs: None,
-    };
-    let track: Track = serde_json::from_value(serde_json::json!({
+    }
+}
+
+fn a_track() -> Track {
+    serde_json::from_value(serde_json::json!({
         "geometry": { "coordinates": [[10.7, 59.9, 0.0], [10.8, 60.0, 0.0]] }
     }))
-    .unwrap();
+    .unwrap()
+}
 
+#[test]
+fn us75_each_line_is_in_its_trips_activity_color() {
     let lines = overview_lines(
         &[
-            trip(1, ActivityType::Kayaking),
-            trip(2, ActivityType::SnowShoe),
+            summary(1, ActivityType::Kayaking),
+            summary(2, ActivityType::SnowShoe),
         ],
-        &[(1, track.clone()), (2, track)],
+        &[(1, a_track()), (2, a_track())],
     );
 
     let colors: Vec<_> = lines.iter().map(|line| line.color).collect();
     assert_eq!(colors, ["#0e8a8a", "#e377d0"]);
+}
+
+#[test]
+fn us72_trips_of_one_activity_get_shades_of_its_color_in_list_order() {
+    let trips = [
+        summary(1, ActivityType::Hiking),
+        summary(2, ActivityType::Cycling),
+        summary(3, ActivityType::Hiking),
+    ];
+
+    assert_eq!(trip_colors(&trips), ["#b2182b", "#1f4e9c", "#9b2543"]);
+}
+
+#[test]
+fn us72_a_fifth_trip_of_one_activity_starts_over_at_its_color() {
+    let trips: Vec<_> = (1..=5)
+        .map(|id| summary(id, ActivityType::Hiking))
+        .collect();
+
+    assert_eq!(
+        trip_colors(&trips),
+        ["#b2182b", "#9b2543", "#ee1950", "#e36257", "#b2182b"]
+    );
+}
+
+#[test]
+fn us72_a_track_that_did_not_load_shifts_no_other_trips_color() {
+    let trips = [
+        summary(1, ActivityType::Hiking),
+        summary(2, ActivityType::Hiking),
+    ];
+
+    let lines = overview_lines(&trips, &[(2, a_track())]);
+
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].color, "#9b2543");
 }
 
 #[tokio::test]
@@ -224,4 +267,36 @@ async fn us75_a_share_of_several_activities_names_their_colors_under_the_map() {
         html.contains("Cycling") && html.contains("#1f4e9c"),
         "{html}"
     );
+}
+
+#[tokio::test]
+async fn us72_each_row_shows_its_trips_color() {
+    let (archive, _dir) = serve_test_archive().await;
+    let first = import_sample(
+        &archive,
+        &[("name", "Day one"), ("activity_type", "hiking")],
+    )
+    .await;
+    let second = import_sample(
+        &archive,
+        &[("name", "Day two"), ("activity_type", "hiking")],
+    )
+    .await;
+    let (recipient, token) = shared(&archive, vec![first, second], None).await;
+
+    let html = render_against_archive(
+        &recipient,
+        move || rsx! { Shared { token: token.clone() } },
+        |html| html.contains("shared-trips"),
+    )
+    .await;
+
+    // One activity, so no legend: these can only be the rows' strokes.
+    assert!(!html.contains("map-legend"), "{html}");
+    for color in ["#b2182b", "#9b2543"] {
+        assert!(
+            html.contains(&format!(r#"fill="{color}""#)),
+            "{color}: {html}"
+        );
+    }
 }

@@ -297,6 +297,17 @@
   margin-bottom: 1rem;
 }
 
+/* A shared trip's row: the stroke in its line's color before the name, and
+   a tint while it or its line is pointed at (US-72). */
+.shared-trip-name .swatch {
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+#shared-trips tr.highlighted > td {
+  background-color: color-mix(in srgb, var(--pico-primary-background) 12%, transparent);
+}
+
 .share-title {
   color: var(--pico-muted-color);
   margin-bottom: 0.25rem;

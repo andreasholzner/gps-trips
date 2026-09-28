@@ -389,9 +389,10 @@ nav.pager {
   margin: 0;
 }
 
-.map-legend-swatch {
+.swatch {
   width: 1.5rem;
   height: 0.25rem;
+  flex: none;
 }
 
 /* Select area, Clear region, Fit to trips: a row of buttons with room

@@ -27,7 +27,7 @@ mod place;
 mod region;
 mod track;
 
-pub use overview::{start_overview_map, OverviewLine};
+pub use overview::{highlight_on_overview_map, start_overview_map, OverviewEvent, OverviewLine};
 pub use place::start_place_map;
 pub use region::{
     arm_region_map, bbox_corners, bbox_param, draw_heat_marks, show_region, start_region_map,

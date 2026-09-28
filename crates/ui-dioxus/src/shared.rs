@@ -6,10 +6,10 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ShareOverview, SharedTrip, SharedTripSummary, TripDetail};
 
-use crate::activity_color::{self, ActivityLegend};
+use crate::activity_color::{self, ActivityLegend, Swatch};
 use crate::api::{self, ApiClient, ApiError};
 use crate::format;
-use crate::interop::{self, OverviewLine};
+use crate::interop::{self, OverviewEvent, OverviewLine};
 use crate::track::{self, Track};
 use crate::Route;
 
@@ -70,13 +70,15 @@ pub fn title(overview: &ShareOverview) -> &str {
     overview.label.as_deref().unwrap_or("Shared trips")
 }
 
-/// The list of a share's trips, under a map of them all.
+/// The list of a share's trips, under a map of them all. Each row carries its
+/// line's color, and pointing at either highlights both (US-72).
 #[component]
 fn SharedTrips(token: String, overview: ShareOverview) -> Element {
     let title = title(&overview).to_string();
+    let mut highlighted = use_signal(|| None::<i64>);
     rsx! {
         h1 { id: "share-title", "{title}" }
-        OverviewMap { token: token.clone(), trips: overview.trips.clone() }
+        OverviewMap { token: token.clone(), trips: overview.trips.clone(), highlighted }
         table { id: "shared-trips",
             thead {
                 tr {
@@ -87,9 +89,22 @@ fn SharedTrips(token: String, overview: ShareOverview) -> Element {
                 }
             }
             tbody {
-                for trip in overview.trips.iter() {
-                    tr { key: "{trip.id}",
-                        td {
+                for (trip, color) in overview.trips.iter().zip(trip_colors(&overview.trips)) {
+                    tr {
+                        key: "{trip.id}",
+                        class: if highlighted() == Some(trip.id) { "highlighted" },
+                        onmouseenter: {
+                            let id = trip.id;
+                            move |_| highlighted.set(Some(id))
+                        },
+                        onmouseleave: move |_| highlighted.set(None),
+                        onfocusin: {
+                            let id = trip.id;
+                            move |_| highlighted.set(Some(id))
+                        },
+                        onfocusout: move |_| highlighted.set(None),
+                        td { class: "shared-trip-name",
+                            Swatch { color }
                             Link {
                                 to: Route::SharedTripDetail { token: token.clone(), id: trip.id },
                                 "{trip.name}"
@@ -105,12 +120,18 @@ fn SharedTrips(token: String, overview: ShareOverview) -> Element {
     }
 }
 
-/// Every track on one map; clicking one opens that trip. Under it, which
-/// color is which activity, for the lines actually drawn (US-75).
+/// Every track on one map; clicking one opens that trip, and pointing at one
+/// highlights it and its row (US-72). Under it, which color is which
+/// activity, for the lines actually drawn (US-75).
 #[component]
-fn OverviewMap(token: String, trips: Vec<SharedTripSummary>) -> Element {
+fn OverviewMap(
+    token: String,
+    trips: Vec<SharedTripSummary>,
+    highlighted: Signal<Option<i64>>,
+) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut shown = use_signal(Vec::new);
+    let mut handle = use_signal(|| None::<document::Eval>);
     let _draw = use_resource(move || {
         let trips = trips.clone();
         let token = token.clone();
@@ -131,12 +152,25 @@ fn OverviewMap(token: String, trips: Vec<SharedTripSummary>) -> Element {
                     .collect(),
             );
             let mut map = interop::start_overview_map(overview_lines(&trips, &tracks));
-            while let Ok(id) = map.recv::<i64>().await {
-                navigator().push(Route::SharedTripDetail {
-                    token: token.clone(),
-                    id,
-                });
+            handle.set(Some(map));
+            while let Ok(event) = map.recv::<OverviewEvent>().await {
+                match event {
+                    OverviewEvent::Open(id) => {
+                        navigator().push(Route::SharedTripDetail {
+                            token: token.clone(),
+                            id,
+                        });
+                    }
+                    OverviewEvent::Hover(id) => highlighted.set(id),
+                }
             }
+        }
+    });
+    // Whichever side pointed, the map follows the one highlighted trip.
+    use_effect(move || {
+        let id = highlighted();
+        if let Some(map) = handle.read().as_ref() {
+            interop::highlight_on_overview_map(map, id);
         }
     });
     rsx! {
@@ -145,19 +179,38 @@ fn OverviewMap(token: String, trips: Vec<SharedTripSummary>) -> Element {
     }
 }
 
+/// Each trip's color, in the list's order (US-72): its activity's color for
+/// the first trip of that activity, the next shade for the next, and the
+/// color again once every shade is taken.
+pub fn trip_colors(trips: &[SharedTripSummary]) -> Vec<&'static str> {
+    trips
+        .iter()
+        .enumerate()
+        .map(|(i, trip)| {
+            let before = trips[..i]
+                .iter()
+                .filter(|earlier| earlier.activity_type == trip.activity_type)
+                .count();
+            let shades = activity_color::shades(trip.activity_type);
+            shades[before % shades.len()]
+        })
+        .collect()
+}
+
 /// One line per trip whose track was read, named after the trip and in its
-/// activity's color (US-75). `tracks`
-/// lacks the ones that could not be read, so each is matched to its trip by
-/// id rather than by position.
+/// color (US-72, US-75). `tracks` lacks the ones that could not be read, so
+/// each is matched to its trip by id rather than by position. The colors are
+/// taken over every trip, so one that could not be read shifts no other.
 pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[(i64, Track)]) -> Vec<OverviewLine> {
     trips
         .iter()
-        .filter_map(|trip| {
+        .zip(trip_colors(trips))
+        .filter_map(|(trip, color)| {
             let (_, track) = tracks.iter().find(|(id, _)| *id == trip.id)?;
             Some(OverviewLine {
                 id: trip.id,
                 name: trip.name.clone(),
-                color: activity_color::color(trip.activity_type),
+                color,
                 points: track::polyline(track),
             })
         })

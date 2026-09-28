@@ -11,16 +11,25 @@ use trip_archive_types::ActivityType;
 
 /// The color a trip of this activity is drawn in, on every map.
 pub fn color(activity: ActivityType) -> &'static str {
+    shades(activity)[0]
+}
+
+/// The activity's color and three shades of it, for telling a share's trips
+/// of one activity apart (US-72). Each next shade is the one farthest (CIE
+/// ΔE) from those before it, and every shade is closer to its own activity's
+/// color than to any other activity's, so a shade never passes for another
+/// activity.
+pub fn shades(activity: ActivityType) -> [&'static str; 4] {
     match activity {
-        ActivityType::Unknown => "#6b6b6b",
-        ActivityType::Hiking => "#b2182b",
-        ActivityType::Mountaineering => "#f03b20",
-        ActivityType::Cycling => "#1f4e9c",
-        ActivityType::Bikepacking => "#4292e0",
-        ActivityType::Kayaking => "#0e8a8a",
-        ActivityType::SkiTouring => "#6a1b9a",
-        ActivityType::CrossCountrySkiing => "#b0329e",
-        ActivityType::SnowShoe => "#e377d0",
+        ActivityType::Unknown => ["#6b6b6b", "#3a3a3a", "#8c8c8c", "#5b6470"],
+        ActivityType::Hiking => ["#b2182b", "#9b2543", "#ee1950", "#e36257"],
+        ActivityType::Mountaineering => ["#f03b20", "#ca5013", "#fd6751", "#fc671e"],
+        ActivityType::Cycling => ["#1f4e9c", "#1c4a76", "#3c60d1", "#1d3293"],
+        ActivityType::Bikepacking => ["#4292e0", "#5cb3e4", "#2176a5", "#5c89ef"],
+        ActivityType::Kayaking => ["#0e8a8a", "#07a586", "#04574c", "#27c3c3"],
+        ActivityType::SkiTouring => ["#6a1b9a", "#5b2275", "#8747df", "#a015bf"],
+        ActivityType::CrossCountrySkiing => ["#b0329e", "#90296d", "#d946d7", "#8c3d91"],
+        ActivityType::SnowShoe => ["#e377d0", "#dc93ca", "#e86feb", "#ca5da1"],
     }
 }
 
@@ -63,17 +72,25 @@ pub fn ActivityLegend(shown: Vec<ActivityType>) -> Element {
         ul { class: "map-legend",
             for (label, color) in entries {
                 li { key: "{label}",
-                    // An SVG attribute rather than a `style`: the page's
-                    // CSP refuses inline styles.
-                    svg {
-                        class: "map-legend-swatch",
-                        view_box: "0 0 24 4",
-                        "aria-hidden": "true",
-                        rect { width: "24", height: "4", rx: "2", fill: "{color}" }
-                    }
+                    Swatch { color }
                     "{label}"
                 }
             }
+        }
+    }
+}
+
+/// A short stroke in `color`, like the line on the map it stands for.
+#[component]
+pub fn Swatch(color: &'static str) -> Element {
+    rsx! {
+        // An SVG attribute rather than a `style`: the page's CSP refuses
+        // inline styles.
+        svg {
+            class: "swatch",
+            view_box: "0 0 24 4",
+            "aria-hidden": "true",
+            rect { width: "24", height: "4", rx: "2", fill: "{color}" }
         }
     }
 }
@@ -132,6 +149,33 @@ mod tests {
         // Snowshoeing is a magenta on the maps, unlike in the export.
         assert_eq!(color(SnowShoe), "#e377d0");
         assert_eq!(color(Unknown), "#6b6b6b");
+    }
+
+    #[test]
+    fn an_activitys_first_shade_is_its_color() {
+        // US-72: a share's first trip of an activity looks as US-75 drew it.
+        for activity in EVERY {
+            assert_eq!(shades(activity)[0], color(activity), "{activity}");
+        }
+    }
+
+    #[test]
+    fn no_shade_is_used_twice_across_all_activities() {
+        let all: Vec<_> = EVERY.iter().flat_map(|a| shades(*a)).collect();
+        for (i, shade) in all.iter().enumerate() {
+            assert!(!all[i + 1..].contains(shade), "{shade} is used twice");
+        }
+    }
+
+    #[test]
+    fn the_shades_come_most_distinct_first() {
+        // The palette page's shades, each next one the farthest from those
+        // already taken, worked out once from the palette.
+        assert_eq!(shades(Hiking), ["#b2182b", "#9b2543", "#ee1950", "#e36257"]);
+        assert_eq!(
+            shades(Unknown),
+            ["#6b6b6b", "#3a3a3a", "#8c8c8c", "#5b6470"]
+        );
     }
 
     #[test]

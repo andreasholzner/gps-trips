@@ -95,6 +95,60 @@ test("a share of several opens on a map of every track, and a line opens its tri
   await recipient.close();
 });
 
+// US-72: which line is which row. Both are drawn by Leaflet, and hovering and
+// focusing are real user events — both exemptions.
+test("trips of one activity are told apart, and a row and its line point at each other (US-72)", async ({
+  request,
+  browser,
+  baseURL,
+}) => {
+  const first = await trip(request, "Walk one", "hiking");
+  const second = await trip(request, "Walk two", "hiking");
+  const created = await request.post("/api/shares", {
+    data: { trip_ids: [first, second], label: "Two walks" },
+  });
+  expect(created.status(), "creating the share").toBe(201);
+  const { token } = await created.json();
+
+  const recipient = await recipientPage(browser, baseURL);
+  const page = recipient.page;
+  await page.goto(`/app/s/${token}`);
+  // Hiking's red and its first shade; the list is in the share's order, and
+  // both fixtures start at the same time, so the first imported is first.
+  const firstLine = page.locator('#overview-map path[stroke="#b2182b"]');
+  const secondLine = page.locator('#overview-map path[stroke="#9b2543"]');
+  await expect(firstLine).toHaveCount(1);
+  await expect(secondLine).toHaveCount(1);
+  const rows = page.locator("#shared-trips tbody tr");
+  await expect(rows.nth(0).locator('rect[fill="#b2182b"]')).toHaveCount(1);
+  await expect(rows.nth(1).locator('rect[fill="#9b2543"]')).toHaveCount(1);
+
+  // Pointing at a row highlights its line, and only its line.
+  await rows.nth(1).hover();
+  await expect(secondLine).toHaveAttribute("stroke-width", "7");
+  await expect(firstLine).toHaveAttribute("stroke-width", "4");
+  await page.locator("#share-title").hover();
+  await expect(secondLine).toHaveAttribute("stroke-width", "4");
+
+  // Focus does too, for whoever reaches the list by keyboard.
+  await rows.nth(0).getByRole("link").focus();
+  await expect(firstLine).toHaveAttribute("stroke-width", "7");
+  await rows.nth(0).getByRole("link").blur();
+  await expect(firstLine).toHaveAttribute("stroke-width", "4");
+
+  // Pointing at a line highlights its row.
+  await secondLine.dispatchEvent("mouseover");
+  await expect(rows.nth(1)).toHaveClass(/highlighted/);
+  await expect(rows.nth(0)).not.toHaveClass(/highlighted/);
+  await secondLine.dispatchEvent("mouseout");
+  await expect(rows.nth(1)).not.toHaveClass(/highlighted/);
+
+  // And a click still opens the trip.
+  await secondLine.dispatchEvent("click");
+  await expect(page).toHaveURL(new RegExp(`/app/s/${token}/trips/${second}$`));
+  await recipient.close();
+});
+
 test("a trip's name on the share's map is shown as text, never run as markup (US-53)", async ({
   request,
   browser,
