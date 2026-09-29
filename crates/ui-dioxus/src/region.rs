@@ -1,34 +1,42 @@
 //! The region map (US-52, carrying US-14; made the screen's centre by
-//! US-63): the trips the filters match, drawn as a heat map, and the
-//! rectangle the owner drags to narrow the list to trips whose stored
-//! bounding box overlaps it.
+//! US-63): the trips the filters match, drawn as a heat map — or, zoomed
+//! in, as their tracks (US-73) — and the rectangle the owner drags to
+//! narrow the list to trips whose stored bounding box overlaps it.
 //!
 //! The map itself is Leaflet, reached through `interop`; this module is the
 //! Rust half — what to hand the map, and what to do with the rectangle it
 //! reports back.
 
 use dioxus::prelude::*;
+use trip_archive_types::{ActivityType, TripSummary};
 
 use crate::activity_color::ActivityLegend;
+use crate::api::{self, ApiClient};
 use crate::filters::Filters;
-use crate::heat::HeatMarks;
-use crate::interop;
+use crate::heat;
+use crate::interop::{self, RegionEvent};
+use crate::trip_lines::{self, Viewport};
+use crate::Route;
 
-/// The map and its controls, always in view (US-63). `marks` is `None`
-/// until the list has been read, so the map is not wiped blank while a
-/// re-query is in flight.
+/// The map and its controls, always in view (US-63). `trips` — every trip
+/// the filters match — is `None` until the list has been read, so the map
+/// is not wiped blank while a re-query is in flight.
 ///
 /// Being in view means an ordinary visit fetches OSM tiles, which the
 /// collapsed panel this replaced deliberately avoided: that is what having
 /// the map on screen costs, and it is paid on purpose.
 #[component]
-pub fn RegionFilter(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Element {
+pub fn RegionFilter(filters: Signal<Filters>, trips: Option<Vec<TripSummary>>) -> Element {
     let armed = use_signal(|| false);
+    // The activities of the lines drawn while zoomed in (US-73); `None`
+    // while the map shows the marks, whose activities the legend names.
+    let lined = use_signal(|| None::<Vec<ActivityType>>);
+    let shown = legend_activities(lined(), trips.as_deref());
     rsx! {
         section { class: "region",
-            RegionMap { filters, marks: marks.clone(), armed }
-            if let Some(marks) = &marks {
-                ActivityLegend { shown: marks.activities() }
+            RegionMap { filters, trips, armed, lined }
+            if let Some(shown) = shown {
+                ActivityLegend { shown }
             }
             p { class: "region-controls",
                 SelectArea { armed }
@@ -50,6 +58,16 @@ pub fn RegionFilter(filters: Signal<Filters>, marks: Option<HeatMarks>) -> Eleme
     }
 }
 
+/// What the legend names: the activities of the lines while zoomed in
+/// (US-73), else of the trips that got a mark (US-75). `None` until the list
+/// has been read.
+fn legend_activities(
+    lined: Option<Vec<ActivityType>>,
+    trips: Option<&[TripSummary]>,
+) -> Option<Vec<ActivityType>> {
+    lined.or_else(|| trips.map(|trips| heat::marks(trips).activities()))
+}
+
 /// Arms the map for drawing, or backs out of it (US-65). While armed a drag
 /// draws rather than pans — by finger as much as by mouse — so the button
 /// says so, and pressing it again is the way back. Drawing a rectangle
@@ -68,11 +86,20 @@ fn SelectArea(armed: Signal<bool>) -> Element {
 }
 
 /// The map itself: draws the rectangle the filters already hold and the
-/// marks it is handed, and writes back every rectangle the owner drags
-/// while `armed`.
+/// matching trips — as marks, or zoomed in as lines (US-73) — and writes
+/// back every rectangle the owner drags while `armed`. A click on a line
+/// opens that trip.
 #[component]
-fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>, armed: Signal<bool>) -> Element {
+fn RegionMap(
+    filters: Signal<Filters>,
+    trips: Option<Vec<TripSummary>>,
+    armed: Signal<bool>,
+    lined: Signal<Option<Vec<ActivityType>>>,
+) -> Element {
+    let archive = use_context::<Signal<ApiClient>>();
     let mut handle = use_signal(|| None::<document::Eval>);
+    // Where the map was last looking once it settled (US-73).
+    let mut viewport = use_signal(|| None::<Viewport>);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new rectangle causes — the filters change, the list
     // re-queries — does not restart the map or drop the channel
@@ -82,10 +109,14 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>, armed: Signal<b
         let mut map = interop::start_region_map(restore);
         handle.set(Some(map));
         loop {
-            match map.recv::<[f64; 4]>().await {
-                Ok(corners) => {
+            match map.recv::<RegionEvent>().await {
+                Ok(RegionEvent::Region(corners)) => {
                     filters.write().bbox = interop::bbox_param(corners);
                     armed.set(false);
+                }
+                Ok(RegionEvent::View(settled)) => viewport.set(Some(settled)),
+                Ok(RegionEvent::Open(id)) => {
+                    navigator().push(Route::TripDetail { id });
                 }
                 Err(err) => {
                     dioxus::logger::tracing::error!("the region map stopped reporting: {err}");
@@ -115,11 +146,34 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>, armed: Signal<b
     });
 
     // Redrawn whenever the list's rows change — on the same terms the table
-    // re-queries — and once more when the map comes up, which may be after
-    // the first rows have arrived.
-    use_effect(use_reactive!(|marks| {
-        if let (Some(map), Some(marks)) = (handle.read().as_ref(), marks) {
-            interop::draw_heat_marks(map, &marks);
+    // re-queries — whenever the view settles, and once more when the map
+    // comes up, which may be after the first rows have arrived. Zoomed in,
+    // the trips in view are drawn as their tracks, fetched each time; a
+    // restart drops a fetch still under way, so an older view's lines
+    // never land over a newer one's.
+    let _draw = use_resource(use_reactive!(|trips| async move {
+        let (Some(map), Some(trips)) = (handle(), trips) else {
+            return;
+        };
+        let marks = heat::marks(&trips);
+        match viewport() {
+            Some(view) if trip_lines::shows_lines(&view) => {
+                let mut tracks = Vec::new();
+                for trip in trip_lines::in_view(&trips, &view) {
+                    // A track that cannot be read leaves its line off the
+                    // map, as on a share's.
+                    if let Ok(track) = api::get_track(&archive(), trip.id).await {
+                        tracks.push((trip.id, track));
+                    }
+                }
+                let lines = trip_lines::lines(&trips, &tracks, &marks);
+                lined.set(Some(trip_lines::activities(&trips, &lines)));
+                interop::draw_trip_lines(&map, &lines);
+            }
+            _ => {
+                lined.set(None);
+                interop::draw_heat_marks(&map, &marks);
+            }
         }
     }));
 
@@ -135,9 +189,28 @@ fn RegionMap(filters: Signal<Filters>, marks: Option<HeatMarks>, armed: Signal<b
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::heat::HeatMark;
     use crate::test_support::render;
-    use trip_archive_types::ActivityType;
+    use trip_archive_types::TripKind;
+
+    /// A trip near Oslo, so it gets a mark.
+    fn a_trip(activity_type: ActivityType) -> TripSummary {
+        TripSummary {
+            id: 1,
+            name: "Trip".to_string(),
+            activity_type,
+            start_time: None,
+            start_date: None,
+            distance_m: 1_000.0,
+            ascent_m: None,
+            duration_secs: None,
+            trip_kind: TripKind::Recorded,
+            privacy_status: None,
+            min_lat: Some(59.9),
+            min_lon: Some(10.7),
+            max_lat: Some(60.0),
+            max_lon: Some(10.8),
+        }
+    }
 
     #[test]
     fn the_map_is_in_view_without_opening_anything() {
@@ -145,7 +218,7 @@ mod tests {
         // print behind a disclosure.
         let html = render(|| {
             let filters = Signal::new(Filters::default());
-            rsx! { RegionFilter { filters, marks: None } }
+            rsx! { RegionFilter { filters, trips: None } }
         });
 
         assert!(html.contains("region-map"), "{html}");
@@ -160,20 +233,8 @@ mod tests {
         // US-75.
         let html = render(|| {
             let filters = Signal::new(Filters::default());
-            let marks = HeatMarks {
-                marks: [
-                    (ActivityType::Hiking, "#b2182b"),
-                    (ActivityType::Kayaking, "#0e8a8a"),
-                ]
-                .map(|(activity, color)| HeatMark {
-                    at: [60.0, 11.0],
-                    activity,
-                    color,
-                })
-                .to_vec(),
-                opacity: 0.6,
-            };
-            rsx! { RegionFilter { filters, marks: Some(marks) } }
+            let trips = vec![a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)];
+            rsx! { RegionFilter { filters, trips: Some(trips) } }
         });
 
         assert!(html.contains("map-legend"), "{html}");
@@ -181,6 +242,23 @@ mod tests {
             html.contains("Hiking") && html.contains("Kayaking"),
             "{html}"
         );
+    }
+
+    #[test]
+    fn zoomed_in_the_legend_names_the_activities_of_the_lines_drawn() {
+        // US-73: a kayak trip marked elsewhere but with no line in view is
+        // not on the map, so not in its legend.
+        let trips = [a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)];
+
+        assert_eq!(
+            legend_activities(Some(vec![ActivityType::Hiking]), Some(&trips)),
+            Some(vec![ActivityType::Hiking])
+        );
+        assert_eq!(
+            legend_activities(None, Some(&trips)),
+            Some(vec![ActivityType::Hiking, ActivityType::Kayaking])
+        );
+        assert_eq!(legend_activities(None, None), None);
     }
 
     #[test]

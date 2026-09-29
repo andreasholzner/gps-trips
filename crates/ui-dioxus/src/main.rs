@@ -10,6 +10,7 @@ mod activity_color;
 mod api;
 mod bulk_activity;
 mod bulk_tag;
+mod config;
 mod delete;
 mod detail;
 mod edit;
@@ -35,6 +36,7 @@ mod shares;
 #[cfg(test)]
 mod test_support;
 mod track;
+mod trip_lines;
 mod trip_table;
 mod trip_tags;
 mod viewer;

@@ -13,7 +13,6 @@ use crate::bulk_tag::BulkTagPanel;
 use crate::filter_bar::FilterBar;
 use crate::filters::Filters;
 use crate::format;
-use crate::heat;
 use crate::pager::{self, Pager};
 use crate::region::RegionFilter;
 use crate::share::ShareSelectedPanel;
@@ -82,10 +81,10 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         filters.read();
         page.set(0);
     });
-    // Every trip the filters match, as the map's heat marks (US-63) — all of
+    // Every trip the filters match, for the map (US-63, US-73) — all of
     // them, not the page the table shows.
-    let marks = match &*trips.read_unchecked() {
-        Some(Ok(trips)) => Some(heat::marks(trips)),
+    let matching = match &*trips.read_unchecked() {
+        Some(Ok(trips)) => Some(trips.clone()),
         _ => None,
     };
     // Whether a deploy has happened since this page loaded (US-68). Until
@@ -105,7 +104,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             VersionLabel { outdated }
         }
         FilterBar { filters, all_tags: all_tags.clone() }
-        RegionFilter { filters, marks }
+        RegionFilter { filters, trips: matching }
         if let (Some(total), Some(Ok(shown))) = (total, trips.read_unchecked().as_ref()) {
             TripCounts { shown: shown.len(), total, kind: kind(), page: page() }
         }

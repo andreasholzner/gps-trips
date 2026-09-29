@@ -8,6 +8,7 @@
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { zoomBy } from "./map.mjs";
 
 const SAMPLE_GPX = readFileSync(
   fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)),
@@ -268,6 +269,10 @@ test("the region map's zoom control keeps its own size (US-58)", async ({ page }
 test("the map marks every trip the filters match (US-63)", async ({ page }) => {
   const marks = page.locator("#region-map .heat-mark");
   await page.goto("/app/");
+  // Every fixture trip is the same short walk, so the map fits to it zoomed
+  // in past where it draws lines (US-73); marks are what it shows further out.
+  await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
+  await zoomBy(page, "region-map", "Zoom out", 2, 12);
 
   await expect(marks).toHaveCount(2);
   // Each in its trip's activity colour, named under the map (US-75).
@@ -285,7 +290,8 @@ test("the map marks every trip the filters match (US-63)", async ({ page }) => {
 // US-63: the view fits the marks once, then stays where the owner puts it
 // until they ask. Panning is a real mouse gesture.
 test("the map fits the trips on load and again when asked (US-63)", async ({ page }) => {
-  const mark = page.locator("#region-map .heat-mark").first();
+  // A mark, or zoomed in as far as the fixture's short walk fits, a line.
+  const mark = page.locator("#region-map :is(.heat-mark, .trip-line)").first();
   const map = page.locator("#region-map");
   await page.goto("/app/");
   await expect(mark).toBeInViewport();

@@ -409,6 +409,14 @@ nav.pager {
   touch-action: none;
 }
 
+/* The trips' lines (US-73) open nothing while armed. A mouse's click
+   already lands on the map, which captures the pointer to draw; a tap's
+   does not, so the lines take no pointer at all. Specific enough to
+   outweigh Leaflet's own `pointer-events: auto` on its interactive paths. */
+.region-drawing path.trip-line.leaflet-interactive {
+  pointer-events: none;
+}
+
 /* Staged tag names, before they are applied (US-34). */
 .chips {
   display: flex;
