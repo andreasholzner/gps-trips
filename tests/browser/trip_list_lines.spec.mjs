@@ -45,25 +45,36 @@ test("zoomed in, the trips are lines; zoomed out, marks again", async ({ page, r
   await expect(lines(page)).toHaveAttribute("stroke", "#b2182b");
 
   // Fitted to a single short walk, it is at 12 — the "Fit to trips" cap.
-  await zoomBy(page, "region-map", "Zoom out", 2, 12);
+  // The threshold is 9, so four steps out is the first zoom with marks.
+  await zoomBy(page, "region-map", "Zoom out", 4, 12);
   await expect(marks(page)).toHaveCount(1);
   await expect(lines(page)).toHaveCount(0);
 
-  await zoomBy(page, "region-map", "Zoom in", 2, 10);
+  await zoomBy(page, "region-map", "Zoom in", 1, 8);
   await expect(lines(page)).toHaveCount(1);
   await expect(marks(page)).toHaveCount(0);
 });
 
-test("a line is named on hover, and a click opens its trip", async ({ page, request }) => {
+test("a line is named and highlighted on hover, and a click opens its trip", async ({
+  page,
+  request,
+}) => {
   const id = await ownTrip(request, "Hovered Walk", "hiking");
   const name = await nameOf(request, id);
   await page.goto(listOf(name));
   await expect(lines(page)).toHaveCount(1);
   await page.locator("#region-map").scrollIntoViewIfNeeded();
 
+  await expect(lines(page)).toHaveAttribute("stroke-width", "3");
   const at = await onTheLine(lines(page));
   await page.mouse.move(at.x, at.y);
   await expect(page.locator("#region-map .leaflet-tooltip")).toHaveText(name);
+  await expect(lines(page)).toHaveAttribute("stroke-width", "6");
+
+  // Off the line, it is drawn as before.
+  await page.mouse.move(at.x, at.y - 60);
+  await expect(lines(page)).toHaveAttribute("stroke-width", "3");
+  await page.mouse.move(at.x, at.y);
 
   await page.mouse.click(at.x, at.y);
   await expect(page).toHaveURL(new RegExp(`/app/trips/${id}$`));

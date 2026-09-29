@@ -166,6 +166,9 @@ const REGION_MAP_SCRIPT: &str = r##"
     // for the browser tests, and for the style that has them take no
     // pointer while armed.
     const lines = L.layerGroup().addTo(map);
+    // Thinner than a share's lines: a dense region draws many at once.
+    const LINE_WEIGHT = 3;
+    const HIGHLIGHTED_WEIGHT = 6;
     let points = [];
     const fitToMarks = () => {
       if (points.length === 0) return;
@@ -231,13 +234,19 @@ const REGION_MAP_SCRIPT: &str = r##"
           if (line.points.length === 0) continue;
           const path = L.polyline(line.points, {
             color: line.color,
-            weight: 4,
+            weight: LINE_WEIGHT,
             className: "trip-line",
           }).addTo(lines);
           // A node, not the string: Leaflet puts a string tooltip in as
           // HTML, and a trip's name comes from a GPX or a Komoot title.
           path.bindTooltip(document.createTextNode(line.name), { sticky: true });
           path.on("click", () => report({ open: line.id }));
+          // The line under the pointer stands out above the others.
+          path.on("mouseover", () => {
+            path.setStyle({ weight: HIGHLIGHTED_WEIGHT });
+            path.bringToFront();
+          });
+          path.on("mouseout", () => path.setStyle({ weight: LINE_WEIGHT }));
         }
         fitOnce();
       }
