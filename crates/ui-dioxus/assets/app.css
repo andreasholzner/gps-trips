@@ -371,7 +371,10 @@ nav.pager {
 }
 
 /* The map's frame, for what sits over it: the sign that the tracks in
-   view are loading (US-73), above Leaflet's panes and controls. */
+   view are loading (US-73), above Leaflet's panes and controls. The sign
+   is held back until the wait is long enough to notice, then fades in, so
+   a quick load — a few new trips at the edge of a zoomed-out view — does
+   not blink it. */
 .region-map-frame {
   position: relative;
 }
@@ -392,6 +395,16 @@ nav.pager {
   font-size: 0.875rem;
   box-shadow: var(--pico-box-shadow);
   pointer-events: none;
+  animation: map-busy-appear 150ms ease-in 300ms both;
+}
+
+@keyframes map-busy-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .map-busy .spinner {

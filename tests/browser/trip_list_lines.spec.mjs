@@ -89,8 +89,12 @@ test("the map says it is busy while the tracks load", async ({ page, request }) 
   const busy = page.locator("#region-map-busy");
 
   await page.goto(listOf(await nameOf(request, id)));
-  await expect(busy).toBeVisible();
   await expect(busy).toHaveText("Loading tracks…");
+  // It only shows once the wait is long enough to notice, so a quick load
+  // does not blink it: held back at first, then faded in.
+  const shown = () => busy.evaluate((sign) => getComputedStyle(sign).opacity);
+  expect(await busy.evaluate((sign) => getComputedStyle(sign).animationDelay)).toBe("0.3s");
+  await expect.poll(shown).toBe("1");
 
   release();
   await expect(lines(page)).toHaveCount(1);
