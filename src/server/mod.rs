@@ -30,3 +30,4 @@ pub mod storage;
 pub mod tags;
 pub mod thumbnail;
 pub mod timezone;
+pub mod tracks;

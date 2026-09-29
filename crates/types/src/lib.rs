@@ -33,6 +33,7 @@ mod tag;
 mod trip_detail;
 mod trip_kind;
 mod trip_summary;
+mod trip_track;
 
 pub use activity_type::ActivityType;
 pub use app_version::{AppVersion, VERSION};
@@ -58,3 +59,4 @@ pub use tag::{normalize_tag_name, Tag};
 pub use trip_detail::TripDetail;
 pub use trip_kind::TripKind;
 pub use trip_summary::TripSummary;
+pub use trip_track::TripTrack;

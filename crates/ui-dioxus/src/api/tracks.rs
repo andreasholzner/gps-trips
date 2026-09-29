@@ -1,0 +1,57 @@
+//! Many trips' tracks in one request (US-73), for drawing them as lines.
+//! Only the positions travel; the detail screen still reads a trip's whole
+//! `track.geojson` with [`get_track`](super::get_track).
+
+use trip_archive_types::TripTrack;
+
+use super::{get_json, ApiClient, ApiError};
+
+/// `GET /api/trips/tracks?ids=…` — the tracks of `ids`, as `[lon, lat]`
+/// positions. A trip whose track cannot be read is simply absent. No ids ask
+/// for nothing, without a request.
+pub async fn list_tracks(archive: &ApiClient, ids: &[i64]) -> Result<Vec<TripTrack>, ApiError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+    get_json(
+        archive,
+        archive.url(&format!("/api/trips/tracks?ids={ids}")),
+    )
+    .await
+}
+
+// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::get_track;
+    use crate::test_support::{import_sample, serve_test_archive};
+
+    #[tokio::test]
+    async fn the_tracks_in_view_come_in_one_request_as_lon_lat() {
+        let (archive, _dir) = serve_test_archive().await;
+        let first = import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        let second = import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
+
+        let tracks = list_tracks(&archive, &[first, second])
+            .await
+            .expect("tracks");
+
+        let ids: Vec<i64> = tracks.iter().map(|track| track.id).collect();
+        assert_eq!(ids, [first, second]);
+        let stored = get_track(&archive, first).await.expect("track");
+        let [lon, lat, ..] = stored.geometry.coordinates[0][..] else {
+            panic!("a stored position has a lon and a lat");
+        };
+        assert_eq!(tracks[0].coordinates[0], [lon, lat]);
+    }
+
+    #[tokio::test]
+    async fn no_trips_in_view_ask_for_no_tracks() {
+        let (archive, _dir) = serve_test_archive().await;
+
+        assert!(list_tracks(&archive, &[]).await.expect("tracks").is_empty());
+    }
+}

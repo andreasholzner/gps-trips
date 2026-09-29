@@ -7,13 +7,13 @@
 //! reports where it is looking and draws what it is handed (ADR-0025).
 
 use serde::{Deserialize, Serialize};
-use trip_archive_types::{ActivityType, TripSummary};
+use trip_archive_types::{ActivityType, TripSummary, TripTrack};
 
 use crate::activity_color;
 use crate::config::trip_map::LINES_FROM_ZOOM;
 use crate::heat::HeatMarks;
 use crate::interop::OverviewLine;
-use crate::track::{self, Track};
+use crate::track;
 
 /// Where the map is looking once it has settled: its zoom, and the visible
 /// area as `[west, south, east, north]`. The script shifts the area back by
@@ -80,18 +80,18 @@ fn lon_ranges(west: f64, east: f64) -> Vec<(f64, f64)> {
 /// of its activity's color (US-72, US-75). The shades are taken over every
 /// matching trip, not only those in view, so panning recolors nothing; and
 /// `tracks` lacks those that could not be read, which shifts no other color.
-pub fn lines(trips: &[TripSummary], tracks: &[(i64, Track)], marks: &HeatMarks) -> TripLines {
+pub fn lines(trips: &[TripSummary], tracks: &[TripTrack], marks: &HeatMarks) -> TripLines {
     let colors = activity_color::in_list_order(trips.iter().map(|trip| trip.activity_type));
     let lines = trips
         .iter()
         .zip(colors)
         .filter_map(|(trip, color)| {
-            let (_, track) = tracks.iter().find(|(id, _)| *id == trip.id)?;
+            let track = tracks.iter().find(|track| track.id == trip.id)?;
             Some(OverviewLine {
                 id: trip.id,
                 name: trip.name.clone(),
                 color,
-                points: track::polyline(track),
+                points: track::lat_lon(&track.coordinates),
             })
         })
         .collect();

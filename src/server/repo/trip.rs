@@ -6,7 +6,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::models::{
     ActivityType, BoundingBox, KomootLink, KomootPrivacy, LocationSource, TripDetail, TripKind,
-    TripSummary,
+    TripSummary, TripTrack,
 };
 use crate::server::db;
 use crate::server::gpx::TrackStats;
@@ -381,6 +381,43 @@ pub async fn get_track_geojson(pool: &SqlitePool, id: i64) -> Result<Option<Stri
         .bind(id)
         .fetch_optional(pool)
         .await
+}
+
+/// The stored positions of the tracks of `ids`, as `[lon, lat]`, by trip id
+/// (US-73). A trip that does not exist, or has no track, is left out; a
+/// position carrying fewer than two numbers is too, as the map would.
+///
+/// SQLite picks the geometry out of each blob (`json_extract`), so the
+/// elevation and chart series never leave the database, and the ids go in
+/// as one JSON array (`json_each`) rather than a bind variable each, so
+/// there is no limit on how many a view may ask for.
+pub async fn list_track_positions(
+    pool: &SqlitePool,
+    ids: &[i64],
+) -> Result<Vec<TripTrack>, sqlx::Error> {
+    let ids = serde_json::to_string(ids).map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
+    let rows: Vec<(i64, Option<String>)> = sqlx::query_as(
+        "SELECT trip_id, json_extract(geojson, '$.geometry.coordinates') FROM track \
+         WHERE trip_id IN (SELECT value FROM json_each(?)) ORDER BY trip_id",
+    )
+    .bind(ids)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .filter_map(|(id, positions)| Some((id, positions?)))
+        .map(|(id, positions)| {
+            let positions: Vec<Vec<f64>> = serde_json::from_str(&positions)
+                .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+            let coordinates = positions
+                .into_iter()
+                .filter_map(|position| match position[..] {
+                    [lon, lat, ..] => Some([lon, lat]),
+                    _ => None,
+                })
+                .collect();
+            Ok(TripTrack { id, coordinates })
+        })
+        .collect()
 }
 
 /// Delete a trip by id (US-9). `track`/`photo` are declared `ON DELETE CASCADE`

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::heat;
-use trip_archive_types::TripKind;
+use trip_archive_types::{TripKind, TripTrack};
 
 /// A trip whose box is `[west, south, east, north]`, or none.
 fn trip(id: i64, activity_type: ActivityType, bbox: Option<[f64; 4]>) -> TripSummary {
@@ -32,11 +32,12 @@ fn hike(id: i64, bbox: [f64; 4]) -> TripSummary {
     trip(id, ActivityType::Hiking, Some(bbox))
 }
 
-fn a_track() -> Track {
-    serde_json::from_value(serde_json::json!({
-        "geometry": { "coordinates": [[10.7, 59.9, 0.0], [10.8, 60.0, 0.0]] }
-    }))
-    .unwrap()
+/// Trip `id`'s track as `GET /api/trips/tracks` answers it: `[lon, lat]`.
+fn a_track(id: i64) -> TripTrack {
+    TripTrack {
+        id,
+        coordinates: vec![[10.7, 59.9], [10.8, 60.0]],
+    }
 }
 
 fn view(bounds: [f64; 4]) -> Viewport {
@@ -135,11 +136,7 @@ fn each_line_is_its_trips_shade_in_list_order_over_every_matching_trip() {
         hike(3, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(
-        &trips,
-        &[(2, a_track()), (3, a_track())],
-        &heat::marks(&trips),
-    );
+    let drawn = lines(&trips, &[a_track(2), a_track(3)], &heat::marks(&trips));
 
     let drawn: Vec<_> = drawn
         .lines
@@ -153,7 +150,7 @@ fn each_line_is_its_trips_shade_in_list_order_over_every_matching_trip() {
 fn a_line_is_named_after_its_trip_and_follows_its_track() {
     let trips = [hike(7, [10.0, 59.0, 11.0, 60.0])];
 
-    let drawn = lines(&trips, &[(7, a_track())], &heat::marks(&trips));
+    let drawn = lines(&trips, &[a_track(7)], &heat::marks(&trips));
 
     assert_eq!(drawn.lines[0].name, "Trip 7");
     assert_eq!(drawn.lines[0].points, vec![[59.9, 10.7], [60.0, 10.8]]);
@@ -166,7 +163,7 @@ fn a_track_that_could_not_be_read_is_left_off() {
         hike(2, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[(2, a_track())], &heat::marks(&trips));
+    let drawn = lines(&trips, &[a_track(2)], &heat::marks(&trips));
 
     assert_eq!(drawn.lines.len(), 1);
     assert_eq!(drawn.lines[0].id, 2);
@@ -179,7 +176,7 @@ fn fit_to_trips_still_covers_every_matching_trip() {
         hike(2, [10.0, 59.0, 12.0, 61.0]),
     ];
 
-    let drawn = lines(&trips, &[(2, a_track())], &heat::marks(&trips));
+    let drawn = lines(&trips, &[a_track(2)], &heat::marks(&trips));
 
     assert_eq!(drawn.fit, vec![[1.0, 1.0], [60.0, 11.0]]);
 }
@@ -191,7 +188,7 @@ fn the_legend_names_the_activities_of_the_lines_drawn() {
         hike(2, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[(2, a_track())], &heat::marks(&trips));
+    let drawn = lines(&trips, &[a_track(2)], &heat::marks(&trips));
 
     assert_eq!(activities(&trips, &drawn), [ActivityType::Hiking]);
 }

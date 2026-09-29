@@ -162,7 +162,7 @@ C4Component
         Component(share, "Share Handlers", "Rust / Axum", "US-53: POST /api/shares (the owner's), and US-69's GET /api/shares and DELETE /api/shares/:id — listing the active shares and stopping one, which deletes it; the read-only route set under /s/:token — the share's title and trips, each trip's detail, track, photos and GPX, and photo blobs — each checking that the trip or blob is one the share names. Recipients get their own response types. No owner handler is reachable from here.")
         Component(access, "Access Log", "Rust / tower middleware", "US-70: outside the gate, one line per request on stdout — method, path with any share token blanked out, status, duration, the caller the gate named (owner, share with its label, anonymous, unknown link), IP and user agent — and, except for the bundle's own files, a record in the database without the IP, written in batches by a background task so no request waits for it.")
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
-        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; serves track.geojson and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
+        Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; serves track.geojson, the positions of many trips' tracks in one request (US-73), and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
         Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX and parks it in import_staging; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
@@ -253,7 +253,7 @@ C4Component
     Rel(shared, elev, "Embeds")
     Rel(shared, gallery, "Embeds")
 
-    Rel(list, server, "GET /api/trips (+filters); POST /api/shares", "JSON")
+    Rel(list, server, "GET /api/trips (+filters); GET /api/trips/tracks for the lines in view (US-73); POST /api/shares", "JSON")
     Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos; PATCH a photo's position; POST /api/shares", "JSON")
     Rel(shares, server, "GET /api/shares; DELETE /api/shares/:id", "JSON")
     Rel(shared, server, "GET /s/:token/api/… and /s/:token/media/*", "JSON")

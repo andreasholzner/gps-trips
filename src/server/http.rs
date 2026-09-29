@@ -34,6 +34,7 @@ use crate::server::{
         handle_add_trip_tag, handle_bulk_add_trip_tags, handle_list_all_tags,
         handle_list_trip_tags, handle_remove_trip_tag,
     },
+    tracks::handle_list_tracks,
 };
 
 /// Build the application router. Shared by `main` and the integration tests so
@@ -81,6 +82,8 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_page_moved))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
+        // US-73: the tracks of the trips in the list map's view, in one go.
+        .route("/api/trips/tracks", get(handle_list_tracks))
         // US-7: one trip's metadata as JSON, for the SPA's detail screen (US-42).
         // US-9/US-24: delete a trip and its photo blobs. US-15: edit its name/activity type.
         .route(

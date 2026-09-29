@@ -148,9 +148,9 @@ fn RegionMap(
     // Redrawn whenever the list's rows change — on the same terms the table
     // re-queries — whenever the view settles, and once more when the map
     // comes up, which may be after the first rows have arrived. Zoomed in,
-    // the trips in view are drawn as their tracks, fetched each time; a
-    // restart drops a fetch still under way, so an older view's lines
-    // never land over a newer one's.
+    // the trips in view are drawn as their tracks, fetched each time in one
+    // request; a restart drops a fetch still under way, so an older view's
+    // lines never land over a newer one's.
     let _draw = use_resource(use_reactive!(|trips| async move {
         let (Some(map), Some(trips)) = (handle(), trips) else {
             return;
@@ -158,14 +158,20 @@ fn RegionMap(
         let marks = heat::marks(&trips);
         match viewport() {
             Some(view) if trip_lines::shows_lines(&view) => {
-                let mut tracks = Vec::new();
-                for trip in trip_lines::in_view(&trips, &view) {
-                    // A track that cannot be read leaves its line off the
-                    // map, as on a share's.
-                    if let Ok(track) = api::get_track(&archive(), trip.id).await {
-                        tracks.push((trip.id, track));
+                let ids: Vec<i64> = trip_lines::in_view(&trips, &view)
+                    .iter()
+                    .map(|trip| trip.id)
+                    .collect();
+                // A track that cannot be read is absent from the answer, and
+                // its line left off the map, as on a share's. A request that
+                // fails outright leaves the map as it was.
+                let tracks = match api::list_tracks(&archive(), &ids).await {
+                    Ok(tracks) => tracks,
+                    Err(err) => {
+                        dioxus::logger::tracing::error!("could not read the tracks in view: {err}");
+                        return;
                     }
-                }
+                };
                 let lines = trip_lines::lines(&trips, &tracks, &marks);
                 lined.set(Some(trip_lines::activities(&trips, &lines)));
                 interop::draw_trip_lines(&map, &lines);

@@ -67,6 +67,12 @@ pub fn polyline(track: &Track) -> Vec<[f64; 2]> {
         .collect()
 }
 
+/// Positions as `GET /api/trips/tracks` sends them, `[lon, lat]` (US-73),
+/// in the `[lat, lon]` order Leaflet takes.
+pub fn lat_lon(coordinates: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    coordinates.iter().map(|&[lon, lat]| [lat, lon]).collect()
+}
+
 /// The elevation chart's two series: cumulative distance in kilometres (the
 /// x axis, the unit the rest of the UI shows distances in) against elevation
 /// in metres.
@@ -220,6 +226,14 @@ mod tests {
         // here rather than trusted to a string of JavaScript.
         assert_eq!(
             polyline(&stored_track()),
+            vec![[59.91, 10.75], [59.92, 10.76]]
+        );
+    }
+
+    #[test]
+    fn many_trips_positions_are_flipped_for_leaflet_too() {
+        assert_eq!(
+            lat_lon(&[[10.75, 59.91], [10.76, 59.92]]),
             vec![[59.91, 10.75], [59.92, 10.76]]
         );
     }
