@@ -136,7 +136,7 @@ fn each_line_is_its_trips_shade_in_list_order_over_every_matching_trip() {
         hike(3, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[a_track(2), a_track(3)], &heat::marks(&trips));
+    let drawn = lines(&trips, &[&a_track(2), &a_track(3)], &heat::marks(&trips));
 
     let drawn: Vec<_> = drawn
         .lines
@@ -150,7 +150,7 @@ fn each_line_is_its_trips_shade_in_list_order_over_every_matching_trip() {
 fn a_line_is_named_after_its_trip_and_follows_its_track() {
     let trips = [hike(7, [10.0, 59.0, 11.0, 60.0])];
 
-    let drawn = lines(&trips, &[a_track(7)], &heat::marks(&trips));
+    let drawn = lines(&trips, &[&a_track(7)], &heat::marks(&trips));
 
     assert_eq!(drawn.lines[0].name, "Trip 7");
     assert_eq!(drawn.lines[0].points, vec![[59.9, 10.7], [60.0, 10.8]]);
@@ -163,7 +163,7 @@ fn a_track_that_could_not_be_read_is_left_off() {
         hike(2, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[a_track(2)], &heat::marks(&trips));
+    let drawn = lines(&trips, &[&a_track(2)], &heat::marks(&trips));
 
     assert_eq!(drawn.lines.len(), 1);
     assert_eq!(drawn.lines[0].id, 2);
@@ -176,7 +176,7 @@ fn fit_to_trips_still_covers_every_matching_trip() {
         hike(2, [10.0, 59.0, 12.0, 61.0]),
     ];
 
-    let drawn = lines(&trips, &[a_track(2)], &heat::marks(&trips));
+    let drawn = lines(&trips, &[&a_track(2)], &heat::marks(&trips));
 
     assert_eq!(drawn.fit, vec![[1.0, 1.0], [60.0, 11.0]]);
 }
@@ -188,7 +188,38 @@ fn the_legend_names_the_activities_of_the_lines_drawn() {
         hike(2, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[a_track(2)], &heat::marks(&trips));
+    let drawn = lines(&trips, &[&a_track(2)], &heat::marks(&trips));
 
     assert_eq!(activities(&trips, &drawn), [ActivityType::Hiking]);
+}
+
+#[test]
+fn only_the_tracks_not_yet_read_are_asked_for() {
+    let mut cache = TrackCache::default();
+    cache.store(&[1, 2], vec![a_track(1), a_track(2)]);
+
+    assert_eq!(cache.missing(&[1, 2, 3, 4]), [3, 4]);
+    assert!(cache.missing(&[2, 1]).is_empty());
+}
+
+#[test]
+fn a_track_the_archive_did_not_send_is_not_asked_for_again() {
+    // Trip 2 has no track, or is gone: asking again would get nothing again.
+    let mut cache = TrackCache::default();
+    cache.store(&[1, 2], vec![a_track(1)]);
+
+    assert!(cache.missing(&[1, 2]).is_empty());
+    assert_eq!(ids_of(&cache.tracks(&[1, 2])), [1]);
+}
+
+#[test]
+fn the_cache_hands_back_only_the_tracks_in_view() {
+    let mut cache = TrackCache::default();
+    cache.store(&[1, 2, 3], vec![a_track(1), a_track(2), a_track(3)]);
+
+    assert_eq!(ids_of(&cache.tracks(&[3, 1])), [3, 1]);
+}
+
+fn ids_of(tracks: &[&TripTrack]) -> Vec<i64> {
+    tracks.iter().map(|track| track.id).collect()
 }

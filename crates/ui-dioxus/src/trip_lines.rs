@@ -6,6 +6,8 @@
 //! decided here, where `cargo test` reaches it; the region map's script only
 //! reports where it is looking and draws what it is handed (ADR-0025).
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use trip_archive_types::{ActivityType, TripSummary, TripTrack};
 
@@ -76,11 +78,50 @@ fn lon_ranges(west: f64, east: f64) -> Vec<(f64, f64)> {
     }
 }
 
+/// The tracks the map has read while the list is open, so a trip's track is
+/// fetched at most once: panning back, or zooming out and in again, asks
+/// the archive for nothing new. A track never changes once imported, and
+/// the name and color of its line come from the list, which is read afresh.
+#[derive(Debug, Default)]
+pub struct TrackCache {
+    /// Each trip asked for, with its track — or `None` where the archive
+    /// sent none, so it is not asked for again either.
+    known: HashMap<i64, Option<TripTrack>>,
+}
+
+impl TrackCache {
+    /// Those of `ids` not asked for yet, in their order.
+    pub fn missing(&self, ids: &[i64]) -> Vec<i64> {
+        ids.iter()
+            .copied()
+            .filter(|id| !self.known.contains_key(id))
+            .collect()
+    }
+
+    /// What the archive answered for `asked`; a trip it left out has no
+    /// track to read.
+    pub fn store(&mut self, asked: &[i64], answer: Vec<TripTrack>) {
+        for id in asked {
+            self.known.entry(*id).or_insert(None);
+        }
+        for track in answer {
+            self.known.insert(track.id, Some(track));
+        }
+    }
+
+    /// The tracks of `ids` that were read, in their order.
+    pub fn tracks(&self, ids: &[i64]) -> Vec<&TripTrack> {
+        ids.iter()
+            .filter_map(|id| self.known.get(id)?.as_ref())
+            .collect()
+    }
+}
+
 /// One line per trip whose track was read, in list order, each in its shade
 /// of its activity's color (US-72, US-75). The shades are taken over every
 /// matching trip, not only those in view, so panning recolors nothing; and
 /// `tracks` lacks those that could not be read, which shifts no other color.
-pub fn lines(trips: &[TripSummary], tracks: &[TripTrack], marks: &HeatMarks) -> TripLines {
+pub fn lines(trips: &[TripSummary], tracks: &[&TripTrack], marks: &HeatMarks) -> TripLines {
     let colors = activity_color::in_list_order(trips.iter().map(|trip| trip.activity_type));
     let lines = trips
         .iter()

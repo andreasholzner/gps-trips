@@ -55,6 +55,28 @@ test("zoomed in, the trips are lines; zoomed out, marks again", async ({ page, r
   await expect(marks(page)).toHaveCount(0);
 });
 
+test("a track already read is not fetched again", async ({ page, request }) => {
+  const id = await ownTrip(request, "Cached Walk", "hiking");
+  const asked = [];
+  page.on("request", (sent) => {
+    if (sent.url().includes("/api/trips/tracks")) asked.push(sent.url());
+  });
+
+  await page.goto(listOf(await nameOf(request, id)));
+  await expect(lines(page)).toHaveCount(1);
+  expect(asked).toHaveLength(1);
+
+  // Out and back in, still past the threshold: the view settles twice, and
+  // the line is redrawn from what the map already holds. The drawn line is
+  // marked, so its redrawn successor shows the redraw has happened.
+  await lines(page).evaluate((path) => path.setAttribute("data-before", ""));
+  await zoomBy(page, "region-map", "Zoom out", 1, 12);
+  await zoomBy(page, "region-map", "Zoom in", 1, 11);
+  await expect(page.locator("#region-map .trip-line[data-before]")).toHaveCount(0);
+  await expect(lines(page)).toHaveCount(1);
+  expect(asked).toHaveLength(1);
+});
+
 test("the map says it is busy while the tracks load", async ({ page, request }) => {
   const id = await ownTrip(request, "Awaited Walk", "hiking");
   // Hold the tracks back until the busy sign has been seen.

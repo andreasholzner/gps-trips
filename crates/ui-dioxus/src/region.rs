@@ -15,7 +15,7 @@ use crate::api::{self, ApiClient};
 use crate::filters::Filters;
 use crate::heat;
 use crate::interop::{self, RegionEvent};
-use crate::trip_lines::{self, Viewport};
+use crate::trip_lines::{self, TrackCache, Viewport};
 use crate::Route;
 
 /// The map and its controls, always in view (US-63). `trips` — every trip
@@ -102,6 +102,9 @@ fn RegionMap(
     let mut viewport = use_signal(|| None::<Viewport>);
     // Whether the tracks in view are on their way (US-73).
     let mut busy = use_signal(|| false);
+    // Every track read while the list is open (US-73). Only peeked at below,
+    // so storing what arrives does not restart the drawing that stored it.
+    let mut cache = use_signal(TrackCache::default);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new rectangle causes — the filters change, the list
     // re-queries — does not restart the map or drop the channel
@@ -150,9 +153,10 @@ fn RegionMap(
     // Redrawn whenever the list's rows change — on the same terms the table
     // re-queries — whenever the view settles, and once more when the map
     // comes up, which may be after the first rows have arrived. Zoomed in,
-    // the trips in view are drawn as their tracks, fetched each time in one
-    // request; a restart drops a fetch still under way, so an older view's
-    // lines never land over a newer one's.
+    // the trips in view are drawn as their tracks: those not read yet are
+    // fetched in one request, the rest come from the cache. A restart drops
+    // a fetch still under way, so an older view's lines never land over a
+    // newer one's.
     let _draw = use_resource(use_reactive!(|trips| async move {
         let (Some(map), Some(trips)) = (handle(), trips) else {
             return;
@@ -167,17 +171,23 @@ fn RegionMap(
                 // A track that cannot be read is absent from the answer, and
                 // its line left off the map, as on a share's. A request that
                 // fails outright leaves the map as it was.
-                busy.set(!ids.is_empty());
-                let tracks = api::list_tracks(&archive(), &ids).await;
-                busy.set(false);
-                let tracks = match tracks {
-                    Ok(tracks) => tracks,
-                    Err(err) => {
-                        dioxus::logger::tracing::error!("could not read the tracks in view: {err}");
-                        return;
+                let missing = cache.peek().missing(&ids);
+                // Set either way: a fetch dropped for a newer view left it on.
+                busy.set(!missing.is_empty());
+                if !missing.is_empty() {
+                    let answer = api::list_tracks(&archive(), &missing).await;
+                    busy.set(false);
+                    match answer {
+                        Ok(answer) => cache.write().store(&missing, answer),
+                        Err(err) => {
+                            dioxus::logger::tracing::error!(
+                                "could not read the tracks in view: {err}"
+                            );
+                            return;
+                        }
                     }
-                };
-                let lines = trip_lines::lines(&trips, &tracks, &marks);
+                }
+                let lines = trip_lines::lines(&trips, &cache.peek().tracks(&ids), &marks);
                 lined.set(Some(trip_lines::activities(&trips, &lines)));
                 interop::draw_trip_lines(&map, &lines);
             }
