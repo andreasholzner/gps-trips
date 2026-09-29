@@ -12,10 +12,18 @@ use serde::Deserialize;
 use crate::models::TripTrack;
 use crate::server::{error::AppError, repo, state::AppState};
 
-/// The `GET /api/trips/tracks` query: `ids=1,2,3`.
+/// The `GET /api/trips/tracks` query: `ids=1,2,3`. A share's route takes
+/// the same.
 #[derive(Deserialize)]
 pub struct TracksQuery {
     ids: Option<String>,
+}
+
+impl TracksQuery {
+    /// The `ids` parameter as given, empty when it is missing.
+    pub fn ids(&self) -> &str {
+        self.ids.as_deref().unwrap_or("")
+    }
 }
 
 /// GET `/api/trips/tracks?ids=…` — each requested trip's stored positions,
@@ -26,7 +34,7 @@ pub async fn handle_list_tracks(
     State(state): State<AppState>,
     Query(query): Query<TracksQuery>,
 ) -> Result<Json<Vec<TripTrack>>, AppError> {
-    let ids = parse_ids(query.ids.as_deref().unwrap_or(""))?;
+    let ids = parse_ids(query.ids())?;
     if ids.is_empty() {
         return Ok(Json(Vec::new()));
     }

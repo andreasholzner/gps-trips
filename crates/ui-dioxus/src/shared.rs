@@ -4,13 +4,13 @@
 //! to the share's own routes.
 
 use dioxus::prelude::*;
-use trip_archive_types::{ShareOverview, SharedTrip, SharedTripSummary, TripDetail};
+use trip_archive_types::{ShareOverview, SharedTrip, SharedTripSummary, TripDetail, TripTrack};
 
 use crate::activity_color::{self, ActivityLegend, Swatch};
 use crate::api::{self, ApiClient, ApiError};
 use crate::format;
 use crate::interop::{self, OverviewEvent, OverviewLine};
-use crate::track::{self, Track};
+use crate::track;
 use crate::Route;
 
 mod detail;
@@ -136,18 +136,21 @@ fn OverviewMap(
         let trips = trips.clone();
         let token = token.clone();
         async move {
-            let mut tracks = Vec::with_capacity(trips.len());
-            for trip in &trips {
-                // A track that cannot be read leaves its line off the map;
-                // the trip is still in the list below it.
-                if let Ok(track) = api::get_track(&archive(), trip.id).await {
-                    tracks.push((trip.id, track));
-                }
-            }
+            // Every shared trip's track in one request (US-73). One that
+            // cannot be read is absent from the answer and leaves its line
+            // off the map; the trip is still in the list below it. A request
+            // that fails outright leaves the map without lines.
+            let ids: Vec<i64> = trips.iter().map(|trip| trip.id).collect();
+            let tracks = api::list_tracks(&archive(), &ids)
+                .await
+                .unwrap_or_else(|err| {
+                    dioxus::logger::tracing::error!("could not read the shared tracks: {err}");
+                    Vec::new()
+                });
             shown.set(
                 trips
                     .iter()
-                    .filter(|trip| tracks.iter().any(|(id, _)| *id == trip.id))
+                    .filter(|trip| tracks.iter().any(|track| track.id == trip.id))
                     .map(|trip| trip.activity_type)
                     .collect(),
             );
@@ -188,17 +191,17 @@ pub fn trip_colors(trips: &[SharedTripSummary]) -> Vec<&'static str> {
 /// color (US-72, US-75). `tracks` lacks the ones that could not be read, so
 /// each is matched to its trip by id rather than by position. The colors are
 /// taken over every trip, so one that could not be read shifts no other.
-pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[(i64, Track)]) -> Vec<OverviewLine> {
+pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[TripTrack]) -> Vec<OverviewLine> {
     trips
         .iter()
         .zip(trip_colors(trips))
         .filter_map(|(trip, color)| {
-            let (_, track) = tracks.iter().find(|(id, _)| *id == trip.id)?;
+            let track = tracks.iter().find(|track| track.id == trip.id)?;
             Some(OverviewLine {
                 id: trip.id,
                 name: trip.name.clone(),
                 color,
-                points: track::polyline(track),
+                points: track::lat_lon(&track.coordinates),
             })
         })
         .collect()

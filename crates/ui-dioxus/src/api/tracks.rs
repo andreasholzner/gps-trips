@@ -1,4 +1,6 @@
-//! Many trips' tracks in one request (US-73), for drawing them as lines.
+//! Many trips' tracks in one request (US-73), for drawing them as lines —
+//! the owner's list map, and a share's overview map through a client made
+//! with [`ApiClient::for_share`].
 //! Only the positions travel; the detail screen still reads a trip's whole
 //! `track.geojson` with [`get_track`](super::get_track).
 
@@ -26,8 +28,9 @@ pub async fn list_tracks(archive: &ApiClient, ids: &[i64]) -> Result<Vec<TripTra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::get_track;
-    use crate::test_support::{import_sample, serve_test_archive};
+    use crate::api::{create_share, get_track};
+    use crate::test_support::{anonymous, import_sample, serve_test_archive};
+    use trip_archive_types::{CreateShare, ShareExpiry};
 
     #[tokio::test]
     async fn the_tracks_in_view_come_in_one_request_as_lon_lat() {
@@ -46,6 +49,31 @@ mod tests {
             panic!("a stored position has a lon and a lat");
         };
         assert_eq!(tracks[0].coordinates[0], [lon, lat]);
+    }
+
+    #[tokio::test]
+    async fn through_a_share_only_its_own_trips_tracks_come() {
+        let (archive, _dir) = serve_test_archive().await;
+        let shared = import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+        let other = import_sample(&archive, &[("name", "Inn Valley Ride")]).await;
+        let created = create_share(
+            &archive,
+            &CreateShare {
+                trip_ids: vec![shared],
+                label: None,
+                expiry: ShareExpiry::Never,
+            },
+        )
+        .await
+        .expect("share");
+        let recipient = anonymous(&archive).for_share(created.token);
+
+        let tracks = list_tracks(&recipient, &[shared, other])
+            .await
+            .expect("tracks");
+
+        let ids: Vec<i64> = tracks.iter().map(|track| track.id).collect();
+        assert_eq!(ids, [shared]);
     }
 
     #[tokio::test]

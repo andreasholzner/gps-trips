@@ -10,7 +10,7 @@
 //! reachable from here, so none of them needs to know shares exist.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Response,
     routing::get,
@@ -21,7 +21,7 @@ use time::OffsetDateTime;
 use crate::config;
 use crate::models::{
     ActiveShare, CreateShare, CreatedShare, PhotoResponse, Principal, ShareExpiry, ShareOverview,
-    SharedTrip, TripDetail,
+    SharedTrip, TripDetail, TripTrack,
 };
 use crate::server::{
     error::AppError,
@@ -29,6 +29,7 @@ use crate::server::{
     photo_api::respond_under,
     repo::{self, NewShare},
     state::AppState,
+    tracks::{parse_ids, TracksQuery},
 };
 
 /// The recipient's routes, every one under `/s/:token` and every one a
@@ -38,6 +39,7 @@ pub fn router() -> Router<AppState> {
         .route("/s/:token/api/share", get(overview))
         .route("/s/:token/api/trips/:id", get(trip))
         .route("/s/:token/api/trips/:id/track.geojson", get(track))
+        .route("/s/:token/api/trips/tracks", get(tracks))
         .route("/s/:token/api/trips/:id/photos", get(photos))
         .route("/s/:token/api/trips/:id/gpx", get(gpx))
         .route("/s/:token/media/*key", get(media))
@@ -189,6 +191,29 @@ async fn track(
 ) -> Result<Response, AppError> {
     let id = covered(&state, principal, id).await?;
     track_response(&state, id).await
+}
+
+/// GET `/s/:token/api/trips/tracks?ids=…` — the positions of the shared
+/// trips' tracks in one request, for the overview map (US-73). A trip the
+/// share does not name is absent, exactly as one that does not exist.
+async fn tracks(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Query(query): Query<TracksQuery>,
+) -> Result<Json<Vec<TripTrack>>, AppError> {
+    let shared: Vec<i64> = repo::list_shared_trips(&state.pool, share_id(principal)?)
+        .await?
+        .into_iter()
+        .map(|trip| trip.id)
+        .collect();
+    let ids: Vec<i64> = parse_ids(query.ids())?
+        .into_iter()
+        .filter(|id| shared.contains(id))
+        .collect();
+    if ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    Ok(Json(repo::list_track_positions(&state.pool, &ids).await?))
 }
 
 /// GET `/s/:token/api/trips/:id/gpx`.

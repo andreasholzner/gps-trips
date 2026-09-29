@@ -5,7 +5,7 @@ use crate::api::create_share;
 use crate::test_support::{
     anonymous, import_gpx, import_sample, render_against_archive, serve_test_archive,
 };
-use trip_archive_types::{ActivityType, CreateShare, ShareExpiry};
+use trip_archive_types::{ActivityType, CreateShare, ShareExpiry, TripTrack};
 
 /// Share `trip_ids` as the owner and return a recipient's client for it.
 async fn shared(
@@ -155,12 +155,7 @@ fn us53_each_trip_whose_track_was_read_gets_a_line() {
         ascent_m: None,
         duration_secs: None,
     };
-    let track: Track = serde_json::from_value(serde_json::json!({
-        "geometry": { "coordinates": [[10.7, 59.9, 0.0], [10.8, 60.0, 0.0]] }
-    }))
-    .unwrap();
-
-    let lines = overview_lines(&[trip(1, "One"), trip(2, "Two")], &[(2, track)]);
+    let lines = overview_lines(&[trip(1, "One"), trip(2, "Two")], &[a_track(2)]);
 
     assert_eq!(
         lines,
@@ -188,11 +183,12 @@ fn summary(id: i64, activity_type: ActivityType) -> SharedTripSummary {
     }
 }
 
-fn a_track() -> Track {
-    serde_json::from_value(serde_json::json!({
-        "geometry": { "coordinates": [[10.7, 59.9, 0.0], [10.8, 60.0, 0.0]] }
-    }))
-    .unwrap()
+/// Trip `id`'s track as the share's `tracks` route answers it: `[lon, lat]`.
+fn a_track(id: i64) -> TripTrack {
+    TripTrack {
+        id,
+        coordinates: vec![[10.7, 59.9], [10.8, 60.0]],
+    }
 }
 
 #[test]
@@ -202,7 +198,7 @@ fn us75_each_line_is_in_its_trips_activity_color() {
             summary(1, ActivityType::Kayaking),
             summary(2, ActivityType::SnowShoe),
         ],
-        &[(1, a_track()), (2, a_track())],
+        &[a_track(1), a_track(2)],
     );
 
     let colors: Vec<_> = lines.iter().map(|line| line.color).collect();
@@ -229,7 +225,7 @@ fn us72_a_track_that_did_not_load_shifts_no_other_trips_color() {
         summary(2, ActivityType::Hiking),
     ];
 
-    let lines = overview_lines(&trips, &[(2, a_track())]);
+    let lines = overview_lines(&trips, &[a_track(2)]);
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].color, "#9b2543");
