@@ -33,6 +33,31 @@ pub fn shades(activity: ActivityType) -> [&'static str; 4] {
     }
 }
 
+/// Each trip's color, given the trips' activities in list order (US-72): its
+/// activity's color for the first trip of that activity, the next shade for
+/// the next, and the color again once every shade is taken. A share's map
+/// and the trip list's lines (US-73) both take their colors from here.
+pub fn in_list_order(activities: impl IntoIterator<Item = ActivityType>) -> Vec<&'static str> {
+    let mut taken: Vec<(ActivityType, usize)> = Vec::new();
+    activities
+        .into_iter()
+        .map(|activity| {
+            let before = match taken.iter_mut().find(|(seen, _)| *seen == activity) {
+                Some((_, count)) => {
+                    *count += 1;
+                    *count - 1
+                }
+                None => {
+                    taken.push((activity, 1));
+                    0
+                }
+            };
+            let shades = shades(activity);
+            shades[before % shades.len()]
+        })
+        .collect()
+}
+
 /// What a map's legend lists for the activities it shows: each activity
 /// once, as a label and its color, in the order the activity picker lists
 /// them, an unspecified activity last. Empty when the map shows a single
@@ -175,6 +200,23 @@ mod tests {
         assert_eq!(
             shades(Unknown),
             ["#6b6b6b", "#3a3a3a", "#8c8c8c", "#5b6470"]
+        );
+    }
+
+    #[test]
+    fn trips_of_one_activity_get_shades_of_its_color_in_list_order() {
+        // US-72.
+        assert_eq!(
+            in_list_order([Hiking, Cycling, Hiking]),
+            ["#b2182b", "#1f4e9c", "#9b2543"]
+        );
+    }
+
+    #[test]
+    fn a_fifth_trip_of_one_activity_starts_over_at_its_color() {
+        assert_eq!(
+            in_list_order([Hiking; 5]),
+            ["#b2182b", "#9b2543", "#ee1950", "#e36257", "#b2182b"]
         );
     }
 

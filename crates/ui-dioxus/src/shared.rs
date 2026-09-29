@@ -179,22 +179,9 @@ fn OverviewMap(
     }
 }
 
-/// Each trip's color, in the list's order (US-72): its activity's color for
-/// the first trip of that activity, the next shade for the next, and the
-/// color again once every shade is taken.
+/// Each trip's color, in the list's order (US-72).
 pub fn trip_colors(trips: &[SharedTripSummary]) -> Vec<&'static str> {
-    trips
-        .iter()
-        .enumerate()
-        .map(|(i, trip)| {
-            let before = trips[..i]
-                .iter()
-                .filter(|earlier| earlier.activity_type == trip.activity_type)
-                .count();
-            let shades = activity_color::shades(trip.activity_type);
-            shades[before % shades.len()]
-        })
-        .collect()
+    activity_color::in_list_order(trips.iter().map(|trip| trip.activity_type))
 }
 
 /// One line per trip whose track was read, named after the trip and in its

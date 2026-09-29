@@ -211,6 +211,8 @@ fn us75_each_line_is_in_its_trips_activity_color() {
 
 #[test]
 fn us72_trips_of_one_activity_get_shades_of_its_color_in_list_order() {
+    // The shades themselves are `activity_color::in_list_order`'s; this is
+    // that the share takes them in its own list's order.
     let trips = [
         summary(1, ActivityType::Hiking),
         summary(2, ActivityType::Cycling),
@@ -218,18 +220,6 @@ fn us72_trips_of_one_activity_get_shades_of_its_color_in_list_order() {
     ];
 
     assert_eq!(trip_colors(&trips), ["#b2182b", "#1f4e9c", "#9b2543"]);
-}
-
-#[test]
-fn us72_a_fifth_trip_of_one_activity_starts_over_at_its_color() {
-    let trips: Vec<_> = (1..=5)
-        .map(|id| summary(id, ActivityType::Hiking))
-        .collect();
-
-    assert_eq!(
-        trip_colors(&trips),
-        ["#b2182b", "#9b2543", "#ee1950", "#e36257", "#b2182b"]
-    );
 }
 
 #[test]
