@@ -45,14 +45,34 @@ test("zoomed in, the trips are lines; zoomed out, marks again", async ({ page, r
   await expect(lines(page)).toHaveAttribute("stroke", "#b2182b");
 
   // Fitted to a single short walk, it is at 12 — the "Fit to trips" cap.
-  // The threshold is 9, so four steps out is the first zoom with marks.
-  await zoomBy(page, "region-map", "Zoom out", 4, 12);
+  // The threshold is 7, so six steps out is the first zoom with marks.
+  await zoomBy(page, "region-map", "Zoom out", 6, 12);
   await expect(marks(page)).toHaveCount(1);
   await expect(lines(page)).toHaveCount(0);
 
-  await zoomBy(page, "region-map", "Zoom in", 1, 8);
+  await zoomBy(page, "region-map", "Zoom in", 1, 6);
   await expect(lines(page)).toHaveCount(1);
   await expect(marks(page)).toHaveCount(0);
+});
+
+test("the map says it is busy while the tracks load", async ({ page, request }) => {
+  const id = await ownTrip(request, "Awaited Walk", "hiking");
+  // Hold the tracks back until the busy sign has been seen.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route("**/api/trips/tracks?*", async (route) => {
+    await held;
+    await route.continue();
+  });
+  const busy = page.locator("#region-map-busy");
+
+  await page.goto(listOf(await nameOf(request, id)));
+  await expect(busy).toBeVisible();
+  await expect(busy).toHaveText("Loading tracks…");
+
+  release();
+  await expect(lines(page)).toHaveCount(1);
+  await expect(busy).toHaveCount(0);
 });
 
 test("a line is named and highlighted on hover, and a click opens its trip", async ({

@@ -100,6 +100,8 @@ fn RegionMap(
     let mut handle = use_signal(|| None::<document::Eval>);
     // Where the map was last looking once it settled (US-73).
     let mut viewport = use_signal(|| None::<Viewport>);
+    // Whether the tracks in view are on their way (US-73).
+    let mut busy = use_signal(|| false);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new rectangle causes — the filters change, the list
     // re-queries — does not restart the map or drop the channel
@@ -165,7 +167,10 @@ fn RegionMap(
                 // A track that cannot be read is absent from the answer, and
                 // its line left off the map, as on a share's. A request that
                 // fails outright leaves the map as it was.
-                let tracks = match api::list_tracks(&archive(), &ids).await {
+                busy.set(!ids.is_empty());
+                let tracks = api::list_tracks(&archive(), &ids).await;
+                busy.set(false);
+                let tracks = match tracks {
                     Ok(tracks) => tracks,
                     Err(err) => {
                         dioxus::logger::tracing::error!("could not read the tracks in view: {err}");
@@ -177,6 +182,7 @@ fn RegionMap(
                 interop::draw_trip_lines(&map, &lines);
             }
             _ => {
+                busy.set(false);
                 lined.set(None);
                 interop::draw_heat_marks(&map, &marks);
             }
@@ -184,9 +190,26 @@ fn RegionMap(
     }));
 
     rsx! {
-        // Rendered empty and never given children: Leaflet owns this subtree
-        // from the moment it initialises (ADR-0025).
-        div { id: "region-map", class: "region-map" }
+        div { class: "region-map-frame",
+            // Rendered empty and never given children: Leaflet owns this
+            // subtree from the moment it initialises (ADR-0025).
+            div { id: "region-map", class: "region-map" }
+            if busy() {
+                MapBusy {}
+            }
+        }
+    }
+}
+
+/// Over the map while the tracks in view load (US-73): zooming in past the
+/// threshold waits on the archive, and nothing on the map shows it yet.
+#[component]
+fn MapBusy() -> Element {
+    rsx! {
+        div { id: "region-map-busy", class: "map-busy", role: "status",
+            span { class: "spinner", "aria-hidden": "true" }
+            "Loading tracks…"
+        }
     }
 }
 
@@ -265,6 +288,25 @@ mod tests {
             Some(vec![ActivityType::Hiking, ActivityType::Kayaking])
         );
         assert_eq!(legend_activities(None, None), None);
+    }
+
+    #[test]
+    fn the_map_is_not_busy_before_it_asks_for_anything() {
+        let html = render(|| {
+            let filters = Signal::new(Filters::default());
+            rsx! { RegionFilter { filters, trips: None } }
+        });
+
+        assert!(!html.contains("region-map-busy"), "{html}");
+    }
+
+    #[test]
+    fn while_the_tracks_load_the_map_says_so() {
+        // US-73: switching to lines waits on the archive, and says so.
+        let html = render(|| rsx! { MapBusy {} });
+
+        assert!(html.contains(r#"role="status""#), "{html}");
+        assert!(html.contains("Loading tracks…"), "{html}");
     }
 
     #[test]

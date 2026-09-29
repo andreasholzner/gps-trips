@@ -272,7 +272,7 @@ test("the map marks every trip the filters match (US-63)", async ({ page }) => {
   // Every fixture trip is the same short walk, so the map fits to it zoomed
   // in past where it draws lines (US-73); marks are what it shows further out.
   await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
-  await zoomBy(page, "region-map", "Zoom out", 4, 12);
+  await zoomBy(page, "region-map", "Zoom out", 6, 12);
 
   await expect(marks).toHaveCount(2);
   // Each in its trip's activity colour, named under the map (US-75).

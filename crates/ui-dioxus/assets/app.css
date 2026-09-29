@@ -370,6 +370,51 @@ nav.pager {
   }
 }
 
+/* The map's frame, for what sits over it: the sign that the tracks in
+   view are loading (US-73), above Leaflet's panes and controls. */
+.region-map-frame {
+  position: relative;
+}
+
+.map-busy {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  background: var(--pico-background-color);
+  color: var(--pico-color);
+  font-size: 0.875rem;
+  box-shadow: var(--pico-box-shadow);
+  pointer-events: none;
+}
+
+.map-busy .spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid var(--pico-muted-border-color);
+  border-top-color: var(--pico-color);
+  border-radius: 50%;
+  animation: map-busy-spin 0.8s linear infinite;
+}
+
+@keyframes map-busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-busy .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 /* Which color is which activity (US-75), under a map that shows several:
    a row of swatches, wrapping on a phone. */
 .map-legend {
