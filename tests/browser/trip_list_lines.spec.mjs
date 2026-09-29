@@ -77,6 +77,31 @@ test("a track already read is not fetched again", async ({ page, request }) => {
   expect(asked).toHaveLength(1);
 });
 
+test("zooming in while the tracks load does not ask for them again", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Zoomed Walk", "hiking");
+  const asked = [];
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route("**/api/trips/tracks?*", async (route) => {
+    asked.push(route.request().url());
+    await held;
+    await route.continue();
+  });
+
+  await page.goto(listOf(await nameOf(request, id)));
+  await expect.poll(() => asked.length).toBe(1);
+  // A narrower view settles while the first answer is still on its way.
+  await zoomBy(page, "region-map", "Zoom in", 1, 12);
+  release();
+
+  await expect(lines(page)).toHaveCount(1);
+  await expect(page.locator("#region-map-busy")).toHaveCount(0);
+  expect(asked).toHaveLength(1);
+});
+
 test("the map says it is busy while the tracks load", async ({ page, request }) => {
   const id = await ownTrip(request, "Awaited Walk", "hiking");
   // Hold the tracks back until the busy sign has been seen.

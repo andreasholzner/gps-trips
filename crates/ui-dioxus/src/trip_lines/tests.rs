@@ -220,6 +220,13 @@ fn the_cache_hands_back_only_the_tracks_in_view() {
     assert_eq!(ids_of(&cache.tracks(&[3, 1])), [3, 1]);
 }
 
+#[test]
+fn a_track_already_asked_for_is_not_asked_for_again_while_it_loads() {
+    let pending = std::collections::HashSet::from([2, 3]);
+
+    assert_eq!(to_request(&[1, 2, 3, 4], &pending), [1, 4]);
+}
+
 fn ids_of(tracks: &[&TripTrack]) -> Vec<i64> {
     tracks.iter().map(|track| track.id).collect()
 }

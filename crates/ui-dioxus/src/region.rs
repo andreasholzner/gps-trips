@@ -7,6 +7,8 @@
 //! Rust half — what to hand the map, and what to do with the rectangle it
 //! reports back.
 
+use std::collections::HashSet;
+
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, TripSummary};
 
@@ -100,11 +102,10 @@ fn RegionMap(
     let mut handle = use_signal(|| None::<document::Eval>);
     // Where the map was last looking once it settled (US-73).
     let mut viewport = use_signal(|| None::<Viewport>);
-    // Whether the tracks in view are on their way (US-73).
-    let mut busy = use_signal(|| false);
-    // Every track read while the list is open (US-73). Only peeked at below,
-    // so storing what arrives does not restart the drawing that stored it.
-    let mut cache = use_signal(TrackCache::default);
+    // Every track read while the list is open (US-73), and those asked for
+    // whose answer is still on its way.
+    let cache = use_signal(TrackCache::default);
+    let mut pending = use_signal(HashSet::<i64>::new);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new rectangle causes — the filters change, the list
     // re-queries — does not restart the map or drop the channel
@@ -153,11 +154,12 @@ fn RegionMap(
     // Redrawn whenever the list's rows change — on the same terms the table
     // re-queries — whenever the view settles, and once more when the map
     // comes up, which may be after the first rows have arrived. Zoomed in,
-    // the trips in view are drawn as their tracks: those not read yet are
-    // fetched in one request, the rest come from the cache. A restart drops
-    // a fetch still under way, so an older view's lines never land over a
-    // newer one's.
-    let _draw = use_resource(use_reactive!(|trips| async move {
+    // the trips in view are drawn as their tracks once every one of them is
+    // known; until then the map keeps what it shows. Tracks not asked for
+    // yet are fetched in one request that runs to its end whatever the view
+    // does meanwhile, and what it brings redraws the map — so zooming while
+    // tracks load waits for them instead of asking again.
+    use_effect(use_reactive!(|trips| {
         let (Some(map), Some(trips)) = (handle(), trips) else {
             return;
         };
@@ -168,47 +170,58 @@ fn RegionMap(
                     .iter()
                     .map(|trip| trip.id)
                     .collect();
-                // A track that cannot be read is absent from the answer, and
-                // its line left off the map, as on a share's. A request that
-                // fails outright leaves the map as it was.
-                let missing = cache.peek().missing(&ids);
-                // Set either way: a fetch dropped for a newer view left it on.
-                busy.set(!missing.is_empty());
+                let missing = cache.read().missing(&ids);
                 if !missing.is_empty() {
-                    let answer = api::list_tracks(&archive(), &missing).await;
-                    busy.set(false);
-                    match answer {
-                        Ok(answer) => cache.write().store(&missing, answer),
-                        Err(err) => {
-                            dioxus::logger::tracing::error!(
-                                "could not read the tracks in view: {err}"
-                            );
-                            return;
-                        }
+                    let request = trip_lines::to_request(&missing, &pending.peek());
+                    if !request.is_empty() {
+                        pending.write().extend(&request);
+                        spawn(fetch_tracks(archive(), cache, pending, request));
                     }
+                    return;
                 }
-                let lines = trip_lines::lines(&trips, &cache.peek().tracks(&ids), &marks);
+                let lines = trip_lines::lines(&trips, &cache.read().tracks(&ids), &marks);
                 lined.set(Some(trip_lines::activities(&trips, &lines)));
                 interop::draw_trip_lines(&map, &lines);
             }
             _ => {
-                busy.set(false);
                 lined.set(None);
                 interop::draw_heat_marks(&map, &marks);
             }
         }
     }));
 
+    // The sign shows while lines wait on the archive, not while marks do.
+    let busy =
+        viewport().is_some_and(|view| trip_lines::shows_lines(&view)) && !pending.read().is_empty();
+
     rsx! {
         div { class: "region-map-frame",
             // Rendered empty and never given children: Leaflet owns this
             // subtree from the moment it initialises (ADR-0025).
             div { id: "region-map", class: "region-map" }
-            if busy() {
+            if busy {
                 MapBusy {}
             }
         }
     }
+}
+
+/// Fetch the tracks of `ids` into `cache` (US-73). A track that cannot be
+/// read is absent from the answer, and its line left off the map, as on a
+/// share's. A request that fails outright stores nothing, so the next view
+/// that needs those tracks asks again.
+async fn fetch_tracks(
+    archive: ApiClient,
+    mut cache: Signal<TrackCache>,
+    mut pending: Signal<HashSet<i64>>,
+    ids: Vec<i64>,
+) {
+    let answer = api::list_tracks(&archive, &ids).await;
+    match answer {
+        Ok(answer) => cache.write().store(&ids, answer),
+        Err(err) => dioxus::logger::tracing::error!("could not read the tracks in view: {err}"),
+    }
+    pending.write().retain(|id| !ids.contains(id));
 }
 
 /// Over the map while the tracks in view load (US-73): zooming in past the

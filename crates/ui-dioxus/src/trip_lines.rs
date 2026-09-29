@@ -6,7 +6,7 @@
 //! decided here, where `cargo test` reaches it; the region map's script only
 //! reports where it is looking and draws what it is handed (ADR-0025).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use trip_archive_types::{ActivityType, TripSummary, TripTrack};
@@ -115,6 +115,17 @@ impl TrackCache {
             .filter_map(|id| self.known.get(id)?.as_ref())
             .collect()
     }
+}
+
+/// Those of `missing` to ask the archive for: not the ones already asked
+/// for, whose answer is still on its way. A view that settles while an
+/// earlier one's tracks load waits for that answer rather than asking again.
+pub fn to_request(missing: &[i64], pending: &HashSet<i64>) -> Vec<i64> {
+    missing
+        .iter()
+        .copied()
+        .filter(|id| !pending.contains(id))
+        .collect()
 }
 
 /// One line per trip whose track was read, in list order, each in its shade
