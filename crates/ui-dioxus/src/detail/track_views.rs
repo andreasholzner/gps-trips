@@ -164,7 +164,7 @@ fn ElevationChart(
 
 /// What the cursor is on, under the chart (US-59): the distance and elevation
 /// of the hovered sample, through the same formatting as the stats above, so
-/// the two read alike, how steep and how fast it was (US-79), and when it was
+/// the two read alike, how fast and how steep it was (US-79), and when it was
 /// there (US-62). Dashes when the cursor
 /// is not on the chart — the same dash the stats use for a value there is
 /// none of. A track with no times at all has no time to read out, and says
@@ -190,15 +190,15 @@ fn HoverReadout(points: Vec<track::HoverPoint>, hovered: Option<usize>) -> Eleme
             span { id: "readout-elevation",
                 {format::metres(at.map(|sample| sample.elevation_m))}
             }
-            " · "
-            span { id: "readout-incline",
-                {format::incline(at.and_then(|sample| sample.incline_pct))}
-            }
             if moving {
                 " · "
                 span { id: "readout-speed",
                     {format::speed(at.and_then(|sample| sample.speed_kmh))}
                 }
+            }
+            " · "
+            span { id: "readout-incline",
+                {format::incline(at.and_then(|sample| sample.incline_pct))}
             }
             if timed {
                 " · "
@@ -335,6 +335,11 @@ mod tests {
 
         assert!(html.contains(r#"id="readout-speed">12.3 km/h<"#), "{html}");
         assert!(html.contains(r#"id="readout-incline">−6 %<"#), "{html}");
+        // How fast, then how steep.
+        assert!(
+            html.find("readout-speed") < html.find("readout-incline"),
+            "{html}"
+        );
     }
 
     #[test]
