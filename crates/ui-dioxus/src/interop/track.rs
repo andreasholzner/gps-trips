@@ -212,7 +212,9 @@ const TRACK_MAP_SCRIPT: &str = r##"
 
 /// The elevation profile. Draws into `#elevation`: elevation in metres
 /// against cumulative distance in kilometres, the pair of series Rust
-/// prepared.
+/// prepared — and, for a track recorded with times, the speed in km/h
+/// against an axis of its own on the right (US-79). Every series shares the
+/// one distance scale, which is what makes a drag zoom them all.
 ///
 /// Unlike the map there is nothing to show before the payload arrives — an
 /// empty chart frame is not a useful thing to look at — so this one waits
@@ -236,7 +238,8 @@ const ELEVATION_SCRIPT: &str = r##"
     const el = document.getElementById(CONTAINER);
     const widgets = (window.tripArchiveWidgets ||= {});
 
-    const [distanceKm, elevationM] = await dioxus.recv();
+    const { distance_km: distanceKm, elevation_m: elevationM, speed_kmh: speedKmh } =
+      await dioxus.recv();
     if (widgets[CONTAINER]) {
       widgets[CONTAINER].destroy();
       widgets[CONTAINER] = null;
@@ -281,7 +284,13 @@ const ELEVATION_SCRIPT: &str = r##"
       {
         width: el.clientWidth || 600,
         height: 200,
-        scales: { x: { time: false } },
+        // Speed from zero up: a profile that floats its baseline would make a
+        // slow trip look as varied as a fast one.
+        scales: {
+          x: { time: false },
+          m: {},
+          kmh: { range: (u, min, max) => [0, max > 0 ? max : 1] },
+        },
         // Off (US-59): clicking it toggles the series off and leaves an empty
         // frame, and its marker square reads as a checkbox. The live readout
         // it also carried is rendered as ordinary markup by Rust instead,
@@ -305,16 +314,27 @@ const ELEVATION_SCRIPT: &str = r##"
             },
           ],
         },
+        // A planned trip has no times, so no speed: its chart is the
+        // elevation profile alone, with no right axis claiming a series that
+        // is not there. A point without a speed is `null`, which uPlot leaves
+        // as a gap in the line.
         series: [
           { label: "Distance (km)" },
-          { label: "Elevation (m)", stroke: "#3367d6", width: 2 },
+          { label: "Elevation (m)", scale: "m", stroke: "#3367d6", width: 2 },
+          ...(speedKmh ? [{ label: "Speed (km/h)", scale: "kmh", stroke: "#e8710a", width: 1.5 }] : []),
         ],
+        // The right axis's text is themed like the left's rather than in the
+        // series' orange: no orange reads on both the light and the dark page.
+        // It draws no grid of its own, which would cross the elevation's.
         axes: [
           { label: "Distance (km)", ...themed },
-          { label: "Elevation (m)", ...themed },
+          { label: "Elevation (m)", scale: "m", ...themed },
+          ...(speedKmh
+            ? [{ label: "Speed (km/h)", scale: "kmh", side: 1, ...themed, grid: { show: false } }]
+            : []),
         ],
       },
-      [distanceKm, elevationM],
+      speedKmh ? [distanceKm, elevationM, speedKmh] : [distanceKm, elevationM],
       el,
     );
 
@@ -392,13 +412,31 @@ pub fn start_track_map(
     )
 }
 
-/// Start the elevation chart with its two prepared series. The handle is the
+/// What the elevation chart draws: elevation against distance, and the speed
+/// over the same distances where the track was recorded with times (US-79) —
+/// `None` for one that was not, which draws no speed and no axis for it.
+#[derive(Serialize)]
+struct ElevationChartView {
+    distance_km: Vec<f64>,
+    elevation_m: Vec<f64>,
+    speed_kmh: Option<Vec<Option<f64>>>,
+}
+
+/// Start the elevation chart with its prepared series. The handle is the
 /// channel, as above — and this one is read in a loop: the chart reports the
 /// index the cursor is on, or `null` when it leaves (US-59).
-pub fn start_elevation_chart(distance_km: Vec<f64>, elevation_m: Vec<f64>) -> document::Eval {
+pub fn start_elevation_chart(
+    distance_km: Vec<f64>,
+    elevation_m: Vec<f64>,
+    speed_kmh: Option<Vec<Option<f64>>>,
+) -> document::Eval {
     start(
         ELEVATION_SCRIPT,
-        (distance_km, elevation_m),
+        ElevationChartView {
+            distance_km,
+            elevation_m,
+            speed_kmh,
+        },
         "the elevation chart",
     )
 }

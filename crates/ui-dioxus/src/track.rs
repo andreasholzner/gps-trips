@@ -18,6 +18,10 @@ use time::UtcOffset;
 
 use crate::format;
 
+mod profile;
+
+pub use profile::{inclines, speed_series};
+
 /// A track as served.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Track {
@@ -102,13 +106,17 @@ pub fn elevation_series(track: &Track) -> Option<(Vec<f64>, Vec<f64>)> {
 /// `position` is `None` where the track carries no drawable position for that
 /// sample — the map then marks nothing rather than marking the wrong point.
 /// `time` is when the point was recorded, already rendered in the offset it
-/// was in (US-62); `None` for a point the GPX gave no time.
+/// was in (US-62); `None` for a point the GPX gave no time. `speed_kmh` and
+/// `incline_pct` are the smoothed values the [`profile`] derives (US-79),
+/// `None` where there is none to read out.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverPoint {
     pub distance_m: f64,
     pub elevation_m: f64,
     pub position: Option<[f64; 2]>,
     pub time: Option<String>,
+    pub speed_kmh: Option<f64>,
+    pub incline_pct: Option<f64>,
 }
 
 /// The chart's samples, in the chart's own order, so the index the cursor
@@ -128,6 +136,8 @@ pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
     };
     let positions = &track.geometry.coordinates;
     let with_date = crosses_a_date(track);
+    let speeds = speed_series(track).unwrap_or_default();
+    let inclines = inclines(track);
     track
         .properties
         .cumulative_distance_m
@@ -147,6 +157,8 @@ pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
                 .get(i)
                 .and_then(|timestamp| format::instant(timestamp))
                 .map(|at| format::clock(at, offset_at(track, i), with_date)),
+            speed_kmh: speeds.get(i).copied().flatten(),
+            incline_pct: inclines.get(i).copied().flatten(),
         })
         .collect()
 }
@@ -155,6 +167,13 @@ pub fn hover_points(track: &Track) -> Vec<HoverPoint> {
 /// the readout's time rather than show a dash that can never fill.
 pub fn has_times(points: &[HoverPoint]) -> bool {
     points.iter().any(|point| point.time.is_some())
+}
+
+/// Whether any sample has a speed to read out (US-79). A track without
+/// timestamps has none, and drops the speed from the readout as it drops the
+/// time.
+pub fn has_speeds(points: &[HoverPoint]) -> bool {
+    points.iter().any(|point| point.speed_kmh.is_some())
 }
 
 /// The offset in force at point `index`: the last change at or before it.
@@ -446,5 +465,32 @@ mod tests {
         let track = timed_track(["", "", ""], "[]");
 
         assert!(!has_times(&hover_points(&track)));
+    }
+
+    // ── US-79: the speed and incline of the hovered point ────────────────
+
+    #[test]
+    fn a_hovered_point_carries_its_speed_and_incline() {
+        // Five minutes between the two points is a gap; 1234 m across it is
+        // not a pause, so both ends read its average (`profile`).
+        let points = hover_points(&stored_track());
+
+        let speed = points[1].speed_kmh.expect("a timed point has a speed");
+        assert!((speed - 1234.0 / 300.0 * 3.6).abs() < 1e-9, "{speed}");
+        assert_eq!(points[0].speed_kmh, points[1].speed_kmh);
+        let incline = points[0]
+            .incline_pct
+            .expect("a point with a run has an incline");
+        assert!((incline - 18.0 / 1234.0 * 100.0).abs() < 1e-9, "{incline}");
+        assert!(has_speeds(&points));
+    }
+
+    #[test]
+    fn a_track_with_no_times_has_no_speed_to_read_out() {
+        let track = timed_track(["", "", ""], "[]");
+        let points = hover_points(&track);
+
+        assert!(!has_speeds(&points));
+        assert!(points.iter().all(|point| point.incline_pct.is_some()));
     }
 }

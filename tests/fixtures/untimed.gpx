@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="trip-archive-test"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <!-- sample.gpx planned rather than walked: the same points, no times (US-79). -->
+  <trk>
+    <name>Oslo Hills Plan</name>
+    <trkseg>
+      <trkpt lat="59.9139" lon="10.7522">
+        <ele>10.0</ele>
+      </trkpt>
+      <trkpt lat="59.9200" lon="10.7600">
+        <ele>50.0</ele>
+      </trkpt>
+      <trkpt lat="59.9250" lon="10.7650">
+        <ele>30.0</ele>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

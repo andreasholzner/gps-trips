@@ -15,6 +15,21 @@ pub fn metres(value: Option<f64>) -> String {
     value.map_or_else(dash, |m| format!("{m:.0} m"))
 }
 
+/// A speed in km/h, to a tenth (US-79).
+pub fn speed(kmh: Option<f64>) -> String {
+    kmh.map_or_else(dash, |kmh| format!("{kmh:.1} km/h"))
+}
+
+/// An incline as a whole percentage, signed so uphill and downhill read
+/// apart at a glance (US-79): `+7 %`, `−4 %`, and level ground as `0 %`.
+pub fn incline(percent: Option<f64>) -> String {
+    percent.map_or_else(dash, |percent| match percent.round() {
+        p if p > 0.0 => format!("+{p:.0} %"),
+        p if p < 0.0 => format!("−{:.0} %", -p),
+        _ => "0 %".to_string(),
+    })
+}
+
 /// Seconds as `hh:mm:ss`.
 pub fn duration(secs: Option<i64>) -> String {
     secs.map_or_else(dash, |secs| {
@@ -193,6 +208,23 @@ mod tests {
         ] {
             assert_eq!(super::device(agent), device, "{agent}");
         }
+    }
+
+    #[test]
+    fn us79_a_speed_is_shown_in_kilometres_an_hour() {
+        assert_eq!(speed(Some(12.345)), "12.3 km/h");
+        assert_eq!(speed(Some(0.0)), "0.0 km/h");
+        assert_eq!(speed(None), "—");
+    }
+
+    #[test]
+    fn us79_an_incline_is_a_signed_whole_percentage() {
+        assert_eq!(incline(Some(7.4)), "+7 %");
+        assert_eq!(incline(Some(-4.6)), "−5 %");
+        // Neither sign on level ground, however it was approached.
+        assert_eq!(incline(Some(0.0)), "0 %");
+        assert_eq!(incline(Some(-0.3)), "0 %");
+        assert_eq!(incline(None), "—");
     }
 
     #[test]

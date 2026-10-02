@@ -9,16 +9,20 @@ const fixture = (name) =>
 /// A June morning's walk in Oslo, 08:00–09:00 UTC.
 export const SAMPLE_GPX = fixture("sample.gpx");
 
+/// The same walk as a plan: its points carry no times (US-79).
+export const UNTIMED_GPX = fixture("untimed.gpx");
+
 /// A geotagged JPEG (US-3): the fixture the server's own tests use, so the
 /// EXIF path here is the real one.
 export const GEOTAGGED_JPEG = fixture("geotagged.jpg");
 
 /// Import a trip through the real API and return its id, from the redirect —
 /// which US-42 repointed at the SPA's own screen. Without an `activity` (its
-/// wire value), the trip's activity is left unspecified.
-export async function importTrip(request, name, activity) {
+/// wire value), the trip's activity is left unspecified; without a `gpx`, it
+/// is the sample walk.
+export async function importTrip(request, name, activity, gpx = SAMPLE_GPX) {
   const multipart = {
-    gpx: { name: "track.gpx", mimeType: "application/gpx+xml", buffer: SAMPLE_GPX },
+    gpx: { name: "track.gpx", mimeType: "application/gpx+xml", buffer: gpx },
     name,
   };
   if (activity) multipart.activity_type = activity;
@@ -39,11 +43,12 @@ export function ownTrips(test) {
       await request.delete(`/api/trips/${id}`);
     }
   });
-  return async (request, label, activity) => {
+  return async (request, label, activity, gpx) => {
     const id = await importTrip(
       request,
       `${label} ${Math.random().toString(36).slice(2, 8)}`,
       activity,
+      gpx,
     );
     created.push(id);
     return id;

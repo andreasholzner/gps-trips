@@ -120,7 +120,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-76](#us-76--activity-type-suggestion)                     | 📋     | Activity type suggestion                     | [Import](#import)                                                   |
 | [US-77](#us-77--statistics)                                   | 📋     | Statistics                                   | [Statistics](#statistics)                                           |
 | [US-78](#us-78--tag-summary)                                  | 📋     | Tag summary                                  | [Statistics](#statistics)                                           |
-| [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | 📋     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
+| [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -833,7 +833,7 @@ ADR-0012 (which layer asserts the viewer's markup and which its keys and swipes)
 
 ### US-79 — Speed and incline on the elevation profile
 
-**Planned 📋** — As the owner, the elevation profile also shows how fast I went, and its readout
+**Done ✅** — As the owner, the elevation profile also shows how fast I went, and its readout
 tells me the speed and the incline where I point, so I see where a trip was slow or steep.
 
 **Acceptance criteria:** Extends US-59's chart and US-62's readout on the trip's page. **Speed** is

@@ -62,6 +62,7 @@ fn TrackViews(
 ) -> Element {
     let points = track::polyline(&track);
     let series = track::elevation_series(&track);
+    let speed_kmh = track::speed_series(&track);
     let samples = track::hover_points(&track);
     let hovered = use_signal(|| None::<usize>);
     let hovered_at = hovered().and_then(|i| samples.get(i).and_then(|sample| sample.position));
@@ -69,7 +70,7 @@ fn TrackViews(
     rsx! {
         TrackMap { points, color: activity_color::color(activity), markers, hovered_at, on_open_photos }
         if let Some((distance_km, elevation_m)) = series {
-            ElevationChart { distance_km, elevation_m, hovered }
+            ElevationChart { distance_km, elevation_m, speed_kmh, hovered }
             HoverReadout { points: samples, hovered: hovered() }
         }
     }
@@ -129,16 +130,18 @@ fn TrackMap(
 
 /// The elevation chart's container, on the same terms as the map's — and the
 /// source of the hovered index, which it reports until the channel closes.
+/// `speed_kmh` is drawn over the same distances when there is one (US-79).
 #[component]
 fn ElevationChart(
     distance_km: Vec<f64>,
     elevation_m: Vec<f64>,
+    speed_kmh: Option<Vec<Option<f64>>>,
     hovered: Signal<Option<usize>>,
 ) -> Element {
-    use_future(use_reactive!(|distance_km, elevation_m| {
+    use_future(use_reactive!(|distance_km, elevation_m, speed_kmh| {
         let mut hovered = hovered;
         async move {
-            let mut chart = interop::start_elevation_chart(distance_km, elevation_m);
+            let mut chart = interop::start_elevation_chart(distance_km, elevation_m, speed_kmh);
             loop {
                 match chart.recv::<Option<usize>>().await {
                     Ok(index) => hovered.set(index),
@@ -161,10 +164,12 @@ fn ElevationChart(
 
 /// What the cursor is on, under the chart (US-59): the distance and elevation
 /// of the hovered sample, through the same formatting as the stats above, so
-/// the two read alike, and when it was there (US-62). Dashes when the cursor
+/// the two read alike, how steep and how fast it was (US-79), and when it was
+/// there (US-62). Dashes when the cursor
 /// is not on the chart — the same dash the stats use for a value there is
 /// none of. A track with no times at all has no time to read out, and says
-/// nothing about it rather than show a dash that can never fill.
+/// nothing about it rather than show a dash that can never fill, and the same
+/// goes for its speed.
 ///
 /// This is uPlot's own legend, rebuilt as ordinary markup: the stock one is
 /// the control that hides the series when clicked, and its marker square
@@ -173,6 +178,7 @@ fn ElevationChart(
 fn HoverReadout(points: Vec<track::HoverPoint>, hovered: Option<usize>) -> Element {
     let at = hovered.and_then(|index| points.get(index));
     let timed = track::has_times(&points);
+    let moving = track::has_speeds(&points);
 
     rsx! {
         p { id: "chart-readout", class: "chart-readout",
@@ -183,6 +189,16 @@ fn HoverReadout(points: Vec<track::HoverPoint>, hovered: Option<usize>) -> Eleme
             " · "
             span { id: "readout-elevation",
                 {format::metres(at.map(|sample| sample.elevation_m))}
+            }
+            " · "
+            span { id: "readout-incline",
+                {format::incline(at.and_then(|sample| sample.incline_pct))}
+            }
+            if moving {
+                " · "
+                span { id: "readout-speed",
+                    {format::speed(at.and_then(|sample| sample.speed_kmh))}
+                }
             }
             if timed {
                 " · "
@@ -209,6 +225,8 @@ mod tests {
             elevation_m,
             position: Some([59.91, 10.75]),
             time: None,
+            speed_kmh: None,
+            incline_pct: None,
         }
     }
 
@@ -295,5 +313,54 @@ mod tests {
         });
 
         assert!(!html.contains("readout-time"), "{html}");
+    }
+
+    // ── US-79: the speed and incline of the hovered point ────────────────
+
+    fn a_moving_sample(speed_kmh: Option<f64>, incline_pct: Option<f64>) -> track::HoverPoint {
+        track::HoverPoint {
+            speed_kmh,
+            incline_pct,
+            ..a_sample(0.0, 12.0)
+        }
+    }
+
+    #[test]
+    fn the_readout_says_how_fast_and_how_steep_the_hovered_point_was() {
+        let points = vec![a_moving_sample(Some(12.34), Some(-6.2))];
+
+        let html = render(move || {
+            rsx! { HoverReadout { points: points.clone(), hovered: Some(0) } }
+        });
+
+        assert!(html.contains(r#"id="readout-speed">12.3 km/h<"#), "{html}");
+        assert!(html.contains(r#"id="readout-incline">−6 %<"#), "{html}");
+    }
+
+    #[test]
+    fn a_point_with_no_speed_reads_as_a_dash() {
+        let points = vec![
+            a_moving_sample(Some(12.0), Some(1.0)),
+            a_moving_sample(None, None),
+        ];
+
+        let html = render(move || {
+            rsx! { HoverReadout { points: points.clone(), hovered: Some(1) } }
+        });
+
+        assert!(html.contains(r#"id="readout-speed">—<"#), "{html}");
+        assert!(html.contains(r#"id="readout-incline">—<"#), "{html}");
+    }
+
+    #[test]
+    fn a_track_without_speeds_drops_the_speed_but_keeps_the_incline() {
+        let points = vec![a_moving_sample(None, Some(3.0))];
+
+        let html = render(move || {
+            rsx! { HoverReadout { points: points.clone(), hovered: Some(0) } }
+        });
+
+        assert!(!html.contains("readout-speed"), "{html}");
+        assert!(html.contains(r#"id="readout-incline">+3 %<"#), "{html}");
     }
 }

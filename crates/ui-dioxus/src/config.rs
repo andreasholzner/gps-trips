@@ -11,3 +11,32 @@ pub mod trip_map {
     /// piled into blobs that say nothing about which way the trips went.
     pub const LINES_FROM_ZOOM: f64 = 7.0;
 }
+
+/// The elevation profile's speed and incline (US-79).
+pub mod elevation_profile {
+    /// The time the speed at a point is averaged over, centred on it: GPS
+    /// jitter between two points a second apart reads as wild speeds, and
+    /// half a minute either side settles it without hiding a real change.
+    pub const SPEED_WINDOW_S: f64 = 30.0;
+
+    /// A gap between two timed points longer than this is a break in the
+    /// recording — a stop, or a tunnel — and no speed window reaches across it.
+    pub const PAUSE_GAP_S: f64 = 60.0;
+
+    /// A gap that covered less distance than this was a pause, and reads as
+    /// 0 km/h; one that covered more (a tunnel with no reception) reads as its
+    /// average speed. Wide enough for the jump a receiver makes when it fixes
+    /// again after a stop.
+    pub const PAUSE_GAP_MAX_M: f64 = 50.0;
+
+    /// A smoothed speed below this is GPS drift while standing still, and
+    /// reads as 0 km/h — low enough that a slow scramble still counts as moving.
+    pub const STANDSTILL_KMH: f64 = 0.5;
+
+    /// The distance the incline at a point is measured over, centred on it.
+    pub const INCLINE_WINDOW_M: f64 = 50.0;
+
+    /// A run shorter than this gives no incline, rather than a rise divided by
+    /// next to nothing.
+    pub const MIN_INCLINE_RUN_M: f64 = 1.0;
+}
