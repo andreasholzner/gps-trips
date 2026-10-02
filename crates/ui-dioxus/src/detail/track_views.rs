@@ -183,27 +183,39 @@ fn HoverReadout(points: Vec<track::HoverPoint>, hovered: Option<usize>) -> Eleme
     rsx! {
         p { id: "chart-readout", class: "chart-readout",
             "At cursor: "
-            span { id: "readout-distance",
-                {at.map_or_else(|| "—".to_string(), |sample| format::km(sample.distance_m))}
-            }
-            " · "
-            span { id: "readout-elevation",
-                {format::metres(at.map(|sample| sample.elevation_m))}
-            }
-            if moving {
-                " · "
-                span { id: "readout-speed",
-                    {format::speed(at.and_then(|sample| sample.speed_kmh))}
+            // Each reading holds its separator, so the two wrap together on
+            // a narrow screen (US-79).
+            span { class: "reading",
+                span { id: "readout-distance",
+                    {at.map_or_else(|| "—".to_string(), |sample| format::km(sample.distance_m))}
                 }
             }
-            " · "
-            span { id: "readout-incline",
-                {format::incline(at.and_then(|sample| sample.incline_pct))}
+            span { class: "reading",
+                " · "
+                span { id: "readout-elevation",
+                    {format::metres(at.map(|sample| sample.elevation_m))}
+                }
+            }
+            if moving {
+                span { class: "reading",
+                    " · "
+                    span { id: "readout-speed",
+                        {format::speed(at.and_then(|sample| sample.speed_kmh))}
+                    }
+                }
+            }
+            span { class: "reading",
+                " · "
+                span { id: "readout-incline",
+                    {format::incline(at.and_then(|sample| sample.incline_pct))}
+                }
             }
             if timed {
-                " · "
-                span { id: "readout-time",
-                    {format::or_dash(at.and_then(|sample| sample.time.as_deref()))}
+                span { class: "reading",
+                    " · "
+                    span { id: "readout-time",
+                        {format::or_dash(at.and_then(|sample| sample.time.as_deref()))}
+                    }
                 }
             }
         }

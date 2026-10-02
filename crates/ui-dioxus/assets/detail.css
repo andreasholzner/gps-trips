@@ -59,6 +59,41 @@
   color: var(--pico-muted-color);
 }
 
+/* Each value in a slot as wide as the widest it plausibly reads, so a value
+   with more digits than the last, or a dash where a value was, does not push
+   the ones after it along as the cursor moves (US-79). Numbers align to the
+   right of their slot, where their digits stay still; the time is last and
+   moves nothing. A reading carries the separator before its value, and
+   wraps as one. */
+.chart-readout .reading {
+  white-space: nowrap;
+}
+
+.chart-readout .reading > span {
+  display: inline-block;
+  text-align: right;
+}
+
+#readout-distance {
+  min-width: 10ch;
+}
+
+#readout-elevation {
+  min-width: 6.5ch;
+}
+
+#readout-speed {
+  min-width: 10.5ch;
+}
+
+#readout-incline {
+  min-width: 6ch;
+}
+
+#readout-time {
+  text-align: left;
+}
+
 /* A map marker's popup (US-57). It holds every photo taken at that place, so
    it scrolls rather than growing past the map it sits on. */
 .photo-popup {
