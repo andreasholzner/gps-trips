@@ -189,10 +189,7 @@ test("hovering the elevation profile reads out the point and marks it on the tra
 // marker pane sits above the overlay pane every vector is drawn in, so the
 // ring needs a pane of its own or it goes under the very marker it is next
 // to. Stacking is only real once both libraries have drawn.
-test("the hovered point is marked above every photo marker (US-59)", async ({
-  page,
-  request,
-}) => {
+test("the hovered point is marked above every photo marker (US-59)", async ({ page, request }) => {
   const id = await ownTrip(request, "Stacked Trip");
   // Two photos at one place, so the map carries a group badge as well as the
   // track: a single photo's circle is a vector and never outranked the ring.

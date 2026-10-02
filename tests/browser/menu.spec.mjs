@@ -80,16 +80,14 @@ test("on a wide screen the items are in the header, with no burger (US-60)", asy
   // sits on one baseline. Measured rather than eyeballed, because a few
   // pixels of drift is exactly the amount that looks like a mistake without
   // announcing what it is.
-  const baselines = await page
-    .locator("#app-menu")
-    .evaluate((menu) =>
-      [...menu.children].map((el) => {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        // The bottom of the text itself, not of the box around it.
-        return Math.round(range.getBoundingClientRect().bottom);
-      }),
-    );
+  const baselines = await page.locator("#app-menu").evaluate((menu) =>
+    [...menu.children].map((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      // The bottom of the text itself, not of the box around it.
+      return Math.round(range.getBoundingClientRect().bottom);
+    }),
+  );
   expect(new Set(baselines).size, `menu items sit on ${baselines}`).toBe(1);
 
   // And they navigate without a page load, like every other link in the SPA.

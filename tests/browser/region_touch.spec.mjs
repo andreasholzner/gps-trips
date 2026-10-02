@@ -145,8 +145,14 @@ test.describe("with a touchscreen", () => {
     // Spread two fingers apart: a pinch-out.
     await drag(
       page,
-      [[0.45, 0.45], [0.55, 0.55]],
-      [[0.2, 0.2], [0.8, 0.8]],
+      [
+        [0.45, 0.45],
+        [0.55, 0.55],
+      ],
+      [
+        [0.2, 0.2],
+        [0.8, 0.8],
+      ],
     );
 
     // Nothing to wait *for* when nothing should happen: give a zoom the time

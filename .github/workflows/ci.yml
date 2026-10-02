@@ -179,6 +179,12 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      # The JavaScript and CSS counterpart of `cargo fmt --all --check`: the
+      # browser tests and the app's own stylesheets, not the vendored ones.
+      - name: Check formatting
+        working-directory: tests/browser
+        run: npm run format:check
+
       # Playwright starts the server itself — already built above — on a fresh
       # temporary data directory, and refuses to run at all if the bundle is
       # missing.

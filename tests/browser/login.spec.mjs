@@ -15,9 +15,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, PASSWORD, signIn, test } from "./session.mjs";
 
-const SAMPLE_GPX = readFileSync(
-  fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)),
-);
+const SAMPLE_GPX = readFileSync(fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)));
 
 const passwordField = (page) => page.locator("#login-password");
 const signInButton = (page) => page.locator("#login-submit");

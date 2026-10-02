@@ -131,6 +131,9 @@ test.describe("on a phone", () => {
       .locator("#chart-readout .reading")
       .evaluateAll((readings) => readings.map((reading) => reading.getClientRects().length));
     expect(pieces).toHaveLength(5);
-    expect(pieces.every((count) => count === 1), `${pieces}`).toBe(true);
+    expect(
+      pieces.every((count) => count === 1),
+      `${pieces}`,
+    ).toBe(true);
   });
 });

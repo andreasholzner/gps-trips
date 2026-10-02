@@ -77,10 +77,7 @@ test("a track already read is not fetched again", async ({ page, request }) => {
   expect(asked).toHaveLength(1);
 });
 
-test("zooming in while the tracks load does not ask for them again", async ({
-  page,
-  request,
-}) => {
+test("zooming in while the tracks load does not ask for them again", async ({ page, request }) => {
   const id = await ownTrip(request, "Zoomed Walk", "hiking");
   const asked = [];
   let release;

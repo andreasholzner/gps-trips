@@ -10,9 +10,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { zoomBy } from "./map.mjs";
 
-const SAMPLE_GPX = readFileSync(
-  fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)),
-);
+const SAMPLE_GPX = readFileSync(fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)));
 
 const rows = (page) => page.locator("table tbody tr");
 

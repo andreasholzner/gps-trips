@@ -15,9 +15,7 @@ import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const SAMPLE_GPX = readFileSync(
-  fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)),
-);
+const SAMPLE_GPX = readFileSync(fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)));
 
 /// A track with timestamps but no `<name>` — US-12's other prefill case.
 const UNNAMED_GPX = readFileSync(

@@ -242,12 +242,10 @@ test("the quiet controls stay readable under the pointer (US-62)", async ({ page
 /// Leaflet, so only its own layers can say.
 const markerPositions = (page) =>
   page.evaluate(() =>
-    window.tripArchiveWidgets["track-map"].photoMarkers
-      .getLayers()
-      .map((marker) => {
-        const at = marker.getLatLng();
-        return [at.lat, at.lng];
-      }),
+    window.tripArchiveWidgets["track-map"].photoMarkers.getLayers().map((marker) => {
+      const at = marker.getLatLng();
+      return [at.lat, at.lng];
+    }),
   );
 
 /// The stored photo named `name`.
@@ -272,7 +270,7 @@ test("a geotagged photo is moved by hand, after a warning (US-30)", async ({ pag
   await expect(placing.locator("#place-warning")).toContainText("GPS");
   // The track in its activity's colour, cycling's blue, and the photo's
   // marks in the track map's amber (US-75).
-  await expect(placing.locator("#place-map path[stroke=\"#1f4e9c\"]")).toBeVisible();
+  await expect(placing.locator('#place-map path[stroke="#1f4e9c"]')).toBeVisible();
   await expect(placing.locator("#place-map .place-current")).toHaveCount(1);
   await expect(placing.locator("#place-map .place-current")).toHaveAttribute("stroke", "#f5a623");
   await expect(placing.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -290,9 +288,7 @@ test("a geotagged photo is moved by hand, after a warning (US-30)", async ({ pag
   expect(after.location_source).toBe("manual");
   expect([after.lat, after.lon]).not.toEqual([before.lat, before.lon]);
   // And the track map's marker went with it.
-  await expect
-    .poll(() => markerPositions(page))
-    .toEqual([[after.lat, after.lon]]);
+  await expect.poll(() => markerPositions(page)).toEqual([[after.lat, after.lon]]);
 });
 
 test("a photo the map could not place is placed without a warning (US-30)", async ({
@@ -320,7 +316,5 @@ test("a photo the map could not place is placed without a warning (US-30)", asyn
   await expect(placing).toHaveCount(0);
   const placed = await storedPhoto(request, id, "lost.jpg");
   expect(placed.location_source).toBe("manual");
-  await expect
-    .poll(() => markerPositions(page))
-    .toEqual([[placed.lat, placed.lon]]);
+  await expect.poll(() => markerPositions(page)).toEqual([[placed.lat, placed.lon]]);
 });

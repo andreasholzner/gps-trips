@@ -130,6 +130,11 @@ API client will not send a `Secure` cookie over plain http.
 Traces are retained for failures; `npx playwright show-trace test-results/<test>/trace.zip`
 replays one. `test-results/` and `playwright-report/` are git-ignored.
 
+The browser tests and the SPA's own stylesheets (`app.css`, `detail.css` — not the vendored
+ones) are formatted by Prettier, configured in `.prettierrc.json` at the root: `npm run format`
+from `tests/browser` rewrites them, `npm run format:check` is what CI runs. The scripts inside the
+Rust interop modules are out of its reach.
+
 Android has no automated tests at all and is verified by hand on a device
 ([ADR-0012](./adr/0012-tdd-test-strategy.md), [ADR-0024](./adr/0024-dioxus-ui-web-and-android.md)).
 
@@ -154,4 +159,5 @@ of a full rebuild.
 ## Before committing
 
 Build succeeds, `cargo test --workspace` is green, `clippy` is clean, `cargo fmt --all --check`
-passes — and if the change touches the SPA's markup or behaviour, the browser layer too.
+passes — and if the change touches the SPA's markup or behaviour, the browser layer too, and
+`npm run format:check` if it touches the browser tests or the SPA's stylesheets.
