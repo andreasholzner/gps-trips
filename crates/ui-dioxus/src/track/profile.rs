@@ -14,8 +14,9 @@ use crate::format;
 use super::Track;
 
 /// The speed in km/h at each of the chart's samples, or `None` for the whole
-/// series when no point carries a time (a planned trip): there is then no
-/// speed to draw and no axis to draw it against.
+/// series when no point has one — a planned trip, which carries no times, or
+/// one whose times give no speed anywhere: there is then no speed to draw and
+/// no axis to draw it against.
 ///
 /// The speed at a point is the distance over the time between the points
 /// that bracket it by half of [`SPEED_WINDOW_S`] either side, within its run
@@ -37,9 +38,6 @@ pub fn speed_series(track: &Track) -> Option<Vec<Option<f64>>> {
             Some(at.unix_timestamp_nanos() as f64 / 1e9)
         })
         .collect();
-    if seconds.iter().all(Option::is_none) {
-        return None;
-    }
 
     let half = SPEED_WINDOW_S / 2.0;
     let mut speeds = vec![None; distance_m.len()];
@@ -96,7 +94,7 @@ pub fn speed_series(track: &Track) -> Option<Vec<Option<f64>>> {
         speeds[i + 1] = speed;
         ended_a_gap = true;
     }
-    Some(speeds)
+    speeds.iter().any(Option::is_some).then_some(speeds)
 }
 
 /// The incline in percent at each of the chart's samples, positive uphill:
@@ -326,14 +324,26 @@ mod tests {
 
     #[test]
     fn a_point_whose_time_runs_backwards_has_no_speed() {
-        let speeds = speeds(&timed(&[(Some(10), 0.0), (Some(5), 50.0)]));
+        // A minute at a steady pace, then a point stamped half a minute back.
+        let mut points = steady(60, 5.0);
+        points.push((Some(30), 305.0));
 
-        assert_eq!(speeds, vec![None, None]);
+        let speeds = speeds(&timed(&points));
+
+        assert_eq!(speeds[61], None);
+        approx(speeds[30], 18.0);
     }
 
     #[test]
     fn a_track_without_times_has_no_speed_series() {
         assert_eq!(speed_series(&timed(&[(None, 0.0), (None, 50.0)])), None);
+    }
+
+    #[test]
+    fn a_track_whose_times_give_no_speed_has_no_speed_series() {
+        // One timed point is a time but not a speed: the chart must not draw
+        // an axis for a line that is not there, as the readout drops it too.
+        assert_eq!(speed_series(&timed(&[(Some(0), 0.0), (None, 50.0)])), None);
     }
 
     #[test]
