@@ -39,9 +39,12 @@ use axum::{
     response::Response,
     Router,
 };
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::sync::{Arc, Mutex, Once};
 
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{filter, fmt, Layer};
 use trip_archive::models::CreatedShare;
 use trip_archive::server::auth::Caller;
 use trip_archive::server::{db, http, state::AppState, storage::LocalDisk};
@@ -90,28 +93,69 @@ fn caller(response: &Response) -> Caller {
         .expect("the gate names the caller on every response")
 }
 
-/// Everything logged at `level` or above while the returned guard lives.
-/// The tests run on a current-thread runtime, so the access log — written
-/// by the router's own middleware, on the test's thread — lands here.
-fn capture(level: LevelFilter) -> (tracing::subscriber::DefaultGuard, Arc<Mutex<Vec<u8>>>) {
+/// Everything logged on this thread at `level` or above while the returned
+/// guard lives. The tests run on a current-thread runtime, so the access log
+/// — written by the router's own middleware, on the test's thread — lands
+/// here.
+///
+/// One global subscriber decides per event whether the thread is capturing,
+/// rather than a thread-local `set_default` subscriber per capture: tracing
+/// caches whether a call site is enabled at all, process-wide, and while a
+/// single dispatcher is registered it asks the subscriber of whichever thread
+/// hits the call site first. A test without a capture getting to the access
+/// log first cached it as disabled for every thread, and the capture
+/// running alongside it saw nothing.
+fn capture(level: LevelFilter) -> (Capturing, Arc<Mutex<Vec<u8>>>) {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let layer = fmt::layer()
+            .with_ansi(false)
+            .with_writer(|| Writer(CAPTURE.with_borrow(|c| c.as_ref().map(|c| Arc::clone(&c.log)))))
+            .with_filter(filter::dynamic_filter_fn(|meta, _| {
+                CAPTURE.with_borrow(|c| c.as_ref().is_some_and(|c| *meta.level() <= c.level))
+            }));
+        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))
+            .expect("nothing else in this binary sets a global subscriber");
+    });
+    // A call site first reached while the subscriber was being installed can
+    // still hold the interest it was given before: work it out again.
+    tracing::callsite::rebuild_interest_cache();
+
     let log = Arc::new(Mutex::new(Vec::new()));
-    let writer = {
-        let log = Arc::clone(&log);
-        move || Writer(Arc::clone(&log))
-    };
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(level)
-        .with_writer(writer)
-        .with_ansi(false)
-        .finish();
-    (tracing::subscriber::set_default(subscriber), log)
+    let previous = CAPTURE.replace(Some(Capture {
+        level,
+        log: Arc::clone(&log),
+    }));
+    (Capturing(previous), log)
 }
 
-struct Writer(Arc<Mutex<Vec<u8>>>);
+thread_local! {
+    static CAPTURE: RefCell<Option<Capture>> = const { RefCell::new(None) };
+}
+
+struct Capture {
+    level: LevelFilter,
+    log: Arc<Mutex<Vec<u8>>>,
+}
+
+/// Captures until dropped, then puts back whatever this thread captured
+/// before.
+struct Capturing(Option<Capture>);
+
+impl Drop for Capturing {
+    fn drop(&mut self) {
+        CAPTURE.set(self.0.take());
+    }
+}
+
+/// Where a line goes: the capturing thread's log, or nowhere.
+struct Writer(Option<Arc<Mutex<Vec<u8>>>>);
 
 impl std::io::Write for Writer {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        if let Some(log) = &self.0 {
+            log.lock().unwrap().extend_from_slice(buf);
+        }
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
