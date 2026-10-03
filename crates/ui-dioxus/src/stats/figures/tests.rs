@@ -112,11 +112,7 @@ fn us77_several_chosen_activities_get_a_row_each_their_shares_and_their_sum() {
     let records = records(&dated, &view);
     let rows: Vec<_> = records.iter().map(|row| row.activity).collect();
     assert_eq!(rows, [None, Some(Hiking), Some(Kayaking)]);
-    assert_eq!(
-        records[0].longest.as_ref().unwrap().id,
-        3,
-        "the ride is not chosen"
-    );
+    assert_eq!(records[0].longest[0].id, 3, "the ride is not chosen");
 }
 
 #[test]
@@ -263,11 +259,11 @@ fn us77_records_come_overall_and_per_activity() {
         [None, Some(Hiking), Some(Cycling), Some(Kayaking)]
     );
     let overall = &records[0];
-    assert_eq!(overall.longest.as_ref().unwrap().id, 2);
-    assert_eq!(overall.longest.as_ref().unwrap().value, 40.0);
-    assert_eq!(overall.most_ascent.as_ref().unwrap().value, 4000.0);
+    assert_eq!(overall.longest[0].id, 2);
+    assert_eq!(overall.longest[0].value, 40.0);
+    assert_eq!(overall.most_ascent[0].value, 4000.0);
     // 10 March: a hike and a ride, 50 km between them.
-    let day = overall.longest_day.as_ref().unwrap();
+    let day = &overall.longest_day[0];
     assert_eq!(day.date, "2024-03-10");
     assert_eq!(day.km, 50.0);
     assert_eq!(
@@ -275,8 +271,8 @@ fn us77_records_come_overall_and_per_activity() {
         [(1, "Trip 1".to_string()), (2, "Trip 2".to_string())]
     );
     let hiking = &records[1];
-    assert_eq!(hiking.longest.as_ref().unwrap().id, 3);
-    assert_eq!(hiking.longest_day.as_ref().unwrap().date, "2024-07-01");
+    assert_eq!(hiking.longest[0].id, 3);
+    assert_eq!(hiking.longest_day[0].date, "2024-07-01");
 }
 
 #[test]
@@ -288,7 +284,7 @@ fn us77_records_keep_to_the_chosen_year_and_activity() {
 
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].activity, Some(Kayaking));
-    assert_eq!(records[0].longest.as_ref().unwrap().id, 5);
+    assert_eq!(records[0].longest[0].id, 5);
 }
 
 #[test]
@@ -301,6 +297,49 @@ fn us77_a_period_without_trips_has_no_records() {
     );
 
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].longest, None);
-    assert_eq!(records[0].longest_day, None);
+    assert!(records[0].longest.is_empty());
+    assert!(records[0].longest_day.is_empty());
+}
+
+#[test]
+fn us77_each_record_lists_the_top_three_best_first() {
+    let trips = archive();
+
+    let records = records(&dated(&trips, &[]), &view(None, Measure::Distance, &[]));
+
+    let overall = &records[0];
+    let longest: Vec<(i64, f64)> = overall.longest.iter().map(|r| (r.id, r.value)).collect();
+    assert_eq!(longest, [(2, 40.0), (3, 30.0), (4, 20.0)]);
+    let ascent: Vec<i64> = overall.most_ascent.iter().map(|r| r.id).collect();
+    assert_eq!(ascent, [2, 3, 4]);
+    // 10 March's two trips together, then 1 July, then 31 December.
+    let days: Vec<(&str, f64)> = overall
+        .longest_day
+        .iter()
+        .map(|day| (day.date.as_str(), day.km))
+        .collect();
+    assert_eq!(
+        days,
+        [
+            ("2024-03-10", 50.0),
+            ("2024-07-01", 30.0),
+            ("2024-12-31", 20.0)
+        ]
+    );
+    // An activity with fewer trips lists what there is.
+    let kayaking = records.last().unwrap();
+    assert_eq!(kayaking.longest.len(), 1);
+}
+
+#[test]
+fn us77_equal_records_keep_the_earlier_trip_first() {
+    let trips = vec![
+        trip(1, Hiking, "2024-03-10", "2024-03-10", 10.0),
+        trip(2, Hiking, "2024-04-10", "2024-04-10", 10.0),
+    ];
+
+    let records = records(&dated(&trips, &[]), &view(None, Measure::Distance, &[]));
+
+    let ids: Vec<i64> = records[0].longest.iter().map(|r| r.id).collect();
+    assert_eq!(ids, [1, 2]);
 }

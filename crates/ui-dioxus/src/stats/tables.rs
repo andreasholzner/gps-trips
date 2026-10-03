@@ -120,28 +120,47 @@ pub fn RecordsTable(rows: Vec<RecordRow>, together: &'static str) -> Element {
     }
 }
 
+/// A record's places, best first, as a numbered list.
 #[component]
-fn TripRecordCell(record: Option<TripRecord>, measure: Measure) -> Element {
-    let Some(record) = record else {
+fn TripRecordCell(record: Vec<TripRecord>, measure: Measure) -> Element {
+    if record.is_empty() {
         return rsx! { "{NOTHING}" };
-    };
+    }
     rsx! {
-        span { class: "record-value", "{measure.format(record.value)}" }
-        " "
-        Link { to: Route::TripDetail { id: record.id }, "{record.name}" }
+        ol { class: "record-places",
+            for place in record {
+                li { key: "{place.id}",
+                    span { class: "record-value", "{measure.format(place.value)}" }
+                    " "
+                    Link { to: Route::TripDetail { id: place.id }, "{place.name}" }
+                }
+            }
+        }
     }
 }
 
 #[component]
-fn DayRecordCell(record: Option<DayRecord>) -> Element {
-    let Some(record) = record else {
+fn DayRecordCell(record: Vec<DayRecord>) -> Element {
+    if record.is_empty() {
         return rsx! { "{NOTHING}" };
-    };
-    let count = record.trips.len();
+    }
     rsx! {
-        span { class: "record-value", "{Measure::Distance.format(record.km)}" }
-        " on {record.date}: "
-        for (index, (id, name)) in record.trips.into_iter().enumerate() {
+        ol { class: "record-places",
+            for day in record {
+                li { key: "{day.date}", DayPlace { day } }
+            }
+        }
+    }
+}
+
+/// One date: its distance, the date, and the trips started on it.
+#[component]
+fn DayPlace(day: DayRecord) -> Element {
+    let count = day.trips.len();
+    rsx! {
+        span { class: "record-value", "{Measure::Distance.format(day.km)}" }
+        " on {day.date}: "
+        for (index, (id, name)) in day.trips.into_iter().enumerate() {
             Link { key: "{id}", to: Route::TripDetail { id }, "{name}" }
             if index + 1 < count {
                 ", "
@@ -213,33 +232,46 @@ mod tests {
         assert!(!html.contains("All activities"), "{html}");
     }
 
+    fn place(id: i64, name: &str, value: f64) -> TripRecord {
+        TripRecord {
+            id,
+            name: name.into(),
+            value,
+        }
+    }
+
     #[test]
-    fn us77_each_record_links_to_its_trips() {
+    fn us77_each_record_lists_its_places_in_order_linking_to_their_trips() {
         let rows = vec![RecordRow {
             activity: None,
-            longest: Some(TripRecord {
-                id: 7,
-                name: "Big Ride".into(),
-                value: 123.0,
-            }),
-            most_ascent: None,
-            longest_day: Some(DayRecord {
+            longest: vec![
+                place(7, "Big Ride", 123.0),
+                place(9, "Long Walk", 45.0),
+                place(8, "Evening Walk", 12.0),
+            ],
+            most_ascent: Vec::new(),
+            longest_day: vec![DayRecord {
                 date: "2024-03-10".into(),
                 km: 150.0,
                 trips: vec![(7, "Big Ride".into()), (8, "Evening Walk".into())],
-            }),
+            }],
         }];
 
         let html = render(
             move || rsx! { RecordsTable { rows: rows.clone(), together: "Chosen activities" } },
         );
 
-        assert!(html.contains("123 km"), "{html}");
-        assert!(html.contains(r#"href="/trips/7""#), "{html}");
-        assert!(html.contains(r#"href="/trips/8""#), "{html}");
-        assert!(html.contains("150 km"), "{html}");
-        assert!(html.contains("2024-03-10"), "{html}");
-        assert!(html.contains("Evening Walk"), "{html}");
+        assert_eq!(html.matches("<ol").count(), 2, "{html}");
+        let first = html.find("Big Ride").unwrap();
+        let second = html.find("Long Walk").unwrap();
+        let third = html.find("Evening Walk").unwrap();
+        assert!(first < second && second < third, "best first: {html}");
+        assert!(
+            html.contains("123 km") && html.contains("45.0 km"),
+            "{html}"
+        );
+        assert!(html.contains(r#"href="/trips/9""#), "{html}");
+        assert!(html.contains("150 km</span> on 2024-03-10"), "{html}");
         assert!(html.contains(NOTHING), "no ascent record: {html}");
         assert!(html.contains("Chosen activities"), "{html}");
     }

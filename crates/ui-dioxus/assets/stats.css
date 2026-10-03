@@ -128,3 +128,15 @@
   margin: 1rem 0;
   overflow: hidden;
 }
+
+/* A record's places, numbered, one per line, without the list's indent
+   eating into a narrow column. */
+.stats-table .record-places {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.stats-table .record-places li {
+  margin: 0;
+  list-style: decimal;
+}

@@ -336,18 +336,22 @@ pub fn day_labels() -> Vec<String> {
 
 // ── Records ──────────────────────────────────────────────────────────────────
 
+/// How many places each record lists.
+pub const TOP: usize = 3;
+
 /// The records of the period: overall and per activity, or the single
-/// chosen activity's alone.
+/// chosen activity's alone. Each lists its best [`TOP`], best first; fewer
+/// when there are fewer trips.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecordRow {
     /// `None` on the overall row.
     pub activity: Option<ActivityType>,
-    /// The longest trip, in kilometres.
-    pub longest: Option<TripRecord>,
-    /// The trip with the most ascent, in metres.
-    pub most_ascent: Option<TripRecord>,
-    /// The date with the most distance started on it, in kilometres.
-    pub longest_day: Option<DayRecord>,
+    /// The longest trips, in kilometres.
+    pub longest: Vec<TripRecord>,
+    /// The trips with the most ascent, in metres.
+    pub most_ascent: Vec<TripRecord>,
+    /// The dates with the most distance started on them, in kilometres.
+    pub longest_day: Vec<DayRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -381,7 +385,7 @@ pub fn records(trips: &[Dated], view: &StatsView) -> Vec<RecordRow> {
             activity,
             longest: best(&of, |trip| Some(trip.distance_m / 1000.0)),
             most_ascent: best(&of, |trip| trip.ascent_m),
-            longest_day: longest_day(&of),
+            longest_day: longest_days(&of),
         }
     };
     match view.single() {
@@ -393,46 +397,46 @@ pub fn records(trips: &[Dated], view: &StatsView) -> Vec<RecordRow> {
     }
 }
 
-/// The trip with the highest `value`; the first of equals.
-fn best(trips: &[&Dated], value: impl Fn(&StatsTrip) -> Option<f64>) -> Option<TripRecord> {
-    trips
+/// The [`TOP`] items by `value`, highest first. The sort is stable, so of
+/// equals the earlier comes first — the trips arrive oldest first.
+fn top<T>(mut items: Vec<(T, f64)>) -> Vec<(T, f64)> {
+    items.sort_by(|a, b| b.1.total_cmp(&a.1));
+    items.truncate(TOP);
+    items
+}
+
+/// The trips with the highest `value`.
+fn best(trips: &[&Dated], value: impl Fn(&StatsTrip) -> Option<f64>) -> Vec<TripRecord> {
+    let valued = trips
         .iter()
         .filter_map(|trip| Some((trip.trip, value(trip.trip)?)))
-        .fold(
-            None,
-            |best: Option<(&StatsTrip, f64)>, (trip, value)| match best {
-                Some((_, top)) if top >= value => best,
-                _ => Some((trip, value)),
-            },
-        )
+        .collect();
+    top(valued)
+        .into_iter()
         .map(|(trip, value)| TripRecord {
             id: trip.id,
             name: trip.name.clone(),
             value,
         })
+        .collect()
 }
 
-fn longest_day(trips: &[&Dated]) -> Option<DayRecord> {
+/// The dates with the most distance started on them.
+fn longest_days(trips: &[&Dated]) -> Vec<DayRecord> {
     let mut days: BTreeMap<Date, Vec<&StatsTrip>> = BTreeMap::new();
     for trip in trips {
         days.entry(trip.start).or_default().push(trip.trip);
     }
-    days.into_iter()
+    let valued = days
+        .into_iter()
         .map(|(date, trips)| {
-            (
-                date,
-                trips.iter().map(|trip| trip.distance_m).sum::<f64>(),
-                trips,
-            )
+            let metres = trips.iter().map(|trip| trip.distance_m).sum::<f64>();
+            ((date, trips), metres)
         })
-        .fold(
-            None,
-            |best: Option<(Date, f64, Vec<&StatsTrip>)>, day| match best {
-                Some((_, top, _)) if top >= day.1 => best,
-                _ => Some(day),
-            },
-        )
-        .map(|(date, metres, trips)| DayRecord {
+        .collect();
+    top(valued)
+        .into_iter()
+        .map(|((date, trips), metres)| DayRecord {
             date: date.to_string(),
             km: metres / 1000.0,
             trips: trips
@@ -440,6 +444,7 @@ fn longest_day(trips: &[&Dated]) -> Option<DayRecord> {
                 .map(|trip| (trip.id, trip.name.clone()))
                 .collect(),
         })
+        .collect()
 }
 
 #[cfg(test)]
