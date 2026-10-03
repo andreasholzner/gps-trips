@@ -1,5 +1,5 @@
-// Sharing trips through a link (US-53) and stopping one (US-69), driven as
-// the owner and the recipient drive it.
+// Sharing trips through a link (US-53), or a tag summary (US-82), and
+// stopping one (US-69), driven as the owner and the recipient drive it.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
 // **Real user events** — the owner clicking "Share" and "Create", or "Stop
@@ -92,6 +92,51 @@ test("a share of several opens on a map of every track, and a line opens its tri
   // The title leads back to the share's list.
   await recipient.page.locator(".share-title a").click();
   await expect(recipient.page.locator("#shared-trips tbody tr")).toHaveCount(2);
+  await recipient.close();
+});
+
+test("the owner shares a summary, and a line on its map opens a shared trip (US-82)", async ({
+  page,
+  request,
+  browser,
+  baseURL,
+}) => {
+  // A tag of this run's own: the suite shares one archive.
+  const tag = `trip-${Math.random().toString(36).slice(2, 8)}`;
+  const first = await trip(request, "Summer one", "hiking");
+  const second = await trip(request, "Summer two", "cycling");
+  for (const id of [first, second]) {
+    const tagged = await request.post(`/api/trips/${id}/tags`, { data: { name: tag } });
+    expect(tagged.status(), `tagging ${id}`).toBe(201);
+  }
+  await signIn(page.request);
+
+  await page.goto(`/app/summary?tags=${tag}`);
+  await page.locator("#share-summary").click();
+  await page.locator('input[name="share-label"]').fill("Summer");
+  await page.locator("#create-share").click();
+  const link = await page.locator("#share-link").inputValue();
+  expect(link).toMatch(/\/app\/s\/[0-9a-f]{64}$/);
+  const token = link.split("/").pop();
+
+  const recipient = await recipientPage(browser, baseURL);
+  await recipient.page.goto(link);
+  await expect(recipient.page.locator("#share-title")).toHaveText("Summer");
+  await expect(recipient.page.locator("#summary-figures")).toBeVisible();
+  await expect(recipient.page.locator("#summary-tag-input")).toHaveCount(0);
+  const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
+  await expect(lines).toHaveCount(2);
+
+  // Both fixtures are the same track, so either line is a trip of the share.
+  await lines.first().dispatchEvent("click");
+  await expect(recipient.page).toHaveURL(
+    new RegExp(`/app/s/${token}/trips/(${first}|${second})$`),
+  );
+  await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
+
+  // The title leads back to the summary.
+  await recipient.page.locator(".share-title a").click();
+  await expect(recipient.page.locator("#summary-figures")).toBeVisible();
   await recipient.close();
 });
 

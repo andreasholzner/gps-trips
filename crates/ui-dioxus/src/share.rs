@@ -1,7 +1,8 @@
 //! Sharing trips (US-53), the owner's side: a label, an expiry, and the link
-//! that comes back. The same form serves the trip list's selection and a
-//! trip's own page, in an overlay on both: sharing is occasional, and its
-//! options would otherwise sit open beside the controls used every day.
+//! that comes back. The same form serves the trip list's selection, a trip's
+//! own page and the Summary screen's tags (US-82), in an overlay on each:
+//! sharing is occasional, and its options would otherwise sit open beside
+//! the controls used every day.
 
 use std::collections::BTreeSet;
 
@@ -12,6 +13,14 @@ use crate::api::{self, ApiClient};
 use crate::format;
 use crate::interop;
 use crate::overlay::Overlay;
+
+/// What a share is made for: a few trips, or the summary of a few tags in
+/// the order chosen (US-82).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShareTarget {
+    Trips(Vec<i64>),
+    Tags(Vec<String>),
+}
 
 /// Sharing the trips selected on the list screen, beside tagging them and
 /// setting their activity. Appears only once trips are selected, as one
@@ -37,19 +46,23 @@ pub fn ShareSelectedPanel(selected: Signal<BTreeSet<i64>>) -> Element {
             }
         }
         if open() {
-            ShareDialog { trip_ids, on_close: move |_| open.set(false) }
+            ShareDialog { target: ShareTarget::Trips(trip_ids), on_close: move |_| open.set(false) }
         }
     }
 }
 
-/// The share options over the screen, for `trip_ids`.
+/// The share options over the screen, for `target`.
 #[component]
-pub fn ShareDialog(trip_ids: Vec<i64>, on_close: EventHandler<()>) -> Element {
+pub fn ShareDialog(target: ShareTarget, on_close: EventHandler<()>) -> Element {
+    let label = match target {
+        ShareTarget::Trips(_) => "Share trips",
+        ShareTarget::Tags(_) => "Share the summary",
+    };
     rsx! {
-        Overlay { label: "Share trips", on_close: move |_| on_close.call(()),
+        Overlay { label, on_close: move |_| on_close.call(()),
             div { class: "panel",
                 h2 { "Share" }
-                ShareForm { trip_ids }
+                ShareForm { target }
                 div { class: "form-actions",
                     button {
                         id: "close-share",
@@ -65,27 +78,31 @@ pub fn ShareDialog(trip_ids: Vec<i64>, on_close: EventHandler<()>) -> Element {
 }
 
 /// The form: who the share is for, when it ends, and — once made — the link
-/// to send. A change of trips starts over, so a link made for one selection
-/// is never shown as if it were the next one's.
+/// to send. A change of trips or tags starts over, so a link made for one
+/// selection is never shown as if it were the next one's.
 #[component]
-pub fn ShareForm(trip_ids: Vec<i64>) -> Element {
+pub fn ShareForm(target: ShareTarget) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut label = use_signal(String::new);
     let mut expiry = use_signal(ShareExpiry::default);
     let mut link = use_signal(|| None::<(String, Option<String>)>);
     let mut message = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
-    use_effect(use_reactive!(|trip_ids| {
-        let _ = trip_ids;
+    use_effect(use_reactive!(|target| {
+        let _ = target;
         link.set(None);
         message.set(None);
     }));
 
-    let count = trip_ids.len();
+    let button = create_label(&target);
     let create = move |_| {
+        let (trip_ids, tags) = match &target {
+            ShareTarget::Trips(ids) => (ids.clone(), Vec::new()),
+            ShareTarget::Tags(tags) => (Vec::new(), tags.clone()),
+        };
         let request = CreateShare {
-            trip_ids: trip_ids.clone(),
-            tags: Vec::new(),
+            trip_ids,
+            tags,
             label: Some(label()).filter(|label| !label.trim().is_empty()),
             expiry: expiry(),
         };
@@ -137,7 +154,7 @@ pub fn ShareForm(trip_ids: Vec<i64>) -> Element {
                 r#type: "button",
                 disabled: busy(),
                 onclick: create,
-                {create_label(count)}
+                "{button}"
             }
             if let Some((url, expires_at)) = link() {
                 ShareLink { url, expires_at, id: "share-link".to_string() }
@@ -150,10 +167,11 @@ pub fn ShareForm(trip_ids: Vec<i64>) -> Element {
 }
 
 /// What the create button says.
-pub fn create_label(count: usize) -> String {
-    match count {
-        1 => "Make a link to this trip".to_string(),
-        n => format!("Make a link to {n} trips"),
+pub fn create_label(target: &ShareTarget) -> String {
+    match target {
+        ShareTarget::Trips(ids) if ids.len() == 1 => "Make a link to this trip".to_string(),
+        ShareTarget::Trips(ids) => format!("Make a link to {} trips", ids.len()),
+        ShareTarget::Tags(_) => "Make a link to this summary".to_string(),
     }
 }
 
@@ -200,13 +218,40 @@ mod tests {
 
     #[test]
     fn us53_the_button_says_how_many_trips_it_shares() {
-        assert_eq!(create_label(1), "Make a link to this trip");
-        assert_eq!(create_label(3), "Make a link to 3 trips");
+        assert_eq!(
+            create_label(&ShareTarget::Trips(vec![1])),
+            "Make a link to this trip"
+        );
+        assert_eq!(
+            create_label(&ShareTarget::Trips(vec![1, 2, 3])),
+            "Make a link to 3 trips"
+        );
+    }
+
+    #[test]
+    fn us82_the_button_says_it_shares_the_summary() {
+        let tags = ShareTarget::Tags(vec!["alps".to_string(), "norway".to_string()]);
+        assert_eq!(create_label(&tags), "Make a link to this summary");
+    }
+
+    #[test]
+    fn us82_the_summary_is_shared_with_the_same_options() {
+        let html = render(|| {
+            rsx! {
+                ShareDialog {
+                    target: ShareTarget::Tags(vec!["alps".to_string()]),
+                    on_close: move |_| {},
+                }
+            }
+        });
+        assert!(html.contains(r#"name="share-label""#), "{html}");
+        assert!(html.contains(r#"name="share-expiry""#), "{html}");
+        assert!(html.contains("Make a link to this summary"), "{html}");
     }
 
     #[test]
     fn us53_the_form_offers_a_title_and_the_three_expiries() {
-        let html = render(|| rsx! { ShareForm { trip_ids: vec![1, 2] } });
+        let html = render(|| rsx! { ShareForm { target: ShareTarget::Trips(vec![1, 2]) } });
         assert!(html.contains(r#"name="share-label""#), "{html}");
         for expiry in ShareExpiry::ALL {
             assert!(
@@ -248,7 +293,9 @@ mod tests {
 
     #[test]
     fn the_share_options_open_in_a_dialog() {
-        let html = render(|| rsx! { ShareDialog { trip_ids: vec![1, 2], on_close: move |_| {} } });
+        let html = render(
+            || rsx! { ShareDialog { target: ShareTarget::Trips(vec![1, 2]), on_close: move |_| {} } },
+        );
         assert!(html.contains(r#"role="dialog""#), "{html}");
         assert!(html.contains(r#"name="share-label""#), "{html}");
         assert!(html.contains("Make a link to 2 trips"), "{html}");

@@ -5,10 +5,9 @@
 use dioxus::prelude::*;
 use trip_archive_types::{StatsTrip, TagSummaries};
 
-use super::lines;
+use super::{lines, Viewer};
 use crate::activity_color::Swatch;
 use crate::format;
-use crate::Route;
 
 /// One chosen tag's trips, oldest first, each with its line's color.
 #[derive(Clone, Debug, PartialEq)]
@@ -44,7 +43,7 @@ pub fn groups(data: &TagSummaries) -> Vec<TripGroup> {
 
 /// The trips, under a heading per tag when there are several.
 #[component]
-pub fn TripsByTag(summary: TagSummaries) -> Element {
+pub fn TripsByTag(summary: TagSummaries, viewer: Viewer) -> Element {
     let groups = groups(&summary);
     let headed = groups.len() > 1;
     rsx! {
@@ -61,7 +60,7 @@ pub fn TripsByTag(summary: TagSummaries) -> Element {
                             "{group.name}"
                         }
                     }
-                    TripRows { trips: group.trips }
+                    TripRows { trips: group.trips, viewer: viewer.clone() }
                 }
             }
         }
@@ -69,7 +68,7 @@ pub fn TripsByTag(summary: TagSummaries) -> Element {
 }
 
 #[component]
-fn TripRows(trips: Vec<(StatsTrip, &'static str)>) -> Element {
+fn TripRows(trips: Vec<(StatsTrip, &'static str)>, viewer: Viewer) -> Element {
     rsx! {
         div { class: "table-scroll",
             table { class: "summary-trips",
@@ -86,7 +85,7 @@ fn TripRows(trips: Vec<(StatsTrip, &'static str)>) -> Element {
                         tr { key: "{trip.id}",
                             td { class: "summary-trip-name",
                                 Swatch { color }
-                                Link { to: Route::TripDetail { id: trip.id }, "{trip.name}" }
+                                Link { to: viewer.trip_route(trip.id), "{trip.name}" }
                             }
                             td { {format::day(&trip.start_date)} }
                             td { "{trip.activity_type.label()}" }
@@ -177,7 +176,8 @@ mod tests {
     fn us78_the_rows_link_to_their_trips_with_date_activity_and_distance() {
         let data = data(vec![tag("alps", &[1, 2])]);
 
-        let html = render(move || rsx! { TripsByTag { summary: data.clone() } });
+        let html =
+            render(move || rsx! { TripsByTag { summary: data.clone(), viewer: Viewer::Owner } });
 
         assert!(html.contains(r#"href="/trips/1""#), "{html}");
         assert!(html.contains("Trip 2"), "{html}");
@@ -192,7 +192,8 @@ mod tests {
     fn us78_several_tags_head_their_trips_with_their_name_and_color() {
         let data = data(vec![tag("norway", &[2, 3]), tag("alps", &[1, 2])]);
 
-        let html = render(move || rsx! { TripsByTag { summary: data.clone() } });
+        let html =
+            render(move || rsx! { TripsByTag { summary: data.clone(), viewer: Viewer::Owner } });
 
         assert_eq!(html.matches("<h3").count(), 2, "{html}");
         assert_eq!(html.matches(r#"href="/trips/2""#).count(), 2, "{html}");

@@ -31,6 +31,15 @@
   margin-bottom: 0;
 }
 
+/* The chosen tags, and sharing their summary (US-82) at the row's end. */
+.summary-chosen-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0 1rem;
+}
+
 #summary-chosen .chip .swatch {
   vertical-align: middle;
 }

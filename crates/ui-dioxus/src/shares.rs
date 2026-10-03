@@ -14,8 +14,8 @@ use crate::share::ShareLink;
 const UNTITLED: &str = "Untitled share";
 
 /// What the screen says when no link opens anything.
-const NONE_ACTIVE: &str =
-    "No active shares. Share trips from the trip list's selection or from a trip's page.";
+const NONE_ACTIVE: &str = "No active shares. Share trips from the trip list's selection or \
+    from a trip's page, and a summary from the Summary screen.";
 
 /// `/shares` — the screen.
 #[component]
@@ -53,8 +53,8 @@ fn ShareList(shares: Vec<ActiveShare>) -> Element {
     }
 }
 
-/// One share: what it is called, the trips it reaches, when it was made,
-/// its link, and stopping it.
+/// One share: what it is called, the trips or the tags' summary it reaches
+/// (US-82), when it was made, its link, and stopping it.
 #[component]
 fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -64,7 +64,11 @@ fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
 
     let id = share.id;
     let title = share.label.as_deref().unwrap_or(UNTITLED);
-    let trips = share.trip_names.join(", ");
+    let reaches = if share.tags.is_empty() {
+        share.trip_names.join(", ")
+    } else {
+        format!("Summary of {}", share.tags.join(", "))
+    };
     let created = format::date(Some(&share.created_at));
     let url = api::share_link(&archive(), &share.token);
     let used = usage(&share);
@@ -72,7 +76,7 @@ fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
     rsx! {
         article { class: "share", id: "share-{id}",
             h2 { "{title}" }
-            p { "{trips}" }
+            p { "{reaches}" }
             p { class: "muted", "Created {created}" }
             p { class: "share-usage", "{used}" }
             ShareLink { url, expires_at: share.expires_at.clone() }
@@ -238,6 +242,22 @@ mod tests {
         assert!(html.contains("works until 2026-10-25"), "{html}");
         assert!(html.contains("/app/s/token7"), "{html}");
         assert!(html.contains("Copy"), "{html}");
+    }
+
+    #[test]
+    fn us82_a_share_of_tags_shows_its_tags_in_place_of_trips() {
+        let html = render(|| {
+            let share = ActiveShare {
+                trip_names: Vec::new(),
+                tags: vec!["alps".to_string(), "norway".to_string()],
+                ..a_share(7, Some("Summer"), None)
+            };
+            rsx! { ShareRow { share, on_stopped: move |_| {} } }
+        });
+
+        assert!(html.contains("Summary of alps, norway"), "{html}");
+        assert!(!html.contains("Day one"), "{html}");
+        assert!(html.contains("Stop sharing"), "{html}");
     }
 
     #[test]

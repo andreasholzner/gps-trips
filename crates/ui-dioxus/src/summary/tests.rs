@@ -99,6 +99,29 @@ async fn us78_one_tag_shows_its_figures_its_map_and_what_was_left_out() {
 }
 
 #[tokio::test]
+async fn us82_the_owner_can_share_the_summary_shown() {
+    let (archive, _dir) = serve_test_archive().await;
+    let id = import_sample(&archive, &[]).await;
+    tag_trip(&archive, id, "alps").await;
+
+    let html = render_against_archive(
+        &archive,
+        || rsx! { Summary { view: view(&["alps"]) } },
+        |html| html.contains("summary-figures"),
+    )
+    .await;
+    assert!(html.contains(r#"id="share-summary""#), "{html}");
+
+    let html = render_against_archive(
+        &archive,
+        || rsx! { Summary {} },
+        |html| html.contains("Choose a tag"),
+    )
+    .await;
+    assert!(!html.contains(r#"id="share-summary""#), "{html}");
+}
+
+#[tokio::test]
 async fn us78_a_tag_without_recorded_trips_says_so_instead_of_showing_zeros() {
     let (archive, _dir) = serve_test_archive().await;
     let planned = import_sample(&archive, &[("kind", "planned")]).await;

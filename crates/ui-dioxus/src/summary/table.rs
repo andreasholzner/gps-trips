@@ -6,11 +6,11 @@ use dioxus::prelude::*;
 use trip_archive_types::ActivityType;
 
 use super::figures::{self, Sums, TagFigures, TagSummary};
+use super::Viewer;
 use crate::activity_color::{self, Swatch};
 use crate::format;
 use crate::stats::figures::DayRecord;
 use crate::stats::Measure;
-use crate::Route;
 
 /// What a cell with nothing in it shows — the dash the rest of the app uses.
 const NOTHING: &str = "—";
@@ -19,9 +19,14 @@ const NOTHING: &str = "—";
 type FigureRow = (&'static str, fn(&Sums) -> String);
 
 /// The figures of `tags` — those with trips — side by side. `colors` are
-/// the tags' map colors, given with several tags only.
+/// the tags' map colors, given with several tags only; `viewer` decides
+/// where a longest day's trips open.
 #[component]
-pub fn FiguresTable(tags: Vec<(TagSummary, TagFigures)>, colors: Vec<&'static str>) -> Element {
+pub fn FiguresTable(
+    tags: Vec<(TagSummary, TagFigures)>,
+    colors: Vec<&'static str>,
+    viewer: Viewer,
+) -> Element {
     let summaries: Vec<TagSummary> = tags.iter().map(|(tag, _)| tag.clone()).collect();
     let activities = figures::activities(&summaries);
     let together = activities.len() > 1;
@@ -53,7 +58,9 @@ pub fn FiguresTable(tags: Vec<(TagSummary, TagFigures)>, colors: Vec<&'static st
                     tr {
                         th { scope: "row", "Longest day" }
                         for figures in all.iter() {
-                            td { LongestDay { day: figures.longest_day.clone() } }
+                            td {
+                                LongestDay { day: figures.longest_day.clone(), viewer: viewer.clone() }
+                            }
                         }
                     }
                 }
@@ -86,7 +93,7 @@ fn span(first: &str, last: &str) -> String {
 
 /// A tag's longest day: its distance, its date and the trips started on it.
 #[component]
-fn LongestDay(day: Option<DayRecord>) -> Element {
+fn LongestDay(day: Option<DayRecord>, viewer: Viewer) -> Element {
     let Some(day) = day else {
         return rsx! { "{NOTHING}" };
     };
@@ -95,7 +102,7 @@ fn LongestDay(day: Option<DayRecord>) -> Element {
         span { class: "record-value", "{Measure::Distance.format(day.km)}" }
         " on {format::day(&day.date)}: "
         for (index, (id, name)) in day.trips.into_iter().enumerate() {
-            Link { key: "{id}", to: Route::TripDetail { id }, "{name}" }
+            Link { key: "{id}", to: viewer.trip_route(id), "{name}" }
             if index + 1 < count {
                 ", "
             }
@@ -193,7 +200,9 @@ mod tests {
             ],
         )];
 
-        let html = render(move || rsx! { FiguresTable { tags: tags.clone(), colors: Vec::new() } });
+        let html = render(
+            move || rsx! { FiguresTable { tags: tags.clone(), colors: Vec::new(), viewer: Viewer::Owner } },
+        );
 
         assert!(html.contains("alps"), "{html}");
         assert!(html.contains("1. Jul. 2024 – 9. Jul. 2024"), "{html}");
@@ -225,7 +234,9 @@ mod tests {
     fn us78_a_tag_of_one_activity_shows_no_together_group() {
         let tags = vec![tag("alps", vec![(ActivityType::Hiking, sums(3, 40.0))])];
 
-        let html = render(move || rsx! { FiguresTable { tags: tags.clone(), colors: Vec::new() } });
+        let html = render(
+            move || rsx! { FiguresTable { tags: tags.clone(), colors: Vec::new(), viewer: Viewer::Owner } },
+        );
 
         assert!(!html.contains("All activities"), "{html}");
     }
@@ -238,7 +249,7 @@ mod tests {
         ];
 
         let html = render(move || {
-            rsx! { FiguresTable { tags: tags.clone(), colors: vec!["#eb6834", "#1baf7a"] } }
+            rsx! { FiguresTable { tags: tags.clone(), colors: vec!["#eb6834", "#1baf7a"], viewer: Viewer::Owner } }
         });
 
         assert!(html.contains("alps") && html.contains("norway"), "{html}");

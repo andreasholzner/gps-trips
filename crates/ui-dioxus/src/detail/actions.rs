@@ -10,7 +10,7 @@ use crate::api::{self, ApiClient};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
 use crate::photos::AddPhotos;
-use crate::share::ShareDialog;
+use crate::share::{ShareDialog, ShareTarget};
 
 /// The row, the add-photos form under it once asked for, and the share
 /// options over the screen. `on_saved` and
@@ -57,7 +57,7 @@ pub fn TripActions(
             AddPhotos { id, on_added: move |_| on_photos_added.call(()) }
         }
         if sharing() {
-            ShareDialog { trip_ids: vec![id], on_close: move |_| sharing.set(false) }
+            ShareDialog { target: ShareTarget::Trips(vec![id]), on_close: move |_| sharing.set(false) }
         }
     }
 }

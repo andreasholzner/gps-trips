@@ -14,7 +14,8 @@ use crate::viewer::PhotoViewer;
 use crate::Route;
 
 /// The trip `id` of the share `overview` describes. The share's title sits
-/// above it; a way back to the share's list only where there is a list.
+/// above it; a way back to the share's list or summary only where there is
+/// one.
 #[component]
 pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -33,8 +34,8 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
         viewing.set(None);
     }));
 
-    let many = overview.trips.len() > 1;
-    let heading = title(&overview).to_string();
+    let many = overview.trips.len() > 1 || overview.summary.is_some();
+    let heading = title(&overview);
     let base_url = archive().base_url().to_string();
     let (photos, photos_error) = match &*photo_list.read_unchecked() {
         Some((read_for, Ok(photos))) if *read_for == id => (Some(photos.clone()), None),

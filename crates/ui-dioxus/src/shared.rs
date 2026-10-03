@@ -1,7 +1,8 @@
 //! US-53 — what someone holding a share's link sees: no login, no menu, and
-//! nothing that changes a trip. The screens read through the client the app
-//! made for the share ([`ApiClient::for_share`]), so every call already goes
-//! to the share's own routes.
+//! nothing that changes a trip — a few trips, or a tag summary (US-82). The
+//! screens read through the client the app made for the share
+//! ([`ApiClient::for_share`]), so every call already goes to the share's own
+//! routes.
 
 use dioxus::prelude::*;
 use trip_archive_types::{ShareOverview, SharedTrip, SharedTripSummary, TripDetail, TripTrack};
@@ -14,15 +15,18 @@ use crate::track;
 use crate::Route;
 
 mod detail;
+mod summary;
 
 pub use detail::SharedTripView;
+pub use summary::SharedSummaryView;
 
 /// What a link that opens nothing says — unknown, expired or stopped, which
 /// the archive deliberately does not tell apart.
 const DEAD_LINK: &str = "This link does not work (any more). Ask whoever sent it for a new one.";
 
 /// The share's own page, `/s/:token`: its title, a map of every track, and
-/// the trips. A share of one trip is that trip's page straight away.
+/// the trips. A share of one trip is that trip's page straight away; a
+/// share of tags is their summary, however many trips it holds.
 #[component]
 pub fn Shared(token: String) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -31,6 +35,9 @@ pub fn Shared(token: String) -> Element {
     match &*overview.read_unchecked() {
         None => rsx! { p { "Loading…" } },
         Some(Err(err)) => rsx! { ShareError { err: err.clone() } },
+        Some(Ok(overview)) if overview.summary.is_some() => rsx! {
+            SharedSummaryView { token, overview: overview.clone() }
+        },
         Some(Ok(overview)) => match &overview.trips[..] {
             [only] => rsx! {
                 SharedTripView { token, id: only.id, overview: overview.clone() }
@@ -40,7 +47,8 @@ pub fn Shared(token: String) -> Element {
     }
 }
 
-/// `/s/:token/trips/:id` — one trip of a share of several.
+/// `/s/:token/trips/:id` — one trip of a share of several, or of a shared
+/// summary.
 #[component]
 pub fn SharedTripDetail(token: String, id: i64) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -65,16 +73,26 @@ fn ShareError(err: ApiError) -> Element {
     }
 }
 
-/// The title a share goes by: its label, or a plain description.
-pub fn title(overview: &ShareOverview) -> &str {
-    overview.label.as_deref().unwrap_or("Shared trips")
+/// The title a share goes by: its label, or else a shared summary's tag
+/// names (US-82), or else a plain description.
+pub fn title(overview: &ShareOverview) -> String {
+    match (&overview.label, &overview.summary) {
+        (Some(label), _) => label.clone(),
+        (None, Some(summary)) => summary
+            .tags
+            .iter()
+            .map(|tag| tag.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
+        (None, None) => "Shared trips".to_string(),
+    }
 }
 
 /// The list of a share's trips, under a map of them all. Each row carries its
 /// line's color, and pointing at either highlights both (US-72).
 #[component]
 fn SharedTrips(token: String, overview: ShareOverview) -> Element {
-    let title = title(&overview).to_string();
+    let title = title(&overview);
     let mut highlighted = use_signal(|| None::<i64>);
     rsx! {
         h1 { id: "share-title", "{title}" }
