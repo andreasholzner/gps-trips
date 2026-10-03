@@ -1234,16 +1234,30 @@ existed. Per-tag figures are US-78's.
 **Planned 📋** — As the owner, I see a **tag summary** — what the trips under one tag add up to — so
 a multi-day vacation or similar, grouped by a tag (US-33), can be looked back on as a whole.
 
-**Notes:**
+**Acceptance criteria:** A Summary screen, reached from the header menu (US-60) as its second entry,
+between "All trips" and "Statistics", counts recorded trips only, as US-77 does; a trip without
+timestamps is counted nowhere, and the screen says how many were left out.
 
-Rough: which figures, and how they are shown, is still open; recorded trips only, as in US-77.
-Candidates: the number of trips and days, the dates it spans, total distance, ascent, descent and
-moving time, split by activity; its longest day; the number of photos; and several tags side by
-side, so one vacation can be compared with another. Possibly a summary of whatever the trip list's
-filters select (US-13, US-61), which a filter on one tag already makes a tag summary of.
+**Choosing tags:** a search box offers the known tags as the owner types (the suggestions US-33's
+field gives), and choosing one adds it to the summary; a chosen tag can be removed again. One tag
+gives its summary, several put theirs side by side, so one vacation can be compared with another.
+The chosen tags live in the URL, as the trip list's filters do (US-52), so a summary can be
+bookmarked and survives a reload. A tag with no recorded trips says so instead of showing zeros.
+On a trip's detail page, each tag links to the Summary screen with that tag chosen.
 
-**Map:** the summary shows every trip under the tag on one map, as a share's overview map draws them
-(US-53), zoomed so that all of them are in view.
+**Figures:** per tag, the dates it spans — the local start date of its first trip to the local end
+date of its last — and, per activity, the number of trips, days out, total distance, ascent, descent
+and moving time, with those activities together beneath when a tag holds more than one; and its
+longest day, with its date and distance, linking to its trips. Several tags show as a table with a
+column per tag. Days out, longest day and moving time are US-77's.
+
+**Map:** the summary shows every trip under the chosen tags on one map, as a share's overview map
+draws them (US-53), zoomed so that all of them are in view. With several tags, each tag's trips are
+drawn in a color of its own, shown beside the tag's name; a trip under more than one of them counts
+in each tag's figures but is drawn once. Clicking a line opens that trip.
+
+**Decisions:** US-78 → ADR-0025 (Rust adds the figures up and decides the lines, the script draws
+them), ADR-0008 (the screen reads its trips from the JSON API)
 
 ## QMapShack export
 
