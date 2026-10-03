@@ -121,6 +121,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-77](#us-77--statistics)                                   | ✅     | Statistics                                   | [Statistics](#statistics)                                           |
 | [US-78](#us-78--tag-summary)                                  | 📋     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
+| [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -853,6 +854,34 @@ there; the chart only draws them ([ADR-0025](./adr/0025-js-widget-interop-via-ev
 
 **Decisions:** US-79 → ADR-0025 (speed and incline are computed in Rust; uPlot only draws the second
 series and axis), ADR-0012 (the derived series are unit-tested)
+
+### US-80 — Average speed
+
+**Planned 📋** — As the owner, I see the average speed I moved at, not counting breaks, so I can
+tell how fast a trip actually went and compare trips and years by it.
+
+**Acceptance criteria:** The average speed in motion is the distance covered while moving divided by
+the moving time (US-77): only the stretches between consecutive timed points whose speed reaches the
+activity's threshold count, so a break lowers neither figure. The moving distance is computed
+alongside the moving time — at import, again when a trip's activity changes, and backfilled for
+trips already stored. A trip without timestamps has no average speed. Shown in km/h.
+
+**Trip page:** the stats list (US-62) gains an average speed entry right after distance; a trip
+without timestamps leaves the entry out rather than showing a dash.
+
+**Statistics:** average speed is a new measure on the Statistics screen (US-77). Over several trips
+it is their moving distance added up divided by their moving time added up, never an average of
+averages, and the activities together at the table's foot are figured the same way. A speed is not
+a share of anything, so the share column is left out for it. The running total shows the average so
+far by each date, and the comparison above it this year's average so far against last year's by the
+same date.
+
+**Summary:** the Summary screen (US-78) shows the average speed per activity, and for the activities
+together, figured as on the Statistics screen. If this story is done first, that criterion moves into
+US-78's figures.
+
+**Decisions:** US-80 → ADR-0025 (Rust works out the speeds, the script draws the charts), ADR-0008
+(the screens read their figures from the JSON API)
 
 ## Photos
 
