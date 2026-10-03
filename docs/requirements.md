@@ -118,7 +118,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-74](#us-74--place-based-name-suggestion)                  | 📋     | Place-based name suggestion                  | [Import](#import)                                                   |
 | [US-75](#us-75--activity-colors-on-maps)                      | ✅     | Activity colors on maps                      | [Maps](#maps)                                                       |
 | [US-76](#us-76--activity-type-suggestion)                     | 📋     | Activity type suggestion                     | [Import](#import)                                                   |
-| [US-77](#us-77--statistics)                                   | 🚧     | Statistics                                   | [Statistics](#statistics)                                           |
+| [US-77](#us-77--statistics)                                   | ✅     | Statistics                                   | [Statistics](#statistics)                                           |
 | [US-78](#us-78--tag-summary)                                  | 📋     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 
@@ -1193,7 +1193,7 @@ ADR-0012 (the browser layer for the row↔line highlight)
 
 ### US-77 — Statistics
 
-**In progress 🚧** — As the owner, I see statistics over my trips — what I did per activity and over
+**In progress ✅** — As the owner, I see statistics over my trips — what I did per activity and over
 the years — so the archive tells me more than one trip at a time.
 
 **Acceptance criteria:** One Statistics screen, reached from the header menu (US-60), counts recorded
