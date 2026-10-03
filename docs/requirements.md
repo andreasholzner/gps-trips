@@ -122,6 +122,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-78](#us-78--tag-summary)                                  | 📋     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 | [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
+| [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -882,6 +883,44 @@ US-78's figures.
 
 **Decisions:** US-80 → ADR-0025 (Rust works out the speeds, the script draws the charts), ADR-0008
 (the screens read their figures from the JSON API)
+
+### US-81 — Climbing rate
+
+**Planned 📋** — As the owner, I see how fast I climbed — metres gained per hour on the trip's real
+hills — so I can tell how strong a ride or hike went uphill and compare trips and years by it.
+
+**Acceptance criteria:** **A climb** is a stretch of the track whose elevation, smoothed as US-79's
+incline is, rises from a low point to a high point; it ends where the elevation falls more than a
+set amount below its highest point so far, so a short dip or flat does not split one hill in two.
+A climb counts only if it is significant for the trip's activity: on a bike ride (cycling,
+bikepacking) it gains at least 30 m at an average gradient of at least 3 %, in cross-country skiing
+and ski touring at least 15 m at 3 %, on a hike (hiking, mountaineering, snowshoeing) at least 75 m.
+Other activities have no climbs. The thresholds and the dip are set per activity in `config.rs`, as
+the moving-time thresholds are.
+**The climbing rate** of a stretch is the height it gains divided by its moving time (US-77), in
+m/h, so a break on the way up does not lower it. A trip's climbing rate is the height of all its
+climbs added up divided by their moving time added up; a trip with no climb, or without timestamps,
+has none. The trip's rate is computed alongside the moving time — at import, again when a trip's
+activity changes, and backfilled for trips already stored. The climbs are found in Rust and
+unit-tested there ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)).
+
+**Trip page:** the stats list (US-62) gains a climbing rate entry right after ascent, left out when
+the trip has none. Below the elevation profile, a list of the trip's climbs in track order, each
+with its distance, height gained and climbing rate. In the elevation profile (US-59), each climb's
+stretch is marked by a light background color below the elevation line; the speed series (US-79)
+and the readout are unchanged.
+
+**Statistics:** climbing rate is a new measure on the Statistics screen (US-77). Over several trips
+it is their climbs' height added up divided by their climbing time added up, never an average of
+averages, and the activities together at the table's foot are figured the same way. It has no share
+column, and the running total shows the rate so far by each date, as average speed does (US-80).
+
+**Summary:** the Summary screen (US-78) shows the climbing rate per activity, and for the activities
+together, figured as on the Statistics screen. If this story is done first, that criterion moves into
+US-78's figures.
+
+**Decisions:** US-81 → ADR-0025 (Rust finds the climbs and works out the rates, the script draws the
+charts and the marked stretches), ADR-0008 (the screens read their figures from the JSON API)
 
 ## Photos
 
