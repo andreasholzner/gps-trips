@@ -535,6 +535,45 @@ test("the panels for the selected trips line up", async ({ page }) => {
   expect(Math.abs(set - apply)).toBeLessThanOrEqual(1);
 });
 
+// Layout, which only a browser computes: a confirmation's buttons stand
+// apart from its question and from each other, on both panels that ask one
+// (US-34, US-63). Nothing is applied: only the questions are raised.
+test("the confirmations' buttons do not touch", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/");
+  await page.locator("table thead input[type=checkbox]").check();
+  await page.getByPlaceholder("add a tag").fill(`unconfirmed-${NEW_TAG}`);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByLabel("Activity for selected trips").selectOption("kayaking");
+  await page.getByRole("button", { name: /^Set for/ }).click();
+
+  for (const [confirm, cancel] of [
+    [
+      page.getByRole("button", { name: "Create", exact: true }),
+      page.getByRole("button", { name: "Cancel" }).first(),
+    ],
+    [
+      page.getByRole("button", { name: "Change", exact: true }),
+      page.getByRole("button", { name: "Cancel" }).last(),
+    ],
+  ]) {
+    // The question is the text before the first button.
+    const question = await confirm.evaluate((button) => {
+      const range = document.createRange();
+      range.selectNodeContents(button.parentElement.firstChild);
+      const box = range.getBoundingClientRect();
+      return { right: box.right, bottom: box.bottom };
+    });
+    const first = await confirm.boundingBox();
+    const second = await cancel.boundingBox();
+    expect(second.x - (first.x + first.width), "between the buttons").toBeGreaterThanOrEqual(8);
+    // Beside the question with room between them, or under it.
+    const beside = first.x - question.right >= 8;
+    const under = first.y >= question.bottom;
+    expect(beside || under, "the question and its first button").toBe(true);
+  }
+});
+
 // Layout, which only a browser computes: the region map's buttons stand
 // apart rather than touching (US-63).
 test("the region map's buttons do not touch", async ({ page }) => {

@@ -508,13 +508,19 @@ nav.pager {
   line-height: 1;
 }
 
-/* Confirming a tag nobody has used yet (US-33). In the page rather than a
-   browser dialog, so it behaves the same in the Android webview. */
+/* Confirming a tag nobody has used yet (US-33), on a trip or on the selected
+   trips (US-34), or their new activity (US-63). In the page rather than a
+   browser dialog, so it behaves the same in the Android webview. The row's
+   gap spaces the buttons, so Pico's bottom margin would only misalign them. */
 .confirm {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+}
+
+.confirm button {
+  margin-bottom: 0;
 }
 
 /* Deleting is irreversible (US-9), and reads as such — on both the button

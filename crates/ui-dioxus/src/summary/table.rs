@@ -196,9 +196,9 @@ mod tests {
         let html = render(move || rsx! { FiguresTable { tags: tags.clone(), colors: Vec::new() } });
 
         assert!(html.contains("alps"), "{html}");
-        assert!(html.contains("1 Jul 2024 – 9 Jul 2024"), "{html}");
+        assert!(html.contains("1. Jul. 2024 – 9. Jul. 2024"), "{html}");
         assert!(html.contains("92.0 km"), "{html}");
-        assert!(html.contains("4 Jul 2024"), "{html}");
+        assert!(html.contains("4. Jul. 2024"), "{html}");
         assert!(html.contains("Stelvio"), "{html}");
         assert!(
             html.contains("Hiking") && html.contains("Cycling"),

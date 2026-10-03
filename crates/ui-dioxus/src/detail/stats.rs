@@ -145,7 +145,7 @@ mod tests {
         let html = render(move || rsx! { TripStats { trip: trip.clone() } });
 
         assert!(html.contains(r#"id="trip-date""#), "{html}");
-        assert!(html.contains("11 Jul 2026"), "{html}");
+        assert!(html.contains("11. Jul. 2026"), "{html}");
     }
 
     #[test]

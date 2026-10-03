@@ -61,7 +61,7 @@ async fn us78_one_tag_shows_its_figures_its_map_and_what_was_left_out() {
     .await;
 
     assert!(html.contains(r#"id="summary-chosen""#), "{html}");
-    assert!(html.contains("1 Jun 2024"), "{html}");
+    assert!(html.contains("1. Jun. 2024"), "{html}");
     assert!(
         html.contains("Hiking") && html.contains("Cycling"),
         "{html}"

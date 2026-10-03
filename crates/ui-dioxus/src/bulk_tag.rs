@@ -123,7 +123,7 @@ pub fn BulkTagPanel(
             }
 
             if let Some(name) = awaiting_confirmation() {
-                p {
+                p { class: "confirm",
                     "Tag \"{name}\" doesn't exist yet — create it?"
                     button {
                         r#type: "button",

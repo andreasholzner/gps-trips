@@ -146,12 +146,12 @@ pub fn clock(instant: OffsetDateTime, offset: Option<UtcOffset>, with_date: bool
     }
 }
 
-/// A stored `YYYY-MM-DD` date as the owner reads one, `11 Jul 2026` (US-62).
+/// A stored `YYYY-MM-DD` date as the owner reads one, `11. Jul. 2026` (US-62).
 /// Anything else is shown as it is rather than hidden.
 pub fn day(date: &str) -> String {
     let format = time::macros::format_description!("[year]-[month]-[day]");
     match Date::parse(date, &format) {
-        Ok(d) => format!("{} {} {}", d.day(), short_month(d), d.year()),
+        Ok(d) => format!("{}. {}. {}", d.day(), short_month(d), d.year()),
         Err(_) => date.to_string(),
     }
 }
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn a_date_is_shown_as_the_owner_reads_one() {
-        assert_eq!(day("2026-07-11"), "11 Jul 2026");
+        assert_eq!(day("2026-07-11"), "11. Jul. 2026");
         assert_eq!(day("sometime"), "sometime");
     }
 

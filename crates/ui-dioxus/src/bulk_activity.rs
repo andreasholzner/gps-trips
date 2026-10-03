@@ -71,7 +71,7 @@ pub fn BulkActivityPanel(selected: Signal<BTreeSet<i64>>, on_applied: EventHandl
             }
 
             if let (true, Some(activity)) = (confirming(), chosen()) {
-                p {
+                p { class: "confirm",
                     "{confirmation(count, activity)}"
                     button {
                         r#type: "button",
