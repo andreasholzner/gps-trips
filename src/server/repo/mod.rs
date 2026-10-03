@@ -8,15 +8,18 @@ mod access;
 mod bulk_edit;
 mod export;
 pub mod komoot;
+mod moving_time;
 mod photo;
 mod share;
 mod staging;
+mod stats;
 mod tag;
 mod trip;
 
 pub use access::insert_access_records;
 pub use bulk_edit::set_activity_type;
 pub use export::list_export_trips;
+pub use moving_time::backfill_moving_secs;
 pub use photo::{
     count_photos, insert_photo, list_photos, list_photos_without_taken_at, place_photo,
     set_photo_taken_at, NewPhoto,
@@ -29,6 +32,7 @@ pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,
     NewStagedImport,
 };
+pub use stats::list_stats_trips;
 pub use tag::{
     add_trip_tag, bulk_add_trip_tags, get_or_create_tag, list_all_tags, list_trip_tags,
     remove_trip_tag, trips_exist,

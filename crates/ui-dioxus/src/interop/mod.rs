@@ -25,6 +25,7 @@
 mod overview;
 mod place;
 mod region;
+mod stats;
 mod track;
 
 pub use overview::{highlight_on_overview_map, start_overview_map, OverviewEvent, OverviewLine};
@@ -33,6 +34,7 @@ pub use region::{
     arm_region_map, bbox_corners, bbox_param, draw_heat_marks, draw_trip_lines, show_region,
     start_region_map, RegionEvent,
 };
+pub use stats::{draw_stats_bars, draw_stats_running, RunningView};
 pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};
 
 use dioxus::prelude::*;

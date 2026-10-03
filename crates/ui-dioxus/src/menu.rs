@@ -12,6 +12,7 @@
 use dioxus::prelude::*;
 
 use crate::filters::Filters;
+use crate::stats::StatsView;
 use crate::Route;
 
 /// Signing out, as the app hands it to this menu. The action needs the
@@ -94,6 +95,11 @@ pub fn AppMenu() -> Element {
                     onclick: move |_| open.set(false),
                     "Shares"
                 }
+                Link {
+                    to: Route::Statistics { view: StatsView::default() },
+                    onclick: move |_| open.set(false),
+                    "Statistics"
+                }
                 // In a browser tab only, deliberately — `offers_sign_out`
                 // in main.rs says why (US-16, US-67).
                 if let Some(SignOut(sign_out)) = sign_out {
@@ -142,6 +148,13 @@ mod tests {
         // US-69: the links handed out, and stopping one.
         assert!(html.contains("Shares"), "{html}");
         assert!(html.contains(r#"href="/shares""#), "{html}");
+        // US-77: what the trips add up to.
+        assert!(html.contains("Statistics"), "{html}");
+        let stats = Route::Statistics {
+            view: StatsView::default(),
+        }
+        .to_string();
+        assert!(html.contains(&format!(r#"href="{stats}""#)), "{html}");
         // The unfiltered list, spelled the way the router spells it: the
         // default filters are part of that URL (US-52), so the way home is
         // asked of the route rather than written out here.

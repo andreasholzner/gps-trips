@@ -31,6 +31,8 @@ pub async fn set_activity_type(
             // Dropping the transaction uncommitted rolls it back.
             return Ok(false);
         }
+        // The moving-time threshold goes with the activity (US-77).
+        super::moving_time::recompute_in_tx(&mut tx, id).await?;
         sqlx::query("UPDATE trip_komoot_link SET edit_pending = 1 WHERE trip_id = ?")
             .bind(id)
             .execute(&mut *tx)

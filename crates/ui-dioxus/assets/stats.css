@@ -1,0 +1,45 @@
+/* The statistics screen (US-77). */
+
+/* The three controls side by side where there is room, stacked on a phone. */
+.stats-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+}
+
+.stats-controls label {
+  flex: 1 1 12rem;
+}
+
+.stats-section {
+  margin-top: 2rem;
+}
+
+/* Numbers line up by their digits, and a total reads as one. */
+.stats-table td.num,
+.stats-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats-table th[scope="row"] {
+  white-space: nowrap;
+}
+
+.stats-table .total,
+.stats-table tfoot {
+  font-weight: bold;
+}
+
+.stats-table .record-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* uPlot sizes its own canvas; the container only needs room above it and
+   must not push the page sideways on a phone. */
+.stats-chart {
+  margin: 1rem 0;
+  overflow: hidden;
+}

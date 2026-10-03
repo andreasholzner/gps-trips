@@ -88,6 +88,7 @@ pub async fn insert_trip_in_tx(
         .bind(trip.gpx)
         .execute(&mut **tx)
         .await?;
+    super::moving_time::store_in_tx(tx, trip_id, trip.activity_type, trip.geojson).await?;
 
     Ok(trip_id)
 }
@@ -547,6 +548,10 @@ pub async fn update_trip(
     let updated = result.rows_affected() > 0;
 
     if updated {
+        // The moving-time threshold goes with the activity (US-77).
+        if edit.activity_type.is_some() {
+            super::moving_time::recompute_in_tx(&mut tx, id).await?;
+        }
         if let Some(privacy) = edit.privacy {
             super::komoot::set_privacy_in_tx(&mut tx, id, privacy).await?;
         }

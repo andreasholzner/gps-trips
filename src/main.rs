@@ -29,6 +29,11 @@ async fn main() -> anyhow::Result<()> {
     let addr = server::paths::bind_addr()?;
 
     let pool = server::db::create_pool(&data_dir.join(config::storage::DB_FILENAME)).await?;
+    // US-77: trips imported before moving time was stored get theirs, once.
+    let filled = server::repo::backfill_moving_secs(&pool).await?;
+    if filled > 0 {
+        tracing::info!("Worked out the moving time of {filled} trips");
+    }
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();

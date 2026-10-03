@@ -118,7 +118,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-74](#us-74--place-based-name-suggestion)                  | 📋     | Place-based name suggestion                  | [Import](#import)                                                   |
 | [US-75](#us-75--activity-colors-on-maps)                      | ✅     | Activity colors on maps                      | [Maps](#maps)                                                       |
 | [US-76](#us-76--activity-type-suggestion)                     | 📋     | Activity type suggestion                     | [Import](#import)                                                   |
-| [US-77](#us-77--statistics)                                   | 📋     | Statistics                                   | [Statistics](#statistics)                                           |
+| [US-77](#us-77--statistics)                                   | 🚧     | Statistics                                   | [Statistics](#statistics)                                           |
 | [US-78](#us-78--tag-summary)                                  | 📋     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 
@@ -1193,25 +1193,38 @@ ADR-0012 (the browser layer for the row↔line highlight)
 
 ### US-77 — Statistics
 
-**Planned 📋** — As the owner, I see statistics over my trips — what I did per activity and over the
-years — so the archive tells me more than one trip at a time.
+**In progress 🚧** — As the owner, I see statistics over my trips — what I did per activity and over
+the years — so the archive tells me more than one trip at a time.
 
-**Notes:**
+**Acceptance criteria:** One Statistics screen, reached from the header menu (US-60), counts recorded
+trips only, since a planned trip (US-32) was never done. A trip without timestamps is counted
+nowhere, and the screen says how many were left out.
 
-Rough: which statistics, and how they are shown, is still open; recorded trips only, since a planned
-trip (US-32) was never done.
+**Controls:** the period (all years, or one year), the one measure shown at a time (distance,
+ascent, moving time, trips, days out) and the activity (all, or one). They live in the URL, as the
+trip list's filters do (US-52), so a view can be bookmarked and survives a reload.
 
-**Over time, per activity:** distance, ascent, moving time, number of trips and days out, per year
-and per month, each split by activity; this year against earlier years at the same date, as a
-running total; the share of each activity in a year; records — the longest trip, the most ascent,
-the longest day — overall and per activity.
+**Totals:** the chosen measure per year (all years) or per month (one year). With all activities,
+a table with a row per activity, a column per year or month, a total, and each activity's share of
+the total; all activities together at its foot. With one activity, a bar chart on that activity's
+own scale, so a hike is not dwarfed by a ride.
 
-**Presentation:** one Statistics screen, reached from the header menu (US-60), with three controls
-at the top — the period (all years, or one year), the one measure shown at a time (distance, ascent,
-moving time, trips, days out), and the activity (all, or one). A chosen activity narrows every
-figure on the screen to it, on its own scale, so a hike is not dwarfed by a ride; with all
-activities, the comparison across them is a per-activity table rather than stacked charts. The
-charts and tables under them are worked out during implementation. Per-tag figures are US-78's.
+**Running total:** the chosen measure added up day by day through the year, a line per year, the
+chosen year (or else the current one) highlighted; above it, this year so far against last year by
+the same date.
+
+**Records:** the longest trip, the most ascent, and the longest day — the most distance started on
+one local date — for the chosen period, overall and per activity, or for the chosen activity alone.
+Each links to its trips.
+
+**Definitions:** a trip counts in the year and month of its local start date. Days out are the
+distinct local dates the trips cover, start to end, in each trip's timezone. Moving time is the time
+between consecutive timed points whose speed reaches the activity's threshold; it is computed at
+import, recomputed when a trip's activity changes, and backfilled for trips imported before it
+existed. Per-tag figures are US-78's.
+
+**Decisions:** US-77 → ADR-0025 (Rust adds the figures up, the script draws the charts), ADR-0008
+(the screen reads its trips from the JSON API)
 
 ### US-78 — Tag summary
 

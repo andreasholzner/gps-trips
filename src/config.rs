@@ -204,3 +204,23 @@ pub mod thumbnail {
     /// JPEG quality (0-100) for the re-encoded thumbnail.
     pub const JPEG_QUALITY: u8 = 80;
 }
+
+/// Moving time (US-77): the time between consecutive timed track points
+/// counts as moving when the speed between them reaches the activity's
+/// threshold here, so breaks and stops drop out. Per activity, because a
+/// slow scramble is still moving where a slow bike is standing.
+pub mod moving_time {
+    use crate::models::ActivityType;
+
+    /// The lowest speed, in km/h, that still counts as moving.
+    pub const fn min_speed_kmh(activity: ActivityType) -> f64 {
+        match activity {
+            ActivityType::Mountaineering => 0.5,
+            ActivityType::SnowShoe | ActivityType::SkiTouring | ActivityType::Bikepacking => 0.8,
+            ActivityType::Hiking | ActivityType::Unknown => 1.0,
+            ActivityType::Kayaking => 1.5,
+            ActivityType::CrossCountrySkiing => 2.0,
+            ActivityType::Cycling => 3.0,
+        }
+    }
+}

@@ -29,6 +29,7 @@ mod photo_response;
 mod session;
 mod share;
 mod staged_import;
+mod stats_trips;
 mod tag;
 mod trip_detail;
 mod trip_kind;
@@ -55,6 +56,7 @@ pub use share::{
     SharedTripSummary,
 };
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};
+pub use stats_trips::{StatsTrip, StatsTrips};
 pub use tag::{normalize_tag_name, Tag};
 pub use trip_detail::TripDetail;
 pub use trip_kind::TripKind;

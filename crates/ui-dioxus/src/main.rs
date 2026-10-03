@@ -33,6 +33,7 @@ mod region;
 mod share;
 mod shared;
 mod shares;
+mod stats;
 #[cfg(test)]
 mod test_support;
 mod track;
@@ -51,6 +52,7 @@ use login::Login;
 use menu::{AppShell, SignOut};
 use shared::{Shared, SharedTripDetail};
 use shares::Shares;
+use stats::{Statistics, StatsView};
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -61,6 +63,8 @@ const PICO_CSS: Asset = asset!("/assets/pico.classless.min.css");
 const APP_CSS: Asset = asset!("/assets/app.css");
 /// The detail screen's own layout, apart so neither sheet outgrows the size cap.
 const DETAIL_CSS: Asset = asset!("/assets/detail.css");
+/// The statistics screen's own (US-77), on the same terms.
+const STATS_CSS: Asset = asset!("/assets/stats.css");
 
 /// Leaflet and OSM raster tiles, kept from ADR-0005 and vendored rather than
 /// fetched from a CDN (US-10). Bundled with `asset!` so it ships inside the
@@ -109,6 +113,10 @@ enum Route {
     /// The owner's shares, and stopping one (US-69).
     #[route("/shares")]
     Shares {},
+    /// What the owner did per activity and over the years (US-77). The
+    /// controls live in the query string, as the list's filters do.
+    #[route("/stats?:..view")]
+    Statistics { view: StatsView },
     #[end_layout]
     /// What a share's link opens (US-53): outside the owner's menu, since
     /// its recipient has none of what the menu offers.
@@ -235,6 +243,7 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: PICO_CSS }
         document::Link { rel: "stylesheet", href: APP_CSS }
         document::Link { rel: "stylesheet", href: DETAIL_CSS }
+        document::Link { rel: "stylesheet", href: STATS_CSS }
         // Injected asynchronously, so anything using `L` waits for it
         // (interop.rs) rather than assuming load order.
         document::Link { rel: "stylesheet", href: LEAFLET_CSS }
@@ -403,6 +412,22 @@ mod route_tests {
             matches!(parsed, Route::KomootSync {}),
             "a komoot URL must parse back to the sync screen; url was {url:?}"
         );
+    }
+
+    #[test]
+    fn us77_the_statistics_view_round_trips_through_the_url() {
+        let view = StatsView {
+            year: Some(2024),
+            measure: stats::Measure::DaysOut,
+            activity: Some(trip_archive_types::ActivityType::Kayaking),
+        };
+        let url = Route::Statistics { view: view.clone() }.to_string();
+
+        let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+        let Route::Statistics { view: back } = parsed else {
+            panic!("a statistics URL must parse back to the screen; url was {url:?}")
+        };
+        assert_eq!(back, view);
     }
 
     #[test]

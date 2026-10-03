@@ -12,8 +12,8 @@ use tower_http::set_header::{SetResponseHeader, SetResponseHeaderLayer};
 
 use crate::config;
 use crate::models::{
-    AppVersion, ExportTrip, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail,
-    TripSummary,
+    AppVersion, ExportTrip, StatsTrips, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
+    TripDetail, TripSummary,
 };
 use crate::server::{
     access_log, auth, backup, delete,
@@ -139,6 +139,8 @@ pub fn router(state: AppState) -> Router {
         // US-51: every trip, unfiltered, for the laptop's `qmapshack_export`;
         // the geometry of the trips it writes comes from `track.geojson`.
         .route("/api/export/trips", get(export_trips_api))
+        // US-77: what the statistics screen adds up.
+        .route("/api/stats/trips", get(stats_trips_api))
         // US-68: the version this server was built with, which the SPA
         // compares with its own.
         .route("/api/version", get(version_api))
@@ -273,6 +275,17 @@ async fn export_trips_api(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ExportTrip>>, AppError> {
     Ok(Json(repo::list_export_trips(&state.pool).await?))
+}
+
+/// GET `/api/stats/trips` — every dated recorded trip, reduced to what the
+/// statistics screen adds up (US-77).
+async fn stats_trips_api(State(state): State<AppState>) -> Result<Json<StatsTrips>, AppError> {
+    let (trips, undated) = repo::list_stats_trips(&state.pool).await?;
+    Ok(Json(StatsTrips {
+        trips,
+        undated,
+        today: time::OffsetDateTime::now_utc().date().to_string(),
+    }))
 }
 
 /// GET `/api/version` (US-68).
