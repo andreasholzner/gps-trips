@@ -31,7 +31,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 ## Story index
 
-**State:** ✅ done · 🚧 in progress · 📋 planned · 🚫 de-scoped
+**State:** ✅ done · 🚧 in progress · 📋 planned · ⏳ backlog (not planned but not descoped) · 🚫 de-scoped
 
 > ✅ means the capability works today. Where a story has a UI, that UI is the Dioxus SPA:
 > US-44 moved the last screen the server-rendered proof of concept still owned, and
@@ -57,9 +57,9 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-13](#us-13--filter-the-trip-list)                         | ✅     | Filter the trip list                         | [Trip list & map](#trip-list--map)                                  |
 | [US-14](#us-14--filter-by-region)                             | ✅     | Filter by region                             | [Trip list & map](#trip-list--map)                                  |
 | [US-15](#us-15--edit-name-and-activity-type)                  | ✅     | Edit name and activity type                  | [Trip page](#trip-page)                                             |
-| [US-16](#us-16--native-android-app)                           | 📋     | Native Android app                           | [App & clients](#app--clients)                                      |
-| [US-17](#us-17--photos-on-owncloud)                           | 📋     | Photos on ownCloud                           | [Hosting & backup](#hosting--backup)                                |
-| [US-18](#us-18--import-from-garmin-connect)                   | 📋     | Import from Garmin Connect                   | [Import](#import)                                                   |
+| [US-16](#us-16--native-android-app)                           | ⏳     | Native Android app                           | [App & clients](#app--clients)                                      |
+| [US-17](#us-17--photos-on-owncloud)                           | ⏳     | Photos on ownCloud                           | [Hosting & backup](#hosting--backup)                                |
+| [US-18](#us-18--import-from-garmin-connect)                   | ⏳     | Import from Garmin Connect                   | [Import](#import)                                                   |
 | [US-19](#us-19--password-protection)                          | ✅     | Password protection                          | [Access & security](#access--security)                              |
 | [US-20](#us-20--push-edits-to-komoot)                         | ✅     | Push edits to Komoot                         | [Komoot sync](#komoot-sync)                                         |
 | [US-21](#us-21--download-the-original-gpx)                    | ✅     | Download the original GPX                    | [Trip page](#trip-page)                                             |
@@ -112,7 +112,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-68](#us-68--show-the-running-version)                     | ✅     | Show the running version                     | [App & clients](#app--clients)                                      |
 | [US-69](#us-69--manage-shares)                                | ✅     | Manage shares                                | [Sharing](#sharing)                                                 |
 | [US-70](#us-70--access-log)                                   | ✅     | Access log                                   | [Sharing](#sharing)                                                 |
-| [US-71](#us-71--bound-the-access-log)                         | 📋     | Bound the access log                         | [Sharing](#sharing)                                                 |
+| [US-71](#us-71--bound-the-access-log)                         | ⏳     | Bound the access log                         | [Sharing](#sharing)                                                 |
 | [US-72](#us-72--tell-shared-trips-apart)                      | ✅     | Tell shared trips apart                      | [Sharing](#sharing)                                                 |
 | [US-73](#us-73--trip-lines-when-zoomed-in)                    | ✅     | Trip lines when zoomed in                    | [Trip list & map](#trip-list--map)                                  |
 | [US-74](#us-74--place-based-name-suggestion)                  | 📋     | Place-based name suggestion                  | [Import](#import)                                                   |
