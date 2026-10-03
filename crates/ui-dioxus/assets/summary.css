@@ -8,12 +8,31 @@
   text-decoration: underline dotted;
 }
 
-.summary-tags .chip .swatch {
-  vertical-align: middle;
+/* The heading, and the tag search beside it on the right; the search goes
+   under the heading on a phone, where the two do not fit side by side. */
+.summary-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0 1rem;
+  margin-bottom: var(--pico-typography-spacing-vertical);
 }
 
-.summary-tags form {
-  max-width: 24rem;
+.summary-heading h1 {
+  margin-bottom: 0;
+}
+
+.summary-search {
+  flex: 0 1 20rem;
+}
+
+.summary-search input {
+  margin-bottom: 0;
+}
+
+#summary-chosen .chip .swatch {
+  vertical-align: middle;
 }
 
 /* Each activity's group of rows opens with its name, set apart from the
@@ -26,4 +45,18 @@
 
 .summary-table thead th .swatch {
   vertical-align: middle;
+}
+
+/* The trips at the foot: each row's stroke is its line's on the map. */
+.summary-trip-name .swatch,
+.summary-trip-group h3 .swatch {
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+.summary-trips td.num,
+.summary-trips th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

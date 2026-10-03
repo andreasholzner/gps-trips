@@ -17,12 +17,14 @@ use crate::Route;
 mod figures;
 mod lines;
 mod table;
+mod trips;
 mod view;
 
 pub use view::SummaryView;
 
 use figures::TagSummary;
 use table::FiguresTable;
+use trips::TripsByTag;
 
 /// `/summary` — the screen. The chosen tags come from the URL's query
 /// string, and choosing or removing one navigates there (US-52's
@@ -46,8 +48,11 @@ pub fn Summary(#[props(default)] view: SummaryView) -> Element {
     };
 
     rsx! {
-        h1 { "Summary" }
-        TagPicker { view: view.clone(), known }
+        div { class: "summary-heading",
+            h1 { "Summary" }
+            TagSearch { view: view.clone(), known }
+        }
+        ChosenTags { view: view.clone() }
         if view.tags.is_empty() {
             p { class: "muted", "Choose a tag to see what its trips add up to." }
         } else {
@@ -70,13 +75,11 @@ fn show(view: SummaryView) {
     navigator().replace(Route::Summary { view });
 }
 
-/// The chosen tags as removable chips — each in its map color when there
-/// are several — and a search box offering the known tags.
+/// The search box offering the known tags, beside the heading.
 #[component]
-fn TagPicker(view: SummaryView, known: Vec<Tag>) -> Element {
+fn TagSearch(view: SummaryView, known: Vec<Tag>) -> Element {
     let mut typed = use_signal(String::new);
     let mut unknown = use_signal(|| None::<String>);
-    let several = view.tags.len() > 1;
     let for_add = view.clone();
     let known_names: Vec<String> = known.iter().map(|tag| tag.name.clone()).collect();
     // Only a tag the archive knows is added: a name nobody has used would
@@ -98,29 +101,7 @@ fn TagPicker(view: SummaryView, known: Vec<Tag>) -> Element {
     let mut on_submit = add;
 
     rsx! {
-        div { class: "summary-tags",
-            if !view.tags.is_empty() {
-                div { class: "chips", id: "summary-chosen",
-                    for (index, tag) in view.tags.iter().enumerate() {
-                        span { key: "{tag}", class: "chip",
-                            if several {
-                                Swatch { color: lines::tag_color(index) }
-                                " "
-                            }
-                            "{tag} "
-                            button {
-                                r#type: "button",
-                                title: "Remove {tag}",
-                                onclick: {
-                                    let without = view.without(tag);
-                                    move |_| show(without.clone())
-                                },
-                                "×"
-                            }
-                        }
-                    }
-                }
-            }
+        div { class: "summary-search",
             form {
                 onsubmit: move |event| {
                     event.prevent_default();
@@ -147,6 +128,35 @@ fn TagPicker(view: SummaryView, known: Vec<Tag>) -> Element {
             }
             if let Some(name) = unknown() {
                 p { class: "error", "No tag is called “{name}”." }
+            }
+        }
+    }
+}
+
+/// The chosen tags as removable chips — each in its map color when there
+/// are several.
+#[component]
+fn ChosenTags(view: SummaryView) -> Element {
+    let several = view.tags.len() > 1;
+    rsx! {
+        div { class: "chips", id: "summary-chosen",
+            for (index, tag) in view.tags.iter().enumerate() {
+                span { key: "{tag}", class: "chip",
+                    if several {
+                        Swatch { color: lines::tag_color(index) }
+                        " "
+                    }
+                    "{tag} "
+                    button {
+                        r#type: "button",
+                        title: "Remove {tag}",
+                        onclick: {
+                            let without = view.without(tag);
+                            move |_| show(without.clone())
+                        },
+                        "×"
+                    }
+                }
             }
         }
     }
@@ -180,6 +190,7 @@ fn SummaryBody(summary: TagSummaries) -> Element {
         if !with_trips.is_empty() {
             SummaryMap { summary: summary.clone() }
             FiguresTable { tags: with_trips, colors }
+            TripsByTag { summary: summary.clone() }
         }
     }
 }

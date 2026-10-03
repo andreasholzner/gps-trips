@@ -1306,9 +1306,10 @@ a multi-day vacation or similar, grouped by a tag (US-33), can be looked back on
 between "All trips" and "Statistics", counts recorded trips only, as US-77 does; a trip without
 timestamps is counted nowhere, and the screen says how many were left out.
 
-**Choosing tags:** a search box offers the known tags as the owner types (the suggestions US-33's
-field gives), and choosing one adds it to the summary; a chosen tag can be removed again. One tag
-gives its summary, several put theirs side by side, so one vacation can be compared with another.
+**Choosing tags:** a search box on the heading's row, on its right, offers the known tags as the
+owner types (the suggestions US-33's field gives), and choosing one adds it to the summary; a chosen
+tag can be removed again. One tag gives its summary, several put theirs side by side, so one
+vacation can be compared with another.
 The chosen tags live in the URL, as the trip list's filters do (US-52), so a summary can be
 bookmarked and survives a reload. A tag with no recorded trips says so instead of showing zeros.
 On a trip's detail page, each tag links to the Summary screen with that tag chosen.
@@ -1323,6 +1324,11 @@ column per tag. Days out, longest day and moving time are US-77's.
 draws them (US-53), zoomed so that all of them are in view. With several tags, each tag's trips are
 drawn in a color of its own, shown beside the tag's name; a trip under more than one of them counts
 in each tag's figures but is drawn once. Clicking a line opens that trip.
+
+**Trips:** under the figures, every trip under the chosen tags is listed, grouped by tag in the order
+chosen, oldest first: its name linking to it, its date, activity and distance, beside its line's
+color on the map. A trip under more than one chosen tag is listed under each. With several tags,
+each group is headed by its tag's name and color.
 
 **Decisions:** US-78 → ADR-0025 (Rust adds the figures up and decides the lines, the script draws
 them), ADR-0008 (the screen reads its trips from the JSON API)

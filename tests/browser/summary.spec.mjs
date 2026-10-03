@@ -51,6 +51,7 @@ test("the menu opens the summary, and a chosen tag stays in the URL and draws it
 
   await expect(page).toHaveURL(new RegExp(`tags=${alps}`));
   await expect(page.locator("#summary-figures")).toBeVisible();
+  await expect(page.locator("#summary-trips tbody tr")).toHaveCount(2);
   // One tag: each trip in its activity's color (US-72, US-75).
   await expect(lines(page)).toHaveCount(2);
   await expect(page.locator('#overview-map path[stroke="#b2182b"]')).toHaveCount(1);
@@ -101,4 +102,19 @@ test("a tag on a trip's page opens its summary (US-78)", async ({ page, request 
 
   await expect(page).toHaveURL(new RegExp(`/app/summary\\?tags=${alps}$`));
   await expect(page.locator("#summary-figures")).toBeVisible();
+});
+
+// Layout, which only a browser computes: the search box shares the heading's
+// row, on its right.
+test("the tag search sits right of the heading, level with it (US-78)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/summary");
+
+  const heading = await page.getByRole("heading", { name: "Summary", level: 1 }).boundingBox();
+  const search = await page.locator("#summary-tag-input").boundingBox();
+  const row = await page.locator(".summary-heading").boundingBox();
+  const middle = (box) => box.y + box.height / 2;
+  expect(Math.abs(middle(search) - middle(heading))).toBeLessThanOrEqual(4);
+  expect(Math.abs(search.x + search.width - (row.x + row.width))).toBeLessThanOrEqual(1);
+  expect(search.x).toBeGreaterThan(heading.x + heading.width);
 });

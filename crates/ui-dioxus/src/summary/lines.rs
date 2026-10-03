@@ -17,30 +17,34 @@ pub fn tag_color(index: usize) -> &'static str {
     SLOTS[index % SLOTS.len()].0
 }
 
-/// One line per trip whose track was read, each drawn once. With one tag,
-/// each trip gets a shade of its activity's color in date order, as a
-/// share's trips do (US-72); with several, the color of the first chosen tag
-/// it is under. The colors are taken over every trip, so one whose track
-/// could not be read shifts no other.
-pub fn lines(data: &TagSummaries, tracks: &[TripTrack]) -> Vec<OverviewLine> {
-    let colors: Vec<&'static str> = if data.tags.len() == 1 {
-        activity_color::in_list_order(data.trips.iter().map(|trip| trip.activity_type))
-    } else {
-        data.trips
-            .iter()
-            .map(|trip| {
-                let first = data
-                    .tags
-                    .iter()
-                    .position(|tag| tag.trip_ids.contains(&trip.id))
-                    .unwrap_or(0);
-                tag_color(first)
-            })
-            .collect()
-    };
+/// Each trip's color, in the order of `data.trips`: with one tag, a shade of
+/// its activity's color in date order, as a share's trips get (US-72); with
+/// several, the color of the first chosen tag it is under. The map's lines
+/// and the trip list's rows both take theirs from here.
+pub fn trip_colors(data: &TagSummaries) -> Vec<&'static str> {
+    if data.tags.len() == 1 {
+        return activity_color::in_list_order(data.trips.iter().map(|trip| trip.activity_type));
+    }
     data.trips
         .iter()
-        .zip(colors)
+        .map(|trip| {
+            let first = data
+                .tags
+                .iter()
+                .position(|tag| tag.trip_ids.contains(&trip.id))
+                .unwrap_or(0);
+            tag_color(first)
+        })
+        .collect()
+}
+
+/// One line per trip whose track was read, each drawn once, in its
+/// [`trip_colors`] color. The colors are taken over every trip, so one whose
+/// track could not be read shifts no other.
+pub fn lines(data: &TagSummaries, tracks: &[TripTrack]) -> Vec<OverviewLine> {
+    data.trips
+        .iter()
+        .zip(trip_colors(data))
         .filter_map(|(trip, color)| {
             let track = tracks.iter().find(|track| track.id == trip.id)?;
             Some(OverviewLine {

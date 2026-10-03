@@ -29,7 +29,15 @@ async fn us78_without_a_tag_the_screen_asks_for_one_and_offers_the_known_tags() 
     .await;
 
     assert!(html.contains("Choose a tag"), "{html}");
-    assert!(html.contains(r#"id="summary-tag-input""#), "{html}");
+    // The search box shares the heading's row.
+    let heading = html
+        .split(r#"class="summary-heading""#)
+        .nth(1)
+        .expect("a heading row");
+    let input = heading
+        .find(r#"id="summary-tag-input""#)
+        .expect("the search box");
+    assert!(heading.find("Summary").unwrap() < input, "{heading}");
     assert!(!html.contains("summary-figures"), "{html}");
 }
 
@@ -70,6 +78,19 @@ async fn us78_one_tag_shows_its_figures_its_map_and_what_was_left_out() {
     assert!(html.contains("Longest day"), "{html}");
     assert!(html.contains("Oslo Hills Walk"), "{html}");
     assert!(!html.contains("Elsewhere"), "{html}");
+    // Every trip listed at the foot, linking to it.
+    let trips = html
+        .split(r#"id="summary-trips""#)
+        .nth(1)
+        .expect("the trip list");
+    assert!(
+        trips.contains(&format!(r#"href="/trips/{walk}""#)),
+        "{trips}"
+    );
+    assert!(
+        trips.contains(&format!(r#"href="/trips/{ride}""#)),
+        "{trips}"
+    );
     assert!(html.contains(r#"id="overview-map""#), "{html}");
     assert!(
         html.contains("One recorded trip tagged alps has no dates"),
