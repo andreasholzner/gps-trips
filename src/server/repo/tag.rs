@@ -79,6 +79,26 @@ fn row_to_tag(row: SqliteRow) -> Tag {
     }
 }
 
+/// The ids of the tags named in `names` (already normalized), in the same
+/// order — `None` if any of them does not exist (US-82).
+pub async fn find_tag_ids(
+    pool: &SqlitePool,
+    names: &[String],
+) -> Result<Option<Vec<i64>>, sqlx::Error> {
+    let mut ids = Vec::with_capacity(names.len());
+    for name in names {
+        let id: Option<i64> = sqlx::query_scalar("SELECT id FROM tag WHERE name = ?")
+            .bind(name)
+            .fetch_optional(pool)
+            .await?;
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        ids.push(id);
+    }
+    Ok(Some(ids))
+}
+
 /// Whether every id in `trip_ids` is an existing trip's id (US-34's
 /// all-or-nothing precondition for a bulk tag apply, checked by the caller
 /// before `bulk_add_trip_tags` — the same "check trip existence first"

@@ -85,6 +85,7 @@ pub fn ShareForm(trip_ids: Vec<i64>) -> Element {
     let create = move |_| {
         let request = CreateShare {
             trip_ids: trip_ids.clone(),
+            tags: Vec::new(),
             label: Some(label()).filter(|label| !label.trim().is_empty()),
             expiry: expiry(),
         };

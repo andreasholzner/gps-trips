@@ -179,6 +179,7 @@ mod tests {
             token: format!("token{id}"),
             label: label.map(str::to_string),
             trip_names: vec!["Day one".to_string(), "Day two".to_string()],
+            tags: Vec::new(),
             created_at: "2026-09-25T12:00:00Z".to_string(),
             expires_at: expires_at.map(str::to_string),
             opens: 0,
@@ -285,6 +286,7 @@ mod tests {
             &archive,
             &CreateShare {
                 trip_ids: vec![id],
+                tags: Vec::new(),
                 label: Some("For Kari".to_string()),
                 expiry: ShareExpiry::Never,
             },

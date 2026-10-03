@@ -52,8 +52,8 @@ pub use photo_placement::PhotoPlacement;
 pub use photo_response::PhotoResponse;
 pub use session::{Identity, Login, Principal, Session};
 pub use share::{
-    ActiveShare, CreateShare, CreatedShare, ShareExpiry, ShareOverview, SharedTrip,
-    SharedTripSummary,
+    ActiveShare, CreateShare, CreatedShare, ShareExpiry, ShareOverview, SharedSummary,
+    SharedSummaryTrip, SharedTag, SharedTrip, SharedTripSummary,
 };
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};
 pub use stats_trips::{StatsTrip, StatsTrips, TagSummaries, TagTrips};

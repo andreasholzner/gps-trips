@@ -1,4 +1,5 @@
-//! US-53 — shares: read-only access to a few trips through a link.
+//! US-53 — shares: read-only access to a few trips through a link, or to
+//! the summary of a few tags (US-82).
 //!
 //! Two halves. The owner creates a share (`POST /api/shares`), lists the
 //! active ones (`GET /api/shares`) and stops one (`DELETE /api/shares/:id`,
@@ -20,14 +21,15 @@ use time::OffsetDateTime;
 
 use crate::config;
 use crate::models::{
-    ActiveShare, CreateShare, CreatedShare, PhotoResponse, Principal, ShareExpiry, ShareOverview,
-    SharedTrip, TripDetail, TripTrack,
+    normalize_tag_name, ActiveShare, CreateShare, CreatedShare, PhotoResponse, Principal,
+    ShareExpiry, ShareOverview, SharedSummary, SharedSummaryTrip, SharedTag, SharedTrip, StatsTrip,
+    TagTrips, TripDetail, TripTrack,
 };
 use crate::server::{
     error::AppError,
     http::{gpx_response, media_response, track_response},
     photo_api::respond_under,
-    repo::{self, NewShare},
+    repo::{self, NewShare, ShareTarget},
     state::AppState,
     tracks::{parse_ids, TracksQuery},
 };
@@ -47,15 +49,23 @@ pub fn router() -> Router<AppState> {
 
 // ── The owner's half ─────────────────────────────────────────────────────────
 
-/// POST `/api/shares` — share a few trips. 400 for no trips or an overlong
-/// label, 404 if a trip does not exist; 201 with the token otherwise.
+/// POST `/api/shares` — share a few trips, or the summary of a few tags
+/// (US-82). 400 for neither or both, a malformed tag name or an overlong
+/// label, 404 if a trip or tag does not exist; 201 with the token otherwise.
 pub async fn handle_create_share(
     State(state): State<AppState>,
     Json(body): Json<CreateShare>,
 ) -> Result<(StatusCode, Json<CreatedShare>), AppError> {
-    if body.trip_ids.is_empty() {
-        return Err(AppError::BadRequest("no trips selected".to_string()));
-    }
+    let tags = match (body.trip_ids.is_empty(), body.tags.is_empty()) {
+        (true, true) => return Err(AppError::BadRequest("nothing to share".to_string())),
+        (false, false) => {
+            return Err(AppError::BadRequest(
+                "a share names trips or tags, not both".to_string(),
+            ))
+        }
+        (false, true) => Vec::new(),
+        (true, false) => normalized_tags(&body.tags)?,
+    };
     let label = body
         .label
         .as_deref()
@@ -67,9 +77,21 @@ pub async fn handle_create_share(
             config::share::LABEL_MAX_CHARS
         )));
     }
-    if !repo::trips_exist(&state.pool, &body.trip_ids).await? {
-        return Err(AppError::NotFound);
-    }
+    let tag_ids = if tags.is_empty() {
+        if !repo::trips_exist(&state.pool, &body.trip_ids).await? {
+            return Err(AppError::NotFound);
+        }
+        Vec::new()
+    } else {
+        repo::find_tag_ids(&state.pool, &tags)
+            .await?
+            .ok_or(AppError::NotFound)?
+    };
+    let target = if tag_ids.is_empty() {
+        ShareTarget::Trips(&body.trip_ids)
+    } else {
+        ShareTarget::Tags(&tag_ids)
+    };
 
     let now = OffsetDateTime::now_utc();
     let expires_at = expiry_at(body.expiry, now);
@@ -79,7 +101,7 @@ pub async fn handle_create_share(
         &NewShare {
             token: &token,
             label,
-            trip_ids: &body.trip_ids,
+            target,
             created_at: now,
             expires_at,
         },
@@ -116,6 +138,18 @@ pub async fn handle_stop_share(
     } else {
         Err(AppError::NotFound)
     }
+}
+
+/// The tags as the archive stores them, each once, in the order given.
+fn normalized_tags(raw: &[String]) -> Result<Vec<String>, AppError> {
+    let mut tags: Vec<String> = Vec::with_capacity(raw.len());
+    for name in raw {
+        let name = normalize_tag_name(name).map_err(AppError::BadRequest)?;
+        if !tags.contains(&name) {
+            tags.push(name);
+        }
+    }
+    Ok(tags)
 }
 
 /// When a share chosen at `now` stops working.
@@ -158,15 +192,24 @@ async fn covered(state: &AppState, principal: Principal, trip_id: i64) -> Result
     }
 }
 
-/// GET `/s/:token/api/share` — the share's title and its trips.
+/// GET `/s/:token/api/share` — the share's title and its trips, and for a
+/// share of tags their summary (US-82).
 async fn overview(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<ShareOverview>, AppError> {
     let share_id = share_id(principal)?;
+    let tags = repo::shared_tag_names(&state.pool, share_id).await?;
+    let summary = if tags.is_empty() {
+        None
+    } else {
+        let (tags, trips) = repo::list_tag_summaries(&state.pool, &tags).await?;
+        Some(shared_summary(tags, trips))
+    };
     Ok(Json(ShareOverview {
         label: repo::share_label(&state.pool, share_id).await?,
         trips: repo::list_shared_trips(&state.pool, share_id).await?,
+        summary,
     }))
 }
 
@@ -282,6 +325,35 @@ fn shared_trip(trip: TripDetail) -> SharedTrip {
     }
 }
 
+/// The recipient's copy of a tag summary, field by field, as
+/// [`shared_trip`] copies a trip.
+fn shared_summary(tags: Vec<TagTrips>, trips: Vec<StatsTrip>) -> SharedSummary {
+    SharedSummary {
+        tags: tags
+            .into_iter()
+            .map(|tag| SharedTag {
+                name: tag.name,
+                trip_ids: tag.trip_ids,
+                undated: tag.undated,
+            })
+            .collect(),
+        trips: trips
+            .into_iter()
+            .map(|trip| SharedSummaryTrip {
+                id: trip.id,
+                name: trip.name,
+                activity_type: trip.activity_type,
+                start_date: trip.start_date,
+                end_date: trip.end_date,
+                distance_m: trip.distance_m,
+                ascent_m: trip.ascent_m,
+                descent_m: trip.descent_m,
+                moving_secs: trip.moving_secs,
+            })
+            .collect(),
+    }
+}
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
@@ -309,6 +381,13 @@ mod tests {
         assert_eq!(first.len(), config::share::TOKEN_BYTES * 2);
         assert!(first.chars().all(|c| c.is_ascii_hexdigit()), "{first}");
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn us82_shared_tags_are_normalized_once_each_in_order() {
+        let raw = ["Norway", "alps", " norway "].map(String::from);
+        assert_eq!(normalized_tags(&raw).unwrap(), ["norway", "alps"]);
+        assert!(normalized_tags(&["two words".to_string()]).is_err());
     }
 
     #[test]

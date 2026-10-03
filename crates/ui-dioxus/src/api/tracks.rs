@@ -60,6 +60,7 @@ mod tests {
             &archive,
             &CreateShare {
                 trip_ids: vec![shared],
+                tags: Vec::new(),
                 label: None,
                 expiry: ShareExpiry::Never,
             },

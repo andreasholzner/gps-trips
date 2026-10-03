@@ -1,9 +1,12 @@
 //! Shares (US-53): a token, the trips it reaches, and when it stops; and
 //! the owner's list of them, from which one is stopped (US-69).
 //!
-//! Every read here is scoped by the share's id, which only the gate hands
-//! out, and only for a token that resolved — so a handler that reads through
-//! these functions cannot reach a trip its share does not name.
+//! A share names trips, or tags whose recorded trips it reaches (US-82).
+//! Which trips that is comes from the `share_reach` view alone, so every
+//! check here agrees on it. Every read is scoped by the share's id, which
+//! only the gate hands out, and only for a token that resolved — so a
+//! handler that reads through these functions cannot reach a trip its share
+//! does not name.
 
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -13,17 +16,24 @@ use super::trip::local_start_date;
 use crate::models::{ActiveShare, SharedTripSummary};
 use crate::server::db;
 
+/// What a share names.
+pub enum ShareTarget<'a> {
+    Trips(&'a [i64]),
+    /// Tag ids, in the order the owner chose them (US-82).
+    Tags(&'a [i64]),
+}
+
 /// A share as the owner asks for it; the token is minted by the caller.
 pub struct NewShare<'a> {
     pub token: &'a str,
     pub label: Option<&'a str>,
-    pub trip_ids: &'a [i64],
+    pub target: ShareTarget<'a>,
     pub created_at: OffsetDateTime,
     pub expires_at: Option<OffsetDateTime>,
 }
 
-/// Store a share and the trips it reaches, in one transaction. The caller
-/// has checked the trips exist.
+/// Store a share and what it names, in one transaction. The caller has
+/// checked the trips or tags exist.
 pub async fn insert_share(pool: &SqlitePool, share: &NewShare<'_>) -> Result<i64, sqlx::Error> {
     let mut tx = db::begin_write(pool).await?;
     let id: i64 = sqlx::query_scalar(
@@ -35,12 +45,28 @@ pub async fn insert_share(pool: &SqlitePool, share: &NewShare<'_>) -> Result<i64
     .bind(share.expires_at.map(to_rfc3339))
     .fetch_one(&mut *tx)
     .await?;
-    for &trip_id in share.trip_ids {
-        sqlx::query("INSERT OR IGNORE INTO share_trip (share_id, trip_id) VALUES (?, ?)")
-            .bind(id)
-            .bind(trip_id)
-            .execute(&mut *tx)
-            .await?;
+    match share.target {
+        ShareTarget::Trips(trip_ids) => {
+            for &trip_id in trip_ids {
+                sqlx::query("INSERT OR IGNORE INTO share_trip (share_id, trip_id) VALUES (?, ?)")
+                    .bind(id)
+                    .bind(trip_id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        ShareTarget::Tags(tag_ids) => {
+            for (position, &tag_id) in (0_i64..).zip(tag_ids) {
+                sqlx::query(
+                    "INSERT OR IGNORE INTO share_tag (share_id, tag_id, position) VALUES (?, ?, ?)",
+                )
+                .bind(id)
+                .bind(tag_id)
+                .bind(position)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
     }
     tx.commit().await?;
     Ok(id)
@@ -54,19 +80,23 @@ pub struct ResolvedShare {
     pub label: Option<String>,
 }
 
+/// Whether share `s` still names something: a trip, or a tag (US-82) —
+/// which keeps it alive while its tags hold no trips, since tagging can
+/// fill it again.
+const NAMES_SOMETHING: &str = "(EXISTS (SELECT 1 FROM share_trip st WHERE st.share_id = s.id) \
+     OR EXISTS (SELECT 1 FROM share_tag sg WHERE sg.share_id = s.id))";
+
 /// The share `token` opens at `now`: one that exists, has not expired and
-/// still reaches a trip. Anything else is `None`, and deliberately the same
+/// still names something. Anything else is `None`, and deliberately the same
 /// `None` — a link must not tell a stranger whether it ever worked.
 pub async fn resolve_share(
     pool: &SqlitePool,
     token: &str,
     now: OffsetDateTime,
 ) -> Result<Option<ResolvedShare>, sqlx::Error> {
-    let row: Option<(i64, Option<String>, Option<String>)> = sqlx::query_as(
-        r#"SELECT s.id, s.label, s.expires_at FROM share s
-           WHERE s.token = ?
-             AND EXISTS (SELECT 1 FROM share_trip st WHERE st.share_id = s.id)"#,
-    )
+    let row: Option<(i64, Option<String>, Option<String>)> = sqlx::query_as(&format!(
+        "SELECT s.id, s.label, s.expires_at FROM share s WHERE s.token = ? AND {NAMES_SOMETHING}"
+    ))
     .bind(token)
     .fetch_optional(pool)
     .await?;
@@ -84,43 +114,50 @@ fn still_open(expires_at: Option<&str>, now: OffsetDateTime) -> bool {
 
 /// Every share that opens something at `now` — the same test
 /// [`resolve_share`] applies — newest first, each with its trips' names in
-/// the order the recipient sees them, and how its link was used (US-70).
+/// the order the recipient sees them, or its tags in the order chosen
+/// (US-82), and how its link was used (US-70).
 pub async fn list_active_shares(
     pool: &SqlitePool,
     now: OffsetDateTime,
 ) -> Result<Vec<ActiveShare>, sqlx::Error> {
-    // The inner join leaves out a share with no trips. Ids only grow, so the
-    // highest is the newest without comparing timestamps as text.
-    let rows = sqlx::query(
-        r#"SELECT s.id, s.token, s.label, s.created_at, s.expires_at, t.name
-           FROM share s
-           JOIN share_trip st ON st.share_id = s.id
-           JOIN trip t ON t.id = st.trip_id
-           ORDER BY s.id DESC, t.start_time IS NULL, t.start_time, t.id"#,
+    // Ids only grow, so the highest is the newest without comparing
+    // timestamps as text.
+    let mut shares: Vec<ActiveShare> = sqlx::query(&format!(
+        "SELECT s.id, s.token, s.label, s.created_at, s.expires_at FROM share s \
+         WHERE {NAMES_SOMETHING} ORDER BY s.id DESC"
+    ))
+    .map(|row: SqliteRow| ActiveShare {
+        id: row.get("id"),
+        token: row.get("token"),
+        label: row.get("label"),
+        trip_names: Vec::new(),
+        tags: Vec::new(),
+        created_at: row.get("created_at"),
+        expires_at: row.get("expires_at"),
+        opens: 0,
+        last_opened_at: None,
+        user_agents: Vec::new(),
+    })
+    .fetch_all(pool)
+    .await?;
+    shares.retain(|share| still_open(share.expires_at.as_deref(), now));
+
+    let trip_names: Vec<(i64, String)> = sqlx::query_as(
+        r#"SELECT st.share_id, t.name FROM share_trip st JOIN trip t ON t.id = st.trip_id
+           ORDER BY t.start_time IS NULL, t.start_time, t.id"#,
     )
     .fetch_all(pool)
     .await?;
-
-    let mut shares: Vec<ActiveShare> = Vec::new();
-    for row in rows {
-        let id: i64 = row.get("id");
-        let name: String = row.get("name");
-        match shares.last_mut() {
-            Some(share) if share.id == id => share.trip_names.push(name),
-            _ => shares.push(ActiveShare {
-                id,
-                token: row.get("token"),
-                label: row.get("label"),
-                trip_names: vec![name],
-                created_at: row.get("created_at"),
-                expires_at: row.get("expires_at"),
-                opens: 0,
-                last_opened_at: None,
-                user_agents: Vec::new(),
-            }),
-        }
+    let tag_names: Vec<(i64, String)> = sqlx::query_as(
+        r#"SELECT sg.share_id, tag.name FROM share_tag sg JOIN tag ON tag.id = sg.tag_id
+           ORDER BY sg.position"#,
+    )
+    .fetch_all(pool)
+    .await?;
+    for share in &mut shares {
+        share.trip_names = names_of(&trip_names, share.id);
+        share.tags = names_of(&tag_names, share.id);
     }
-    shares.retain(|share| still_open(share.expires_at.as_deref(), now));
 
     // How each link was used (US-70), from the access log.
     let mut usage = super::access::share_usage(pool).await?;
@@ -134,20 +171,26 @@ pub async fn list_active_shares(
     Ok(shares)
 }
 
-/// Stop share `id`: its row goes, and with it every `share_trip` row, so
-/// its token resolves to nothing from the next request on. Only a share
-/// that still opens something at `now` is stopped; `false` for any other,
-/// so stopping one twice is not a success.
+/// The names in `rows` that belong to share `id`, in the rows' order.
+fn names_of(rows: &[(i64, String)], id: i64) -> Vec<String> {
+    rows.iter()
+        .filter(|(share_id, _)| *share_id == id)
+        .map(|(_, name)| name.clone())
+        .collect()
+}
+
+/// Stop share `id`: its row goes, and with it every `share_trip` and
+/// `share_tag` row, so its token resolves to nothing from the next request
+/// on. Only a share that still opens something at `now` is stopped; `false`
+/// for any other, so stopping one twice is not a success.
 pub async fn stop_share(
     pool: &SqlitePool,
     id: i64,
     now: OffsetDateTime,
 ) -> Result<bool, sqlx::Error> {
-    let found: Option<Option<String>> = sqlx::query_scalar(
-        r#"SELECT s.expires_at FROM share s
-           WHERE s.id = ?
-             AND EXISTS (SELECT 1 FROM share_trip st WHERE st.share_id = s.id)"#,
-    )
+    let found: Option<Option<String>> = sqlx::query_scalar(&format!(
+        "SELECT s.expires_at FROM share s WHERE s.id = ? AND {NAMES_SOMETHING}"
+    ))
     .bind(id)
     .fetch_optional(pool)
     .await?;
@@ -168,7 +211,7 @@ pub async fn share_covers_trip(
     trip_id: i64,
 ) -> Result<bool, sqlx::Error> {
     let found: Option<i64> =
-        sqlx::query_scalar("SELECT 1 FROM share_trip WHERE share_id = ? AND trip_id = ?")
+        sqlx::query_scalar("SELECT 1 FROM share_reach WHERE share_id = ? AND trip_id = ?")
             .bind(share_id)
             .bind(trip_id)
             .fetch_optional(pool)
@@ -186,7 +229,7 @@ pub async fn share_covers_blob(
 ) -> Result<bool, sqlx::Error> {
     let found: Option<i64> = sqlx::query_scalar(
         r#"SELECT 1 FROM photo p
-           JOIN share_trip st ON st.trip_id = p.trip_id
+           JOIN share_reach st ON st.trip_id = p.trip_id
            WHERE st.share_id = ? AND (p.blob_key = ? OR p.thumbnail_key = ?)
            LIMIT 1"#,
     )
@@ -216,12 +259,27 @@ pub async fn list_shared_trips(
     sqlx::query(
         r#"SELECT t.id, t.name, t.activity_type, t.start_time, t.tz_name, t.distance_m,
                   t.ascent_m, t.duration_secs
-           FROM trip t JOIN share_trip st ON st.trip_id = t.id
+           FROM trip t JOIN share_reach st ON st.trip_id = t.id
            WHERE st.share_id = ?
            ORDER BY t.start_time IS NULL, t.start_time, t.id"#,
     )
     .bind(share_id)
     .map(row_to_shared_summary)
+    .fetch_all(pool)
+    .await
+}
+
+/// The tags `share_id` names, in the order the owner chose them (US-82);
+/// empty for a share of trips.
+pub async fn shared_tag_names(
+    pool: &SqlitePool,
+    share_id: i64,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"SELECT tag.name FROM share_tag sg JOIN tag ON tag.id = sg.tag_id
+           WHERE sg.share_id = ? ORDER BY sg.position"#,
+    )
+    .bind(share_id)
     .fetch_all(pool)
     .await
 }

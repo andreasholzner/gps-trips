@@ -78,6 +78,7 @@ mod tests {
             &archive,
             &CreateShare {
                 trip_ids: vec![id],
+                tags: Vec::new(),
                 label: Some("For Kari".to_string()),
                 expiry: ShareExpiry::OneMonth,
             },
@@ -114,6 +115,7 @@ mod tests {
             &archive,
             &CreateShare {
                 trip_ids: vec![id],
+                tags: Vec::new(),
                 label: None,
                 expiry: ShareExpiry::Never,
             },

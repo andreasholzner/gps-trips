@@ -17,6 +17,7 @@ async fn shared(
         archive,
         &CreateShare {
             trip_ids,
+            tags: Vec::new(),
             label: label.map(str::to_string),
             expiry: ShareExpiry::Never,
         },

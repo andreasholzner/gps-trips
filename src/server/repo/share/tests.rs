@@ -66,7 +66,7 @@ async fn a_share(
         &NewShare {
             token,
             label: Some("For Kari"),
-            trip_ids,
+            target: ShareTarget::Trips(trip_ids),
             created_at: noon(),
             expires_at,
         },
@@ -275,6 +275,7 @@ async fn us69_an_active_share_is_listed_with_its_trips_and_dates() {
             token: "tok".to_string(),
             label: Some("For Kari".to_string()),
             trip_names: vec!["First".to_string(), "Second".to_string()],
+            tags: Vec::new(),
             created_at: to_rfc3339(noon()),
             expires_at: Some(to_rfc3339(expires)),
             opens: 0,
@@ -398,3 +399,5 @@ async fn us69_only_an_active_share_can_be_stopped() {
     assert!(!stop_share(&db.pool, expired, noon()).await.unwrap());
     assert!(!stop_share(&db.pool, 999, noon()).await.unwrap());
 }
+
+mod tags;
