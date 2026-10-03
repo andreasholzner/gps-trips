@@ -124,6 +124,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
 | [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
 | [US-82](#us-82--share-a-summary)                              | 📋     | Share a summary                              | [Sharing](#sharing)                                                 |
+| [US-83](#us-83--tags-page)                                    | 📋     | Tags page                                    | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1106,6 +1107,39 @@ trips that have all chosen tags are shown. Chosen tag names are joined into one 
 `tags` query param (`GET /api/trips`, ADR-0011) — unambiguous because tag names can never contain a
 comma (US-33); a malformed tag name (e.g. containing whitespace or a comma) 400s the same way
 US-33/34 reject one on write, but a well-formed, merely nonexistent tag name just matches nothing.
+
+### US-83 — Tags page
+
+**Planned 📋** — As the owner, I see every tag in one place, so I can reach a tag's summary, clear out
+tags I no longer use and set up a tag before any trip carries it.
+
+**Acceptance criteria:** A Tags screen, reached from the header menu (US-60) right after
+"Statistics", lists every tag alphabetically — those no trip carries included — each with the
+number of trips carrying it in parentheses after its name. A tag carrying at least one recorded trip
+links to its summary (US-78) with that tag chosen; any other tag's summary would be empty, so its
+name is plain text. A tag that an active summary share (US-82) names carries the common share icon
+beside its name.
+
+**Finding a tag:** a text field above the table narrows it to the tags whose names contain what is
+typed, ignoring case, as the owner types. The filter lives in the URL, as the trip list's filters do
+(US-52), so it can be bookmarked and survives a reload. The table shows 50 tags a page, with the
+trip list's paging (US-63); changing the filter goes back to the first page.
+
+**Deleting a tag:** each row can delete its tag, after a confirmation naming it, since it cannot be
+undone. Only the tag goes: it is taken off every trip that carried it, and no trip is deleted or
+otherwise changed. Once deleted, it is no longer suggested (US-33), offered as a filter (US-38) or
+choosable on the Summary screen. **A shared tag leaves its share:** a summary share (US-82) that
+names other tags as well is narrowed to the remaining ones and keeps working; one that names only
+this tag is stopped, as stopping it on the Shares screen would (US-69). The confirmation says
+explicitly what happens to each such share — by its label, or its tags without one — narrowed or
+stopped.
+
+**Creating a tag:** a field below the table creates a tag by name, carrying no trips yet, so it is
+suggested when tagging later. The name is normalized and validated as US-33's are, and the screen
+says why a name is refused; a name that already exists is not created twice, and the screen says it
+exists. The new tag shows in the table at once.
+
+**Decisions:** US-83 → ADR-0008 (the screen reads and changes the tags through the JSON API)
 
 ## Maps
 
