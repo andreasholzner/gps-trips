@@ -47,6 +47,18 @@
   vertical-align: middle;
 }
 
+/* With several tags, each tag's trips stand clear of the group above: the
+   scrolling table they sit in has no margin of its own. */
+.summary-trip-group + .summary-trip-group {
+  margin-top: calc(var(--pico-spacing) * 2);
+}
+
+/* A group's heading belongs to the trips under it, so it sits closer to them
+   than Pico's heading margin would put it. */
+.summary-trip-group h3 {
+  margin-bottom: 0.5rem;
+}
+
 /* The trips at the foot: each row's stroke is its line's on the map. */
 .summary-trip-name .swatch,
 .summary-trip-group h3 .swatch {

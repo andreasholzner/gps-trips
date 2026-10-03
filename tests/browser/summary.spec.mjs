@@ -118,3 +118,23 @@ test("the tag search sits right of the heading, level with it (US-78)", async ({
   expect(Math.abs(search.x + search.width - (row.x + row.width))).toBeLessThanOrEqual(1);
   expect(search.x).toBeGreaterThan(heading.x + heading.width);
 });
+
+// Layout, which only a browser computes: with several tags, a group's
+// heading stands clear of the trips listed above it.
+test("each tag's trips stand apart from the group above (US-78)", async ({ page, request }) => {
+  const [alps, norway] = [fresh("alps"), fresh("norway")];
+  const walk = await ownTrip(request, "Grouped Walk", "hiking");
+  const paddle = await ownTrip(request, "Grouped Paddle", "kayaking");
+  await tag(request, walk, alps);
+  await tag(request, paddle, norway);
+  await page.goto(`/app/summary?tags=${alps},${norway}`);
+
+  const above = await page.locator("#summary-trips table").first().boundingBox();
+  const heading = await page.locator("#summary-trips h3").nth(1).boundingBox();
+  expect(heading.y - (above.y + above.height)).toBeGreaterThanOrEqual(24);
+  // A heading sits close to its own trips, though not against them.
+  const below = await page.locator("#summary-trips table").nth(1).boundingBox();
+  const gap = below.y - (heading.y + heading.height);
+  expect(gap).toBeGreaterThanOrEqual(4);
+  expect(gap).toBeLessThanOrEqual(10);
+});
