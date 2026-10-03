@@ -119,7 +119,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-75](#us-75--activity-colors-on-maps)                      | ✅     | Activity colors on maps                      | [Maps](#maps)                                                       |
 | [US-76](#us-76--activity-type-suggestion)                     | 📋     | Activity type suggestion                     | [Import](#import)                                                   |
 | [US-77](#us-77--statistics)                                   | ✅     | Statistics                                   | [Statistics](#statistics)                                           |
-| [US-78](#us-78--tag-summary)                                  | 🚧     | Tag summary                                  | [Statistics](#statistics)                                           |
+| [US-78](#us-78--tag-summary)                                  | ✅     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 | [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
 | [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
@@ -1364,7 +1364,7 @@ existed. Per-tag figures are US-78's.
 
 ### US-78 — Tag summary
 
-**In progress 🚧** — As the owner, I see a **tag summary** — what the trips under one tag add up to — so
+**Done ✅** — As the owner, I see a **tag summary** — what the trips under one tag add up to — so
 a multi-day vacation or similar, grouped by a tag (US-33), can be looked back on as a whole.
 
 **Acceptance criteria:** A Summary screen, reached from the header menu (US-60) as its second entry,
