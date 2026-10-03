@@ -123,6 +123,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 | [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
 | [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
+| [US-82](#us-82--share-a-summary)                              | 📋     | Share a summary                              | [Sharing](#sharing)                                                 |
 
 ### Maintaining this file
 
@@ -1256,6 +1257,36 @@ owner's own maps are out of scope.
 
 **Decisions:** US-72 → ADR-0025 (Rust decides each line and its color, the script draws them),
 ADR-0012 (the browser layer for the row↔line highlight)
+
+### US-82 — Share a summary
+
+**Planned 📋** — As the owner, I share a tag summary (US-78) by link, so someone I travelled with, or
+told about the trip, can look back on the whole vacation — its figures, its map and every trip in it.
+
+**Acceptance criteria:** The owner creates the share from the Summary screen, for the tags it shows,
+with the optional label and expiry a trip share has (US-53); the label is the title the recipient
+sees, and without one the tag names are. **The share names the tags, not trips:** it reaches the
+recorded trips under them whenever the link is opened, so a trip tagged later appears to the
+recipient and one untagged disappears. Planned trips never appear. Everything else about the link is
+US-53's: unguessable, read-only, no account, the token in the path, revocable, and an unknown,
+expired or stopped share answering exactly like a route that does not exist. A share whose tags hold
+no recorded trips for the moment stays alive and says so, since tagging can fill it again.
+
+**What the recipient sees:** the Summary screen for the shared tags, as the owner sees it — figures,
+map and trip list, with the tags' names and colors — but without the tag search and without removing
+a tag, so the summary cannot be widened or narrowed, and without the owner's menu. Clicking a line or
+a trip opens it as a shared trip's page does (US-53): stats, map, elevation profile, photos and GPX,
+never a control that changes it. The shared tags' names are the only tags the recipient sees: a
+trip's other tags, its Komoot link and every trip outside the shared tags stay out of reach, its
+photos and GPX included.
+
+**Managing it:** the Shares screen (US-69) lists the share with its tags in place of its trips, and
+stopping it works as stopping a trip share does. The access log (US-70) counts its link as that
+share's.
+
+**Decisions:** US-82 → ADR-0015 (the recipient's own response types), ADR-0025 (Rust adds the
+figures up and decides the lines, the script draws them), ADR-0008 (the screen reads its trips from
+the JSON API)
 
 ## Statistics
 
