@@ -81,6 +81,11 @@ pub fn AppMenu() -> Element {
                     "All trips"
                 }
                 Link {
+                    to: Route::Statistics { view: StatsView::default() },
+                    onclick: move |_| open.set(false),
+                    "Statistics"
+                }
+                Link {
                     to: Route::ImportTrip {},
                     onclick: move |_| open.set(false),
                     "Import a trip"
@@ -94,11 +99,6 @@ pub fn AppMenu() -> Element {
                     to: Route::Shares {},
                     onclick: move |_| open.set(false),
                     "Shares"
-                }
-                Link {
-                    to: Route::Statistics { view: StatsView::default() },
-                    onclick: move |_| open.set(false),
-                    "Statistics"
                 }
                 // In a browser tab only, deliberately — `offers_sign_out`
                 // in main.rs says why (US-16, US-67).
@@ -148,8 +148,10 @@ mod tests {
         // US-69: the links handed out, and stopping one.
         assert!(html.contains("Shares"), "{html}");
         assert!(html.contains(r#"href="/shares""#), "{html}");
-        // US-77: what the trips add up to.
-        assert!(html.contains("Statistics"), "{html}");
+        // US-77: what the trips add up to, second only to the trips.
+        let position = |item: &str| html.find(&format!(">{item}<")).unwrap();
+        assert!(position("All trips") < position("Statistics"), "{html}");
+        assert!(position("Statistics") < position("Import a trip"), "{html}");
         let stats = Route::Statistics {
             view: StatsView::default(),
         }

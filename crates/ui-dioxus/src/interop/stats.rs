@@ -33,7 +33,6 @@ const PRELUDE: &str = r##"
 
     const pico = (name) => getComputedStyle(el).getPropertyValue(name).trim();
     const text = () => pico("--pico-color");
-    const muted = () => pico("--pico-muted-color");
     const line = () => pico("--pico-muted-border-color");
     const themed = { stroke: text, ticks: { stroke: line }, grid: { stroke: line } };
 
@@ -90,8 +89,8 @@ const BARS_SCRIPT: &str = r##"
 
 /// The lines: one per year against the day of the year. The highlighted
 /// year is drawn wider in the accent colour; each other year in the colour
-/// Rust gave it, in the scheme's own step, or muted when it has none. The
-/// legend names the years and reads their totals at the cursor.
+/// Rust gave it, in the scheme's own step. The legend names the years and
+/// reads their totals at the cursor.
 ///
 /// Pointing near a line, or at its legend entry, focuses that year: the
 /// other lines fade (uPlot's `focus`) and its legend entry is marked
@@ -130,10 +129,8 @@ const RUNNING_SCRIPT: &str = r##"
           ...view.years.map((year, i) => {
             const label = String(year);
             if (year === view.highlighted) return { label, stroke: view.color, width: 2.5 };
-            const pair = view.colors[i];
-            return pair
-              ? { label, stroke: () => (dark() ? pair[1] : pair[0]), width: 1.5 }
-              : { label, stroke: muted, width: 1 };
+            const [light, darkStep] = view.colors[i];
+            return { label, stroke: () => (dark() ? darkStep : light), width: 1.5 };
           }),
         ],
         axes: [
@@ -188,8 +185,8 @@ pub struct RunningView {
     pub highlighted: i32,
     /// The highlighted year's color.
     pub color: &'static str,
-    /// Each year's light and dark color; `None` draws it muted.
-    pub colors: Vec<Option<(&'static str, &'static str)>>,
+    /// Each year's light and dark color.
+    pub colors: Vec<(&'static str, &'static str)>,
     pub label: &'static str,
     /// The name of each day of the year, for the cursor's readout.
     pub day_labels: Vec<String>,
