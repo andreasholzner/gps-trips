@@ -188,7 +188,7 @@ impl From<&str> for Filters {
 /// Percent-encode a query-parameter value. Only the characters that would
 /// otherwise break the query string are escaped — a free-text search is the
 /// one field an owner can type anything into.
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     value
         .bytes()
         .map(|byte| match byte {
@@ -202,7 +202,7 @@ fn encode(value: &str) -> String {
 }
 
 /// Undo [`encode`].
-fn decode(value: &str) -> String {
+pub(crate) fn decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

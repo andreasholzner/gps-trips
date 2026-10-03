@@ -12,6 +12,7 @@ fn trip(id: i64, activity: ActivityType, start: &str, end: &str, km: f64) -> Sta
         end_date: end.to_string(),
         distance_m: km * 1000.0,
         ascent_m: Some(km * 100.0),
+        descent_m: Some(km * 100.0),
         moving_secs: Some((km * 900.0) as i64),
     }
 }

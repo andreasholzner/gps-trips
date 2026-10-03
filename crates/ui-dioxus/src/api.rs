@@ -30,7 +30,7 @@ pub use session::{login, logout, session};
 pub use share::{
     create_share, get_shared_trip, list_shares, share_link, share_overview, stop_share,
 };
-pub use stats::stats_trips;
+pub use stats::{stats_trips, tag_summaries};
 pub use tracks::list_tracks;
 
 /// A failed API call, already reduced to what the UI shows.

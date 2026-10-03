@@ -29,12 +29,12 @@ pub const MONTHS: [&str; 12] = [
 pub struct Dated<'a> {
     pub trip: &'a StatsTrip,
     pub start: Date,
-    end: Date,
+    pub end: Date,
 }
 
 impl Dated<'_> {
     /// Every local date the trip covers.
-    fn days(&self) -> impl Iterator<Item = Date> {
+    pub fn days(&self) -> impl Iterator<Item = Date> {
         let last = self
             .end
             .min(self.start + time::Duration::days(MAX_TRIP_DAYS - 1));
@@ -422,7 +422,7 @@ fn best(trips: &[&Dated], value: impl Fn(&StatsTrip) -> Option<f64>) -> Vec<Trip
 }
 
 /// The dates with the most distance started on them.
-fn longest_days(trips: &[&Dated]) -> Vec<DayRecord> {
+pub fn longest_days(trips: &[&Dated]) -> Vec<DayRecord> {
     let mut days: BTreeMap<Date, Vec<&StatsTrip>> = BTreeMap::new();
     for trip in trips {
         days.entry(trip.start).or_default().push(trip.trip);

@@ -209,7 +209,7 @@ fn parse_coordinate(s: &str, axis: &str, min: f64, max: f64) -> Result<f64, AppE
 /// — same as an unrecognized `activity`/`kind` value — since that can never
 /// be a real stored tag; a well-formed but *nonexistent* tag name is not an
 /// error, it simply matches no trips.
-fn parse_tags(s: Option<&str>) -> Result<Vec<String>, AppError> {
+pub(crate) fn parse_tags(s: Option<&str>) -> Result<Vec<String>, AppError> {
     let raw = match s.map(str::trim) {
         None | Some("") => return Ok(Vec::new()),
         Some(value) => value,

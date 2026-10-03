@@ -5,6 +5,8 @@ use dioxus::prelude::*;
 use trip_archive_types::{normalize_tag_name, Tag};
 
 use crate::api::{self, ApiClient};
+use crate::summary::SummaryView;
+use crate::Route;
 
 /// Whether using this name would create a tag that does not exist yet — the
 /// question US-33 wants confirmed before it happens.
@@ -171,7 +173,8 @@ pub fn TripTags(id: i64) -> Element {
     }
 }
 
-/// One removable chip per tag.
+/// One removable chip per tag, its name leading to the tag's summary
+/// (US-78).
 #[component]
 fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
     rsx! {
@@ -181,7 +184,12 @@ fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
             div { class: "chips",
                 for tag in tags {
                     span { key: "{tag.id}", class: "chip",
-                        "{tag.name} "
+                        Link {
+                            to: Route::Summary { view: SummaryView::of(&tag.name) },
+                            title: "Summary of {tag.name}",
+                            "{tag.name}"
+                        }
+                        " "
                         // A glyph, like the staged chips on the list screen
                         // — with the name spelled out for anyone who cannot
                         // see which chip it belongs to.
@@ -308,6 +316,24 @@ mod tests {
             2,
             "one way off the trip per tag: {html}"
         );
+    }
+
+    #[test]
+    fn us78_each_tag_leads_to_its_summary() {
+        let html = render(move || {
+            rsx! {
+                TagChips {
+                    tags: tags(&["alpine"]),
+                    on_remove: move |_| {},
+                }
+            }
+        });
+
+        let summary = Route::Summary {
+            view: SummaryView::of("alpine"),
+        }
+        .to_string();
+        assert!(html.contains(&format!(r#"href="{summary}""#)), "{html}");
     }
 
     #[test]

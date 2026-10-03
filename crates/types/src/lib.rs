@@ -56,7 +56,7 @@ pub use share::{
     SharedTripSummary,
 };
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};
-pub use stats_trips::{StatsTrip, StatsTrips};
+pub use stats_trips::{StatsTrip, StatsTrips, TagSummaries, TagTrips};
 pub use tag::{normalize_tag_name, Tag};
 pub use trip_detail::TripDetail;
 pub use trip_kind::TripKind;

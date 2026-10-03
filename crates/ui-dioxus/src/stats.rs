@@ -14,12 +14,12 @@ use crate::activity_color::{self, Swatch};
 use crate::api::{self, ApiClient};
 use crate::interop;
 
-mod figures;
+pub(crate) mod figures;
 mod tables;
 mod view;
-mod year_colors;
+pub(crate) mod year_colors;
 
-pub use view::{Measure, StatsView};
+pub use view::{activity_order, Measure, StatsView};
 
 use figures::{Running, MONTHS};
 use tables::{RecordsTable, TotalsTable};

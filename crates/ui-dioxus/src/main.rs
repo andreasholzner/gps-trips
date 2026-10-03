@@ -34,6 +34,7 @@ mod share;
 mod shared;
 mod shares;
 mod stats;
+mod summary;
 #[cfg(test)]
 mod test_support;
 mod track;
@@ -53,6 +54,7 @@ use menu::{AppShell, SignOut};
 use shared::{Shared, SharedTripDetail};
 use shares::Shares;
 use stats::{Statistics, StatsView};
+use summary::{Summary, SummaryView};
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -65,6 +67,8 @@ const APP_CSS: Asset = asset!("/assets/app.css");
 const DETAIL_CSS: Asset = asset!("/assets/detail.css");
 /// The statistics screen's own (US-77), on the same terms.
 const STATS_CSS: Asset = asset!("/assets/stats.css");
+/// The Summary screen's own (US-78), on the same terms.
+const SUMMARY_CSS: Asset = asset!("/assets/summary.css");
 
 /// Leaflet and OSM raster tiles, kept from ADR-0005 and vendored rather than
 /// fetched from a CDN (US-10). Bundled with `asset!` so it ships inside the
@@ -113,6 +117,10 @@ enum Route {
     /// The owner's shares, and stopping one (US-69).
     #[route("/shares")]
     Shares {},
+    /// What the trips under one tag or several add up to (US-78). The
+    /// chosen tags live in the query string, as the list's filters do.
+    #[route("/summary?:..view")]
+    Summary { view: SummaryView },
     /// What the owner did per activity and over the years (US-77). The
     /// controls live in the query string, as the list's filters do.
     #[route("/stats?:..view")]
@@ -244,6 +252,7 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: APP_CSS }
         document::Link { rel: "stylesheet", href: DETAIL_CSS }
         document::Link { rel: "stylesheet", href: STATS_CSS }
+        document::Link { rel: "stylesheet", href: SUMMARY_CSS }
         // Injected asynchronously, so anything using `L` waits for it
         // (interop.rs) rather than assuming load order.
         document::Link { rel: "stylesheet", href: LEAFLET_CSS }
@@ -429,6 +438,18 @@ mod route_tests {
         let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
         let Route::Statistics { view: back } = parsed else {
             panic!("a statistics URL must parse back to the screen; url was {url:?}")
+        };
+        assert_eq!(back, view);
+    }
+
+    #[test]
+    fn us78_a_summary_url_round_trips_its_tags() {
+        let view = SummaryView::of("alps").with("norway");
+        let url = Route::Summary { view: view.clone() }.to_string();
+
+        let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+        let Route::Summary { view: back } = parsed else {
+            panic!("a summary URL must parse back to the screen; url was {url:?}")
         };
         assert_eq!(back, view);
     }
