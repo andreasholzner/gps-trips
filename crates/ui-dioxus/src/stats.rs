@@ -10,13 +10,14 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, StatsTrips};
 
-use crate::activity_color;
+use crate::activity_color::{self, Swatch};
 use crate::api::{self, ApiClient};
 use crate::interop;
 
 mod figures;
 mod tables;
 mod view;
+mod year_colors;
 
 pub use view::{Measure, StatsView};
 
@@ -50,25 +51,31 @@ pub fn Statistics(#[props(default)] view: StatsView) -> Element {
 #[component]
 fn StatsBody(stats: StatsTrips, view: StatsView) -> Element {
     let current = view.clone();
-    let everything = figures::dated(&stats.trips, None);
+    let everything = figures::dated(&stats.trips, &[]);
     if everything.is_empty() {
         return rsx! { p { "No recorded trips with dates yet — the statistics count those." } };
     }
     let years = figures::years(&everything);
     let activities = figures::activities(&everything);
-    let trips = figures::dated(&stats.trips, current.activity);
+    let trips = figures::dated(&stats.trips, &current.activities);
     let totals = figures::totals(&trips, &current);
     let records = figures::records(&trips, &current);
     let running = figures::parse_date(&stats.today)
         .map(|today| figures::running(&trips, current.measure, current.year, today));
-    let color = current.activity.map_or(ACCENT, activity_color::color);
+    let color = current.single().map_or(ACCENT, activity_color::color);
+    // What the foot of the totals and the first row of the records add up.
+    let together = if current.activities.is_empty() {
+        "All activities"
+    } else {
+        "Chosen activities"
+    };
     let measure = current.measure;
     let totals_heading = match current.year {
         Some(year) => format!("{} per month in {year}", measure.label()),
         None => format!("{} per year", measure.label()),
     };
     let bars = current
-        .activity
+        .single()
         .and(totals.rows.first())
         .map(|row| row.values.clone());
 
@@ -82,7 +89,7 @@ fn StatsBody(stats: StatsTrips, view: StatsView) -> Element {
             if let Some(values) = bars {
                 BarsChart { labels: totals.columns.clone(), values, color, label: measure.axis_label() }
             }
-            TotalsTable { totals, measure }
+            TotalsTable { totals, measure, together }
         }
         if let Some(running) = running {
             section { class: "stats-section",
@@ -92,7 +99,7 @@ fn StatsBody(stats: StatsTrips, view: StatsView) -> Element {
         }
         section { class: "stats-section",
             h2 { "Records" }
-            RecordsTable { rows: records }
+            RecordsTable { rows: records, together }
         }
     }
 }
@@ -115,7 +122,7 @@ fn show(view: StatsView) {
 #[component]
 fn Controls(view: StatsView, years: Vec<i32>, activities: Vec<ActivityType>) -> Element {
     let year = view.year.map_or_else(String::new, |year| year.to_string());
-    let (for_year, for_measure, for_activity) = (view.clone(), view.clone(), view.clone());
+    let (for_year, for_measure) = (view.clone(), view.clone());
     rsx! {
         div { class: "stats-controls",
             label {
@@ -158,29 +165,90 @@ fn Controls(view: StatsView, years: Vec<i32>, activities: Vec<ActivityType>) -> 
                     }
                 }
             }
-            label {
-                "Activity "
-                select {
-                    id: "stats-activity",
-                    value: view.activity.map_or("", |activity| activity.as_str()),
-                    onchange: move |event| {
-                        show(StatsView {
-                            activity: event.value().parse().ok(),
-                            ..for_activity.clone()
-                        });
-                    },
-                    option { value: "", selected: view.activity.is_none(), "All activities" }
-                    for activity in activities {
-                        option {
-                            key: "{activity}",
-                            value: activity.as_str(),
-                            selected: view.activity == Some(activity),
-                            "{activity.label()}"
+            ActivityPicker { view: view.clone(), activities }
+        }
+    }
+}
+
+/// The activities, as a dropdown of checkboxes: none ticked is all of them,
+/// one ticked draws its bars, several are compared in the table. A native
+/// `select multiple` is a list box, not a dropdown, and holds a phone's
+/// whole screen.
+///
+/// Open/closed is state, and a backdrop behind the open list closes it on a
+/// click outside, as the header menu does (US-60). Each tick navigates to
+/// the new view; the list stays open for the next one.
+#[component]
+fn ActivityPicker(view: StatsView, activities: Vec<ActivityType>) -> Element {
+    let mut open = use_signal(|| false);
+    let summary = picked(&view.activities);
+    let all = view.clone();
+    rsx! {
+        div {
+            class: "stats-activities",
+            onkeydown: move |event| {
+                if event.key() == Key::Escape {
+                    open.set(false);
+                }
+            },
+            span { class: "stats-control-label", "Activity" }
+            button {
+                r#type: "button",
+                id: "stats-activity",
+                class: "stats-activity-toggle",
+                aria_haspopup: "true",
+                aria_expanded: "{open()}",
+                aria_controls: "stats-activity-list",
+                onclick: move |_| open.toggle(),
+                "{summary}"
+            }
+            if open() {
+                div { class: "stats-backdrop", onclick: move |_| open.set(false) }
+                fieldset { id: "stats-activity-list", class: "stats-activity-list",
+                    label {
+                        input {
+                            r#type: "checkbox",
+                            checked: view.activities.is_empty(),
+                            onchange: move |_| {
+                                show(StatsView { activities: Vec::new(), ..all.clone() });
+                            },
                         }
+                        "All activities"
+                    }
+                    for activity in activities {
+                        ActivityChoice { key: "{activity}", view: view.clone(), activity }
                     }
                 }
             }
         }
+    }
+}
+
+/// One activity's checkbox, with its map color.
+#[component]
+fn ActivityChoice(view: StatsView, activity: ActivityType) -> Element {
+    let checked = view.activities.contains(&activity);
+    rsx! {
+        label {
+            input {
+                r#type: "checkbox",
+                value: activity.as_str(),
+                checked,
+                onchange: move |event: FormEvent| show(view.toggled(activity, event.checked())),
+            }
+            Swatch { color: activity_color::color(activity) }
+            " {activity.label()}"
+        }
+    }
+}
+
+/// What the closed picker says is chosen.
+fn picked(activities: &[ActivityType]) -> String {
+    match activities {
+        [] => "All activities".to_string(),
+        [one] => one.label().to_string(),
+        [first, second] => format!("{}, {}", first.label(), second.label()),
+        several => format!("{} activities", several.len()),
     }
 }
 
@@ -239,7 +307,13 @@ fn RunningChart(
 ) -> Element {
     let mut handle = use_signal(|| None::<document::Eval>);
     use_effect(use_reactive!(|years, series, highlighted, color, label| {
+        let newest = years.iter().copied().max().unwrap_or(highlighted);
+        let colors = years
+            .iter()
+            .map(|year| year_colors::year_color(*year, newest))
+            .collect();
         handle.set(Some(interop::draw_stats_running(interop::RunningView {
+            colors,
             years,
             series,
             highlighted,

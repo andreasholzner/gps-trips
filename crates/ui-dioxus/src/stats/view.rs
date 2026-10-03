@@ -85,15 +85,51 @@ impl std::str::FromStr for Measure {
     }
 }
 
-/// The three controls' choices. `None` is "all years" and "all activities".
+/// Every activity in the order the controls and tables list them: the
+/// import form's, with the unspecified last.
+pub fn activity_order() -> impl Iterator<Item = ActivityType> {
+    ActivityType::SELECTABLE
+        .into_iter()
+        .chain([ActivityType::Unknown])
+}
+
+/// The three controls' choices. `None` is "all years"; no activities are
+/// all of them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StatsView {
     pub year: Option<i32>,
     pub measure: Measure,
-    pub activity: Option<ActivityType>,
+    /// The chosen activities, in the order the control lists them.
+    pub activities: Vec<ActivityType>,
 }
 
 impl StatsView {
+    /// The activity, when exactly one is chosen — what the bars are drawn for.
+    pub fn single(&self) -> Option<ActivityType> {
+        match self.activities[..] {
+            [activity] => Some(activity),
+            _ => None,
+        }
+    }
+
+    /// The view with `activity` ticked or unticked, keeping the control's
+    /// order so the URL does not depend on the order of the clicks.
+    pub fn toggled(&self, activity: ActivityType, on: bool) -> Self {
+        let activities = activity_order()
+            .filter(|candidate| {
+                if *candidate == activity {
+                    on
+                } else {
+                    self.activities.contains(candidate)
+                }
+            })
+            .collect();
+        Self {
+            activities,
+            ..self.clone()
+        }
+    }
+
     /// The query string, without a leading `?`; a choice left at its
     /// default is left out.
     pub fn to_query(&self) -> String {
@@ -104,8 +140,9 @@ impl StatsView {
         if self.measure != Measure::default() {
             params.push(format!("measure={}", self.measure.as_str()));
         }
-        if let Some(activity) = self.activity {
-            params.push(format!("activity={}", activity.as_str()));
+        if !self.activities.is_empty() {
+            let activities: Vec<&str> = self.activities.iter().map(|a| a.as_str()).collect();
+            params.push(format!("activity={}", activities.join(",")));
         }
         params.join("&")
     }
@@ -118,7 +155,12 @@ impl StatsView {
             match name {
                 "year" => view.year = value.parse().ok(),
                 "measure" => view.measure = value.parse().unwrap_or_default(),
-                "activity" => view.activity = value.parse().ok(),
+                "activity" => {
+                    view.activities = value
+                        .split(',')
+                        .filter_map(|activity| activity.parse().ok())
+                        .collect()
+                }
                 _ => {}
             }
         }
@@ -151,12 +193,12 @@ mod tests {
         let view = StatsView {
             year: Some(2024),
             measure: Measure::DaysOut,
-            activity: Some(ActivityType::SkiTouring),
+            activities: vec![ActivityType::Hiking, ActivityType::SkiTouring],
         };
 
         assert_eq!(
             view.to_query(),
-            "year=2024&measure=days_out&activity=ski_touring"
+            "year=2024&measure=days_out&activity=hiking,ski_touring"
         );
         assert_eq!(StatsView::from_query(&view.to_query()), view);
     }
@@ -173,6 +215,21 @@ mod tests {
             StatsView::from_query("year=soon&measure=speed&activity=flying&x"),
             StatsView::default()
         );
+    }
+
+    #[test]
+    fn us77_ticking_keeps_the_controls_order_and_unticking_removes() {
+        let view = StatsView::default()
+            .toggled(ActivityType::Kayaking, true)
+            .toggled(ActivityType::Hiking, true);
+
+        assert_eq!(
+            view.activities,
+            [ActivityType::Hiking, ActivityType::Kayaking]
+        );
+        assert_eq!(view.single(), None);
+        let view = view.toggled(ActivityType::Hiking, false);
+        assert_eq!(view.single(), Some(ActivityType::Kayaking));
     }
 
     #[test]

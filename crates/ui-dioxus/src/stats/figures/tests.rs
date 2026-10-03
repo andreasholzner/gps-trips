@@ -30,18 +30,18 @@ fn archive() -> Vec<StatsTrip> {
     ]
 }
 
-fn view(year: Option<i32>, measure: Measure, activity: Option<ActivityType>) -> StatsView {
+fn view(year: Option<i32>, measure: Measure, activities: &[ActivityType]) -> StatsView {
     StatsView {
         year,
         measure,
-        activity,
+        activities: activities.to_vec(),
     }
 }
 
 #[test]
 fn us77_the_controls_offer_the_years_and_activities_there_are() {
     let trips = archive();
-    let dated = dated(&trips, None);
+    let dated = dated(&trips, &[]);
 
     assert_eq!(years(&dated), [2025, 2024]);
     assert_eq!(activities(&dated), [Hiking, Cycling, Kayaking]);
@@ -51,7 +51,7 @@ fn us77_the_controls_offer_the_years_and_activities_there_are() {
 fn us77_all_years_give_a_column_per_year_and_a_row_per_activity_with_its_share() {
     let trips = archive();
 
-    let totals = totals(&dated(&trips, None), &view(None, Measure::Distance, None));
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::Distance, &[]));
 
     assert_eq!(totals.columns, ["2024", "2025"]);
     let hiking = &totals.rows[0];
@@ -70,10 +70,7 @@ fn us77_all_years_give_a_column_per_year_and_a_row_per_activity_with_its_share()
 fn us77_one_year_gives_a_column_per_month_and_only_that_years_activities() {
     let trips = archive();
 
-    let totals = totals(
-        &dated(&trips, None),
-        &view(Some(2024), Measure::Trips, None),
-    );
+    let totals = totals(&dated(&trips, &[]), &view(Some(2024), Measure::Trips, &[]));
 
     assert_eq!(totals.columns.len(), 12);
     assert_eq!(totals.columns[0], "Jan");
@@ -89,9 +86,9 @@ fn us77_one_year_gives_a_column_per_month_and_only_that_years_activities() {
 #[test]
 fn us77_a_chosen_activity_has_its_row_alone_and_no_share() {
     let trips = archive();
-    let view = view(None, Measure::Ascent, Some(Hiking));
+    let view = view(None, Measure::Ascent, &[Hiking]);
 
-    let totals = totals(&dated(&trips, view.activity), &view);
+    let totals = totals(&dated(&trips, &view.activities), &view);
 
     assert_eq!(totals.rows.len(), 1);
     assert_eq!(totals.rows[0].values, [6000.0, 0.0]);
@@ -100,10 +97,33 @@ fn us77_a_chosen_activity_has_its_row_alone_and_no_share() {
 }
 
 #[test]
+fn us77_several_chosen_activities_get_a_row_each_their_shares_and_their_sum() {
+    let trips = archive();
+    let view = view(None, Measure::Distance, &[Hiking, Kayaking]);
+    let dated = dated(&trips, &view.activities);
+
+    let totals = totals(&dated, &view);
+
+    let rows: Vec<_> = totals.rows.iter().map(|row| row.activity).collect();
+    assert_eq!(rows, [Some(Hiking), Some(Kayaking)]);
+    let sum = totals.sum.expect("a sum of the chosen activities");
+    assert_eq!(sum.total, 68.0);
+    assert_eq!(totals.rows[1].share, Some(8.0 / 68.0));
+    let records = records(&dated, &view);
+    let rows: Vec<_> = records.iter().map(|row| row.activity).collect();
+    assert_eq!(rows, [None, Some(Hiking), Some(Kayaking)]);
+    assert_eq!(
+        records[0].longest.as_ref().unwrap().id,
+        3,
+        "the ride is not chosen"
+    );
+}
+
+#[test]
 fn us77_days_out_are_distinct_dates_covered_wherever_they_fall() {
     let trips = archive();
 
-    let totals = totals(&dated(&trips, None), &view(None, Measure::DaysOut, None));
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::DaysOut, &[]));
 
     // 2024: 10 Mar (two trips, one day), 1–3 Jul, 31 Dec. 2025: 1 Jan, 5 May.
     let sum = totals.sum.unwrap();
@@ -116,7 +136,7 @@ fn us77_days_out_are_distinct_dates_covered_wherever_they_fall() {
 fn us77_moving_time_adds_up_in_hours() {
     let trips = vec![trip(1, Hiking, "2024-03-10", "2024-03-10", 4.0)];
 
-    let totals = totals(&dated(&trips, None), &view(None, Measure::MovingTime, None));
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::MovingTime, &[]));
 
     assert_eq!(totals.sum.unwrap().total, 1.0);
 }
@@ -127,17 +147,17 @@ fn us77_a_trip_without_moving_time_or_ascent_adds_nothing_to_them() {
     bare.ascent_m = None;
     bare.moving_secs = None;
     let trips = vec![bare];
-    let dated = dated(&trips, None);
+    let dated = dated(&trips, &[]);
 
     assert_eq!(
-        totals(&dated, &view(None, Measure::Ascent, None))
+        totals(&dated, &view(None, Measure::Ascent, &[]))
             .sum
             .unwrap()
             .total,
         0.0
     );
     assert_eq!(
-        totals(&dated, &view(None, Measure::MovingTime, None))
+        totals(&dated, &view(None, Measure::MovingTime, &[]))
             .sum
             .unwrap()
             .total,
@@ -149,7 +169,7 @@ fn us77_a_trip_without_moving_time_or_ascent_adds_nothing_to_them() {
 fn us77_one_trips_days_are_capped_at_a_year() {
     let trips = vec![trip(1, Hiking, "2024-01-01", "2030-01-01", 4.0)];
 
-    let totals = totals(&dated(&trips, None), &view(None, Measure::DaysOut, None));
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::DaysOut, &[]));
 
     assert_eq!(totals.sum.unwrap().total, 366.0);
 }
@@ -163,7 +183,7 @@ fn us77_the_running_total_compares_this_year_with_last_at_the_same_date() {
     ];
     let today = date!(2025 - 06 - 01);
 
-    let running = running(&dated(&trips, None), Measure::Distance, None, today);
+    let running = running(&dated(&trips, &[]), Measure::Distance, None, today);
 
     assert_eq!(running.highlighted, 2025);
     assert_eq!(running.this_year, 7.0);
@@ -187,7 +207,7 @@ fn us77_the_running_total_highlights_the_chosen_year_and_counts_days_out() {
     let trips = archive();
 
     let running = running(
-        &dated(&trips, None),
+        &dated(&trips, &[]),
         Measure::DaysOut,
         Some(2024),
         date!(2025 - 06 - 01),
@@ -203,7 +223,7 @@ fn us77_on_29_february_last_year_is_read_at_28_february() {
     let trips = vec![trip(1, Hiking, "2023-02-28", "2023-02-28", 3.0)];
 
     let running = running(
-        &dated(&trips, None),
+        &dated(&trips, &[]),
         Measure::Distance,
         None,
         date!(2024 - 02 - 29),
@@ -235,7 +255,7 @@ fn us77_every_day_of_a_leap_year_has_a_name() {
 fn us77_records_come_overall_and_per_activity() {
     let trips = archive();
 
-    let records = records(&dated(&trips, None), &view(None, Measure::Distance, None));
+    let records = records(&dated(&trips, &[]), &view(None, Measure::Distance, &[]));
 
     let activities: Vec<_> = records.iter().map(|row| row.activity).collect();
     assert_eq!(
@@ -262,9 +282,9 @@ fn us77_records_come_overall_and_per_activity() {
 #[test]
 fn us77_records_keep_to_the_chosen_year_and_activity() {
     let trips = archive();
-    let view = view(Some(2025), Measure::Distance, Some(Kayaking));
+    let view = view(Some(2025), Measure::Distance, &[Kayaking]);
 
-    let records = records(&dated(&trips, view.activity), &view);
+    let records = records(&dated(&trips, &view.activities), &view);
 
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].activity, Some(Kayaking));
@@ -276,8 +296,8 @@ fn us77_a_period_without_trips_has_no_records() {
     let trips = archive();
 
     let records = records(
-        &dated(&trips, None),
-        &view(Some(2019), Measure::Distance, None),
+        &dated(&trips, &[]),
+        &view(Some(2019), Measure::Distance, &[]),
     );
 
     assert_eq!(records.len(), 1);

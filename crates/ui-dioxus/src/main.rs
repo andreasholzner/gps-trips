@@ -419,7 +419,10 @@ mod route_tests {
         let view = StatsView {
             year: Some(2024),
             measure: stats::Measure::DaysOut,
-            activity: Some(trip_archive_types::ActivityType::Kayaking),
+            activities: vec![
+                trip_archive_types::ActivityType::Hiking,
+                trip_archive_types::ActivityType::Kayaking,
+            ],
         };
         let url = Route::Statistics { view: view.clone() }.to_string();
 

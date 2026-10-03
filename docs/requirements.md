@@ -1201,21 +1201,24 @@ trips only, since a planned trip (US-32) was never done. A trip without timestam
 nowhere, and the screen says how many were left out.
 
 **Controls:** the period (all years, or one year), the one measure shown at a time (distance,
-ascent, moving time, trips, days out) and the activity (all, or one). They live in the URL, as the
-trip list's filters do (US-52), so a view can be bookmarked and survives a reload.
+ascent, moving time, trips, days out) and the activities (all, or any of them, from a dropdown of
+checkboxes). They live in the URL, as the trip list's filters do (US-52), so a view can be bookmarked
+and survives a reload.
 
-**Totals:** the chosen measure per year (all years) or per month (one year). With all activities,
-a table with a row per activity, a column per year or month, a total, and each activity's share of
-the total; all activities together at its foot. With one activity, a bar chart on that activity's
-own scale, so a hike is not dwarfed by a ride.
+**Totals:** the chosen measure per year (all years) or per month (one year). With all or several
+activities, a table with a row per activity, a column per year or month, a total, and each
+activity's share of the total; those activities together at its foot. The activity column stays in
+view while the columns scroll. With one activity, a bar chart on that activity's own scale, so a
+hike is not dwarfed by a ride.
 
-**Running total:** the chosen measure added up day by day through the year, a line per year, the
-chosen year (or else the current one) highlighted; above it, this year so far against last year by
-the same date.
+**Running total:** the chosen measure added up day by day through the year, a line per year in a
+color of its own, the chosen year (or else the current one) highlighted by a wider line. Pointing
+at a line or its legend entry singles that year out. Above it, this year so far against last year
+by the same date.
 
 **Records:** the longest trip, the most ascent, and the longest day — the most distance started on
-one local date — for the chosen period, overall and per activity, or for the chosen activity alone.
-Each links to its trips.
+one local date — for the chosen period, overall and per chosen activity, or for the one chosen
+activity alone. Each links to its trips.
 
 **Definitions:** a trip counts in the year and month of its local start date. Days out are the
 distinct local dates the trips cover, start to end, in each trip's timezone. Moving time is the time

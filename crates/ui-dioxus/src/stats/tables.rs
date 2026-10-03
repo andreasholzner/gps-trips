@@ -12,14 +12,11 @@ use crate::Route;
 /// What a cell with nothing in it shows — the dash the rest of the app uses.
 const NOTHING: &str = "—";
 
-/// The sum row's name.
-const ALL_ACTIVITIES: &str = "All activities";
-
 /// The totals: a row per activity, a column per year or month, the row's
 /// total and, with all activities, its share; all activities together at
-/// the foot.
+/// the foot, named `together`.
 #[component]
-pub fn TotalsTable(totals: Totals, measure: Measure) -> Element {
+pub fn TotalsTable(totals: Totals, measure: Measure, together: &'static str) -> Element {
     let shares = totals.sum.is_some();
     rsx! {
         div { class: "table-scroll",
@@ -38,12 +35,12 @@ pub fn TotalsTable(totals: Totals, measure: Measure) -> Element {
                 }
                 tbody {
                     for row in totals.rows.iter() {
-                        TotalsLine { row: row.clone(), measure, shares }
+                        TotalsLine { row: row.clone(), measure, shares, together }
                     }
                 }
                 if let Some(sum) = totals.sum.clone() {
                     tfoot {
-                        TotalsLine { row: sum, measure, shares }
+                        TotalsLine { row: sum, measure, shares, together }
                     }
                 }
             }
@@ -52,13 +49,13 @@ pub fn TotalsTable(totals: Totals, measure: Measure) -> Element {
 }
 
 #[component]
-fn TotalsLine(row: TotalsRow, measure: Measure, shares: bool) -> Element {
+fn TotalsLine(row: TotalsRow, measure: Measure, shares: bool, together: &'static str) -> Element {
     let share = row
         .share
         .map_or_else(String::new, |share| format!("{:.0} %", share * 100.0));
     rsx! {
         tr {
-            th { scope: "row", ActivityName { activity: row.activity } }
+            th { scope: "row", ActivityName { activity: row.activity, together } }
             for value in row.values.iter() {
                 td { class: "num", "{cell(measure, *value)}" }
             }
@@ -79,22 +76,24 @@ fn cell(measure: Measure, value: f64) -> String {
     }
 }
 
-/// An activity with its map color, or the sum row's name.
+/// An activity with its map color, or what the activities together are
+/// called.
 #[component]
-fn ActivityName(activity: Option<ActivityType>) -> Element {
+fn ActivityName(activity: Option<ActivityType>, together: &'static str) -> Element {
     match activity {
         Some(activity) => rsx! {
             Swatch { color: activity_color::color(activity) }
             " {activity.label()}"
         },
-        None => rsx! { "{ALL_ACTIVITIES}" },
+        None => rsx! { "{together}" },
     }
 }
 
 /// The records: longest trip, most ascent and longest day, each linking to
-/// its trips; overall and per activity, or for the chosen activity alone.
+/// its trips; overall (`together`) and per activity, or for the single
+/// chosen activity alone.
 #[component]
-pub fn RecordsTable(rows: Vec<RecordRow>) -> Element {
+pub fn RecordsTable(rows: Vec<RecordRow>, together: &'static str) -> Element {
     rsx! {
         div { class: "table-scroll",
             table { id: "stats-records", class: "stats-table",
@@ -109,7 +108,7 @@ pub fn RecordsTable(rows: Vec<RecordRow>) -> Element {
                 tbody {
                     for row in rows {
                         tr {
-                            th { scope: "row", ActivityName { activity: row.activity } }
+                            th { scope: "row", ActivityName { activity: row.activity, together } }
                             td { TripRecordCell { record: row.longest, measure: Measure::Distance } }
                             td { TripRecordCell { record: row.most_ascent, measure: Measure::Ascent } }
                             td { DayRecordCell { record: row.longest_day } }
@@ -180,7 +179,7 @@ mod tests {
         };
 
         let html = render(move || {
-            rsx! { TotalsTable { totals: totals.clone(), measure: Measure::Distance } }
+            rsx! { TotalsTable { totals: totals.clone(), measure: Measure::Distance, together: "All activities" } }
         });
 
         assert!(html.contains(r#"id="stats-totals""#), "{html}");
@@ -207,7 +206,7 @@ mod tests {
         };
 
         let html = render(move || {
-            rsx! { TotalsTable { totals: totals.clone(), measure: Measure::Trips } }
+            rsx! { TotalsTable { totals: totals.clone(), measure: Measure::Trips, together: "All activities" } }
         });
 
         assert!(!html.contains("Share"), "{html}");
@@ -231,7 +230,9 @@ mod tests {
             }),
         }];
 
-        let html = render(move || rsx! { RecordsTable { rows: rows.clone() } });
+        let html = render(
+            move || rsx! { RecordsTable { rows: rows.clone(), together: "Chosen activities" } },
+        );
 
         assert!(html.contains("123 km"), "{html}");
         assert!(html.contains(r#"href="/trips/7""#), "{html}");
@@ -240,5 +241,6 @@ mod tests {
         assert!(html.contains("2024-03-10"), "{html}");
         assert!(html.contains("Evening Walk"), "{html}");
         assert!(html.contains(NOTHING), "no ascent record: {html}");
+        assert!(html.contains("Chosen activities"), "{html}");
     }
 }

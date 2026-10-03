@@ -79,7 +79,7 @@ async fn us77_a_chosen_activity_and_year_narrow_every_figure() {
                     view: StatsView {
                         year: Some(2024),
                         measure: Measure::MovingTime,
-                        activity: Some(ActivityType::Hiking),
+                        activities: vec![ActivityType::Hiking],
                     },
                 }
             }
@@ -110,4 +110,57 @@ async fn us77_an_archive_without_recorded_trips_says_so() {
     .await;
 
     assert!(html.contains("No recorded trips with dates yet"), "{html}");
+}
+
+#[tokio::test]
+async fn us77_several_chosen_activities_are_compared_in_the_table_without_bars() {
+    let (archive, _dir) = serve_test_archive().await;
+    import_sample(
+        &archive,
+        &[("name", "Oslo Hills Walk"), ("activity_type", "hiking")],
+    )
+    .await;
+    import_sample(
+        &archive,
+        &[("name", "Oslo Ride"), ("activity_type", "cycling")],
+    )
+    .await;
+    import_sample(
+        &archive,
+        &[("name", "Oslo Paddle"), ("activity_type", "kayaking")],
+    )
+    .await;
+
+    let html = render_against_archive(
+        &archive,
+        || {
+            rsx! {
+                Statistics {
+                    view: StatsView {
+                        activities: vec![ActivityType::Hiking, ActivityType::Kayaking],
+                        ..StatsView::default()
+                    },
+                }
+            }
+        },
+        |html| html.contains("stats-records"),
+    )
+    .await;
+
+    // The closed picker names what is chosen.
+    assert!(html.contains("Hiking, Kayaking"), "{html}");
+    assert!(!html.contains(r#"id="stats-bars""#), "{html}");
+    assert!(html.contains("Chosen activities"), "{html}");
+    assert!(html.contains("50 %"), "{html}");
+    assert!(!html.contains("Oslo Ride"), "{html}");
+}
+
+#[test]
+fn us77_the_closed_picker_says_what_is_chosen() {
+    use ActivityType::{Cycling, Hiking, Kayaking};
+
+    assert_eq!(picked(&[]), "All activities");
+    assert_eq!(picked(&[Hiking]), "Hiking");
+    assert_eq!(picked(&[Hiking, Cycling]), "Hiking, Cycling");
+    assert_eq!(picked(&[Hiking, Cycling, Kayaking]), "3 activities");
 }

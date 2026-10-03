@@ -7,8 +7,71 @@
   gap: 0 1rem;
 }
 
-.stats-controls label {
+.stats-controls label,
+.stats-activities {
   flex: 1 1 12rem;
+}
+
+/* The activity picker: a button that looks like the selects beside it and
+   opens a list of checkboxes over the page. */
+.stats-activities {
+  position: relative;
+  margin-bottom: var(--pico-spacing);
+}
+
+.stats-control-label {
+  display: block;
+  margin-bottom: calc(var(--pico-spacing) * 0.25);
+}
+
+.stats-activity-toggle {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pico-form-element-color);
+  font-weight: normal;
+  background-color: var(--pico-form-element-background-color);
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  padding: var(--pico-form-element-spacing-vertical)
+    calc(var(--pico-form-element-spacing-horizontal) + 1.5rem)
+    var(--pico-form-element-spacing-vertical) var(--pico-form-element-spacing-horizontal);
+  background-image: var(--pico-icon-chevron);
+  background-position: center right 0.75rem;
+  background-size: 1rem auto;
+  background-repeat: no-repeat;
+}
+
+/* Behind the open list, catching the click that closes it. */
+.stats-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+
+.stats-activity-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  max-height: 60vh;
+  margin: 0.25rem 0 0;
+  padding: 0.5rem 0.75rem;
+  overflow-y: auto;
+  background-color: var(--pico-background-color);
+  border: var(--pico-border-width) solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
+}
+
+.stats-activity-list label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
 }
 
 .stats-section {
@@ -35,6 +98,28 @@
 .stats-table .record-value {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The activity column stays in view while the years scroll past it on a
+   narrow screen. It needs a background of its own, or the numbers show
+   through it, and a hairline marks where they slide under. */
+.stats-table th[scope="row"],
+.stats-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--pico-background-color);
+  box-shadow: inset -1px 0 var(--pico-muted-border-color);
+}
+
+/* The year the pointer is on, in the running chart's legend (uPlot fades
+   the other lines; the script marks the entry). */
+.stats-chart .u-legend .u-series.u-focused {
+  font-weight: bold;
+}
+
+.stats-chart .u-legend:has(.u-focused) .u-series:not(.u-focused, :first-child) {
+  opacity: 0.5;
 }
 
 /* uPlot sizes its own canvas; the container only needs room above it and

@@ -88,15 +88,20 @@ const BARS_SCRIPT: &str = r##"
     );
 "##;
 
-/// The lines: one per year against the day of the year, the highlighted
-/// year in the accent colour and the others muted. The legend names the
-/// years and reads their totals at the cursor, and its entries switch a
-/// year's line off and on.
+/// The lines: one per year against the day of the year. The highlighted
+/// year is drawn wider in the accent colour; each other year in the colour
+/// Rust gave it, in the scheme's own step, or muted when it has none. The
+/// legend names the years and reads their totals at the cursor.
+///
+/// Pointing near a line, or at its legend entry, focuses that year: the
+/// other lines fade (uPlot's `focus`) and its legend entry is marked
+/// `u-focused`, which `stats.css` emphasises.
 const RUNNING_SCRIPT: &str = r##"
     const CONTAINER = "stats-running";
     PRELUDE
     if (!view.years.length) return;
 
+    const dark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
     const xs = view.day_labels.map((_, i) => i);
     widgets[CONTAINER] = new uPlot(
       {
@@ -106,13 +111,30 @@ const RUNNING_SCRIPT: &str = r##"
           x: { time: false },
           y: { range: (u, min, max) => [0, max > 0 ? max : 1] },
         },
+        focus: { alpha: 0.25 },
+        cursor: { focus: { prox: 24 } },
+        hooks: {
+          setSeries: [
+            // Fired for a legend click's show/hide too, which is no focus.
+            (u, index, opts) => {
+              if (opts?.focus == null) return;
+              const focused = opts.focus ? index : null;
+              u.root.querySelectorAll(".u-legend .u-series").forEach((row, i) => {
+                row.classList.toggle("u-focused", focused != null && i === focused);
+              });
+            },
+          ],
+        },
         series: [
           { label: "Date", value: (u, i) => (i == null ? "–" : view.day_labels[i]) },
-          ...view.years.map((year) =>
-            year === view.highlighted
-              ? { label: String(year), stroke: view.color, width: 2.5 }
-              : { label: String(year), stroke: muted, width: 1 },
-          ),
+          ...view.years.map((year, i) => {
+            const label = String(year);
+            if (year === view.highlighted) return { label, stroke: view.color, width: 2.5 };
+            const pair = view.colors[i];
+            return pair
+              ? { label, stroke: () => (dark() ? pair[1] : pair[0]), width: 1.5 }
+              : { label, stroke: muted, width: 1 };
+          }),
         ],
         axes: [
           {
@@ -164,7 +186,10 @@ pub struct RunningView {
     /// Per year, a value per day of the year; `null` where the line stops.
     pub series: Vec<Vec<Option<f64>>>,
     pub highlighted: i32,
+    /// The highlighted year's color.
     pub color: &'static str,
+    /// Each year's light and dark color; `None` draws it muted.
+    pub colors: Vec<Option<(&'static str, &'static str)>>,
     pub label: &'static str,
     /// The name of each day of the year, for the cursor's readout.
     pub day_labels: Vec<String>,

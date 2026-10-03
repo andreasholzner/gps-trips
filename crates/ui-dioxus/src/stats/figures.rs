@@ -61,13 +61,13 @@ pub fn parse_date(date: &str) -> Option<Date> {
     Date::parse(date, format).ok()
 }
 
-/// The trips whose dates can be read, narrowed to `activity` when one is
-/// chosen. A trip that ends before it starts is taken to end the day it
+/// The trips whose dates can be read, narrowed to `activities` unless none
+/// are chosen. A trip that ends before it starts is taken to end the day it
 /// started.
-pub fn dated(trips: &[StatsTrip], activity: Option<ActivityType>) -> Vec<Dated<'_>> {
+pub fn dated<'a>(trips: &'a [StatsTrip], activities: &[ActivityType]) -> Vec<Dated<'a>> {
     trips
         .iter()
-        .filter(|trip| activity.is_none_or(|activity| trip.activity_type == activity))
+        .filter(|trip| activities.is_empty() || activities.contains(&trip.activity_type))
         .filter_map(|trip| {
             let start = parse_date(&trip.start_date)?;
             let end = parse_date(&trip.end_date).unwrap_or(start).max(start);
@@ -86,9 +86,7 @@ pub fn years(trips: &[Dated]) -> Vec<i32> {
 /// The activities present, in the order the import form lists them, with
 /// the unspecified last.
 pub fn activities(trips: &[Dated]) -> Vec<ActivityType> {
-    ActivityType::SELECTABLE
-        .into_iter()
-        .chain([ActivityType::Unknown])
+    super::view::activity_order()
         .filter(|activity| {
             trips
                 .iter()
@@ -103,10 +101,11 @@ pub fn activities(trips: &[Dated]) -> Vec<ActivityType> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Totals {
     pub columns: Vec<String>,
-    /// One per activity, or the chosen activity's alone.
+    /// One per activity, or the single chosen activity's alone.
     pub rows: Vec<TotalsRow>,
-    /// All activities together, under the per-activity rows; `None` when one
-    /// activity is chosen, since it would repeat that activity's row.
+    /// The activities shown together, under the per-activity rows; `None`
+    /// when one activity is chosen, since it would repeat that activity's
+    /// row.
     pub sum: Option<TotalsRow>,
 }
 
@@ -187,7 +186,7 @@ impl Bucketing {
     }
 }
 
-/// The totals table for `view`, from trips already narrowed to its activity.
+/// The totals table for `view`, from trips already narrowed to its activities.
 pub fn totals(trips: &[Dated], view: &StatsView) -> Totals {
     let bucketing = Bucketing::new(trips, view.year);
     let in_period: Vec<Dated> = trips
@@ -210,7 +209,7 @@ pub fn totals(trips: &[Dated], view: &StatsView) -> Totals {
         }
     };
 
-    if let Some(activity) = view.activity {
+    if let Some(activity) = view.single() {
         return Totals {
             columns: bucketing.labels(),
             rows: vec![row(activity)],
@@ -337,8 +336,8 @@ pub fn day_labels() -> Vec<String> {
 
 // ── Records ──────────────────────────────────────────────────────────────────
 
-/// The records of the period: overall and per activity, or the chosen
-/// activity's alone.
+/// The records of the period: overall and per activity, or the single
+/// chosen activity's alone.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecordRow {
     /// `None` on the overall row.
@@ -366,7 +365,7 @@ pub struct DayRecord {
     pub trips: Vec<(i64, String)>,
 }
 
-/// The records for `view`, from trips already narrowed to its activity.
+/// The records for `view`, from trips already narrowed to its activities.
 pub fn records(trips: &[Dated], view: &StatsView) -> Vec<RecordRow> {
     let in_period: Vec<Dated> = trips
         .iter()
@@ -385,7 +384,7 @@ pub fn records(trips: &[Dated], view: &StatsView) -> Vec<RecordRow> {
             longest_day: longest_day(&of),
         }
     };
-    match view.activity {
+    match view.single() {
         Some(activity) => vec![row(Some(activity))],
         None => std::iter::once(None)
             .chain(activities(&in_period).into_iter().map(Some))
