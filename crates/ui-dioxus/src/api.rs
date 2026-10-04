@@ -23,6 +23,7 @@ mod client;
 mod session;
 mod share;
 mod stats;
+mod suggestion;
 mod tags;
 mod tracks;
 
@@ -32,6 +33,7 @@ pub use share::{
     create_share, get_shared_trip, list_shares, share_link, share_overview, stop_share,
 };
 pub use stats::{stats_trips, tag_summaries};
+pub use suggestion::trip_suggestion;
 pub use tags::{create_tag, delete_tag, tag_overview};
 pub use tracks::{list_climbs, list_tracks};
 

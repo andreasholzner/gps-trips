@@ -311,6 +311,34 @@ test("editing the name and activity saves them (US-15)", async ({ page, request 
   expect(trip.activity_type).toBe("cycling");
 });
 
+// US-74: "one click puts it in the field, and nothing is replaced without
+// that click" — a click, which `dioxus-ssr` cannot dispatch. The suite's
+// archive has no place database, so the suggestion is US-12's: the date and
+// the GPX name.
+test("a suggested name goes into the field only when it is used (US-74)", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Unsuggested Trip");
+  await page.goto(`/app/trips/${id}`);
+
+  await page.getByRole("button", { name: "Edit name / activity" }).click();
+  const suggestion = page.locator("#edit-name-suggestion");
+  await expect(suggestion).toContainText("2024-06-01 Oslo Hills Walk");
+  await expect(page.getByLabel("Name")).toHaveValue(/^Unsuggested Trip/);
+
+  await suggestion.getByRole("button", { name: "Use" }).click();
+  await expect(page.getByLabel("Name")).toHaveValue("2024-06-01 Oslo Hills Walk");
+  // What the field already says is not offered again.
+  await expect(suggestion).toHaveCount(0);
+
+  // Using it only fills the field: the trip is renamed by Save, not before.
+  const before = await (await request.get(`/api/trips/${id}`)).json();
+  expect(before.name).toMatch(/^Unsuggested Trip/);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#trip-name")).toHaveText("2024-06-01 Oslo Hills Walk");
+});
+
 // US-33: "using a new tag creates the tag on-demand after confirmation."
 // The confirmation is a real click on a control that only appears after
 // another one.

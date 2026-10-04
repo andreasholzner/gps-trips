@@ -156,6 +156,22 @@ fn the_confirm_step_offers_every_field_the_trip_is_stored_with() {
 }
 
 #[test]
+fn us74_the_confirm_step_credits_the_place_names_sources() {
+    let html = render(|| {
+        rsx! {
+            ConfirmImportStep {
+                staged: a_suggestion("2019-09-07 Rysstad - Kilefjorden"),
+                on_confirm: move |_| {},
+                on_start_over: move |_| {},
+            }
+        }
+    });
+
+    assert!(html.contains("OpenStreetMap contributors"), "{html}");
+    assert!(html.contains("Kartverket"), "{html}");
+}
+
+#[test]
 fn the_confirm_step_starts_on_recorded() {
     // US-31: "defaulting to Recorded".
     let html = render(|| {

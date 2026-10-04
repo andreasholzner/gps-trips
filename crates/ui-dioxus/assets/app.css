@@ -663,3 +663,34 @@ nav.session {
   justify-content: flex-end;
   margin-bottom: 0.5rem;
 }
+
+/* What the archive suggests for a field, under it (US-74): muted, the
+   suggestion itself in the text colour, and a small button to take it. */
+.suggested {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: -0.5rem;
+  font-size: 0.875em;
+  color: var(--pico-muted-color);
+}
+
+.suggested-text {
+  color: var(--pico-color);
+}
+
+.suggested button {
+  width: auto;
+  margin-bottom: 0;
+  padding: 0.125rem 0.625rem;
+}
+
+/* The credits place names carry (US-74): small, muted, under the field. */
+.credits {
+  display: block;
+  margin-top: 0.25rem;
+  margin-bottom: var(--pico-spacing);
+  font-size: 0.75em;
+  color: var(--pico-muted-color);
+}

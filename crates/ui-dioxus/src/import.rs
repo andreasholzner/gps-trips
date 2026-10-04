@@ -20,6 +20,7 @@ use trip_archive_types::{ActivityType, ConfirmImport, StagedImport, TripKind};
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::photos::{upload_in_batches, PartialUpload};
+use crate::suggested::PlaceCredits;
 use crate::Route;
 
 /// Photos per request. Small enough that the count moves often on a big
@@ -411,6 +412,8 @@ fn ConfirmImportStep(
                     value: "{form.read().name}",
                     oninput: move |event| form.write().name = event.value(),
                 }
+                // US-74: the suggestion may name the places the track passes.
+                PlaceCredits {}
             }
 
             p {

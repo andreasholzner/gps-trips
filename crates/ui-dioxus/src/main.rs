@@ -35,6 +35,7 @@ mod share;
 mod shared;
 mod shares;
 mod stats;
+mod suggested;
 mod summary;
 mod tags;
 #[cfg(test)]
