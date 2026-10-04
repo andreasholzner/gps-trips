@@ -129,9 +129,7 @@ test("the owner shares a summary, and a line on its map opens a shared trip (US-
 
   // Both fixtures are the same track, so either line is a trip of the share.
   await lines.first().dispatchEvent("click");
-  await expect(recipient.page).toHaveURL(
-    new RegExp(`/app/s/${token}/trips/(${first}|${second})$`),
-  );
+  await expect(recipient.page).toHaveURL(new RegExp(`/app/s/${token}/trips/(${first}|${second})$`));
   await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
 
   // The title leads back to the summary.
