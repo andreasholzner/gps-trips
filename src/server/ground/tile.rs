@@ -147,8 +147,8 @@ impl Tile {
             return None;
         }
         let mut tile = Tile::default();
-        for (word, chunk) in tile.0.iter_mut().flatten().zip(raw.chunks_exact(8)) {
-            *word = u64::from_le_bytes(chunk.try_into().ok()?);
+        for (word, chunk) in tile.0.iter_mut().flatten().zip(raw.as_chunks::<8>().0) {
+            *word = u64::from_le_bytes(*chunk);
         }
         Some(tile)
     }
