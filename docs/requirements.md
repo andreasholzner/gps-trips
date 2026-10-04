@@ -124,7 +124,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
 | [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
-| [US-83](#us-83--tags-page)                                    | 📋     | Tags page                                    | [Tags](#tags)                                                       |
+| [US-83](#us-83--tags-page)                                    | 🚧     | Tags page                                    | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1110,7 +1110,7 @@ US-33/34 reject one on write, but a well-formed, merely nonexistent tag name jus
 
 ### US-83 — Tags page
 
-**Planned 📋** — As the owner, I see every tag in one place, so I can reach a tag's summary, clear out
+**In progress 🚧** — As the owner, I see every tag in one place, so I can reach a tag's summary, clear out
 tags I no longer use and set up a tag before any trip carries it.
 
 **Acceptance criteria:** A Tags screen, reached from the header menu (US-60) right after

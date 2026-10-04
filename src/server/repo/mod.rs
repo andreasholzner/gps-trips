@@ -35,8 +35,8 @@ pub use staging::{
 };
 pub use stats::{list_stats_trips, list_tag_summaries};
 pub use tag::{
-    add_trip_tag, bulk_add_trip_tags, find_tag_ids, get_or_create_tag, list_all_tags,
-    list_trip_tags, remove_trip_tag, trips_exist,
+    add_trip_tag, bulk_add_trip_tags, create_tag, delete_tag, find_tag_ids, get_or_create_tag,
+    list_all_tags, list_tag_overview, list_trip_tags, remove_trip_tag, trips_exist,
 };
 pub use trip::{
     delete_trip, get_original_gpx, get_track_geojson, get_trip, insert_trip, insert_trip_in_tx,

@@ -8,8 +8,9 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use time::OffsetDateTime;
 
-use crate::models::{normalize_tag_name, Tag};
+use crate::models::{normalize_tag_name, Tag, TagOverview};
 use crate::server::{error::AppError, repo, state::AppState};
 
 /// The `POST /api/trips/:id/tags` request body (ADR-0008).
@@ -78,6 +79,44 @@ pub async fn handle_list_all_tags(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Tag>>, AppError> {
     Ok(Json(repo::list_all_tags(&state.pool).await?))
+}
+
+/// GET `/api/tags/overview` — every tag with its trip counts and the active
+/// summary shares naming it, for the Tags screen (US-83).
+pub async fn handle_tag_overview(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<TagOverview>>, AppError> {
+    Ok(Json(
+        repo::list_tag_overview(&state.pool, OffsetDateTime::now_utc()).await?,
+    ))
+}
+
+/// POST `/api/tags` — create a tag carrying no trips yet (US-83), from the
+/// same body a trip is tagged with. 400 for a name US-33 would refuse, with
+/// its reason; 409 for a name that already exists, normalized.
+pub async fn handle_create_tag(
+    State(state): State<AppState>,
+    Json(body): Json<AddTagRequest>,
+) -> Result<(StatusCode, Json<Tag>), AppError> {
+    let name = normalize_tag_name(&body.name).map_err(AppError::BadRequest)?;
+    match repo::create_tag(&state.pool, &name).await? {
+        Some(tag) => Ok((StatusCode::CREATED, Json(tag))),
+        None => Err(AppError::Conflict(format!("tag \"{name}\" already exists"))),
+    }
+}
+
+/// DELETE `/api/tags/:id` — delete a tag (US-83): it comes off every trip,
+/// and every summary share naming it is narrowed, or stopped if it named
+/// nothing else. 204; 404 for a tag that does not exist.
+pub async fn handle_delete_tag(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, AppError> {
+    if repo::delete_tag(&state.pool, id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(AppError::NotFound)
+    }
 }
 
 /// The `POST /api/trips/tags` request body (US-34, ADR-0008).

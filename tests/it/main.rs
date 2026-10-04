@@ -50,4 +50,5 @@ mod us77_statistics;
 mod us78_tag_summary;
 mod us7_trip_detail;
 mod us82_share_summary;
+mod us83_tags_page;
 mod us9_delete_trip;

@@ -1,9 +1,11 @@
-//! Tag CRUD and trip/tag associations (US-33). Kept separate from `trip`/
+//! Tag CRUD and trip/tag associations (US-33), and the Tags screen's
+//! listing, creating and deleting of tags (US-83). Kept separate from `trip`/
 //! `photo`, mirroring how each domain gets its own repo submodule.
 
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use time::OffsetDateTime;
 
-use crate::models::Tag;
+use crate::models::{Tag, TagOverview, TagShare};
 use crate::server::db;
 
 /// Get the id of the tag named `name` (already normalized by the caller),
@@ -70,6 +72,83 @@ pub async fn list_all_tags(pool: &SqlitePool) -> Result<Vec<Tag>, sqlx::Error> {
         .map(row_to_tag)
         .fetch_all(pool)
         .await
+}
+
+/// Every tag, alphabetical, with how many trips — and how many recorded
+/// trips — carry it, and the summary shares (US-82) that still open at `now`
+/// and name it (US-83).
+pub async fn list_tag_overview(
+    pool: &SqlitePool,
+    now: OffsetDateTime,
+) -> Result<Vec<TagOverview>, sqlx::Error> {
+    let mut tags: Vec<TagOverview> = sqlx::query(
+        r#"SELECT tag.id, tag.name, COUNT(t.id) AS trip_count,
+                  COUNT(CASE WHEN t.trip_kind = 'recorded' THEN 1 END) AS recorded_trip_count
+           FROM tag
+           LEFT JOIN trip_tag tt ON tt.tag_id = tag.id
+           LEFT JOIN trip t ON t.id = tt.trip_id
+           GROUP BY tag.id
+           ORDER BY tag.name"#,
+    )
+    .map(|row: SqliteRow| TagOverview {
+        id: row.get("id"),
+        name: row.get("name"),
+        trip_count: row.get("trip_count"),
+        recorded_trip_count: row.get("recorded_trip_count"),
+        shares: Vec::new(),
+    })
+    .fetch_all(pool)
+    .await?;
+
+    // The Shares screen's own list, so the two agree on which are active.
+    for share in super::list_active_shares(pool, now).await? {
+        for tag in tags.iter_mut().filter(|tag| share.tags.contains(&tag.name)) {
+            tag.shares.push(TagShare {
+                id: share.id,
+                label: share.label.clone(),
+                tags: share.tags.clone(),
+            });
+        }
+    }
+    Ok(tags)
+}
+
+/// Create the tag `name` (already normalized), carrying no trips (US-83).
+/// `None` if a tag of that name exists already, which is left as it is.
+pub async fn create_tag(pool: &SqlitePool, name: &str) -> Result<Option<Tag>, sqlx::Error> {
+    let id: Option<i64> = sqlx::query_scalar(
+        "INSERT INTO tag (name) VALUES (?) ON CONFLICT(name) DO NOTHING RETURNING id",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id.map(|id| Tag {
+        id,
+        name: name.to_string(),
+    }))
+}
+
+/// Delete tag `id` (US-83), in one transaction. A share naming no other tag
+/// is stopped — its row goes, as `stop_share` would take it — whether or not
+/// it has expired; the tag's own row then goes, and the cascade takes it off
+/// every trip and out of every other share, which keeps its other tags in
+/// their order. No trip is touched. `false` if there is no such tag.
+pub async fn delete_tag(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+    let mut tx = db::begin_write(pool).await?;
+    sqlx::query(
+        r#"DELETE FROM share WHERE id IN (
+               SELECT share_id FROM share_tag GROUP BY share_id
+               HAVING COUNT(*) = 1 AND MAX(tag_id) = ?)"#,
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    let deleted = sqlx::query("DELETE FROM tag WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(deleted.rows_affected() > 0)
 }
 
 fn row_to_tag(row: SqliteRow) -> Tag {
@@ -168,245 +247,4 @@ pub async fn bulk_add_trip_tags(
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::models::{ActivityType, TripKind};
-    use crate::server::db::testing::TestDb;
-    use crate::server::geojson::build_track_geojson;
-    use crate::server::gpx::{compute_stats, parse_gpx};
-    use crate::server::repo::{insert_trip, NewTrip};
-
-    const SAMPLE_GPX: &[u8] = include_bytes!("../../../tests/fixtures/sample.gpx");
-
-    async fn insert_sample_trip(pool: &SqlitePool) -> i64 {
-        let track = parse_gpx(SAMPLE_GPX).unwrap();
-        let stats = compute_stats(&track.points);
-        let geojson = build_track_geojson(&track.points);
-        insert_trip(
-            pool,
-            &NewTrip {
-                name: "Oslo Hills Walk",
-                activity_type: ActivityType::Hiking,
-                tz_name: "Europe/Oslo",
-                stats: &stats,
-                geojson: &geojson,
-                gpx: SAMPLE_GPX,
-                trip_kind: TripKind::Recorded,
-            },
-        )
-        .await
-        .expect("insert_trip")
-    }
-
-    #[tokio::test]
-    async fn get_or_create_tag_creates_a_new_tag() {
-        let db = TestDb::new().await;
-        let id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-        assert!(id > 0);
-
-        let all = list_all_tags(&db.pool).await.unwrap();
-        assert_eq!(
-            all,
-            vec![Tag {
-                id,
-                name: "hiking".to_string()
-            }]
-        );
-    }
-
-    #[tokio::test]
-    async fn get_or_create_tag_returns_the_same_id_for_an_existing_name() {
-        let db = TestDb::new().await;
-        let first = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-        let second = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-        assert_eq!(first, second);
-        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn add_trip_tag_links_the_tag_to_the_trip() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-        let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-
-        add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-
-        let tags = list_trip_tags(&db.pool, trip_id).await.unwrap();
-        assert_eq!(
-            tags,
-            vec![Tag {
-                id: tag_id,
-                name: "hiking".to_string()
-            }]
-        );
-    }
-
-    #[tokio::test]
-    async fn add_trip_tag_is_idempotent() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-        let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-
-        add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-        add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-
-        assert_eq!(list_trip_tags(&db.pool, trip_id).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn list_trip_tags_is_alphabetical_and_scoped_to_the_trip() {
-        let db = TestDb::new().await;
-        let a = insert_sample_trip(&db.pool).await;
-        let b = insert_sample_trip(&db.pool).await;
-        let hiking = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-        let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
-        let other = get_or_create_tag(&db.pool, "other").await.unwrap();
-
-        add_trip_tag(&db.pool, a, hiking).await.unwrap();
-        add_trip_tag(&db.pool, a, alps).await.unwrap();
-        add_trip_tag(&db.pool, b, other).await.unwrap();
-
-        let tags_a = list_trip_tags(&db.pool, a).await.unwrap();
-        assert_eq!(
-            tags_a.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
-            vec!["alps", "hiking"]
-        );
-    }
-
-    #[tokio::test]
-    async fn remove_trip_tag_unlinks_but_keeps_the_tag_row() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-        let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-        add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-
-        let removed = remove_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-        assert!(removed);
-
-        assert!(list_trip_tags(&db.pool, trip_id).await.unwrap().is_empty());
-        // Orphaned tag stays around for reuse/autocomplete (US-33).
-        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn remove_trip_tag_returns_false_when_no_such_link_exists() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-        let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-
-        let removed = remove_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-        assert!(!removed);
-    }
-
-    #[tokio::test]
-    async fn deleting_a_trip_cascades_to_its_tag_links_but_not_the_tag() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-        let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-        add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-
-        sqlx::query("DELETE FROM trip WHERE id = ?")
-            .bind(trip_id)
-            .execute(&db.pool)
-            .await
-            .unwrap();
-
-        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn trips_exist_is_true_when_every_id_is_a_real_trip() {
-        let db = TestDb::new().await;
-        let a = insert_sample_trip(&db.pool).await;
-        let b = insert_sample_trip(&db.pool).await;
-
-        assert!(trips_exist(&db.pool, &[a, b]).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn trips_exist_is_false_when_any_id_is_unknown() {
-        let db = TestDb::new().await;
-        let a = insert_sample_trip(&db.pool).await;
-
-        assert!(!trips_exist(&db.pool, &[a, 999]).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn bulk_add_trip_tags_applies_every_tag_to_every_trip() {
-        let db = TestDb::new().await;
-        let a = insert_sample_trip(&db.pool).await;
-        let b = insert_sample_trip(&db.pool).await;
-
-        let names = vec!["alps".to_string(), "hiking".to_string()];
-        let applied = bulk_add_trip_tags(&db.pool, &[a, b], &names).await.unwrap();
-        assert_eq!(applied.len(), 2);
-
-        for trip_id in [a, b] {
-            let tags = list_trip_tags(&db.pool, trip_id).await.unwrap();
-            assert_eq!(
-                tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
-                vec!["alps", "hiking"]
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn bulk_add_trip_tags_creates_new_tags_on_demand() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-
-        bulk_add_trip_tags(&db.pool, &[trip_id], &["brand-new".to_string()])
-            .await
-            .unwrap();
-
-        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn bulk_add_trip_tags_reuses_an_existing_tag_rather_than_duplicating_it() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-        get_or_create_tag(&db.pool, "hiking").await.unwrap();
-
-        bulk_add_trip_tags(&db.pool, &[trip_id], &["hiking".to_string()])
-            .await
-            .unwrap();
-
-        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn bulk_add_trip_tags_is_idempotent() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-
-        let names = vec!["hiking".to_string()];
-        bulk_add_trip_tags(&db.pool, &[trip_id], &names)
-            .await
-            .unwrap();
-        bulk_add_trip_tags(&db.pool, &[trip_id], &names)
-            .await
-            .unwrap();
-
-        assert_eq!(list_trip_tags(&db.pool, trip_id).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn bulk_add_trip_tags_deduplicates_a_repeated_name_in_one_call() {
-        let db = TestDb::new().await;
-        let trip_id = insert_sample_trip(&db.pool).await;
-
-        let names = vec!["hiking".to_string(), "hiking".to_string()];
-        let applied = bulk_add_trip_tags(&db.pool, &[trip_id], &names)
-            .await
-            .unwrap();
-
-        assert_eq!(
-            applied,
-            vec![Tag {
-                id: applied[0].id,
-                name: "hiking".to_string()
-            }]
-        );
-    }
-}
+mod tests;

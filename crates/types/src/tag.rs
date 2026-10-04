@@ -9,6 +9,32 @@ pub struct Tag {
     pub name: String,
 }
 
+/// A row of the Tags screen (US-83): a tag, how many trips carry it, and the
+/// active summary shares (US-82) that name it. Its own response type rather
+/// than a grown `Tag` (ADR-0015), so the autocomplete's list stays as small
+/// as it was.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TagOverview {
+    pub id: i64,
+    pub name: String,
+    /// Every trip carrying the tag, planned ones included.
+    pub trip_count: i64,
+    /// The recorded ones alone: only they give the tag a summary (US-78).
+    pub recorded_trip_count: i64,
+    /// Newest first, as the Shares screen lists them.
+    pub shares: Vec<TagShare>,
+}
+
+/// An active summary share naming a tag, as much of it as the Tags screen
+/// needs to name it and say what deleting the tag does to it (US-83).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TagShare {
+    pub id: i64,
+    pub label: Option<String>,
+    /// Every tag the share names, in the order the owner chose them.
+    pub tags: Vec<String>,
+}
+
 /// Normalize owner-supplied tag text into the canonical stored form: trimmed,
 /// lowercased (so "Hiking"/"hiking" collapse to one tag), and rejected if
 /// empty, containing whitespace anywhere (the acceptance criteria's "no

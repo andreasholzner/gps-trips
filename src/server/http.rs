@@ -32,8 +32,8 @@ use crate::server::{
     state::{self, AppState},
     stats::{handle_stats_trips, handle_tag_summaries},
     tags::{
-        handle_add_trip_tag, handle_bulk_add_trip_tags, handle_list_all_tags,
-        handle_list_trip_tags, handle_remove_trip_tag,
+        handle_add_trip_tag, handle_bulk_add_trip_tags, handle_create_tag, handle_delete_tag,
+        handle_list_all_tags, handle_list_trip_tags, handle_remove_trip_tag, handle_tag_overview,
     },
     tracks::handle_list_tracks,
 };
@@ -123,7 +123,13 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/activity_type",
             post(handle_bulk_set_activity_type),
         )
-        .route("/api/tags", get(handle_list_all_tags))
+        // US-83: the Tags screen lists, creates and deletes tags.
+        .route(
+            "/api/tags",
+            get(handle_list_all_tags).post(handle_create_tag),
+        )
+        .route("/api/tags/overview", get(handle_tag_overview))
+        .route("/api/tags/:id", axum::routing::delete(handle_delete_tag))
         // US-53: share a few trips through a link; what the link reaches is
         // the share router's own, merged below. US-69: list and stop them.
         .route(
