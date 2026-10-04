@@ -242,14 +242,15 @@ computed when the form opens, next to the name field; one click puts it in the f
 replaced without that click — the owner's own name is never overwritten. This is what makes US-66's
 "no proper name" trips quick to fix.
 
-**Attribution:** the credits the sources require are shown in the app. **Tested** against real
-tracks the owner provides for the purpose, each with the suggestion the owner accepted, over a
-place-name fixture cut from the real database around them (ADR-0012).
+**Attribution:** the credits the sources require are shown in the app. **Tested** against
+synthetic tracks, each with the name it should get, over a place-name fixture cut from the real
+database around them (ADR-0012) — no real track of the owner's is checked in.
 
 **Not this story:** weighting kinds of places by the trip's activity type — a ski tour across a
 plateau is not about the hut it passed at the end.
 
-**Decisions:** US-74 → the ADR on the source of place names (to be proposed), ADR-0019 (the
+**Decisions:** US-74 → [ADR-0027](./adr/0027-offline-place-name-database.md) (the offline place
+names), ADR-0019 (the
 precedent of an offline geographic lookup), ADR-0012 (the suggestion rule is unit-tested)
 
 ### US-76 — Activity type suggestion
@@ -263,8 +264,7 @@ Extends US-11 and US-15. The suggestion is computed on the server from the store
 by heuristics over what the track runs on, how steep it is and how fast it went; every threshold
 below is set in `config.rs`. **What the track runs on** is read offline from OpenStreetMap — water,
 roads and tracks, paths, and prepared ski trails — so, like US-74, no coordinate leaves the archive
-(an extension of [ADR-0027](./adr/0027-offline-place-name-database.md)'s database, or a sibling of
-it — to be proposed). **The rules,** first match wins: a winter trip — one whose start date falls in
+([ADR-0027](./adr/0027-offline-place-name-database.md)). **The rules,** first match wins: a winter trip — one whose start date falls in
 the winter months set in `config.rs` — is told apart by its average moving speed: the faster ones →
 *Cross-country skiing*, the slower ones → *Ski touring*; it comes first because a ski trip across
 frozen lakes is not a kayak trip. A track mostly on water → *Kayaking*. A track mostly on roads or
@@ -274,20 +274,22 @@ good paths (tracks, cycleways, gravel) is told apart by its average moving speed
 
 **Never suggested:** *Snowshoeing*, which the owner rarely does, and *Unknown* — a track the rules
 cannot place (no recognisable majority, or the OSM data missing) gets no suggestion, and the field
-stays as it would be without this story. A trip without timestamps (a planned one) has no speed:
-where a rule needs one, it falls back to *Cycling* and *Ski touring*.
+stays as it would be without this story. A recorded trip whose track has no timestamps has no
+speed: where a rule needs one, it falls back to *Cycling* and *Ski touring*. A planned trip has no
+date, so the winter rule never applies to it.
 
 **Import:** the staged parse (US-12) returns the suggestion, and the activity selector starts on it;
 the owner can still pick any activity, Snowshoeing included. **Editing** (US-15): the edit form
 shows the suggestion for the trip as stored next to the activity selector; one click selects it, and
-nothing changes without that click. **Tested** with unit tests over the rules, and against real
-tracks of each activity the owner provides, with the activity the owner gave them (ADR-0012).
+nothing changes without that click. **Tested** with unit tests over the rules, and against
+synthetic tracks of each activity over a fixture cut from the real data around them (ADR-0012) —
+no real track of the owner's is checked in.
 
 **Not this story:** feeding the suggested activity into US-74's name ranking.
 
-**Decisions:** US-76 → ADR-0018 (the suggestion is one of the closed set of activities), the ADR on
-the offline OSM way and water data (to be proposed; extends ADR-0027), ADR-0012 (the rules are
-unit-tested)
+**Decisions:** US-76 → ADR-0018 (the suggestion is one of the closed set of activities),
+[ADR-0027](./adr/0027-offline-place-name-database.md) (the offline way and water data), ADR-0012
+(the rules are unit-tested)
 
 ## Komoot sync
 
