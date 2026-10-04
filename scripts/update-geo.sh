@@ -3,20 +3,22 @@
 # sources that changed, rebuild, and optionally put the result on the volume.
 # The steps are the ones docs/deployment.md describes by hand.
 #
-# usage: scripts/update-geo.sh [--no-download] [--upload] [places|ground]...
+# usage: scripts/update-geo.sh [--no-download|--no-build] [--upload] [places|ground]...
 #   --no-download  build from what is already in data/geo-src/
+#   --no-build     upload the databases already in data/ (implies --upload)
 #   --upload       copy the built databases to the Fly volume (needs FLY_APP)
-#   places, ground which databases to rebuild (default: both)
+#   places, ground which databases to rebuild or upload (default: both)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-usage() { sed -n '6,9s/^# \{0,1\}//p' "$0" >&2; exit 2; }
+usage() { sed -n '6,10s/^# \{0,1\}//p' "$0" >&2; exit 2; }
 
-download=1 upload=0 dbs=()
+download=1 build=1 upload=0 dbs=()
 for arg in "$@"; do
     case "$arg" in
         --no-download) download=0 ;;
+        --no-build) build=0 upload=1 ;;
         --upload) upload=1 ;;
         places | ground) dbs+=("$arg") ;;
         *) usage ;;
@@ -25,13 +27,43 @@ done
 (( ${#dbs[@]} )) || dbs=(places ground)
 wants() { [[ " ${dbs[*]} " == *" $1 "* ]]; }
 
+if (( upload )); then
+    : "${FLY_APP:?set FLY_APP to the Fly app name}"
+    for tool in fly jq; do
+        command -v "$tool" >/dev/null || { echo "$tool is needed for --upload." >&2; exit 1; }
+    done
+fi
+
+# Neither sftp nor ssh counts as traffic, so the machine is kept up while the
+# files travel; the restart that turns auto-stop back on makes the server
+# open the new files.
+upload_dbs() {
+    # The JSON, since `--quiet` pads the id with blanks that `fly` then rejects.
+    machine=$(fly machines list --app "$FLY_APP" --json | jq -r '.[0].id')
+    fly machine update "$machine" --autostop=off --app "$FLY_APP" --yes
+    trap 'fly machine update "$machine" --autostop=stop --app "$FLY_APP" --yes' EXIT
+    for db in "${dbs[@]}"; do
+        echo "Uploading data/$db.sqlite"
+        fly ssh console --app "$FLY_APP" -C "rm -f /data/$db.sqlite.new"
+        fly ssh sftp put "data/$db.sqlite" "/data/$db.sqlite.new" --app "$FLY_APP"
+        fly ssh console --app "$FLY_APP" -C "mv /data/$db.sqlite.new /data/$db.sqlite"
+    done
+    fly machine update "$machine" --autostop=stop --app "$FLY_APP" --yes
+    trap - EXIT
+    fly logs --app "$FLY_APP" --no-tail | grep 'Suggesting' || true
+}
+
+if (( ! build )); then
+    for db in "${dbs[@]}"; do
+        [[ -f "data/$db.sqlite" ]] || { echo "data/$db.sqlite is missing." >&2; exit 1; }
+    done
+    upload_dbs
+    exit 0
+fi
+
 for tool in osmium curl unzip; do
     command -v "$tool" >/dev/null || { echo "$tool is needed." >&2; exit 1; }
 done
-if (( upload )); then
-    : "${FLY_APP:?set FLY_APP to the Fly app name}"
-    command -v fly >/dev/null || { echo "fly is needed for --upload." >&2; exit 1; }
-fi
 
 src=data/geo-src
 mkdir -p "$src"
@@ -98,20 +130,4 @@ build() {
 if wants places; then build places build data/places.sqlite.new "${pbfs[@]}" "$gml"; fi
 if wants ground; then build ground ground data/ground.sqlite.new "${pbfs[@]}" "$shp"; fi
 
-(( upload )) || exit 0
-
-# Neither sftp nor ssh counts as traffic, so the machine is kept up while the
-# files travel; the restart that turns auto-stop back on makes the server
-# open the new files.
-machine=$(fly machines list --app "$FLY_APP" --quiet)
-fly machine update "$machine" --autostop=off --app "$FLY_APP" --yes
-trap 'fly machine update "$machine" --autostop=stop --app "$FLY_APP" --yes' EXIT
-for db in "${dbs[@]}"; do
-    echo "Uploading data/$db.sqlite"
-    fly ssh console --app "$FLY_APP" -C "rm -f /data/$db.sqlite.new"
-    fly ssh sftp put "data/$db.sqlite" "/data/$db.sqlite.new" --app "$FLY_APP"
-    fly ssh console --app "$FLY_APP" -C "mv /data/$db.sqlite.new /data/$db.sqlite"
-done
-fly machine update "$machine" --autostop=stop --app "$FLY_APP" --yes
-trap - EXIT
-fly logs --app "$FLY_APP" --no-tail | grep 'Suggesting' || true
+if (( upload )); then upload_dbs; fi

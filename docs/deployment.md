@@ -196,7 +196,7 @@ curl -s  "https://$FLY_APP.fly.dev/api/trips"              # 401 JSON: nothing w
 And that a stopped machine stops cleanly and wakes on the next request (US-47):
 
 ```sh
-fly machine stop "$(fly machines list --app "$FLY_APP" --quiet)" --app "$FLY_APP"
+fly machine stop "$(fly machines list --app "$FLY_APP" --json | jq -r '.[0].id')" --app "$FLY_APP"
 fly logs --app "$FLY_APP" --no-tail | tail -3                 # "Trip Archive stopped"
 curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "https://$FLY_APP.fly.dev/app/"   # 200, ~1 s
 ```
@@ -228,7 +228,8 @@ names and ways change slowly; rebuilding them once a year or so is plenty.
 
 `scripts/update-geo.sh` does all of what follows: it fetches the sources that changed, rebuilds
 both databases (or only those named, `places` or `ground`), and with `--upload` puts them on the
-volume (`FLY_APP` set as for a deploy). `--no-download` builds from the sources already there.
+volume (`FLY_APP` set as for a deploy). `--no-download` builds from the sources already there;
+`--no-build` only uploads the databases already in `data/`.
 
 Their sources, downloaded into `data/geo-src/` (which git ignores):
 
@@ -261,7 +262,7 @@ counts as traffic — and swap each in whole. The server opens them at boot, so 
 turns auto-stop back on is what puts them to use:
 
 ```sh
-M=$(fly machines list --app "$FLY_APP" --quiet)
+M=$(fly machines list --app "$FLY_APP" --json | jq -r '.[0].id')
 fly machine update "$M" --autostop=off --app "$FLY_APP"
 for db in places ground; do
   fly ssh sftp put data/$db.sqlite /data/$db.sqlite.new --app "$FLY_APP"
