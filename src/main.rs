@@ -28,7 +28,8 @@ async fn main() -> anyhow::Result<()> {
     let auth = Auth::from_env(&salt)?;
     let addr = server::paths::bind_addr()?;
 
-    let pool = server::db::create_pool(&data_dir.join(config::storage::DB_FILENAME)).await?;
+    let db_path = data_dir.join(config::storage::DB_FILENAME);
+    let pool = server::db::create_pool(&db_path).await?;
     // US-77: trips imported before moving time was stored get theirs, once.
     let filled = server::repo::backfill_moving_secs(&pool).await?;
     if filled > 0 {
@@ -61,10 +62,9 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     // Every request has finished; the last of their records go in before
-    // the database closes (US-70). Closing the last connection is what makes
-    // SQLite checkpoint the WAL into the database file and remove it (US-47).
+    // the database closes (US-70), checkpointing the WAL (US-47).
     access_log.flush().await;
-    pool.close().await;
+    server::db::close(pool, &db_path).await?;
     tracing::info!("Trip Archive stopped");
     Ok(())
 }

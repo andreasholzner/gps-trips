@@ -1,6 +1,6 @@
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode},
-    Sqlite, SqlitePool, Transaction,
+    ConnectOptions, Connection, Sqlite, SqlitePool, Transaction,
 };
 use std::{path::Path, time::Duration};
 
@@ -8,16 +8,17 @@ use std::{path::Path, time::Duration};
 ///
 /// Pragmas applied per ADR-0002: WAL journal mode, foreign keys on, busy timeout.
 pub async fn create_pool(db_path: &Path) -> anyhow::Result<SqlitePool> {
-    let opts = SqliteConnectOptions::new()
-        .filename(db_path)
-        .create_if_missing(true)
-        .foreign_keys(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .busy_timeout(Duration::from_secs(5));
-
-    let pool = SqlitePool::connect_with(opts).await?;
+    let pool = SqlitePool::connect_with(options(db_path).create_if_missing(true)).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
     Ok(pool)
+}
+
+fn options(db_path: &Path) -> SqliteConnectOptions {
+    SqliteConnectOptions::new()
+        .filename(db_path)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5))
 }
 
 /// Begin a transaction that is going to write, holding the write lock from
@@ -28,6 +29,19 @@ pub async fn create_pool(db_path: &Path) -> anyhow::Result<SqlitePool> {
 /// within the busy timeout above. Read-only transactions keep `begin()`.
 pub async fn begin_write(pool: &SqlitePool) -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
     pool.begin_with("BEGIN IMMEDIATE").await
+}
+
+/// Close the archive's database for good (US-47), checkpointing its WAL into
+/// the database file and removing it.
+///
+/// SQLite does that when the last connection closes, but the pool's may
+/// close at the same moment — a dropped one goes back in a task of its own —
+/// and each then sees another still open and leaves the WAL. So once the pool
+/// is closed, one connection more is opened and closed: alone, it is the last.
+pub async fn close(pool: SqlitePool, db_path: &Path) -> anyhow::Result<()> {
+    pool.close().await;
+    options(db_path).connect().await?.close().await?;
+    Ok(())
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
@@ -94,5 +108,33 @@ mod tests {
             .await
             .unwrap()
             .expect("the other writer, after waiting");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn us47_closing_checkpoints_the_wal_when_connections_close_at_once() {
+        // A connection a request drops goes back to the pool in a task of its
+        // own, so on shutdown several can close at the same moment. SQLite
+        // checkpoints and removes the WAL only on closing the last
+        // connection, and two closing together may each see the other open.
+        for _ in 0..50 {
+            let dir = tempfile::TempDir::new().unwrap();
+            let path = dir.path().join("test.db");
+            let pool = create_pool(&path).await.unwrap();
+            let mut conns = Vec::new();
+            for _ in 0..4 {
+                conns.push(pool.acquire().await.unwrap());
+            }
+            for conn in &mut conns {
+                sqlx::query("INSERT INTO tag (name) VALUES (hex(randomblob(8)))")
+                    .execute(&mut **conn)
+                    .await
+                    .unwrap();
+            }
+            drop(conns);
+
+            close(pool, &path).await.unwrap();
+
+            assert!(!dir.path().join("test.db-wal").exists());
+        }
     }
 }
