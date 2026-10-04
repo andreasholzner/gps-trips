@@ -122,7 +122,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-78](#us-78--tag-summary)                                  | ✅     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 | [US-80](#us-80--average-speed)                                | ✅     | Average speed                                | [Trip page](#trip-page)                                             |
-| [US-81](#us-81--climbing-rate)                                | 🚧     | Climbing rate                                | [Trip page](#trip-page)                                             |
+| [US-81](#us-81--climbing-rate)                                | ✅     | Climbing rate                                | [Trip page](#trip-page)                                             |
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
 
@@ -891,11 +891,11 @@ US-78's figures.
 
 ### US-81 — Climbing rate
 
-**In progress 🚧** — As the owner, I see how fast I climbed — metres gained per hour on the trip's real
+**Done ✅** — As the owner, I see how fast I climbed — metres gained per hour on the trip's real
 hills — so I can tell how strong a ride or hike went uphill and compare trips and years by it.
 
-**Acceptance criteria:** **A climb** is a stretch of the track whose elevation, smoothed as US-79's
-incline is, rises from a low point to a high point; it ends where the elevation falls more than a
+**Acceptance criteria:** **A climb** is a stretch of the track whose elevation, averaged over the
+same distance US-79's incline is measured across, rises from a low point to a high point; it ends where the elevation falls more than a
 set amount below its highest point so far, so a short dip or flat does not split one hill in two.
 A climb counts only if it is significant for the trip's activity: on a bike ride (cycling,
 bikepacking) it gains at least 30 m at an average gradient of at least 3 %, in cross-country skiing
@@ -913,7 +913,8 @@ unit-tested there ([ADR-0025](./adr/0025-js-widget-interop-via-eval.md)).
 the trip has none. Below the elevation profile, a list of the trip's climbs in track order, each
 with its distance, height gained and climbing rate. In the elevation profile (US-59), each climb's
 stretch is marked by a light background color below the elevation line; the speed series (US-79)
-and the readout are unchanged.
+and the readout are unchanged. A trip without timestamps still lists and marks its climbs, each
+climbing rate reading as a dash.
 
 **Statistics:** climbing rate is a new measure on the Statistics screen (US-77). Over several trips
 it is their climbs' height added up divided by their climbing time added up, never an average of
@@ -923,6 +924,9 @@ column, and the running total shows the rate so far by each date, as average spe
 **Summary:** the Summary screen (US-78) shows the climbing rate per activity, and for the activities
 together, figured as on the Statistics screen. If this story is done first, that criterion moves into
 US-78's figures.
+
+**Shares:** a share's recipient sees the climbing rate and the climbs as the owner does — in a
+shared trip's stats and elevation profile (US-53) and on a shared summary (US-82).
 
 **Decisions:** US-81 → ADR-0025 (Rust finds the climbs and works out the rates, the script draws the
 charts and the marked stretches), ADR-0008 (the screens read their figures from the JSON API)
