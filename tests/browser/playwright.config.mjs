@@ -7,7 +7,7 @@
 // point — a component harness would not catch, for instance, a base-URL bug
 // that only appears once the bundle is served for real.
 import { defineConfig } from "@playwright/test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +29,14 @@ if (!existsSync(bundle)) {
 
 // A fresh archive per run, never the owner's own data directory.
 const dataDir = mkdtempSync(join(tmpdir(), "trip-archive-browser-"));
+
+// The ground fixture the server's own tests use (US-76), so the activity
+// suggestion has something to suggest from — around the synthetic tracks
+// in `tests/fixtures/activities` only.
+copyFileSync(
+  fileURLToPath(new URL("../fixtures/activities/ground.sqlite", import.meta.url)),
+  join(dataDir, "ground.sqlite"),
+);
 
 export default defineConfig({
   testDir: ".",

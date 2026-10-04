@@ -15,6 +15,10 @@ export const UNTIMED_GPX = fixture("untimed.gpx");
 /// A walk with one hill (US-81): 1 km up 100 m between two flats, timed.
 export const HILL_GPX = fixture("hill.gpx");
 
+/// A paddle across a Norwegian fjord (US-76), where the suite's ground
+/// fixture knows the water.
+export const KAYAKING_GPX = fixture("activities/kayaking.gpx");
+
 /// A geotagged JPEG (US-3): the fixture the server's own tests use, so the
 /// EXIF path here is the real one.
 export const GEOTAGGED_JPEG = fixture("geotagged.jpg");

@@ -128,18 +128,18 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
     let komoot = trip.komoot.clone();
     // US-74: what the archive suggests for the trip as stored, asked for as
     // the form opens. Only offered: a failure just offers nothing.
-    let suggestion = use_resource(move || async move {
-        api::trip_suggestion(&archive(), id)
-            .await
-            .ok()
-            .map(|suggestion| suggestion.name)
-    });
-    // Not offered when it is what the field already says.
-    let offered = suggestion
-        .read()
-        .clone()
-        .flatten()
+    // US-76: and the activity type the track looks like.
+    let suggestion =
+        use_resource(move || async move { api::trip_suggestion(&archive(), id).await.ok() });
+    let suggested = suggestion.read().clone().flatten();
+    // Neither is offered when it is what the field already says.
+    let offered_name = suggested
+        .as_ref()
+        .map(|s| s.name.clone())
         .filter(|name| name.trim() != form.read().name.trim());
+    let offered_activity = suggested
+        .and_then(|s| s.activity_type)
+        .filter(|activity| activity_value(*activity) != form.read().activity);
     // Belt and braces with `EditTrip`'s own reset above: the fields are the
     // trip's, so they follow the trip if this form is ever mounted across a
     // change of one.
@@ -180,11 +180,11 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                         oninput: move |event| form.write().name = event.value(),
                     }
                 }
-                if let Some(name) = offered {
+                if let Some(name) = offered_name {
                     Suggested {
                         id: "edit-name-suggestion",
-                        text: name,
-                        on_use: move |name| form.write().name = name,
+                        text: name.clone(),
+                        on_use: move |_| form.write().name = name.clone(),
                     }
                     PlaceCredits {}
                 }
@@ -202,6 +202,13 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                                 "{activity.label()}"
                             }
                         }
+                    }
+                }
+                if let Some(activity) = offered_activity {
+                    Suggested {
+                        id: "edit-activity-suggestion",
+                        text: activity.label(),
+                        on_use: move |_| form.write().activity = activity.as_str().to_string(),
                     }
                 }
                 // US-35: privacy belongs to the linked Komoot tour, so a trip

@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 
 use crate::server::access_log::AccessLog;
 use crate::server::auth::Auth;
+use crate::server::ground::GroundDb;
 use crate::server::komoot::KomootClient;
 use crate::server::places::PlaceDb;
 use crate::server::storage::BlobStore;
@@ -25,6 +26,9 @@ pub struct AppState {
     /// ADR-0027). `None` without the database, which is a supported way to
     /// run: the suggestion falls back to US-12's.
     pub places: Option<PlaceDb>,
+    /// The ground a trip's activity type is suggested from (US-76,
+    /// ADR-0027); `None` without the database: no activity is suggested.
+    pub ground: Option<GroundDb>,
     /// The shared-password gate (US-19, ADR-0010's 2026-09-02 amendment).
     /// Not optional the way `komoot` is: the archive refuses to start
     /// without a password, so every request — in production and in the
@@ -66,6 +70,7 @@ impl AppState {
             store,
             komoot,
             places: None,
+            ground: None,
             auth,
             sync_in_progress: Arc::new(AtomicBool::new(false)),
         }
@@ -74,6 +79,11 @@ impl AppState {
     /// The state, suggesting names from `places` (US-74).
     pub fn with_places(self, places: Option<PlaceDb>) -> Self {
         Self { places, ..self }
+    }
+
+    /// The state, suggesting activity types from `ground` (US-76).
+    pub fn with_ground(self, ground: Option<GroundDb>) -> Self {
+        Self { ground, ..self }
     }
 
     /// Atomically claims the sync flag for the caller. `None` if a sync is

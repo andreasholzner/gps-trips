@@ -14,6 +14,7 @@ fn a_suggestion(name: &str) -> StagedImport {
     StagedImport {
         staging_id: 7,
         suggested_name: name.to_string(),
+        suggested_activity: None,
         start_date: Some("2024-06-01".to_string()),
         gpx_name: Some("Oslo Hills Walk".to_string()),
         distance_m: 1234.0,
@@ -41,6 +42,23 @@ fn the_name_starts_as_the_archives_suggestion() {
     // US-31's default, and US-11's "not said yet".
     assert_eq!(form.kind, "recorded");
     assert_eq!(form.activity, "");
+}
+
+#[test]
+fn us76_the_activity_starts_on_the_one_the_track_looks_like() {
+    let form = ConfirmForm::of(&StagedImport {
+        suggested_activity: Some(ActivityType::Kayaking),
+        ..a_suggestion("2024-06-01 ")
+    });
+
+    assert_eq!(form.activity, "kayaking");
+    // The owner can still answer otherwise: what they pick is what travels.
+    let confirm = ConfirmForm {
+        activity: "snow_shoe".to_string(),
+        ..form
+    }
+    .to_confirm();
+    assert_eq!(confirm.activity_type.as_deref(), Some("snow_shoe"));
 }
 
 #[test]

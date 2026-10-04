@@ -208,7 +208,20 @@ pub async fn tag_trip(archive: &ApiClient, trip_id: i64, name: &str) {
 /// Keep the returned `TempDir` alive for the whole test: dropping it deletes
 /// the database out from under the running server.
 pub async fn serve_test_archive() -> (ApiClient, tempfile::TempDir) {
-    let (archive, _state, dir) = serve_archive(None).await;
+    let (archive, _state, dir) = serve_archive(None, None).await;
+    (archive, dir)
+}
+
+/// As [`serve_test_archive`], suggesting activity types from the ground
+/// fixture the server's own tests use (US-76).
+pub async fn serve_test_archive_with_ground() -> (ApiClient, tempfile::TempDir) {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/activities/ground.sqlite");
+    let ground = trip_archive::server::ground::GroundDb::open(&fixture)
+        .await
+        .expect("the ground fixture opens");
+    assert!(ground.is_some(), "the ground fixture is missing");
+    let (archive, _state, dir) = serve_archive(None, ground).await;
     (archive, dir)
 }
 
@@ -230,7 +243,7 @@ pub async fn serve_test_archive_with_komoot(
     trip_archive::server::state::AppState,
     tempfile::TempDir,
 ) {
-    serve_archive(Some(client)).await
+    serve_archive(Some(client), None).await
 }
 
 /// The password every test server is configured with (US-19). The archive
@@ -268,6 +281,7 @@ pub fn anonymous(archive: &ApiClient) -> ApiClient {
 
 async fn serve_archive(
     komoot: Option<Arc<dyn trip_archive::server::komoot::KomootClient>>,
+    ground: Option<trip_archive::server::ground::GroundDb>,
 ) -> (
     ApiClient,
     trip_archive::server::state::AppState,
@@ -284,7 +298,7 @@ async fn serve_archive(
         .await
         .expect("create pool");
     let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join("blobs")));
-    let state = AppState::new(pool, store, komoot, test_auth());
+    let state = AppState::new(pool, store, komoot, test_auth()).with_ground(ground);
     let router = http::router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

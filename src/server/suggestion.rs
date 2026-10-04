@@ -1,8 +1,9 @@
 //! What the archive suggests for a trip: its name behind its date (US-12,
-//! US-74). Behind one interface that takes the trip rather than just its
-//! track (ADR-0027), so what else is known about a trip can inform the
-//! suggestion without its callers changing — the import screen's staging
-//! step and the edit form's `GET /api/trips/:id/suggestion`.
+//! US-74) and its activity type (US-76). Behind one interface that takes
+//! the trip rather than just its track (ADR-0027), so what else is known
+//! about a trip can inform a suggestion without its callers changing — the
+//! import screen's staging step and the edit form's
+//! `GET /api/trips/:id/suggestion`.
 
 use axum::{
     extract::{Path, State},
@@ -10,20 +11,27 @@ use axum::{
 };
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-use crate::models::TripSuggestion;
+use crate::models::{ActivityType, TripSuggestion};
 use crate::server::{
+    activity_suggestion::{self, Facts},
     error::AppError,
     gpx::{parse_gpx, TrackPoint},
+    ground::GroundDb,
     import::date_prefix,
     name_suggestion::{lookup_boxes, place_part},
     places::PlaceDb,
+    profile::Profile,
     repo,
     state::AppState,
+    timezone,
 };
 
 /// What the suggestion knows about a trip.
 pub struct Trip<'a> {
     pub points: &'a [TrackPoint],
+    /// The track as stored (`geojson::build_track_geojson`), for its
+    /// distances, elevations and times.
+    pub geojson: &'a str,
     /// The GPX track's own `<name>`, which the suggestion falls back to.
     pub gpx_name: Option<&'a str>,
     pub start_time: Option<OffsetDateTime>,
@@ -51,6 +59,40 @@ pub async fn suggest_name(places: Option<&PlaceDb>, trip: &Trip<'_>) -> String {
         trip.start_time,
         trip.tz_name,
     )
+}
+
+/// The activity type suggested for `trip` from the ground its track runs
+/// on, its steepness, its speed and its date; `None` when the rules cannot
+/// place it, or without the ground database. A ground database that fails
+/// is logged and suggests nothing: a suggestion never fails an import.
+pub async fn suggest_activity(ground: Option<&GroundDb>, trip: &Trip<'_>) -> Option<ActivityType> {
+    let db = ground?;
+    let coords: Vec<geo::Coord> = trip
+        .points
+        .iter()
+        .map(|p| geo::Coord { x: p.lon, y: p.lat })
+        .collect();
+    let data = match db.around(&coords).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Could not look up the ground a trip runs on: {e}");
+            return None;
+        }
+    };
+    let profile = Profile::from_geojson(trip.geojson);
+    let start_month = trip.start_time.map(|start| {
+        timezone::local_date(trip.tz_name, start)
+            .unwrap_or_else(|| start.date())
+            .month()
+    });
+    activity_suggestion::suggest(&Facts {
+        ground: data.ground_of(&coords),
+        start_month,
+        moving_kmh: profile.as_ref().and_then(activity_suggestion::moving_kmh),
+        steep_share: profile
+            .as_ref()
+            .map_or(0.0, activity_suggestion::steep_share),
+    })
 }
 
 async fn places_of(db: &PlaceDb, points: &[TrackPoint]) -> Result<Option<String>, sqlx::Error> {
@@ -81,8 +123,8 @@ fn with_date(name: Option<&str>, start_time: Option<OffsetDateTime>, tz_name: &s
 }
 
 /// `GET /api/trips/:id/suggestion` — what the edit form offers for the trip
-/// as it is stored (US-74), worked out from its original GPX when the form
-/// opens. 404 for a trip that does not exist.
+/// as it is stored (US-74, US-76), worked out from its original GPX and its
+/// stored track when the form opens. 404 for a trip that does not exist.
 pub async fn handle_trip_suggestion(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -93,23 +135,26 @@ pub async fn handle_trip_suggestion(
     let gpx = repo::get_original_gpx(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
+    let geojson = repo::get_track_geojson(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let track = parse_gpx(&gpx.bytes)
         .map_err(|e| AppError::Internal(format!("the stored GPX cannot be read: {e}")))?;
     let start_time = trip
         .start_time
         .as_deref()
         .and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok());
-    let name = suggest_name(
-        state.places.as_ref(),
-        &Trip {
-            points: &track.points,
-            gpx_name: track.name.as_deref(),
-            start_time,
-            tz_name: trip.tz_name.as_deref().unwrap_or("UTC"),
-        },
-    )
-    .await;
-    Ok(Json(TripSuggestion { name }))
+    let trip = Trip {
+        points: &track.points,
+        geojson: &geojson,
+        gpx_name: track.name.as_deref(),
+        start_time,
+        tz_name: trip.tz_name.as_deref().unwrap_or("UTC"),
+    };
+    Ok(Json(TripSuggestion {
+        name: suggest_name(state.places.as_ref(), &trip).await,
+        activity_type: suggest_activity(state.ground.as_ref(), &trip).await,
+    }))
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

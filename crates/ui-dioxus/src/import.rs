@@ -78,13 +78,15 @@ impl ConfirmForm {
     ///
     /// The name is US-12's whole point: it arrives with the track's date
     /// already in it, so the owner types after the prefix instead of looking
-    /// one up. Activity is left unspecified — the archive has no opinion to
-    /// offer yet — and kind starts on Recorded, the same default the import
-    /// has always applied (US-31).
+    /// one up. The activity starts on the one the track looks like (US-76),
+    /// or unspecified when the archive cannot tell; kind starts on Recorded,
+    /// the same default the import has always applied (US-31).
     pub fn of(staged: &StagedImport) -> Self {
         Self {
             name: staged.suggested_name.clone(),
-            activity: String::new(),
+            activity: staged
+                .suggested_activity
+                .map_or_else(String::new, |activity| activity.as_str().to_string()),
             kind: TripKind::Recorded.as_str().to_string(),
         }
     }

@@ -1,13 +1,12 @@
-//! A suggestion offered next to a form field (US-74): the archive's idea,
-//! shown beside what the field holds and put into it only by the owner's
-//! click — nothing the owner typed is ever replaced without it.
+//! A suggestion offered next to a form field (US-74, US-76): the archive's
+//! idea, shown beside what the field holds and put into it only by the
+//! owner's click — nothing the owner chose is ever replaced without it.
 
 use dioxus::prelude::*;
 
-/// `text` offered under a field; `on_use` puts it there.
+/// `text` offered under a field; `on_use` puts what it says there.
 #[component]
-pub fn Suggested(id: String, text: String, on_use: EventHandler<String>) -> Element {
-    let offered = text.clone();
+pub fn Suggested(id: String, text: String, on_use: EventHandler<()>) -> Element {
     rsx! {
         p { id, class: "suggested",
             "Suggested: "
@@ -15,7 +14,7 @@ pub fn Suggested(id: String, text: String, on_use: EventHandler<String>) -> Elem
             button {
                 r#type: "button",
                 class: "quiet",
-                onclick: move |_| on_use.call(offered.clone()),
+                onclick: move |_| on_use.call(()),
                 "Use"
             }
         }

@@ -1,5 +1,8 @@
 use super::*;
-use crate::test_support::{import_sample, render, render_against_archive, serve_test_archive};
+use crate::test_support::{
+    import_gpx, import_sample, render, render_against_archive, serve_test_archive,
+    serve_test_archive_with_ground,
+};
 use trip_archive_types::{KomootLink, KomootPrivacy};
 
 fn a_trip(activity: ActivityType, komoot: Option<KomootLink>) -> Trip {
@@ -284,4 +287,37 @@ async fn us74_the_form_offers_the_suggested_name_without_changing_the_field() {
     // The test archive has no place database: the date and the GPX name.
     assert!(html.contains("2024-06-01 Oslo Hills Walk"), "{html}");
     assert!(html.contains(r#"value="My walk""#), "{html}");
+}
+
+// US-76: the activity the track looks like, offered next to the selector —
+// and only offered.
+#[tokio::test]
+async fn us76_the_form_offers_the_suggested_activity_without_choosing_it() {
+    let (archive, _dir) = serve_test_archive_with_ground().await;
+    let kayaking = include_bytes!("../../../../tests/fixtures/activities/kayaking.gpx");
+    let id = import_gpx(&archive, kayaking, &[("name", "Paddle")]).await;
+    let trip = api::get_trip(&archive, id).await.expect("trip");
+
+    let html = render_against_archive(
+        &archive,
+        move || {
+            rsx! {
+                EditTripForm {
+                    trip: trip.clone(),
+                    on_saved: move |_| {},
+                    on_cancel: move |_| {},
+                }
+            }
+        },
+        |html| html.contains("edit-activity-suggestion"),
+    )
+    .await;
+
+    let offer = &html[html.find("edit-activity-suggestion").expect("offered")..];
+    assert!(offer.contains("Kayaking"), "{html}");
+    // The selector still holds what the trip has: unspecified.
+    assert!(
+        html.contains(r#"id="edit-activity_type" value="""#),
+        "{html}"
+    );
 }

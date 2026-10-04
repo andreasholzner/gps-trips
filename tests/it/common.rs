@@ -120,6 +120,26 @@ pub async fn test_app_with_places() -> (Router, tempfile::TempDir) {
     )
 }
 
+/// As [`test_app`], suggesting activity types from the ground fixture cut
+/// from the real database around the synthetic tracks beside it (US-76).
+pub async fn test_app_with_ground() -> (Router, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let pool = db::create_pool(&dir.path().join("test.db"))
+        .await
+        .expect("create pool");
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
+    let ground = trip_archive::server::ground::GroundDb::open(std::path::Path::new(
+        "tests/fixtures/activities/ground.sqlite",
+    ))
+    .await
+    .expect("the ground fixture opens");
+    assert!(ground.is_some(), "the ground fixture is missing");
+    (
+        http::router(AppState::new(pool, store, None, test_auth()).with_ground(ground)),
+        dir,
+    )
+}
+
 /// As [`test_app`], with a different shared password — for US-19's
 /// assertion that rotating the secret ends every session that exists.
 pub async fn test_app_with_password(password: &str) -> (Router, tempfile::TempDir) {

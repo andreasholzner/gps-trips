@@ -38,7 +38,10 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();
     let places = places_from(&data_dir.join(config::storage::PLACES_DB_FILENAME)).await;
-    let state = server::state::AppState::new(pool.clone(), store, komoot, auth).with_places(places);
+    let ground = ground_from(&data_dir.join(config::storage::GROUND_DB_FILENAME)).await;
+    let state = server::state::AppState::new(pool.clone(), store, komoot, auth)
+        .with_places(places)
+        .with_ground(ground);
     let access_log = state.access_log.clone();
     let app = server::http::router(state);
 
@@ -108,6 +111,31 @@ async fn places_from(path: &std::path::Path) -> Option<server::places::PlaceDb> 
         Err(e) => {
             tracing::warn!(
                 "The place database at {} cannot be read: {e}",
+                path.display()
+            );
+            None
+        }
+    }
+}
+
+/// The ground database (US-76, ADR-0027) at `path`, if there is one.
+/// Optional in the same way: without it no activity type is suggested.
+async fn ground_from(path: &std::path::Path) -> Option<server::ground::GroundDb> {
+    match server::ground::GroundDb::open(path).await {
+        Ok(Some(ground)) => {
+            tracing::info!(
+                "Suggesting activity types from the ground in {}",
+                path.display()
+            );
+            Some(ground)
+        }
+        Ok(None) => {
+            tracing::info!("No ground database at {}", path.display());
+            None
+        }
+        Err(e) => {
+            tracing::warn!(
+                "The ground database at {} cannot be read: {e}",
                 path.display()
             );
             None

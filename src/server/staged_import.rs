@@ -81,16 +81,15 @@ pub async fn handle_stage_import(
 
     // Both read the start date in the track's own timezone, so the prefix the
     // owner is handed is the day they were out on.
-    let suggested_name = suggestion::suggest_name(
-        state.places.as_ref(),
-        &suggestion::Trip {
-            points: &derived.points,
-            gpx_name: derived.name.as_deref(),
-            start_time: derived.stats.start_time,
-            tz_name: &derived.guessed_tz,
-        },
-    )
-    .await;
+    let trip = suggestion::Trip {
+        points: &derived.points,
+        geojson: &derived.geojson,
+        gpx_name: derived.name.as_deref(),
+        start_time: derived.stats.start_time,
+        tz_name: &derived.guessed_tz,
+    };
+    let suggested_name = suggestion::suggest_name(state.places.as_ref(), &trip).await;
+    let suggested_activity = suggestion::suggest_activity(state.ground.as_ref(), &trip).await;
     let start_date = date_prefix(derived.stats.start_time, &derived.guessed_tz);
     let staged = StagedTrack {
         gpx_name: derived.name,
@@ -114,6 +113,7 @@ pub async fn handle_stage_import(
     Ok(Json(StagedImport {
         staging_id,
         suggested_name,
+        suggested_activity,
         start_date,
         gpx_name: staged.gpx_name,
         distance_m: staged.stats.distance_m,

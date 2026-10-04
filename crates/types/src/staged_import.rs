@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::ActivityType;
+
 /// What `POST /api/import/staged` answers with: everything the import screen
 /// needs to fill in its second step, derived from the GPX the owner just
 /// chose (US-12).
@@ -21,6 +23,9 @@ pub struct StagedImport {
     /// when it does not — the owner types the rest after the date, which is
     /// the whole point of US-12. Empty when the track has neither.
     pub suggested_name: String,
+    /// The activity type the track looks like (US-76), which the activity
+    /// selector starts on; `None` when the archive cannot tell.
+    pub suggested_activity: Option<ActivityType>,
     /// The track's start date as `YYYY-MM-DD`, or `None` for a GPX with no
     /// timestamps at all.
     pub start_date: Option<String>,

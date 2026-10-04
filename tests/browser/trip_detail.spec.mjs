@@ -10,7 +10,7 @@
 // These assertions are the ones that moved off the server-rendered detail
 // page when US-42 deleted it: coverage transferred, it did not evaporate.
 import { expect, signIn, test } from "./session.mjs";
-import { GEOTAGGED_JPEG, ownTrips } from "./trips.mjs";
+import { GEOTAGGED_JPEG, KAYAKING_GPX, ownTrips } from "./trips.mjs";
 
 const ownTrip = ownTrips(test);
 
@@ -337,6 +337,24 @@ test("a suggested name goes into the field only when it is used (US-74)", async 
   expect(before.name).toMatch(/^Unsuggested Trip/);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#trip-name")).toHaveText("2024-06-01 Oslo Hills Walk");
+});
+
+// US-76: "one click selects it, and nothing changes without that click".
+test("a suggested activity is selected only when it is used (US-76)", async ({ page, request }) => {
+  const id = await ownTrip(request, "Paddle", undefined, KAYAKING_GPX);
+  await page.goto(`/app/trips/${id}`);
+
+  await page.getByRole("button", { name: "Edit name / activity" }).click();
+  const suggestion = page.locator("#edit-activity-suggestion");
+  await expect(suggestion).toContainText("Kayaking");
+  await expect(page.getByLabel("Activity")).toHaveValue("");
+
+  await suggestion.getByRole("button", { name: "Use" }).click();
+  await expect(page.getByLabel("Activity")).toHaveValue("kayaking");
+  await expect(suggestion).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#trip-activity")).toHaveText("Kayaking");
 });
 
 // US-33: "using a new tag creates the tag on-demand after confirmation."

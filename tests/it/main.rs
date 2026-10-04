@@ -47,6 +47,7 @@ mod us6_trip_list;
 mod us70_access_log;
 mod us73_trip_tracks;
 mod us74_place_name_suggestion;
+mod us76_activity_suggestion;
 mod us77_statistics;
 mod us78_tag_summary;
 mod us7_trip_detail;
