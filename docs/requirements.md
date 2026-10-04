@@ -121,7 +121,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-77](#us-77--statistics)                                   | ✅     | Statistics                                   | [Statistics](#statistics)                                           |
 | [US-78](#us-78--tag-summary)                                  | ✅     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
-| [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
+| [US-80](#us-80--average-speed)                                | 🚧     | Average speed                                | [Trip page](#trip-page)                                             |
 | [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
@@ -860,7 +860,7 @@ series and axis), ADR-0012 (the derived series are unit-tested)
 
 ### US-80 — Average speed
 
-**Planned 📋** — As the owner, I see the average speed I moved at, not counting breaks, so I can
+**In progress 🚧** — As the owner, I see the average speed I moved at, not counting breaks, so I can
 tell how fast a trip actually went and compare trips and years by it.
 
 **Acceptance criteria:** The average speed in motion is the distance covered while moving divided by

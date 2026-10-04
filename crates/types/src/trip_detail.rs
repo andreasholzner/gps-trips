@@ -25,6 +25,11 @@ pub struct TripDetail {
     pub ascent_m: Option<f64>,
     pub descent_m: Option<f64>,
     pub duration_secs: Option<i64>,
+    /// Time spent moving (US-77), and the distance covered meanwhile
+    /// (US-80): the average speed in motion is their ratio. `None` for a
+    /// track without times.
+    pub moving_secs: Option<i64>,
+    pub moving_distance_m: Option<f64>,
     pub min_lat: Option<f64>,
     pub min_lon: Option<f64>,
     pub max_lat: Option<f64>,

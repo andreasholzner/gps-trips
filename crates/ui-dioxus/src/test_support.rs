@@ -310,6 +310,9 @@ pub fn a_trip(name: &str) -> TripDetail {
         ascent_m: Some(410.0),
         descent_m: Some(395.0),
         duration_secs: Some(13_500),
+        // 12 km in 3 h 20 min moving: 3.6 km/h.
+        moving_secs: Some(12_000),
+        moving_distance_m: Some(12_000.0),
         min_lat: Some(59.9),
         min_lon: Some(10.7),
         max_lat: Some(60.0),

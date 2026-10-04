@@ -318,6 +318,8 @@ fn shared_trip(trip: TripDetail) -> SharedTrip {
         ascent_m: trip.ascent_m,
         descent_m: trip.descent_m,
         duration_secs: trip.duration_secs,
+        moving_secs: trip.moving_secs,
+        moving_distance_m: trip.moving_distance_m,
         min_lat: trip.min_lat,
         min_lon: trip.min_lon,
         max_lat: trip.max_lat,
@@ -349,6 +351,7 @@ fn shared_summary(tags: Vec<TagTrips>, trips: Vec<StatsTrip>) -> SharedSummary {
                 ascent_m: trip.ascent_m,
                 descent_m: trip.descent_m,
                 moving_secs: trip.moving_secs,
+                moving_distance_m: trip.moving_distance_m,
             })
             .collect(),
     }

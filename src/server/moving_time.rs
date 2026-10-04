@@ -1,6 +1,6 @@
 //! Moving time (US-77): how long a trip was actually under way, as opposed
 //! to `duration_secs`, which runs from the first point to the last and
-//! counts every break.
+//! counts every break — and how far it went meanwhile (US-80).
 //!
 //! Pure, so it is tested directly (ADR-0012); `repo::moving_time` stores
 //! what it computes.
@@ -10,37 +10,51 @@ use crate::models::ActivityType;
 use crate::server::geojson;
 use crate::server::gpx::TimedPoint;
 
-/// The seconds between consecutive points (sorted by time, as
+/// How long, and how far, a trip moved: the time and the distance between
+/// consecutive timed points whose speed reaches the activity's threshold.
+/// Counted over the same pairs, so their ratio is the average speed in
+/// motion (US-80).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Moving {
+    pub secs: i64,
+    pub distance_m: f64,
+}
+
+/// The time and distance between consecutive points (sorted by time, as
 /// [`gpx::timed_points`](crate::server::gpx::timed_points) gives them) whose
 /// speed reaches `min_speed_kmh`. `None` with fewer than two timed points —
 /// a track with no times has no moving time, which is not the same as none.
-pub fn moving_secs(points: &[TimedPoint], min_speed_kmh: f64) -> Option<i64> {
+pub fn moving(points: &[TimedPoint], min_speed_kmh: f64) -> Option<Moving> {
     use geo::HaversineDistance;
 
     if points.len() < 2 {
         return None;
     }
     let min_speed_ms = min_speed_kmh / 3.6;
-    let moving = points
-        .windows(2)
-        .filter_map(|pair| {
-            let secs = (pair[1].time - pair[0].time).whole_seconds();
-            // Two points at one instant cover no time, moving or not.
-            if secs <= 0 {
-                return None;
-            }
-            let metres = geo::Point::new(pair[0].lon, pair[0].lat)
-                .haversine_distance(&geo::Point::new(pair[1].lon, pair[1].lat));
-            (metres / secs as f64 >= min_speed_ms).then_some(secs)
-        })
-        .sum();
+    let mut moving = Moving {
+        secs: 0,
+        distance_m: 0.0,
+    };
+    for pair in points.windows(2) {
+        let secs = (pair[1].time - pair[0].time).whole_seconds();
+        // Two points at one instant cover no time, moving or not.
+        if secs <= 0 {
+            continue;
+        }
+        let metres = geo::Point::new(pair[0].lon, pair[0].lat)
+            .haversine_distance(&geo::Point::new(pair[1].lon, pair[1].lat));
+        if metres / secs as f64 >= min_speed_ms {
+            moving.secs += secs;
+            moving.distance_m += metres;
+        }
+    }
     Some(moving)
 }
 
-/// The moving time of a stored track blob, under the threshold of the
-/// trip's activity.
-pub fn of_track(geojson: &str, activity: ActivityType) -> Option<i64> {
-    moving_secs(
+/// How a stored track blob moved, under the threshold of the trip's
+/// activity.
+pub fn of_track(geojson: &str, activity: ActivityType) -> Option<Moving> {
+    moving(
         &geojson::parse_timed_points(geojson),
         config::moving_time::min_speed_kmh(activity),
     )
@@ -55,6 +69,10 @@ mod tests {
 
     /// About 111 m north of the previous point per step: a degree of
     /// latitude is ~111 km.
+    fn moving_secs(points: &[TimedPoint], min_speed_kmh: f64) -> Option<i64> {
+        moving(points, min_speed_kmh).map(|moving| moving.secs)
+    }
+
     fn point(minutes: i64, north_steps: f64) -> TimedPoint {
         TimedPoint {
             time: datetime!(2024-06-01 08:00 UTC) + time::Duration::minutes(minutes),
@@ -101,8 +119,49 @@ mod tests {
                 .unwrap();
         let blob = geojson::build_track_geojson(&track.points);
 
-        assert_eq!(of_track(&blob, ActivityType::Hiking), Some(3600));
-        assert_eq!(of_track(&blob, ActivityType::Kayaking), Some(1800));
-        assert_eq!(of_track(&blob, ActivityType::Cycling), Some(0));
+        let secs = |activity| of_track(&blob, activity).map(|moving| moving.secs);
+        assert_eq!(secs(ActivityType::Hiking), Some(3600));
+        assert_eq!(secs(ActivityType::Kayaking), Some(1800));
+        assert_eq!(secs(ActivityType::Cycling), Some(0));
+    }
+
+    /// One step of [`point`] in metres, as the haversine measures it.
+    const STEP_M: f64 = 111.19;
+
+    fn approx(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 0.5,
+            "{actual} is not ~{expected}"
+        );
+    }
+
+    #[test]
+    fn us80_only_the_distance_covered_while_moving_counts() {
+        // The second step takes ten minutes, ~0.67 km/h: under a 1 km/h
+        // threshold neither its time nor its distance counts.
+        let points = [point(0, 0.0), point(1, 1.0), point(11, 2.0)];
+
+        let moving = moving(&points, 1.0).unwrap();
+
+        assert_eq!(moving.secs, 60);
+        approx(moving.distance_m, STEP_M);
+        approx(
+            super::moving(&points, 0.5).unwrap().distance_m,
+            2.0 * STEP_M,
+        );
+    }
+
+    #[test]
+    fn us80_a_break_lowers_neither_figure() {
+        let without = [point(0, 0.0), point(1, 1.0), point(2, 2.0)];
+        let with = [point(0, 0.0), point(1, 1.0), point(31, 1.0), point(32, 2.0)];
+
+        assert_eq!(moving(&without, 1.0), moving(&with, 1.0));
+        approx(moving(&with, 1.0).unwrap().distance_m, 2.0 * STEP_M);
+    }
+
+    #[test]
+    fn us80_a_track_without_times_has_no_moving_distance() {
+        assert_eq!(moving(&[point(0, 0.0)], 1.0), None);
     }
 }

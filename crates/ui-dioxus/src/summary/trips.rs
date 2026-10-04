@@ -117,6 +117,7 @@ mod tests {
             ascent_m: None,
             descent_m: None,
             moving_secs: None,
+            moving_distance_m: None,
         }
     }
 

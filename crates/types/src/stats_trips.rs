@@ -34,6 +34,9 @@ pub struct StatsTrip {
     pub descent_m: Option<f64>,
     /// Time spent moving (US-77); `None` until it has been worked out.
     pub moving_secs: Option<i64>,
+    /// The distance covered meanwhile (US-80), on the same terms: the
+    /// average speed in motion is the two's ratio.
+    pub moving_distance_m: Option<f64>,
 }
 
 /// What `GET /api/stats/tags?tags=…` answers (US-78): the dated recorded

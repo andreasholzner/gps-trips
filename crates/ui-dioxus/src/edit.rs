@@ -244,6 +244,8 @@ mod tests {
             ascent_m: None,
             descent_m: None,
             duration_secs: None,
+            moving_secs: None,
+            moving_distance_m: None,
             min_lat: None,
             min_lon: None,
             max_lat: None,

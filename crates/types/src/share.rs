@@ -179,6 +179,7 @@ pub struct SharedSummaryTrip {
     pub ascent_m: Option<f64>,
     pub descent_m: Option<f64>,
     pub moving_secs: Option<i64>,
+    pub moving_distance_m: Option<f64>,
 }
 
 /// One row of [`ShareOverview`].
@@ -213,6 +214,9 @@ pub struct SharedTrip {
     pub ascent_m: Option<f64>,
     pub descent_m: Option<f64>,
     pub duration_secs: Option<i64>,
+    /// What the average speed is worked out from (US-80).
+    pub moving_secs: Option<i64>,
+    pub moving_distance_m: Option<f64>,
     pub min_lat: Option<f64>,
     pub min_lon: Option<f64>,
     pub max_lat: Option<f64>,
