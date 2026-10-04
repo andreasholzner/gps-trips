@@ -11,7 +11,7 @@ use crate::server::import::date_prefix;
 /// The `trip` columns a [`StatsTrip`] is read from.
 const COLUMNS: &str = "trip.id, trip.name, trip.activity_type, trip.start_time, trip.end_time, \
     trip.tz_name, trip.distance_m, trip.ascent_m, trip.descent_m, trip.moving_secs, \
-    trip.moving_distance_m";
+    trip.moving_distance_m, trip.climb_gain_m, trip.climb_secs";
 
 /// Every recorded trip with times, reduced to [`StatsTrip`], oldest first,
 /// and how many recorded trips have no times to count them by. Reads the
@@ -110,6 +110,8 @@ fn stats_trip(row: &SqliteRow) -> Option<StatsTrip> {
         descent_m: row.get("descent_m"),
         moving_secs: row.get("moving_secs"),
         moving_distance_m: row.get("moving_distance_m"),
+        climb_gain_m: row.get("climb_gain_m"),
+        climb_secs: row.get("climb_secs"),
     })
 }
 

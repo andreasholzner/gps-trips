@@ -17,6 +17,7 @@
 mod activity_type;
 mod app_version;
 mod bounding_box;
+mod climb;
 mod error_response;
 mod export_trip;
 mod komoot_link;
@@ -39,6 +40,7 @@ mod trip_track;
 pub use activity_type::ActivityType;
 pub use app_version::{AppVersion, VERSION};
 pub use bounding_box::BoundingBox;
+pub use climb::{Climb, INCLINE_WINDOW_M};
 pub use error_response::ErrorResponse;
 pub use export_trip::ExportTrip;
 pub use komoot_link::KomootLink;

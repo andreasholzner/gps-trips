@@ -21,11 +21,12 @@ use time::OffsetDateTime;
 
 use crate::config;
 use crate::models::{
-    normalize_tag_name, ActiveShare, CreateShare, CreatedShare, PhotoResponse, Principal,
+    normalize_tag_name, ActiveShare, Climb, CreateShare, CreatedShare, PhotoResponse, Principal,
     ShareExpiry, ShareOverview, SharedSummary, SharedSummaryTrip, SharedTag, SharedTrip, StatsTrip,
     TagTrips, TripDetail, TripTrack,
 };
 use crate::server::{
+    climb_api::climbs_response,
     error::AppError,
     http::{gpx_response, media_response, track_response},
     photo_api::respond_under,
@@ -41,6 +42,7 @@ pub fn router() -> Router<AppState> {
         .route("/s/:token/api/share", get(overview))
         .route("/s/:token/api/trips/:id", get(trip))
         .route("/s/:token/api/trips/:id/track.geojson", get(track))
+        .route("/s/:token/api/trips/:id/climbs", get(climbs))
         .route("/s/:token/api/trips/tracks", get(tracks))
         .route("/s/:token/api/trips/:id/photos", get(photos))
         .route("/s/:token/api/trips/:id/gpx", get(gpx))
@@ -236,6 +238,16 @@ async fn track(
     track_response(&state, id).await
 }
 
+/// GET `/s/:token/api/trips/:id/climbs` (US-81).
+async fn climbs(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Path((_, id)): Path<(String, i64)>,
+) -> Result<Json<Vec<Climb>>, AppError> {
+    let id = covered(&state, principal, id).await?;
+    climbs_response(&state, id).await
+}
+
 /// GET `/s/:token/api/trips/tracks?ids=…` — the positions of the shared
 /// trips' tracks in one request, for the overview map (US-73). A trip the
 /// share does not name is absent, exactly as one that does not exist.
@@ -320,6 +332,8 @@ fn shared_trip(trip: TripDetail) -> SharedTrip {
         duration_secs: trip.duration_secs,
         moving_secs: trip.moving_secs,
         moving_distance_m: trip.moving_distance_m,
+        climb_gain_m: trip.climb_gain_m,
+        climb_secs: trip.climb_secs,
         min_lat: trip.min_lat,
         min_lon: trip.min_lon,
         max_lat: trip.max_lat,
@@ -352,6 +366,8 @@ fn shared_summary(tags: Vec<TagTrips>, trips: Vec<StatsTrip>) -> SharedSummary {
                 descent_m: trip.descent_m,
                 moving_secs: trip.moving_secs,
                 moving_distance_m: trip.moving_distance_m,
+                climb_gain_m: trip.climb_gain_m,
+                climb_secs: trip.climb_secs,
             })
             .collect(),
     }

@@ -224,3 +224,45 @@ pub mod moving_time {
         }
     }
 }
+
+/// What counts as a climb (US-81): a rise significant for the activity, and
+/// how far the elevation may fall below a climb's highest point before the
+/// climb ends — so a short dip or a flat does not split one hill in two.
+pub mod climbs {
+    use crate::models::ActivityType;
+
+    /// The rule one activity's climbs are found by.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct ClimbRule {
+        /// The least height a climb gains.
+        pub min_gain_m: f64,
+        /// The least average gradient, in percent, if the activity has one.
+        pub min_gradient_pct: Option<f64>,
+        /// A fall below the highest point so far greater than this ends it.
+        pub max_dip_m: f64,
+    }
+
+    /// The rule for `activity`; `None` for an activity that has no climbs.
+    pub const fn rule(activity: ActivityType) -> Option<ClimbRule> {
+        match activity {
+            ActivityType::Cycling | ActivityType::Bikepacking => Some(ClimbRule {
+                min_gain_m: 30.0,
+                min_gradient_pct: Some(3.0),
+                max_dip_m: 10.0,
+            }),
+            ActivityType::CrossCountrySkiing | ActivityType::SkiTouring => Some(ClimbRule {
+                min_gain_m: 15.0,
+                min_gradient_pct: Some(3.0),
+                max_dip_m: 10.0,
+            }),
+            ActivityType::Hiking | ActivityType::Mountaineering | ActivityType::SnowShoe => {
+                Some(ClimbRule {
+                    min_gain_m: 75.0,
+                    min_gradient_pct: None,
+                    max_dip_m: 20.0,
+                })
+            }
+            ActivityType::Kayaking | ActivityType::Unknown => None,
+        }
+    }
+}

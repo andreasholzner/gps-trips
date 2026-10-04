@@ -243,6 +243,8 @@ pub fn as_trip_detail(trip: &SharedTrip) -> TripDetail {
         duration_secs: trip.duration_secs,
         moving_secs: trip.moving_secs,
         moving_distance_m: trip.moving_distance_m,
+        climb_gain_m: trip.climb_gain_m,
+        climb_secs: trip.climb_secs,
         min_lat: trip.min_lat,
         min_lon: trip.min_lon,
         max_lat: trip.max_lat,

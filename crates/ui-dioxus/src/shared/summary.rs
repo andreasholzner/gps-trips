@@ -53,6 +53,8 @@ pub fn as_tag_summaries(shared: &SharedSummary) -> TagSummaries {
                 descent_m: trip.descent_m,
                 moving_secs: trip.moving_secs,
                 moving_distance_m: trip.moving_distance_m,
+                climb_gain_m: trip.climb_gain_m,
+                climb_secs: trip.climb_secs,
             })
             .collect(),
     }

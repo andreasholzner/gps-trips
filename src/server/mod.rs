@@ -2,6 +2,8 @@ pub mod access_log;
 pub mod archive_client;
 pub mod auth;
 pub mod backup;
+pub mod climb_api;
+pub mod climbs;
 pub mod db;
 pub mod delete;
 pub mod edit;

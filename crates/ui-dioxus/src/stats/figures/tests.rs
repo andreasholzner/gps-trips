@@ -15,6 +15,8 @@ fn trip(id: i64, activity: ActivityType, start: &str, end: &str, km: f64) -> Sta
         descent_m: Some(km * 100.0),
         moving_secs: Some((km * 900.0) as i64),
         moving_distance_m: Some(km * 1000.0),
+        climb_gain_m: Some(km * 50.0),
+        climb_secs: Some((km * 300.0) as i64),
     }
 }
 
@@ -352,6 +354,8 @@ fn us77_equal_records_keep_the_earlier_trip_first() {
 fn moved(id: i64, activity: ActivityType, start: &str, km: f64, hours: f64) -> StatsTrip {
     StatsTrip {
         moving_distance_m: Some(km * 1000.0),
+        climb_gain_m: Some(km * 50.0),
+        climb_secs: Some((km * 300.0) as i64),
         moving_secs: Some((hours * 3600.0) as i64),
         ..trip(id, activity, start, start, km)
     }

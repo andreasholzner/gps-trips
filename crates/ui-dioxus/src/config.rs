@@ -33,8 +33,10 @@ pub mod elevation_profile {
     /// reads as 0 km/h — low enough that a slow scramble still counts as moving.
     pub const STANDSTILL_KMH: f64 = 0.5;
 
-    /// The distance the incline at a point is measured over, centred on it.
-    pub const INCLINE_WINDOW_M: f64 = 50.0;
+    /// The distance the incline at a point is measured over, centred on it —
+    /// shared with the server, which finds climbs on the elevation averaged
+    /// over the same distance (US-81).
+    pub use trip_archive_types::INCLINE_WINDOW_M;
 
     /// A run shorter than this gives no incline, rather than a rise divided by
     /// next to nothing.

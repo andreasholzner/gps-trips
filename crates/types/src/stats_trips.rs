@@ -37,6 +37,11 @@ pub struct StatsTrip {
     /// The distance covered meanwhile (US-80), on the same terms: the
     /// average speed in motion is the two's ratio.
     pub moving_distance_m: Option<f64>,
+    /// What the climbing rate is worked out from (US-81): the height the
+    /// climbs gain, added up, and the time spent moving on them. `None` for
+    /// a track without times.
+    pub climb_gain_m: Option<f64>,
+    pub climb_secs: Option<i64>,
 }
 
 /// What `GET /api/stats/tags?tags=…` answers (US-78): the dated recorded

@@ -83,6 +83,11 @@ pub fn router(state: AppState) -> Router {
         .route("/trips/:id", get(trip_page_moved))
         .route("/api/trips/:id/gpx", get(download_gpx))
         .route("/api/trips/:id/track.geojson", get(track_geojson))
+        // US-81: the trip's climbs, for its page.
+        .route(
+            "/api/trips/:id/climbs",
+            get(crate::server::climb_api::handle_list_climbs),
+        )
         // US-73: the tracks of the trips in the list map's view, in one go.
         .route("/api/trips/tracks", get(handle_list_tracks))
         // US-7: one trip's metadata as JSON, for the SPA's detail screen (US-42).

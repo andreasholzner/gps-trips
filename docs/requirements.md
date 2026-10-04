@@ -122,7 +122,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-78](#us-78--tag-summary)                                  | ✅     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 | [US-80](#us-80--average-speed)                                | ✅     | Average speed                                | [Trip page](#trip-page)                                             |
-| [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
+| [US-81](#us-81--climbing-rate)                                | 🚧     | Climbing rate                                | [Trip page](#trip-page)                                             |
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
 
@@ -891,7 +891,7 @@ US-78's figures.
 
 ### US-81 — Climbing rate
 
-**Planned 📋** — As the owner, I see how fast I climbed — metres gained per hour on the trip's real
+**In progress 🚧** — As the owner, I see how fast I climbed — metres gained per hour on the trip's real
 hills — so I can tell how strong a ride or hike went uphill and compare trips and years by it.
 
 **Acceptance criteria:** **A climb** is a stretch of the track whose elevation, smoothed as US-79's

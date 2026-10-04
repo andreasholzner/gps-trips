@@ -313,6 +313,9 @@ pub fn a_trip(name: &str) -> TripDetail {
         // 12 km in 3 h 20 min moving: 3.6 km/h.
         moving_secs: Some(12_000),
         moving_distance_m: Some(12_000.0),
+        // 300 m of climbs in 30 min moving: 600 m/h.
+        climb_gain_m: Some(300.0),
+        climb_secs: Some(1800),
         min_lat: Some(59.9),
         min_lon: Some(10.7),
         max_lat: Some(60.0),
