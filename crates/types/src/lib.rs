@@ -34,6 +34,7 @@ mod stats_trips;
 mod tag;
 mod trip_detail;
 mod trip_kind;
+mod trip_suggestion;
 mod trip_summary;
 mod trip_track;
 
@@ -62,5 +63,6 @@ pub use stats_trips::{StatsTrip, StatsTrips, TagSummaries, TagTrips};
 pub use tag::{normalize_tag_name, Tag, TagOverview, TagShare};
 pub use trip_detail::TripDetail;
 pub use trip_kind::TripKind;
+pub use trip_suggestion::TripSuggestion;
 pub use trip_summary::TripSummary;
 pub use trip_track::TripTrack;

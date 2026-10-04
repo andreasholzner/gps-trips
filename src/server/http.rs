@@ -88,6 +88,11 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/:id/climbs",
             get(crate::server::climb_api::handle_list_climbs),
         )
+        // US-74: the name the edit form offers for the trip as stored.
+        .route(
+            "/api/trips/:id/suggestion",
+            get(crate::server::suggestion::handle_trip_suggestion),
+        )
         // US-73: the tracks of the trips in the list map's view, in one go.
         .route("/api/trips/tracks", get(handle_list_tracks))
         // US-7: one trip's metadata as JSON, for the SPA's detail screen (US-42).

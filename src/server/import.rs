@@ -10,7 +10,7 @@ use crate::server::{
     db,
     error::{AppError, ImportError},
     geojson::{self, build_track_geojson},
-    gpx::{self, compute_stats, parse_gpx, TimedPoint, TrackStats},
+    gpx::{self, compute_stats, parse_gpx, TimedPoint, TrackPoint, TrackStats},
     photos::{prepare_photos, store_photos, UploadedPhoto},
     placement::TripPhotoContext,
     repo::{self, insert_trip_in_tx, NewTrip},
@@ -30,6 +30,9 @@ pub(crate) struct DerivedTrack {
     /// `handle_import`'s name-resolution precedence (US-12); Komoot sync
     /// always uses the tour's Komoot name instead.
     pub name: Option<String>,
+    /// The parsed points, for what is worked out from them before the trip
+    /// exists — the place-based name suggestion (US-74).
+    pub points: Vec<TrackPoint>,
     pub stats: TrackStats,
     pub geojson: String,
     pub guessed_tz: String,
@@ -44,6 +47,7 @@ pub(crate) fn derive_track(raw: &[u8]) -> Result<DerivedTrack, ImportError> {
     let timed_points = gpx::timed_points(&parsed.points);
     Ok(DerivedTrack {
         name: parsed.name,
+        points: parsed.points,
         stats,
         geojson,
         guessed_tz,
@@ -287,7 +291,7 @@ pub(crate) fn resolve_name(
 /// and this path is defensive.
 ///
 /// Shared with the two-phase import's name suggestion (US-12,
-/// `staged_import::suggest_name`), which puts the same prefix in front of the
+/// `suggestion::suggest_name`), which puts the same prefix in front of the
 /// owner's cursor — the two must not disagree about what date a track starts
 /// on.
 pub(crate) fn date_prefix(start_time: Option<OffsetDateTime>, tz_name: &str) -> Option<String> {

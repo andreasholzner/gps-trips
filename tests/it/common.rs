@@ -100,6 +100,26 @@ pub async fn test_app() -> (Router, tempfile::TempDir) {
     )
 }
 
+/// As [`test_app`], suggesting names from the place-name fixture cut from
+/// the real database around the synthetic tracks beside it (US-74).
+pub async fn test_app_with_places() -> (Router, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let pool = db::create_pool(&dir.path().join("test.db"))
+        .await
+        .expect("create pool");
+    let store: Arc<dyn BlobStore> = Arc::new(LocalDisk::new(dir.path().join(TEST_BLOBS_SUBDIR)));
+    let places = trip_archive::server::places::PlaceDb::open(std::path::Path::new(
+        "tests/fixtures/place_names/places.sqlite",
+    ))
+    .await
+    .expect("the place fixture opens");
+    assert!(places.is_some(), "the place fixture is missing");
+    (
+        http::router(AppState::new(pool, store, None, test_auth()).with_places(places)),
+        dir,
+    )
+}
+
 /// As [`test_app`], with a different shared password — for US-19's
 /// assertion that rotating the secret ends every session that exists.
 pub async fn test_app_with_password(password: &str) -> (Router, tempfile::TempDir) {

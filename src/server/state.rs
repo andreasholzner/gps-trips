@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use crate::server::access_log::AccessLog;
 use crate::server::auth::Auth;
 use crate::server::komoot::KomootClient;
+use crate::server::places::PlaceDb;
 use crate::server::storage::BlobStore;
 
 /// Shared server state threaded through Axum handlers via `State<AppState>`.
@@ -20,6 +21,10 @@ pub struct AppState {
     /// everything except the "Sync now" routes, which report a clear 400
     /// instead of the app refusing to start over an optional integration.
     pub komoot: Option<Arc<dyn KomootClient>>,
+    /// The offline place names a trip's name is suggested from (US-74,
+    /// ADR-0027). `None` without the database, which is a supported way to
+    /// run: the suggestion falls back to US-12's.
+    pub places: Option<PlaceDb>,
     /// The shared-password gate (US-19, ADR-0010's 2026-09-02 amendment).
     /// Not optional the way `komoot` is: the archive refuses to start
     /// without a password, so every request — in production and in the
@@ -60,9 +65,15 @@ impl AppState {
             pool,
             store,
             komoot,
+            places: None,
             auth,
             sync_in_progress: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// The state, suggesting names from `places` (US-74).
+    pub fn with_places(self, places: Option<PlaceDb>) -> Self {
+        Self { places, ..self }
     }
 
     /// Atomically claims the sync flag for the caller. `None` if a sync is

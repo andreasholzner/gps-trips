@@ -1,5 +1,5 @@
-//! The two-phase import (US-12): parse the GPX, suggest a name, then create
-//! the trip once the owner has confirmed it.
+//! The two-phase import (US-12): parse the GPX, suggest a name (US-74:
+//! `suggestion`), then create the trip once the owner has confirmed it.
 //!
 //! The single-step form in `import.rs` cannot satisfy US-12 — a suggested
 //! `YYYY-mm-dd` prefix has to be *in the field* while the owner types, and
@@ -39,6 +39,7 @@ use crate::server::{
     },
     repo::{self, insert_trip_in_tx, NewStagedImport, NewTrip},
     state::AppState,
+    suggestion,
 };
 
 /// What a parked parse holds, as JSON in `import_staging.derived`. The track
@@ -80,11 +81,16 @@ pub async fn handle_stage_import(
 
     // Both read the start date in the track's own timezone, so the prefix the
     // owner is handed is the day they were out on.
-    let suggested_name = suggest_name(
-        derived.name.as_deref(),
-        derived.stats.start_time,
-        &derived.guessed_tz,
-    );
+    let suggested_name = suggestion::suggest_name(
+        state.places.as_ref(),
+        &suggestion::Trip {
+            points: &derived.points,
+            gpx_name: derived.name.as_deref(),
+            start_time: derived.stats.start_time,
+            tz_name: &derived.guessed_tz,
+        },
+    )
+    .await;
     let start_date = date_prefix(derived.stats.start_time, &derived.guessed_tz);
     let staged = StagedTrack {
         gpx_name: derived.name,
@@ -190,95 +196,5 @@ pub async fn handle_cancel_staged_import(
     match repo::delete_staged_import(&state.pool, staging_id).await? {
         true => Ok(StatusCode::NO_CONTENT),
         false => Err(AppError::NotFound),
-    }
-}
-
-/// What to prefill the name field with (US-12).
-///
-/// The date prefix is the point of the story, so it leads whenever the track
-/// has one: `"2024-06-01 Oslo Hills Walk"` with a track name to follow it,
-/// and the bare `"2024-06-01 "` without — the owner types the rest after the
-/// date rather than deleting a placeholder first. A GPX with no timestamps
-/// has no date to offer, so its name (or nothing) stands alone.
-///
-/// This is a *suggestion*, not the fallback `resolve_name` applies when the
-/// field arrives empty; that precedence is unchanged and still decides what
-/// an unanswered confirm stores.
-fn suggest_name(
-    gpx_name: Option<&str>,
-    start_time: Option<OffsetDateTime>,
-    tz_name: &str,
-) -> String {
-    let name = gpx_name.map(str::trim).filter(|n| !n.is_empty());
-    match (date_prefix(start_time, tz_name), name) {
-        (Some(prefix), Some(name)) => format!("{prefix} {name}"),
-        (Some(prefix), None) => format!("{prefix} "),
-        (None, Some(name)) => name.to_string(),
-        (None, None) => String::new(),
-    }
-}
-
-// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::suggest_name;
-    use time::macros::datetime;
-
-    #[test]
-    fn us12_a_named_track_is_suggested_behind_its_date() {
-        assert_eq!(
-            suggest_name(
-                Some("Oslo Hills Walk"),
-                Some(datetime!(2024-06-01 08:00 UTC)),
-                "Europe/Oslo",
-            ),
-            "2024-06-01 Oslo Hills Walk"
-        );
-    }
-
-    #[test]
-    fn us12_an_unnamed_track_suggests_the_bare_prefix_to_type_after() {
-        assert_eq!(
-            suggest_name(None, Some(datetime!(2024-06-01 08:00 UTC)), "Europe/Oslo"),
-            "2024-06-01 "
-        );
-    }
-
-    #[test]
-    fn us12_a_blank_track_name_counts_as_none() {
-        assert_eq!(
-            suggest_name(
-                Some("   "),
-                Some(datetime!(2024-06-01 08:00 UTC)),
-                "Europe/Oslo"
-            ),
-            "2024-06-01 "
-        );
-    }
-
-    #[test]
-    fn us12_the_suggested_date_is_the_one_where_the_track_is() {
-        // The field US-12 exists to prefill must not offer the wrong day for
-        // a ride that started after midnight local time.
-        assert_eq!(
-            suggest_name(
-                Some("Midnight Ride"),
-                Some(datetime!(2024-06-01 22:30 UTC)),
-                "Europe/Oslo",
-            ),
-            "2024-06-02 Midnight Ride"
-        );
-    }
-
-    #[test]
-    fn us12_a_track_without_timestamps_offers_no_date_to_prefix() {
-        // Not "Unknown date …": a prefill is something the owner keeps and
-        // types after, and no one wants to delete that first.
-        assert_eq!(
-            suggest_name(Some("Oslo Hills Walk"), None, "Europe/Oslo"),
-            "Oslo Hills Walk"
-        );
-        assert_eq!(suggest_name(None, None, "Europe/Oslo"), "");
     }
 }

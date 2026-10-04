@@ -34,6 +34,7 @@ pub mod staged_import;
 pub mod state;
 pub mod stats;
 pub mod storage;
+pub mod suggestion;
 pub mod tags;
 pub mod thumbnail;
 pub mod timezone;

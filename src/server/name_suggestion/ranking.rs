@@ -6,6 +6,8 @@ use crate::config::name_suggestion::{
 };
 use crate::server::places::{Place, PlaceKind, Source};
 
+use geo::{BoundingRect, Coord};
+
 use super::geometry::{Flat, Plane};
 
 /// A place and its shape on the plane.
@@ -13,12 +15,32 @@ use super::geometry::{Flat, Plane};
 pub struct Located {
     pub place: Place,
     pub flat: Flat,
+    /// The south-west and north-east corners of `flat`.
+    bounds: (Coord, Coord),
 }
 
 impl Located {
     pub fn new(place: Place, plane: &Plane) -> Self {
         let flat = plane.project_shape(&place.shape);
-        Self { place, flat }
+        let bounds = match &flat {
+            Flat::Point(c) => (*c, *c),
+            Flat::Area(area) => area
+                .bounding_rect()
+                .map_or((Coord::zero(), Coord::zero()), |r| (r.min(), r.max())),
+        };
+        Self {
+            place,
+            flat,
+            bounds,
+        }
+    }
+
+    /// Whether this and `other` are within `reach_m` of each other.
+    fn within(&self, other: &Located, reach_m: f64) -> bool {
+        let gap_x = (other.bounds.0.x - self.bounds.1.x).max(self.bounds.0.x - other.bounds.1.x);
+        let gap_y = (other.bounds.0.y - self.bounds.1.y).max(self.bounds.0.y - other.bounds.1.y);
+        // The boxes first: most places are nowhere near each other.
+        gap_x <= reach_m && gap_y <= reach_m && self.flat.distance_to_shape(&other.flat) <= reach_m
     }
 
     /// How important the place is, by what the sources say about it: a
@@ -47,6 +69,9 @@ pub fn dedupe(places: Vec<Located>) -> Vec<Located> {
     let mut kept: Vec<Located> = Vec::with_capacity(places.len());
     for candidate in places {
         let twin = kept.iter_mut().find(|other| {
+            if other.place.kind != candidate.place.kind {
+                return false;
+            }
             let reach = if other.place.name.eq_ignore_ascii_case(&candidate.place.name) {
                 DUPLICATE_REACH_M
             } else if other.place.source != candidate.place.source {
@@ -54,8 +79,7 @@ pub fn dedupe(places: Vec<Located>) -> Vec<Located> {
             } else {
                 return false;
             };
-            other.place.kind == candidate.place.kind
-                && other.flat.distance_to_shape(&candidate.flat) <= reach
+            other.within(&candidate, reach)
         });
         match twin {
             Some(twin) => merge(twin, candidate),

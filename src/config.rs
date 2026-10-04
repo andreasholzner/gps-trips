@@ -22,6 +22,10 @@ pub mod storage {
     pub const DB_FILENAME: &str = "trip-archive.db";
     /// Photo blob subdirectory name, under the data directory (ADR-0007).
     pub const BLOBS_SUBDIR: &str = "photos";
+    /// The place-name database (US-74, ADR-0027), under the data directory
+    /// but no part of the archive: built by `places_build`, copied there by
+    /// hand, and optional.
+    pub const PLACES_DB_FILENAME: &str = "places.sqlite";
 }
 
 /// HTTP server networking (US-10 on the laptop, US-45 in a container).

@@ -37,7 +37,8 @@ async fn main() -> anyhow::Result<()> {
     let store: Arc<dyn BlobStore> =
         Arc::new(LocalDisk::new(data_dir.join(config::storage::BLOBS_SUBDIR)));
     let komoot = komoot_client_from_env();
-    let state = server::state::AppState::new(pool.clone(), store, komoot, auth);
+    let places = places_from(&data_dir.join(config::storage::PLACES_DB_FILENAME)).await;
+    let state = server::state::AppState::new(pool.clone(), store, komoot, auth).with_places(places);
     let access_log = state.access_log.clone();
     let app = server::http::router(state);
 
@@ -89,4 +90,27 @@ fn komoot_client_from_env() -> Option<Arc<dyn KomootClient>> {
     let email = std::env::var(config::komoot::EMAIL_ENV_VAR).ok()?;
     let password = std::env::var(config::komoot::PASSWORD_ENV_VAR).ok()?;
     Some(Arc::new(KomootHttpClient::new(email, password, false)))
+}
+
+/// The place-name database (US-74, ADR-0027) at `path`, if there is one.
+/// Optional, so neither a missing nor an unreadable one stops the archive:
+/// names are then suggested as before, from the GPX.
+async fn places_from(path: &std::path::Path) -> Option<server::places::PlaceDb> {
+    match server::places::PlaceDb::open(path).await {
+        Ok(Some(places)) => {
+            tracing::info!("Suggesting names from the places in {}", path.display());
+            Some(places)
+        }
+        Ok(None) => {
+            tracing::info!("No place database at {}", path.display());
+            None
+        }
+        Err(e) => {
+            tracing::warn!(
+                "The place database at {} cannot be read: {e}",
+                path.display()
+            );
+            None
+        }
+    }
 }
