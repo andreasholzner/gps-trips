@@ -442,3 +442,38 @@ fn us80_a_year_without_moving_has_no_average_to_compare() {
     assert_eq!(running.this_year, Some(7.0));
     assert_eq!(running.last_year, None);
 }
+
+// ── US-81: climbing rate ─────────────────────────────────────────────────────
+
+/// A trip whose climbs gained `gain_m` in `hours` of moving on them.
+fn climbed(id: i64, activity: ActivityType, start: &str, gain_m: f64, hours: f64) -> StatsTrip {
+    StatsTrip {
+        climb_gain_m: Some(gain_m),
+        climb_secs: Some((hours * 3600.0) as i64),
+        ..trip(id, activity, start, start, 10.0)
+    }
+}
+
+#[test]
+fn us81_a_climbing_rate_is_the_climbs_height_over_their_moving_time() {
+    // 300 m/h and 800 m/h: together 1100 m in 2 h, not their mean of 550.
+    let trips = vec![
+        climbed(1, Hiking, "2024-03-10", 300.0, 1.0),
+        climbed(2, Cycling, "2024-03-11", 800.0, 1.0),
+        // A ride without a climb adds to neither side.
+        climbed(3, Cycling, "2024-03-12", 0.0, 0.0),
+    ];
+
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::ClimbingRate, &[]));
+
+    assert_eq!(totals.sum.as_ref().unwrap().total, 550.0);
+    assert_eq!(totals.rows[1].total, 800.0, "cycling");
+    assert!(totals.rows.iter().all(|row| row.share.is_none()));
+    let running = running(
+        &dated(&trips, &[]),
+        Measure::ClimbingRate,
+        Some(2024),
+        date!(2025 - 06 - 01),
+    );
+    assert_eq!(running.years[0].1[365], Some(550.0));
+}

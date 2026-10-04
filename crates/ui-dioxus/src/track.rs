@@ -18,8 +18,10 @@ use time::UtcOffset;
 
 use crate::format;
 
+mod climbs;
 mod profile;
 
+pub use climbs::climb_shading;
 pub use profile::{inclines, speed_series};
 
 /// A track as served.

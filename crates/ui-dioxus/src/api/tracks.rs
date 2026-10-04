@@ -2,9 +2,10 @@
 //! the owner's list map, and a share's overview map through a client made
 //! with [`ApiClient::for_share`].
 //! Only the positions travel; the detail screen still reads a trip's whole
-//! `track.geojson` with [`get_track`](super::get_track).
+//! `track.geojson` with [`get_track`](super::get_track), and its climbs
+//! (US-81) with [`list_climbs`].
 
-use trip_archive_types::TripTrack;
+use trip_archive_types::{Climb, TripTrack};
 
 use super::{get_json, ApiClient, ApiError};
 
@@ -21,6 +22,12 @@ pub async fn list_tracks(archive: &ApiClient, ids: &[i64]) -> Result<Vec<TripTra
         archive.url(&format!("/api/trips/tracks?ids={ids}")),
     )
     .await
+}
+
+/// `GET /api/trips/:id/climbs` — the trip's climbs in track order (US-81),
+/// for the owner or, through a share's client, its recipient.
+pub async fn list_climbs(archive: &ApiClient, id: i64) -> Result<Vec<Climb>, ApiError> {
+    get_json(archive, archive.url(&format!("/api/trips/{id}/climbs"))).await
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -82,5 +89,34 @@ mod tests {
         let (archive, _dir) = serve_test_archive().await;
 
         assert!(list_tracks(&archive, &[]).await.expect("tracks").is_empty());
+    }
+
+    #[tokio::test]
+    async fn us81_a_trips_climbs_are_read_by_its_owner_and_through_its_share() {
+        let (archive, _dir) = serve_test_archive().await;
+        let id = crate::test_support::import_gpx(
+            &archive,
+            crate::test_support::HILL_GPX,
+            &[("activity_type", "hiking")],
+        )
+        .await;
+        let share = create_share(
+            &archive,
+            &CreateShare {
+                trip_ids: vec![id],
+                tags: Vec::new(),
+                label: None,
+                expiry: ShareExpiry::Never,
+            },
+        )
+        .await
+        .expect("share");
+        let recipient = anonymous(&archive).for_share(share.token);
+
+        let owners = list_climbs(&archive, id).await.expect("the owner's");
+        let shared = list_climbs(&recipient, id).await.expect("the recipient's");
+
+        assert_eq!(owners.len(), 1, "{owners:?}");
+        assert_eq!(shared, owners);
     }
 }

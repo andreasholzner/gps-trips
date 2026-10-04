@@ -20,6 +20,11 @@ pub fn speed(kmh: Option<f64>) -> String {
     kmh.map_or_else(dash, |kmh| format!("{kmh:.1} km/h"))
 }
 
+/// A climbing rate in whole metres an hour (US-81).
+pub fn climbing_rate(metres_per_hour: Option<f64>) -> String {
+    metres_per_hour.map_or_else(dash, |rate| format!("{rate:.0} m/h"))
+}
+
 /// An incline as a whole percentage, signed so uphill and downhill read
 /// apart at a glance (US-79): `+7 %`, `−4 %`, and level ground as `0 %`.
 pub fn incline(percent: Option<f64>) -> String {
@@ -215,6 +220,12 @@ mod tests {
         assert_eq!(speed(Some(12.345)), "12.3 km/h");
         assert_eq!(speed(Some(0.0)), "0.0 km/h");
         assert_eq!(speed(None), "—");
+    }
+
+    #[test]
+    fn us81_a_climbing_rate_is_shown_in_whole_metres_an_hour() {
+        assert_eq!(climbing_rate(Some(612.6)), "613 m/h");
+        assert_eq!(climbing_rate(None), "—");
     }
 
     #[test]

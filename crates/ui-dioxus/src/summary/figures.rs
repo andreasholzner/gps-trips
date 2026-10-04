@@ -61,6 +61,9 @@ pub struct Sums {
     /// The moving distance over the moving time (US-80), of the trips that
     /// have both; `None` when none moved.
     pub average_kmh: Option<f64>,
+    /// The climbs' height over their moving time (US-81), in m/h; `None`
+    /// when none of the trips climbed.
+    pub climbing_rate: Option<f64>,
 }
 
 impl Sums {
@@ -70,6 +73,10 @@ impl Sums {
             .iter()
             .filter_map(|t| t.trip.moving_distance_m.zip(t.trip.moving_secs))
             .fold((0.0, 0), |(metres, secs), (m, s)| (metres + m, secs + s));
+        let (climbed_m, climbing_secs) = trips
+            .iter()
+            .filter_map(|t| t.trip.climb_gain_m.zip(t.trip.climb_secs))
+            .fold((0.0, 0), |(gain, secs), (g, s)| (gain + g, secs + s));
         Self {
             trips: trips.len() as u32,
             days_out: days.len() as u32,
@@ -79,6 +86,7 @@ impl Sums {
             moving_hours: trips.iter().filter_map(|t| t.trip.moving_secs).sum::<i64>() as f64
                 / 3600.0,
             average_kmh: rates::average_kmh(metres, secs as f64),
+            climbing_rate: rates::climbing_rate(climbed_m, climbing_secs as f64),
         }
     }
 }

@@ -115,7 +115,7 @@ fn LongestDay(day: Option<DayRecord>, viewer: Viewer) -> Element {
 #[component]
 fn SumsGroup(activity: Option<ActivityType>, sums: Vec<Option<Sums>>) -> Element {
     let columns = sums.len() + 1;
-    let rows: [FigureRow; 7] = [
+    let rows: [FigureRow; 8] = [
         ("Trips", |s| s.trips.to_string()),
         ("Days out", |s| s.days_out.to_string()),
         ("Distance", |s| Measure::Distance.format(s.km)),
@@ -130,6 +130,7 @@ fn SumsGroup(activity: Option<ActivityType>, sums: Vec<Option<Sums>>) -> Element
                 |kmh| Measure::AverageSpeed.format(kmh),
             )
         }),
+        ("Climbing rate", |s| format::climbing_rate(s.climbing_rate)),
     ];
     rsx! {
         tbody { class: "summary-group",
@@ -174,6 +175,7 @@ mod tests {
             descent_m: 1100.0,
             moving_hours: 2.5,
             average_kmh: Some(km / 2.5),
+            climbing_rate: Some(480.0),
         }
     }
 
@@ -228,6 +230,7 @@ mod tests {
             "Descent",
             "Moving time",
             "Average speed",
+            "Climbing rate",
         ] {
             assert!(html.contains(label), "{label} missing: {html}");
         }
@@ -236,6 +239,11 @@ mod tests {
             "{html}"
         );
         assert!(html.contains("16.0 km/h"), "{html}");
+        assert!(
+            html.find("Average speed").unwrap() < html.find("Climbing rate").unwrap(),
+            "{html}"
+        );
+        assert!(html.contains("480 m/h"), "{html}");
         assert!(html.contains("40.0 km"), "{html}");
         assert!(html.contains("1100 m"), "{html}");
         assert!(html.contains("2:30 h"), "{html}");

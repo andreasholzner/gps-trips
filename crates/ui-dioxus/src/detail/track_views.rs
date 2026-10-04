@@ -3,8 +3,9 @@
 
 use dioxus::prelude::*;
 
-use trip_archive_types::ActivityType;
+use trip_archive_types::{ActivityType, Climb};
 
+use super::climbs::ClimbsList;
 use crate::activity_color;
 use crate::api::{self, ApiClient};
 use crate::format;
@@ -32,13 +33,27 @@ pub fn TrackSection(
     let track = use_resource(use_reactive!(|id| async move {
         api::get_track(&archive(), id).await
     }));
+    // The climbs (US-81) come with the track, so the chart is drawn once,
+    // with them. They are found under the trip's current activity, so a
+    // change of it reads them again. Climbs that will not load cost the
+    // list and the shading, not the profile.
+    let climbs = use_resource(use_reactive!(|id, activity| async move {
+        let _ = activity;
+        api::list_climbs(&archive(), id)
+            .await
+            .unwrap_or_else(|err| {
+                dioxus::logger::tracing::error!("could not read the climbs: {err}");
+                Vec::new()
+            })
+    }));
+    let climbs = climbs.read_unchecked().clone();
 
     rsx! {
-        match &*track.read_unchecked() {
-            None => rsx! { p { "Loading the track…" } },
-            Some(Err(err)) => rsx! { p { class: "error", "Could not load the track: {err}" } },
-            Some(Ok(track)) => rsx! {
-                TrackViews { track: track.clone(), activity, markers: markers.clone(), on_open_photos }
+        match (&*track.read_unchecked(), climbs) {
+            (None, _) | (_, None) => rsx! { p { "Loading the track…" } },
+            (Some(Err(err)), _) => rsx! { p { class: "error", "Could not load the track: {err}" } },
+            (Some(Ok(track)), Some(climbs)) => rsx! {
+                TrackViews { track: track.clone(), activity, climbs, markers: markers.clone(), on_open_photos }
             },
         }
     }
@@ -57,12 +72,16 @@ pub fn TrackSection(
 fn TrackViews(
     track: Track,
     activity: ActivityType,
+    climbs: Vec<Climb>,
     markers: Vec<PhotoMarker>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
     let points = track::polyline(&track);
     let series = track::elevation_series(&track);
     let speed_kmh = track::speed_series(&track);
+    let shading = series.as_ref().and_then(|(distance_km, elevation_m)| {
+        track::climb_shading(distance_km, elevation_m, &climbs)
+    });
     let samples = track::hover_points(&track);
     let hovered = use_signal(|| None::<usize>);
     let hovered_at = hovered().and_then(|i| samples.get(i).and_then(|sample| sample.position));
@@ -70,9 +89,10 @@ fn TrackViews(
     rsx! {
         TrackMap { points, color: activity_color::color(activity), markers, hovered_at, on_open_photos }
         if let Some((distance_km, elevation_m)) = series {
-            ElevationChart { distance_km, elevation_m, speed_kmh, hovered }
+            ElevationChart { distance_km, elevation_m, speed_kmh, climbs: shading, hovered }
             HoverReadout { points: samples, hovered: hovered() }
         }
+        ClimbsList { climbs }
     }
 }
 
@@ -130,18 +150,24 @@ fn TrackMap(
 
 /// The elevation chart's container, on the same terms as the map's — and the
 /// source of the hovered index, which it reports until the channel closes.
-/// `speed_kmh` is drawn over the same distances when there is one (US-79).
+/// `speed_kmh` is drawn over the same distances when there is one (US-79),
+/// and `climbs` filled below the line (US-81).
 #[component]
 fn ElevationChart(
     distance_km: Vec<f64>,
     elevation_m: Vec<f64>,
     speed_kmh: Option<Vec<Option<f64>>>,
+    climbs: Option<Vec<Option<f64>>>,
     hovered: Signal<Option<usize>>,
 ) -> Element {
-    use_future(use_reactive!(|distance_km, elevation_m, speed_kmh| {
+    use_future(use_reactive!(|distance_km,
+                              elevation_m,
+                              speed_kmh,
+                              climbs| {
         let mut hovered = hovered;
         async move {
-            let mut chart = interop::start_elevation_chart(distance_km, elevation_m, speed_kmh);
+            let mut chart =
+                interop::start_elevation_chart(distance_km, elevation_m, speed_kmh, climbs);
             loop {
                 match chart.recv::<Option<usize>>().await {
                     Ok(index) => hovered.set(index),

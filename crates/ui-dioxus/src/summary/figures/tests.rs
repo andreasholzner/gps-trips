@@ -215,3 +215,29 @@ fn us80_trips_without_moving_figures_have_no_average_speed() {
         None
     );
 }
+
+// ── US-81: climbing rate ─────────────────────────────────────────────────────
+
+#[test]
+fn us81_each_activity_climbs_at_its_climbs_height_over_their_moving_time() {
+    let mut archive = archive();
+    // The hikes climb 600 m in 1 h, 100 m in 1 h and nothing; the ride 1000 m in 1 h.
+    for (trip, (gain, secs)) in archive.trips.iter_mut().zip([
+        (600.0, 3600),
+        (1000.0, 3600),
+        (100.0, 3600),
+        (0.0, 0),
+        (0.0, 0),
+    ]) {
+        trip.climb_gain_m = Some(gain);
+        trip.climb_secs = Some(secs);
+    }
+
+    let summaries = summaries(&archive);
+    let alps = summaries[0].figures.as_ref().unwrap();
+
+    assert_eq!(sums_of(alps, Hiking).climbing_rate, Some(350.0));
+    assert_eq!(alps.together.climbing_rate, Some(1700.0 / 3.0));
+    let norway = summaries[1].figures.as_ref().unwrap();
+    assert_eq!(sums_of(norway, Kayaking).climbing_rate, None);
+}

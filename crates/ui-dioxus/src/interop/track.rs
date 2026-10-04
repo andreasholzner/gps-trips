@@ -238,8 +238,12 @@ const ELEVATION_SCRIPT: &str = r##"
     const el = document.getElementById(CONTAINER);
     const widgets = (window.tripArchiveWidgets ||= {});
 
-    const { distance_km: distanceKm, elevation_m: elevationM, speed_kmh: speedKmh } =
-      await dioxus.recv();
+    const {
+      distance_km: distanceKm,
+      elevation_m: elevationM,
+      speed_kmh: speedKmh,
+      climbs,
+    } = await dioxus.recv();
     if (widgets[CONTAINER]) {
       widgets[CONTAINER].destroy();
       widgets[CONTAINER] = null;
@@ -318,8 +322,25 @@ const ELEVATION_SCRIPT: &str = r##"
         // elevation profile alone, with no right axis claiming a series that
         // is not there. A point without a speed is `null`, which uPlot leaves
         // as a gap in the line.
+        //
+        // The climbs (US-81) come first, so the elevation line is drawn over
+        // them: a fill from the line down to the axis, with no line of its
+        // own and no cursor mark, broken where the series is `null`.
         series: [
           { label: "Distance (km)" },
+          ...(climbs
+            ? [
+                {
+                  label: "Climbs",
+                  scale: "m",
+                  stroke: "transparent",
+                  width: 0,
+                  fill: "rgba(51, 103, 214, 0.15)",
+                  fillTo: (u) => u.scales.m.min,
+                  points: { show: false },
+                },
+              ]
+            : []),
           { label: "Elevation (m)", scale: "m", stroke: "#3367d6", width: 2 },
           ...(speedKmh ? [{ label: "Speed (km/h)", scale: "kmh", stroke: "#e8710a", width: 1.5 }] : []),
         ],
@@ -334,7 +355,7 @@ const ELEVATION_SCRIPT: &str = r##"
             : []),
         ],
       },
-      speedKmh ? [distanceKm, elevationM, speedKmh] : [distanceKm, elevationM],
+      [distanceKm, ...(climbs ? [climbs] : []), elevationM, ...(speedKmh ? [speedKmh] : [])],
       el,
     );
 
@@ -414,12 +435,15 @@ pub fn start_track_map(
 
 /// What the elevation chart draws: elevation against distance, and the speed
 /// over the same distances where the track was recorded with times (US-79) —
-/// `None` for one that was not, which draws no speed and no axis for it.
+/// `None` for one that was not, which draws no speed and no axis for it —
+/// and the climbs' stretches to fill below the line (US-81), the elevation
+/// on a climb and `null` elsewhere, or `None` for a trip without climbs.
 #[derive(Serialize)]
 struct ElevationChartView {
     distance_km: Vec<f64>,
     elevation_m: Vec<f64>,
     speed_kmh: Option<Vec<Option<f64>>>,
+    climbs: Option<Vec<Option<f64>>>,
 }
 
 /// Start the elevation chart with its prepared series. The handle is the
@@ -429,6 +453,7 @@ pub fn start_elevation_chart(
     distance_km: Vec<f64>,
     elevation_m: Vec<f64>,
     speed_kmh: Option<Vec<Option<f64>>>,
+    climbs: Option<Vec<Option<f64>>>,
 ) -> document::Eval {
     start(
         ELEVATION_SCRIPT,
@@ -436,6 +461,7 @@ pub fn start_elevation_chart(
             distance_km,
             elevation_m,
             speed_kmh,
+            climbs,
         },
         "the elevation chart",
     )

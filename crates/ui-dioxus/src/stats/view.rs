@@ -16,16 +16,19 @@ pub enum Measure {
     /// The moving distance over the moving time (US-80): a ratio, never a
     /// sum.
     AverageSpeed,
+    /// The climbs' height over their moving time (US-81): a ratio too.
+    ClimbingRate,
     Trips,
     DaysOut,
 }
 
 impl Measure {
-    pub const ALL: [Measure; 6] = [
+    pub const ALL: [Measure; 7] = [
         Self::Distance,
         Self::Ascent,
         Self::MovingTime,
         Self::AverageSpeed,
+        Self::ClimbingRate,
         Self::Trips,
         Self::DaysOut,
     ];
@@ -37,6 +40,7 @@ impl Measure {
             Self::Ascent => "ascent",
             Self::MovingTime => "moving_time",
             Self::AverageSpeed => "average_speed",
+            Self::ClimbingRate => "climbing_rate",
             Self::Trips => "trips",
             Self::DaysOut => "days_out",
         }
@@ -48,6 +52,7 @@ impl Measure {
             Self::Ascent => "Ascent",
             Self::MovingTime => "Moving time",
             Self::AverageSpeed => "Average speed",
+            Self::ClimbingRate => "Climbing rate",
             Self::Trips => "Trips",
             Self::DaysOut => "Days out",
         }
@@ -60,16 +65,17 @@ impl Measure {
             Self::Ascent => "Ascent (m)",
             Self::MovingTime => "Moving time (h)",
             Self::AverageSpeed => "Average speed (km/h)",
+            Self::ClimbingRate => "Climbing rate (m/h)",
             Self::Trips => "Trips",
             Self::DaysOut => "Days out",
         }
     }
 
-    /// Whether the measure is one total over another (US-80) rather than a
-    /// sum: it is added up as its two sides and divided last, and is no
-    /// share of anything.
+    /// Whether the measure is one total over another (US-80, US-81) rather
+    /// than a sum: it is added up as its two sides and divided last, and is
+    /// no share of anything.
     pub fn is_ratio(self) -> bool {
-        self == Self::AverageSpeed
+        matches!(self, Self::AverageSpeed | Self::ClimbingRate)
     }
 
     /// A value of this measure in its unit — kilometres, metres, hours or a
@@ -84,6 +90,7 @@ impl Measure {
                 format!("{}:{:02} h", minutes / 60, minutes % 60)
             }
             Self::AverageSpeed => format!("{value:.1} km/h"),
+            Self::ClimbingRate => format!("{value:.0} m/h"),
             Self::Trips | Self::DaysOut => format!("{value:.0}"),
         }
     }
@@ -262,9 +269,10 @@ mod tests {
         assert_eq!(Measure::AverageSpeed.format(12.34), "12.3 km/h");
         assert_eq!(Measure::AverageSpeed.axis_label(), "Average speed (km/h)");
         assert!(Measure::AverageSpeed.is_ratio());
+        let rates = [Measure::AverageSpeed, Measure::ClimbingRate];
         assert!(Measure::ALL
             .into_iter()
-            .filter(|measure| *measure != Measure::AverageSpeed)
+            .filter(|measure| !rates.contains(measure))
             .all(|measure| !measure.is_ratio()));
     }
 
@@ -283,5 +291,24 @@ mod tests {
             .unwrap()
             + 1;
         assert_eq!(Measure::ALL[after], Measure::AverageSpeed);
+    }
+
+    #[test]
+    fn us81_climbing_rate_reads_in_metres_an_hour_after_average_speed() {
+        assert_eq!(Measure::ClimbingRate.format(612.4), "612 m/h");
+        assert_eq!(Measure::ClimbingRate.axis_label(), "Climbing rate (m/h)");
+        assert!(Measure::ClimbingRate.is_ratio());
+        let view = StatsView {
+            measure: Measure::ClimbingRate,
+            ..StatsView::default()
+        };
+        assert_eq!(view.to_query(), "measure=climbing_rate");
+        assert_eq!(StatsView::from_query(&view.to_query()), view);
+        let after = Measure::ALL
+            .iter()
+            .position(|measure| *measure == Measure::AverageSpeed)
+            .unwrap()
+            + 1;
+        assert_eq!(Measure::ALL[after], Measure::ClimbingRate);
     }
 }

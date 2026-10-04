@@ -13,6 +13,7 @@ use crate::viewer::PhotoViewer;
 use trip_archive_types::PhotoResponse;
 
 mod actions;
+mod climbs;
 mod stats;
 mod track_views;
 
@@ -186,6 +187,32 @@ mod tests {
         assert!(html.contains(ActivityType::Hiking.label()), "{html}");
         // SAMPLE_GPX's own track, measured at import (US-8).
         assert!(html.contains(" km"), "{html}");
+    }
+
+    // US-81: the climbing rate among the stats, and the climbs under the
+    // profile — found by the archive under the trip's activity.
+    #[tokio::test]
+    async fn us81_the_screen_lists_the_trips_climbs_under_the_profile() {
+        let (archive, _dir) = serve_test_archive().await;
+        let id = crate::test_support::import_gpx(
+            &archive,
+            crate::test_support::HILL_GPX,
+            &[("activity_type", "hiking")],
+        )
+        .await;
+
+        let html = render_against_archive(
+            &archive,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains(r#"id="climbs""#),
+        )
+        .await;
+
+        assert!(html.contains("<dt>Climbing rate</dt>"), "{html}");
+        let profile = html.find(r#"id="elevation""#).expect("the profile");
+        let climbs = html.find(r#"id="climbs""#).unwrap();
+        assert!(profile < climbs, "the climbs follow the profile: {html}");
+        assert_eq!(html.matches(" m/h</td>").count(), 1, "{html}");
     }
 
     // US-7's map and chart. `document::eval` does nothing headless, so what

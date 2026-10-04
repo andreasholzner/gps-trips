@@ -29,6 +29,12 @@ pub fn TripStats(trip: Trip) -> Element {
         .moving_distance_m
         .zip(trip.moving_secs)
         .and_then(|(metres, secs)| rates::average_kmh(metres, secs as f64));
+    // On the climbs alone (US-81); a trip with no climb, or no times, has
+    // none, and the entry is left out as the average speed's is.
+    let climbing = trip
+        .climb_gain_m
+        .zip(trip.climb_secs)
+        .and_then(|(gain_m, secs)| rates::climbing_rate(gain_m, secs as f64));
 
     rsx! {
         hgroup {
@@ -55,6 +61,12 @@ pub fn TripStats(trip: Trip) -> Element {
             div {
                 dt { "Ascent" }
                 dd { {format::metres(trip.ascent_m)} }
+            }
+            if let Some(rate) = climbing {
+                div {
+                    dt { "Climbing rate" }
+                    dd { {format::climbing_rate(Some(rate))} }
+                }
             }
             div {
                 dt { "Descent" }
@@ -133,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn the_stats_are_the_six_measurements_and_nothing_else() {
+    fn the_stats_are_the_seven_measurements_and_nothing_else() {
         // The activity moves into the list; the start and the timezone
         // leave it — the zone for good, its job taken by the captions.
         let trip = a_trip("Oslo Hills Walk");
@@ -147,6 +159,7 @@ mod tests {
                 "Distance",
                 "Average speed",
                 "Ascent",
+                "Climbing rate",
                 "Descent",
                 "Duration"
             ],
@@ -228,6 +241,41 @@ mod tests {
 
             assert!(
                 !labels(&html).contains(&"Average speed".to_string()),
+                "{html}"
+            );
+        }
+    }
+
+    // ── US-81: the climbing rate ─────────────────────────────────────────
+
+    #[test]
+    fn us81_the_climbing_rate_is_the_climbs_height_over_their_moving_time() {
+        // 300 m of climbs in 30 min moving on them.
+        let trip = a_trip("Oslo Hills Walk");
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(html.contains("<dd>600 m/h</dd>"), "{html}");
+    }
+
+    #[test]
+    fn us81_a_trip_without_climbs_or_times_leaves_the_climbing_rate_out() {
+        let untimed = Trip {
+            climb_gain_m: None,
+            climb_secs: None,
+            ..a_trip("Planned Route")
+        };
+        let flat = Trip {
+            climb_gain_m: Some(0.0),
+            climb_secs: Some(0),
+            ..a_trip("Flat Ride")
+        };
+
+        for trip in [untimed, flat] {
+            let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+            assert!(
+                !labels(&html).contains(&"Climbing rate".to_string()),
                 "{html}"
             );
         }

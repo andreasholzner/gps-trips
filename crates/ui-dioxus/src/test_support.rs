@@ -122,6 +122,9 @@ pub const SAMPLE_GPX: &[u8] = include_bytes!("../../../tests/fixtures/sample.gpx
 /// [`SAMPLE_GPX`] that a region can hold one and not the other (US-14).
 pub const ALPS_GPX: &[u8] = include_bytes!("../../../tests/fixtures/region_alps.gpx");
 
+/// A walk with one hill (US-81): 1 km up 100 m between two flats, timed.
+pub const HILL_GPX: &[u8] = include_bytes!("../../../tests/fixtures/hill.gpx");
+
 const BOUNDARY: &str = "UiDioxusTestBoundary";
 
 /// Seed a trip through the real import API (`POST /api/import`), the same

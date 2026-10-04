@@ -94,6 +94,12 @@
   text-align: left;
 }
 
+/* The trip's climbs (US-81), under the readout — which keeps no margin of
+   its own below, so the list would otherwise sit hard against it. */
+#climbs {
+  margin-top: var(--pico-block-spacing-vertical);
+}
+
 /* A map marker's popup (US-57). It holds every photo taken at that place, so
    it scrolls rather than growing past the map it sits on. */
 .photo-popup {
