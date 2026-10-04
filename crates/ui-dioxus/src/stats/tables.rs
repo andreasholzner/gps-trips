@@ -17,7 +17,8 @@ const NOTHING: &str = "—";
 /// the foot, named `together`.
 #[component]
 pub fn TotalsTable(totals: Totals, measure: Measure, together: &'static str) -> Element {
-    let shares = totals.sum.is_some();
+    // A ratio is no share of anything (US-80).
+    let shares = totals.sum.is_some() && !measure.is_ratio();
     rsx! {
         div { class: "table-scroll",
             table { id: "stats-totals", class: "stats-table",
@@ -230,6 +231,26 @@ mod tests {
 
         assert!(!html.contains("Share"), "{html}");
         assert!(!html.contains("All activities"), "{html}");
+    }
+
+    #[test]
+    fn us80_average_speeds_have_no_share_column_but_keep_their_sum() {
+        let totals = Totals {
+            columns: vec!["2024".into()],
+            rows: vec![
+                row(Some(ActivityType::Hiking), vec![5.0], None),
+                row(Some(ActivityType::Cycling), vec![30.0], None),
+            ],
+            sum: Some(row(None, vec![40.0 / 3.0], None)),
+        };
+
+        let html = render(move || {
+            rsx! { TotalsTable { totals: totals.clone(), measure: Measure::AverageSpeed, together: "All activities" } }
+        });
+
+        assert!(!html.contains("Share"), "{html}");
+        assert!(html.contains("All activities"), "{html}");
+        assert!(html.contains("13.3 km/h"), "{html}");
     }
 
     fn place(id: i64, name: &str, value: f64) -> TripRecord {

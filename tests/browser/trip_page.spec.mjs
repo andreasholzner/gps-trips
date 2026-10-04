@@ -23,14 +23,15 @@ const pairPositions = (page) =>
     }),
   );
 
-// Layout: five pairs in one row from US-60's breakpoint up.
+// Layout: every pair in one row from US-60's breakpoint up — six with a
+// timed track, the average speed (US-80) among them.
 test("on a wide screen the numbers sit in one row (US-62)", async ({ page, request }) => {
   const id = await ownTrip(request, "Wide Trip");
   await page.goto(`/app/trips/${id}`);
   await expect(page.locator("#trip-activity")).toBeVisible();
 
   const pairs = await pairPositions(page);
-  expect(pairs).toHaveLength(5);
+  expect(pairs).toHaveLength(6);
   expect(new Set(pairs.map(([, top]) => top)).size, "one row").toBe(1);
   // Label over value, not beside it.
   const [label, value] = await page

@@ -131,6 +131,32 @@ async fn us53_a_share_of_one_trip_opens_on_it_read_only() {
 }
 
 #[tokio::test]
+async fn us80_a_shared_trip_shows_its_average_speed() {
+    let (archive, _dir) = serve_test_archive().await;
+    let id = import_sample(&archive, &[("activity_type", "hiking")]).await;
+    let (recipient, token) = shared(&archive, vec![id], None).await;
+
+    let html = render_against_archive(
+        &recipient,
+        move || rsx! { Shared { token: token.clone() } },
+        |html| html.contains("track-map"),
+    )
+    .await;
+
+    // The whole walk moved, an hour: its kilometres are its km/h.
+    let trip = archive_trip(&archive, id).await;
+    let kmh = format!("{:.1} km/h", trip.distance_m / 1000.0);
+    assert!(html.contains("<dt>Average speed</dt>"), "{html}");
+    assert!(html.contains(&kmh), "{kmh}: {html}");
+}
+
+async fn archive_trip(archive: &ApiClient, id: i64) -> trip_archive_types::TripDetail {
+    crate::api::get_trip(archive, id)
+        .await
+        .expect("the owner's trip")
+}
+
+#[tokio::test]
 async fn us53_a_dead_link_says_so_in_the_recipients_terms() {
     let (archive, _dir) = serve_test_archive().await;
     let recipient = anonymous(&archive).for_share("not-a-token");

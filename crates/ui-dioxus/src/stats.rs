@@ -12,7 +12,7 @@ use trip_archive_types::{ActivityType, StatsTrips};
 
 use crate::activity_color::{self, Swatch};
 use crate::api::{self, ApiClient};
-use crate::interop;
+use crate::{format, interop};
 
 pub(crate) mod figures;
 mod tables;
@@ -262,12 +262,16 @@ fn RunningSection(running: Running, measure: Measure, color: &'static str) -> El
         .iter()
         .map(|(_, values)| values.clone())
         .collect();
+    // A ratio has no figure before its year's first trip (US-80).
+    let shown = |value: Option<f64>| {
+        value.map_or_else(|| format::or_dash(None), |value| measure.format(value))
+    };
     rsx! {
         p { id: "stats-headline",
             "This year so far: "
-            strong { "{measure.format(running.this_year)}" }
+            strong { {shown(running.this_year)} }
             " — last year by the same date: "
-            strong { "{measure.format(running.last_year)}" }
+            strong { {shown(running.last_year)} }
         }
         RunningChart {
             years,

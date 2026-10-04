@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 // The screen is `TripDetail`; so is the shape it shows.
 use trip_archive_types::TripDetail as Trip;
 
-use crate::format;
+use crate::{format, rates};
 
 /// The trip's name and its stats — every one of them computed at import and
 /// never entered by hand (US-8); this screen only reports them.
@@ -23,6 +23,12 @@ pub fn TripStats(trip: Trip) -> Element {
         .as_deref()
         .filter(|_| !leads_with_a_date(&trip.name))
         .map(format::day);
+    // In motion only (US-80); a trip without times has none, and the entry
+    // is left out rather than shown as a dash.
+    let average = trip
+        .moving_distance_m
+        .zip(trip.moving_secs)
+        .and_then(|(metres, secs)| rates::average_kmh(metres, secs as f64));
 
     rsx! {
         hgroup {
@@ -39,6 +45,12 @@ pub fn TripStats(trip: Trip) -> Element {
             div {
                 dt { "Distance" }
                 dd { {format::km(trip.distance_m)} }
+            }
+            if let Some(kmh) = average {
+                div {
+                    dt { "Average speed" }
+                    dd { {format::speed(Some(kmh))} }
+                }
             }
             div {
                 dt { "Ascent" }
@@ -121,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn the_stats_are_the_five_measurements_and_nothing_else() {
+    fn the_stats_are_the_six_measurements_and_nothing_else() {
         // The activity moves into the list; the start and the timezone
         // leave it — the zone for good, its job taken by the captions.
         let trip = a_trip("Oslo Hills Walk");
@@ -130,7 +142,14 @@ mod tests {
 
         assert_eq!(
             labels(&html),
-            ["Activity", "Distance", "Ascent", "Descent", "Duration"],
+            [
+                "Activity",
+                "Distance",
+                "Average speed",
+                "Ascent",
+                "Descent",
+                "Duration"
+            ],
             "{html}"
         );
         assert!(html.contains(r#"id="trip-activity""#), "{html}");
@@ -177,5 +196,40 @@ mod tests {
         let html = render(move || rsx! { TripStats { trip: trip.clone() } });
 
         assert!(!html.contains("trip-date"), "{html}");
+    }
+
+    // ── US-80: the average speed in motion ──────────────────────────────
+
+    #[test]
+    fn us80_the_average_speed_is_the_moving_distance_over_the_moving_time() {
+        // 12 km in 3 h 20 min moving, though the trip took 3 h 45 min.
+        let trip = a_trip("Oslo Hills Walk");
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(html.contains("<dd>3.6 km/h</dd>"), "{html}");
+    }
+
+    #[test]
+    fn us80_a_trip_without_times_leaves_the_average_speed_out() {
+        let untimed = Trip {
+            moving_secs: None,
+            moving_distance_m: None,
+            ..a_trip("Planned Route")
+        };
+        let still = Trip {
+            moving_secs: Some(0),
+            moving_distance_m: Some(0.0),
+            ..a_trip("Standing Still")
+        };
+
+        for trip in [untimed, still] {
+            let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+            assert!(
+                !labels(&html).contains(&"Average speed".to_string()),
+                "{html}"
+            );
+        }
     }
 }

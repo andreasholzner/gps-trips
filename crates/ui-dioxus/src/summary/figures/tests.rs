@@ -173,3 +173,43 @@ fn us78_the_table_lists_every_activity_any_tag_holds() {
 
     assert_eq!(activities(&summaries), [Hiking, Cycling, Kayaking]);
 }
+
+// ── US-80: average speed ─────────────────────────────────────────────────────
+
+/// As [`archive`], with the hikes at 10, 24 and 16 km/h and the ride at 10.
+fn archive_with_speeds() -> TagSummaries {
+    let mut archive = archive();
+    for (trip, hours) in archive.trips.iter_mut().zip([2.0, 6.0, 0.5, 0.5, 1.5]) {
+        trip.moving_secs = Some((hours * 3600.0) as i64);
+    }
+    archive
+}
+
+#[test]
+fn us80_each_activity_moves_at_its_moving_distance_over_its_moving_time() {
+    let summaries = summaries(&archive_with_speeds());
+    let alps = summaries[0].figures.as_ref().unwrap();
+
+    // 40 km in 3 h — though the hikes' own speeds average 16.7 km/h.
+    let hiking = sums_of(alps, Hiking).average_kmh.unwrap();
+    assert!((hiking - 40.0 / 3.0).abs() < 1e-9, "{hiking}");
+    // Together: 100 km in 9 h.
+    let together = alps.together.average_kmh.unwrap();
+    assert!((together - 100.0 / 9.0).abs() < 1e-9, "{together}");
+}
+
+#[test]
+fn us80_trips_without_moving_figures_have_no_average_speed() {
+    let mut archive = archive();
+    for trip in &mut archive.trips {
+        trip.moving_secs = None;
+        trip.moving_distance_m = None;
+    }
+
+    let summaries = summaries(&archive);
+
+    assert_eq!(
+        summaries[0].figures.as_ref().unwrap().together.average_kmh,
+        None
+    );
+}

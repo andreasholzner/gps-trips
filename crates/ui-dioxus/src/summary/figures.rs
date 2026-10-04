@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use time::Date;
 use trip_archive_types::{ActivityType, TagSummaries};
 
+use crate::rates;
 use crate::stats::activity_order;
 use crate::stats::figures::{self as stats, DayRecord};
 
@@ -57,11 +58,18 @@ pub struct Sums {
     pub ascent_m: f64,
     pub descent_m: f64,
     pub moving_hours: f64,
+    /// The moving distance over the moving time (US-80), of the trips that
+    /// have both; `None` when none moved.
+    pub average_kmh: Option<f64>,
 }
 
 impl Sums {
     fn of(trips: &[stats::Dated]) -> Self {
         let days: BTreeSet<Date> = trips.iter().flat_map(stats::Dated::days).collect();
+        let (metres, secs) = trips
+            .iter()
+            .filter_map(|t| t.trip.moving_distance_m.zip(t.trip.moving_secs))
+            .fold((0.0, 0), |(metres, secs), (m, s)| (metres + m, secs + s));
         Self {
             trips: trips.len() as u32,
             days_out: days.len() as u32,
@@ -70,6 +78,7 @@ impl Sums {
             descent_m: trips.iter().filter_map(|t| t.trip.descent_m).sum(),
             moving_hours: trips.iter().filter_map(|t| t.trip.moving_secs).sum::<i64>() as f64
                 / 3600.0,
+            average_kmh: rates::average_kmh(metres, secs as f64),
         }
     }
 }

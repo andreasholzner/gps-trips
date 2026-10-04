@@ -42,15 +42,22 @@ impl Dated<'_> {
             .take_while(move |day| *day <= last)
     }
 
-    /// The trip's part of an additive measure, in the measure's unit.
-    fn value(&self, measure: Measure) -> f64 {
+    /// The trip's part of a measure, in the measure's unit: what it adds,
+    /// and — for a ratio (US-80) — what it adds to the total that is divided
+    /// by. A trip missing either side of a ratio adds to neither.
+    fn parts(&self, measure: Measure) -> (f64, f64) {
+        let trip = self.trip;
         match measure {
-            Measure::Distance => self.trip.distance_m / 1000.0,
-            Measure::Ascent => self.trip.ascent_m.unwrap_or(0.0),
-            Measure::MovingTime => self.trip.moving_secs.unwrap_or(0) as f64 / 3600.0,
-            Measure::Trips => 1.0,
+            Measure::Distance => (trip.distance_m / 1000.0, 0.0),
+            Measure::Ascent => (trip.ascent_m.unwrap_or(0.0), 0.0),
+            Measure::MovingTime => (trip.moving_secs.unwrap_or(0) as f64 / 3600.0, 0.0),
+            Measure::AverageSpeed => match (trip.moving_distance_m, trip.moving_secs) {
+                (Some(metres), Some(secs)) => (metres / 1000.0, secs as f64 / 3600.0),
+                _ => (0.0, 0.0),
+            },
+            Measure::Trips => (1.0, 0.0),
             // Not additive: see `Bucketing::add`.
-            Measure::DaysOut => 0.0,
+            Measure::DaysOut => (0.0, 0.0),
         }
     }
 }
@@ -166,24 +173,44 @@ impl Bucketing {
         }
     }
 
-    /// `trips`' measure per column, and over the whole period.
+    /// `trips`' measure per column, and over the whole period. A ratio's
+    /// two sides are added up apart and divided last, so it is never an
+    /// average of averages; a column with nothing to divide by reads as 0,
+    /// which the tables show as empty.
     fn add(&self, trips: &[Dated], measure: Measure) -> (Vec<f64>, f64) {
-        let mut values = vec![0.0; self.columns];
+        let mut amounts = vec![0.0; self.columns];
+        let mut bases = vec![0.0; self.columns];
         if measure == Measure::DaysOut {
             let days: BTreeSet<Date> = trips.iter().flat_map(Dated::days).collect();
             for column in days.iter().filter_map(|day| self.column(*day)) {
-                values[column] += 1.0;
+                amounts[column] += 1.0;
             }
         } else {
             for trip in trips {
                 if let Some(column) = self.column(trip.start) {
-                    values[column] += trip.value(measure);
+                    let (amount, base) = trip.parts(measure);
+                    amounts[column] += amount;
+                    bases[column] += base;
                 }
             }
         }
-        let total = values.iter().sum();
+        if !measure.is_ratio() {
+            let total = amounts.iter().sum();
+            return (amounts, total);
+        }
+        let total = ratio(amounts.iter().sum(), bases.iter().sum()).unwrap_or(0.0);
+        let values = amounts
+            .iter()
+            .zip(&bases)
+            .map(|(amount, base)| ratio(*amount, *base).unwrap_or(0.0))
+            .collect();
         (values, total)
     }
+}
+
+/// `amount` over `base`, when there is a base to divide by.
+fn ratio(amount: f64, base: f64) -> Option<f64> {
+    (base > 0.0).then(|| amount / base)
 }
 
 /// The totals table for `view`, from trips already narrowed to its activities.
@@ -218,8 +245,11 @@ pub fn totals(trips: &[Dated], view: &StatsView) -> Totals {
     }
     let (values, total) = bucketing.add(trips, view.measure);
     let mut rows: Vec<TotalsRow> = activities(&in_period).into_iter().map(row).collect();
-    for row in &mut rows {
-        row.share = (total > 0.0).then(|| row.total / total);
+    // A ratio is no share of anything (US-80).
+    if !view.measure.is_ratio() {
+        for row in &mut rows {
+            row.share = (total > 0.0).then(|| row.total / total);
+        }
     }
     Totals {
         columns: bucketing.labels(),
@@ -244,40 +274,51 @@ pub struct Running {
     pub years: Vec<(i32, Vec<Option<f64>>)>,
     /// The chosen year, or else the current one.
     pub highlighted: i32,
-    /// The current year so far, and the year before by the same date.
-    pub this_year: f64,
-    pub last_year: f64,
+    /// The current year so far, and the year before by the same date —
+    /// `None` for a ratio with nothing yet to divide by.
+    pub this_year: Option<f64>,
+    pub last_year: Option<f64>,
 }
 
 /// The running totals for `measure` from trips already narrowed to the
-/// chosen activity, as of `today`.
+/// chosen activity, as of `today`. A ratio (US-80) runs as its two sides,
+/// each added up day by day, and reads as the one over the other: the
+/// average so far, with nothing to show before the year's first trip that
+/// gives it a base.
 pub fn running(trips: &[Dated], measure: Measure, year: Option<i32>, today: Date) -> Running {
-    let mut per_day: BTreeMap<i32, [f64; 366]> = BTreeMap::new();
+    // Per year and day of the year: the amount, and the base it is divided by.
+    let mut per_day: BTreeMap<i32, [(f64, f64); 366]> = BTreeMap::new();
+    fn slot(per_day: &mut BTreeMap<i32, [(f64, f64); 366]>, day: Date) -> &mut (f64, f64) {
+        &mut per_day.entry(day.year()).or_insert([(0.0, 0.0); 366])[day.ordinal() as usize - 1]
+    }
     if measure == Measure::DaysOut {
         let days: BTreeSet<Date> = trips.iter().flat_map(Dated::days).collect();
         for day in days {
-            per_day.entry(day.year()).or_insert([0.0; 366])[day.ordinal() as usize - 1] += 1.0;
+            slot(&mut per_day, day).0 += 1.0;
         }
     } else {
         for trip in trips {
-            let day = trip.start;
-            per_day.entry(day.year()).or_insert([0.0; 366])[day.ordinal() as usize - 1] +=
-                trip.value(measure);
+            let (amount, base) = trip.parts(measure);
+            let day = slot(&mut per_day, trip.start);
+            day.0 += amount;
+            day.1 += base;
         }
     }
 
-    let cumulative = |days: &[f64; 366]| -> Vec<f64> {
-        days.iter()
-            .scan(0.0, |sum, value| {
-                *sum += value;
-                Some(*sum)
-            })
-            .collect()
+    let value = |(amount, base): (f64, f64)| -> Option<f64> {
+        if measure.is_ratio() {
+            ratio(amount, base)
+        } else {
+            Some(amount)
+        }
     };
-    let up_to = |year: i32, day: Date| -> f64 {
-        per_day
-            .get(&year)
-            .map_or(0.0, |days| days[..day.ordinal() as usize].iter().sum())
+    let add = |sum: (f64, f64), day: &(f64, f64)| (sum.0 + day.0, sum.1 + day.1);
+    let up_to = |year: i32, day: Date| -> Option<f64> {
+        let days = per_day.get(&year);
+        let sum = days.map_or((0.0, 0.0), |days| {
+            days[..day.ordinal() as usize].iter().fold((0.0, 0.0), add)
+        });
+        value(sum)
     };
     let same_date_last_year =
         Date::from_calendar_date(today.year() - 1, today.month(), today.day())
@@ -289,13 +330,21 @@ pub fn running(trips: &[Dated], measure: Measure, year: Option<i32>, today: Date
         years: per_day
             .iter()
             .map(|(year, days)| {
-                let values = cumulative(days)
-                    .into_iter()
+                let values = days
+                    .iter()
+                    .scan((0.0, 0.0), |sum, day| {
+                        *sum = add(*sum, day);
+                        Some(*sum)
+                    })
                     .enumerate()
-                    .map(|(index, value)| {
+                    .map(|(index, sum)| {
                         let after_today =
                             *year == today.year() && index >= today.ordinal() as usize;
-                        (!after_today).then_some(value)
+                        if after_today {
+                            None
+                        } else {
+                            value(sum)
+                        }
                     })
                     .collect();
                 (*year, values)

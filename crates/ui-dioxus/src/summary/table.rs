@@ -115,7 +115,7 @@ fn LongestDay(day: Option<DayRecord>, viewer: Viewer) -> Element {
 #[component]
 fn SumsGroup(activity: Option<ActivityType>, sums: Vec<Option<Sums>>) -> Element {
     let columns = sums.len() + 1;
-    let rows: [FigureRow; 6] = [
+    let rows: [FigureRow; 7] = [
         ("Trips", |s| s.trips.to_string()),
         ("Days out", |s| s.days_out.to_string()),
         ("Distance", |s| Measure::Distance.format(s.km)),
@@ -123,6 +123,12 @@ fn SumsGroup(activity: Option<ActivityType>, sums: Vec<Option<Sums>>) -> Element
         ("Descent", |s| Measure::Ascent.format(s.descent_m)),
         ("Moving time", |s| {
             Measure::MovingTime.format(s.moving_hours)
+        }),
+        ("Average speed", |s| {
+            s.average_kmh.map_or_else(
+                || NOTHING.to_string(),
+                |kmh| Measure::AverageSpeed.format(kmh),
+            )
         }),
     ];
     rsx! {
@@ -167,6 +173,7 @@ mod tests {
             ascent_m: 1200.0,
             descent_m: 1100.0,
             moving_hours: 2.5,
+            average_kmh: Some(km / 2.5),
         }
     }
 
@@ -220,9 +227,15 @@ mod tests {
             "Ascent",
             "Descent",
             "Moving time",
+            "Average speed",
         ] {
             assert!(html.contains(label), "{label} missing: {html}");
         }
+        assert!(
+            html.find("Moving time").unwrap() < html.find("Average speed").unwrap(),
+            "{html}"
+        );
+        assert!(html.contains("16.0 km/h"), "{html}");
         assert!(html.contains("40.0 km"), "{html}");
         assert!(html.contains("1100 m"), "{html}");
         assert!(html.contains("2:30 h"), "{html}");
@@ -260,5 +273,24 @@ mod tests {
         assert!(html.contains("512 km") && html.contains("140 km"), "{html}");
         assert!(html.contains(NOTHING), "{html}");
         assert!(html.contains("All activities"), "{html}");
+    }
+
+    #[test]
+    fn us80_a_group_without_moving_figures_shows_a_dash_for_its_speed() {
+        let still = Sums {
+            average_kmh: None,
+            ..sums(1, 10.0)
+        };
+        let tags = vec![tag("alps", vec![(ActivityType::Hiking, still)])];
+
+        let html = render(
+            move || rsx! { FiguresTable { tags: tags.clone(), colors: Vec::new(), viewer: Viewer::Owner } },
+        );
+
+        let row = html.split("Average speed").nth(1).expect("the row");
+        assert!(
+            row.starts_with(&format!("</th><td class=\"num\">{NOTHING}<")),
+            "{html}"
+        );
     }
 }

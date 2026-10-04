@@ -164,3 +164,31 @@ fn us77_the_closed_picker_says_what_is_chosen() {
     assert_eq!(picked(&[Hiking, Cycling]), "Hiking, Cycling");
     assert_eq!(picked(&[Hiking, Cycling, Kayaking]), "3 activities");
 }
+
+#[tokio::test]
+async fn us80_average_speed_is_offered_and_shown_without_shares() {
+    let (archive, _dir) = serve_test_archive().await;
+    import_sample(
+        &archive,
+        &[("name", "Oslo Hills Walk"), ("activity_type", "hiking")],
+    )
+    .await;
+
+    let html = render_against_archive(
+        &archive,
+        || {
+            rsx! {
+                Statistics {
+                    view: StatsView { measure: Measure::AverageSpeed, ..StatsView::default() },
+                }
+            }
+        },
+        |html| html.contains("stats-records"),
+    )
+    .await;
+
+    assert!(html.contains(r#"value="average_speed""#), "{html}");
+    assert!(html.contains("Average speed per year"), "{html}");
+    assert!(html.contains(" km/h"), "{html}");
+    assert!(!html.contains("Share"), "{html}");
+}

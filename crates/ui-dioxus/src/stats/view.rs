@@ -13,15 +13,19 @@ pub enum Measure {
     Distance,
     Ascent,
     MovingTime,
+    /// The moving distance over the moving time (US-80): a ratio, never a
+    /// sum.
+    AverageSpeed,
     Trips,
     DaysOut,
 }
 
 impl Measure {
-    pub const ALL: [Measure; 5] = [
+    pub const ALL: [Measure; 6] = [
         Self::Distance,
         Self::Ascent,
         Self::MovingTime,
+        Self::AverageSpeed,
         Self::Trips,
         Self::DaysOut,
     ];
@@ -32,6 +36,7 @@ impl Measure {
             Self::Distance => "distance",
             Self::Ascent => "ascent",
             Self::MovingTime => "moving_time",
+            Self::AverageSpeed => "average_speed",
             Self::Trips => "trips",
             Self::DaysOut => "days_out",
         }
@@ -42,6 +47,7 @@ impl Measure {
             Self::Distance => "Distance",
             Self::Ascent => "Ascent",
             Self::MovingTime => "Moving time",
+            Self::AverageSpeed => "Average speed",
             Self::Trips => "Trips",
             Self::DaysOut => "Days out",
         }
@@ -53,9 +59,17 @@ impl Measure {
             Self::Distance => "Distance (km)",
             Self::Ascent => "Ascent (m)",
             Self::MovingTime => "Moving time (h)",
+            Self::AverageSpeed => "Average speed (km/h)",
             Self::Trips => "Trips",
             Self::DaysOut => "Days out",
         }
+    }
+
+    /// Whether the measure is one total over another (US-80) rather than a
+    /// sum: it is added up as its two sides and divided last, and is no
+    /// share of anything.
+    pub fn is_ratio(self) -> bool {
+        self == Self::AverageSpeed
     }
 
     /// A value of this measure in its unit — kilometres, metres, hours or a
@@ -69,6 +83,7 @@ impl Measure {
                 let minutes = (value * 60.0).round() as i64;
                 format!("{}:{:02} h", minutes / 60, minutes % 60)
             }
+            Self::AverageSpeed => format!("{value:.1} km/h"),
             Self::Trips | Self::DaysOut => format!("{value:.0}"),
         }
     }
@@ -240,5 +255,33 @@ mod tests {
         assert_eq!(Measure::MovingTime.format(12.5), "12:30 h");
         assert_eq!(Measure::Trips.format(3.0), "3");
         assert_eq!(Measure::DaysOut.format(14.0), "14");
+    }
+
+    #[test]
+    fn us80_average_speed_reads_in_kmh_and_is_a_ratio() {
+        assert_eq!(Measure::AverageSpeed.format(12.34), "12.3 km/h");
+        assert_eq!(Measure::AverageSpeed.axis_label(), "Average speed (km/h)");
+        assert!(Measure::AverageSpeed.is_ratio());
+        assert!(Measure::ALL
+            .into_iter()
+            .filter(|measure| *measure != Measure::AverageSpeed)
+            .all(|measure| !measure.is_ratio()));
+    }
+
+    #[test]
+    fn us80_average_speed_round_trips_through_the_query_after_moving_time() {
+        let view = StatsView {
+            measure: Measure::AverageSpeed,
+            ..StatsView::default()
+        };
+
+        assert_eq!(view.to_query(), "measure=average_speed");
+        assert_eq!(StatsView::from_query(&view.to_query()), view);
+        let after = Measure::ALL
+            .iter()
+            .position(|measure| *measure == Measure::MovingTime)
+            .unwrap()
+            + 1;
+        assert_eq!(Measure::ALL[after], Measure::AverageSpeed);
     }
 }

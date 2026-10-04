@@ -184,9 +184,9 @@ fn us77_the_running_total_compares_this_year_with_last_at_the_same_date() {
     let running = running(&dated(&trips, &[]), Measure::Distance, None, today);
 
     assert_eq!(running.highlighted, 2025);
-    assert_eq!(running.this_year, 7.0);
+    assert_eq!(running.this_year, Some(7.0));
     // By 1 June 2024 only February's trip had been done.
-    assert_eq!(running.last_year, 10.0);
+    assert_eq!(running.last_year, Some(10.0));
     let (year, values) = &running.years[0];
     assert_eq!(*year, 2024);
     assert_eq!(values.len(), 366);
@@ -213,7 +213,7 @@ fn us77_the_running_total_highlights_the_chosen_year_and_counts_days_out() {
 
     assert_eq!(running.highlighted, 2024);
     assert_eq!(running.years[0].1[365], Some(5.0));
-    assert_eq!(running.this_year, 2.0);
+    assert_eq!(running.this_year, Some(2.0));
 }
 
 #[test]
@@ -227,7 +227,7 @@ fn us77_on_29_february_last_year_is_read_at_28_february() {
         date!(2024 - 02 - 29),
     );
 
-    assert_eq!(running.last_year, 3.0);
+    assert_eq!(running.last_year, Some(3.0));
 }
 
 #[test]
@@ -344,4 +344,97 @@ fn us77_equal_records_keep_the_earlier_trip_first() {
 
     let ids: Vec<i64> = records[0].longest.iter().map(|r| r.id).collect();
     assert_eq!(ids, [1, 2]);
+}
+
+// ── US-80: average speed ─────────────────────────────────────────────────────
+
+/// A trip that moved `km` in `hours`.
+fn moved(id: i64, activity: ActivityType, start: &str, km: f64, hours: f64) -> StatsTrip {
+    StatsTrip {
+        moving_distance_m: Some(km * 1000.0),
+        moving_secs: Some((hours * 3600.0) as i64),
+        ..trip(id, activity, start, start, km)
+    }
+}
+
+/// 5 km/h and 30 km/h: over both, 40 km in 3 h, though their speeds average
+/// 17.5.
+fn a_slow_and_a_fast_trip() -> Vec<StatsTrip> {
+    vec![
+        moved(1, Hiking, "2024-03-10", 10.0, 2.0),
+        moved(2, Cycling, "2024-03-11", 30.0, 1.0),
+        moved(3, Cycling, "2025-05-05", 20.0, 1.0),
+    ]
+}
+
+#[test]
+fn us80_an_average_speed_is_the_moving_distance_over_the_moving_time_never_an_average_of_averages()
+{
+    let trips = a_slow_and_a_fast_trip();
+
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::AverageSpeed, &[]));
+
+    let sum = totals.sum.expect("the activities together");
+    assert_eq!(sum.values, [40.0 / 3.0, 20.0]);
+    assert_eq!(sum.total, 60.0 / 4.0);
+    assert_eq!(totals.rows[0].values, [5.0, 0.0], "hiking");
+    assert_eq!(totals.rows[1].values, [30.0, 20.0], "cycling");
+    assert_eq!(totals.rows[1].total, 25.0);
+}
+
+#[test]
+fn us80_a_speed_is_no_share_of_anything() {
+    let trips = a_slow_and_a_fast_trip();
+
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::AverageSpeed, &[]));
+
+    assert!(totals.rows.iter().all(|row| row.share.is_none()));
+}
+
+#[test]
+fn us80_a_trip_without_moving_figures_adds_to_neither_side() {
+    let mut trips = a_slow_and_a_fast_trip();
+    let mut bare = trip(9, Hiking, "2024-03-12", "2024-03-12", 50.0);
+    bare.moving_secs = None;
+    bare.moving_distance_m = None;
+    trips.push(bare);
+
+    let totals = totals(&dated(&trips, &[]), &view(None, Measure::AverageSpeed, &[]));
+
+    assert_eq!(totals.rows[0].values, [5.0, 0.0], "hiking");
+}
+
+#[test]
+fn us80_the_running_average_is_the_speed_so_far_by_each_date() {
+    let trips = vec![
+        moved(1, Hiking, "2024-02-01", 10.0, 2.0),
+        moved(2, Hiking, "2024-11-01", 30.0, 1.0),
+        moved(3, Hiking, "2025-01-15", 7.0, 1.0),
+    ];
+    let today = date!(2025 - 06 - 01);
+
+    let running = running(&dated(&trips, &[]), Measure::AverageSpeed, None, today);
+
+    let (_, values) = &running.years[0];
+    assert_eq!(values[30], None, "no speed before the year's first trip");
+    assert_eq!(values[31], Some(5.0), "1 February");
+    assert_eq!(values[365], Some(40.0 / 3.0));
+    assert_eq!(running.this_year, Some(7.0));
+    // By 1 June 2024 only February's trip had been done.
+    assert_eq!(running.last_year, Some(5.0));
+}
+
+#[test]
+fn us80_a_year_without_moving_has_no_average_to_compare() {
+    let trips = vec![moved(1, Hiking, "2025-01-15", 7.0, 1.0)];
+
+    let running = running(
+        &dated(&trips, &[]),
+        Measure::AverageSpeed,
+        None,
+        date!(2025 - 06 - 01),
+    );
+
+    assert_eq!(running.this_year, Some(7.0));
+    assert_eq!(running.last_year, None);
 }

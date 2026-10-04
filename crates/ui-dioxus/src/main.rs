@@ -29,6 +29,7 @@ mod overlay;
 mod pager;
 mod photos;
 mod placing;
+mod rates;
 mod region;
 mod share;
 mod shared;
