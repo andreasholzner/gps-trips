@@ -115,7 +115,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-71](#us-71--bound-the-access-log)                         | ⏳     | Bound the access log                         | [Sharing](#sharing)                                                 |
 | [US-72](#us-72--tell-shared-trips-apart)                      | ✅     | Tell shared trips apart                      | [Sharing](#sharing)                                                 |
 | [US-73](#us-73--trip-lines-when-zoomed-in)                    | ✅     | Trip lines when zoomed in                    | [Trip list & map](#trip-list--map)                                  |
-| [US-74](#us-74--place-based-name-suggestion)                  | 📋     | Place-based name suggestion                  | [Import](#import)                                                   |
+| [US-74](#us-74--place-based-name-suggestion)                  | ✅     | Place-based name suggestion                  | [Import](#import)                                                   |
 | [US-75](#us-75--activity-colors-on-maps)                      | ✅     | Activity colors on maps                      | [Maps](#maps)                                                       |
 | [US-76](#us-76--activity-type-suggestion)                     | 📋     | Activity type suggestion                     | [Import](#import)                                                   |
 | [US-77](#us-77--statistics)                                   | ✅     | Statistics                                   | [Statistics](#statistics)                                           |
@@ -200,7 +200,7 @@ appears under. An unrecognized value is rejected with 400. Komoot sync/backfill 
 
 ### US-74 — Place-based name suggestion
 
-**Planned 📋** — As the owner, when I import a trip or edit its name, I am offered a name that says
+**Done ✅** — As the owner, when I import a trip or edit its name, I am offered a name that says
 where the trip went, behind its date.
 
 **Acceptance criteria:**
