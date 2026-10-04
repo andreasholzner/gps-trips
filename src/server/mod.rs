@@ -22,6 +22,7 @@ pub mod komoot_sync;
 pub mod location;
 pub mod moving_time;
 pub mod name_suggestion;
+pub mod osmium;
 pub mod paths;
 pub mod photo_api;
 pub mod photo_backfill;

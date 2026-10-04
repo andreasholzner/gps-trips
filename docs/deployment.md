@@ -237,9 +237,13 @@ Their sources, downloaded into `data/geo-src/` (which git ignores):
 - The sea, as the water polygons derived from OSM's coastlines (ODbL), for the ground:
   `https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip`, unzipped.
 
-Building them needs [`osmium`](https://osmcode.org/osmium-tool/) and takes a few minutes per
-extract. The ground database marks what the extracts' bounding boxes cover; outside them no
-activity is suggested, so the sea comes last:
+Building them needs [`osmium`](https://osmcode.org/osmium-tool/), takes a few minutes per
+extract, and needs about 2.5 GB of free memory: osmium's tag filter takes 2.3 GB whatever the
+extract, the build itself under half a gigabyte. Osmium's working files — a filtered copy of each
+extract and an index of its node locations, several GB for Germany — go in a hidden directory
+beside the extracts, never the system temp directory, which may be held in memory. The ground
+database marks what the extracts' bounding boxes cover; outside them no activity is suggested, so
+the sea comes last:
 
 ```sh
 cargo build --release --bin places_build

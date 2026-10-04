@@ -2,17 +2,17 @@
 //! from OpenStreetMap extracts, filtered and turned into GeoJSON by the
 //! `osmium` command-line tool, and cutting test fixtures out of the result.
 
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 
 use super::kartverket::Register;
 use super::osm::place_from_feature;
 use super::PlaceWriter;
 use crate::server::gpx::parse_gpx;
 use crate::server::name_suggestion::lookup_boxes;
+use crate::server::osmium;
 
 /// The OSM objects `osm::place_from_feature` may keep, as `osmium
 /// tags-filter` expressions.
@@ -28,49 +28,17 @@ const OSM_FILTERS: [&str; 7] = [
 
 /// Adds the places of the OSM extract `pbf` to `writer`; how many it found.
 pub async fn add_osm_extract(writer: &mut PlaceWriter, pbf: &Path) -> anyhow::Result<u64> {
-    let dir = tempfile::tempdir()?;
-    let filtered = dir.path().join("filtered.osm.pbf");
-    let status = Command::new("osmium")
-        .arg("tags-filter")
-        .arg(pbf)
-        .args(OSM_FILTERS)
-        .arg("--overwrite")
-        .arg("-o")
-        .arg(&filtered)
-        .status()
-        .context("running osmium — is it installed?")?;
-    if !status.success() {
-        bail!("osmium tags-filter failed on {}", pbf.display());
-    }
-
-    let mut export = Command::new("osmium")
-        .arg("export")
-        .arg(&filtered)
-        .args([
-            "-f",
-            "geojsonseq",
-            "--geometry-types=point,polygon",
-            "-a",
-            "type,id",
-        ])
-        .args(["-o", "-"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .context("running osmium export")?;
-    let lines = BufReader::new(export.stdout.take().context("osmium's output")?).lines();
+    let mut features = osmium::export(pbf, &OSM_FILTERS, "point,polygon")?;
     let mut found = 0;
-    for line in lines {
-        let line = line?;
-        let feature: serde_json::Value = serde_json::from_str(line.trim_start_matches('\x1e'))
-            .with_context(|| format!("osmium wrote something not GeoJSON: {line:.80}"))?;
-        if let Some((place, id)) = place_from_feature(&feature) {
+    for feature in features.by_ref() {
+        if let Some((place, id)) = place_from_feature(&feature?) {
             writer.insert(&place, &id).await?;
             found += 1;
         }
     }
-    if !export.wait()?.success() {
-        bail!("osmium export failed on {}", pbf.display());
-    }
+    features
+        .finish()
+        .with_context(|| format!("reading {}", pbf.display()))?;
     Ok(found)
 }
 

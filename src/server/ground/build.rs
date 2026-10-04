@@ -3,9 +3,8 @@
 //! `osmium` command-line tool, and the sea from the water polygons derived
 //! from OSM's coastlines (osmdata.openstreetmap.de, a shapefile).
 
-use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use anyhow::{bail, Context};
 use geo::{Coord, Intersects, MultiPolygon, Rect, Simplify};
@@ -13,6 +12,7 @@ use geo::{Coord, Intersects, MultiPolygon, Rect, Simplify};
 use super::osm::{ground_from_feature, Ground};
 use super::GroundWriter;
 use crate::server::gpx::parse_gpx;
+use crate::server::osmium;
 use crate::server::track_boxes;
 
 /// The OSM objects `osm::ground_from_feature` may keep, as `osmium
@@ -32,36 +32,10 @@ const FIXTURE_REACH_M: f64 = 100.0;
 pub async fn add_osm_extract(writer: &mut GroundWriter, pbf: &Path) -> anyhow::Result<u64> {
     writer.add_coverage(extract_box(pbf)?).await?;
 
-    let dir = tempfile::tempdir()?;
-    let filtered = dir.path().join("filtered.osm.pbf");
-    let status = Command::new("osmium")
-        .arg("tags-filter")
-        .arg(pbf)
-        .args(OSM_FILTERS)
-        .arg("--overwrite")
-        .arg("-o")
-        .arg(&filtered)
-        .status()
-        .context("running osmium — is it installed?")?;
-    if !status.success() {
-        bail!("osmium tags-filter failed on {}", pbf.display());
-    }
-
-    let mut export = Command::new("osmium")
-        .arg("export")
-        .arg(&filtered)
-        .args(["-f", "geojsonseq", "--geometry-types=linestring,polygon"])
-        .args(["-o", "-"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .context("running osmium export")?;
-    let lines = BufReader::new(export.stdout.take().context("osmium's output")?).lines();
+    let mut features = osmium::export(pbf, &OSM_FILTERS, "linestring,polygon")?;
     let mut found = 0;
-    for line in lines {
-        let line = line?;
-        let feature: serde_json::Value = serde_json::from_str(line.trim_start_matches('\x1e'))
-            .with_context(|| format!("osmium wrote something not GeoJSON: {line:.80}"))?;
-        match ground_from_feature(&feature) {
+    for feature in features.by_ref() {
+        match ground_from_feature(&feature?) {
             Some(Ground::Way(way, coords)) => writer.add_way(way, &coords),
             Some(Ground::Water(area)) => {
                 for polygon in area {
@@ -72,9 +46,11 @@ pub async fn add_osm_extract(writer: &mut GroundWriter, pbf: &Path) -> anyhow::R
         }
         found += 1;
     }
-    if !export.wait()?.success() {
-        bail!("osmium export failed on {}", pbf.display());
-    }
+    features
+        .finish()
+        .with_context(|| format!("reading {}", pbf.display()))?;
+    // One extract's ways at a time in memory, not every region's.
+    writer.flush_tiles().await?;
     Ok(found)
 }
 

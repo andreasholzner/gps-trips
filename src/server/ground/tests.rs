@@ -187,3 +187,29 @@ fn us76_a_road_beside_a_point_wins_over_a_path_beside_it_but_not_over_one_under_
     assert_eq!(data.surface_at(between), Surface::Road);
     assert_eq!(data.surface_at(on_path), Surface::OffRoad);
 }
+
+#[tokio::test]
+async fn us76_ways_flushed_extract_by_extract_add_up_in_a_tile() {
+    // Two regions' extracts meet in the same tiles: what the second adds
+    // joins what the first left there.
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("ground.sqlite");
+    let mut writer = GroundWriter::create(&path).await.expect("a new database");
+    writer
+        .add_coverage(Rect::new(at(-10_000.0, -10_000.0), at(10_000.0, 10_000.0)))
+        .await
+        .expect("coverage");
+    writer.add_way(Way::Road, &[at(0.0, 0.0), at(100.0, 0.0)]);
+    writer.flush_tiles().await.expect("flushed");
+    writer.add_way(Way::Small, &[at(0.0, 2_000.0), at(100.0, 2_000.0)]);
+    writer.flush_tiles().await.expect("flushed");
+    writer.add_way(Way::Road, &[at(0.0, 0.0), at(0.0, 100.0)]);
+    writer.finish().await.expect("finished");
+
+    let db = GroundDb::open(&path).await.expect("opens").expect("exists");
+    let points = [at(50.0, 0.0), at(50.0, 2_000.0), at(0.0, 80.0)];
+    let data = db.around(&points).await.expect("read");
+    let surfaces: Vec<Surface> = points.iter().map(|p| data.surface_at(*p)).collect();
+    // The first road still there, though the third shares its tile.
+    assert_eq!(surfaces, [Surface::Road, Surface::OffRoad, Surface::Road]);
+}

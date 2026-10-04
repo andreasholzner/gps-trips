@@ -245,15 +245,31 @@ impl GroundWriter {
         geodata::detach_source(&mut self.conn).await
     }
 
-    /// Writes the ways, commits and compacts the file.
-    pub async fn finish(mut self) -> Result<(), sqlx::Error> {
-        for (id, tile) in &self.tiles {
-            sqlx::query("INSERT INTO tile (id, ways) VALUES (?, ?)")
+    /// Writes the ways gathered so far, adding them to what an earlier
+    /// flush left in the same tiles, and lets go of them — so one extract's
+    /// ways are in memory at a time, not every region's.
+    pub async fn flush_tiles(&mut self) -> Result<(), sqlx::Error> {
+        for (id, mut tile) in self.tiles.drain() {
+            let stored = sqlx::query("SELECT ways FROM tile WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut self.conn)
+                .await?;
+            if let Some(stored) = stored.and_then(|row| Tile::decode(row.get("ways"))) {
+                tile.merge(&stored);
+            }
+            sqlx::query("INSERT OR REPLACE INTO tile (id, ways) VALUES (?, ?)")
                 .bind(id)
                 .bind(tile.encode())
                 .execute(&mut self.conn)
                 .await?;
         }
+        self.tiles.shrink_to_fit();
+        Ok(())
+    }
+
+    /// Writes the ways, commits and compacts the file.
+    pub async fn finish(mut self) -> Result<(), sqlx::Error> {
+        self.flush_tiles().await?;
         geodata::finish(self.conn).await
     }
 }
