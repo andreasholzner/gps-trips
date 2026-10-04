@@ -150,10 +150,40 @@ async fn us76_a_fixture_keeps_what_is_around_its_tracks() {
 }
 
 #[tokio::test]
-async fn us76_a_missing_ground_database_is_no_database() {
+async fn us76_a_place_database_is_not_a_ground_database() {
     let dir = tempfile::tempdir().expect("a temp dir");
-    assert!(GroundDb::open(&dir.path().join("none.sqlite"))
+    let places = dir.path().join("places.sqlite");
+    crate::server::places::PlaceWriter::create(&places)
         .await
-        .expect("not an error")
-        .is_none());
+        .expect("a new database")
+        .finish()
+        .await
+        .expect("finished");
+
+    assert!(GroundDb::open(&places).await.is_err());
+}
+
+#[test]
+fn us76_a_road_beside_a_point_wins_over_a_path_beside_it_but_not_over_one_under_it() {
+    use super::{Cell, GroundData, Tile};
+    use std::collections::HashMap;
+
+    let mut tiles: HashMap<i64, Tile> = HashMap::new();
+    let mut mark = |cell: Cell, way: Way| tiles.entry(cell.tile()).or_default().set(cell, way);
+    // Between a path and a road, on neither.
+    let between = at(1_000.0, 1_000.0);
+    let c = Cell::at(between);
+    mark(Cell { x: c.x - 1, ..c }, Way::Small);
+    mark(Cell { x: c.x + 1, ..c }, Way::Road);
+    // On a path, a road beside it.
+    let on_path = at(5_000.0, 5_000.0);
+    let p = Cell::at(on_path);
+    mark(p, Way::Small);
+    mark(Cell { y: p.y + 1, ..p }, Way::Road);
+    let covered = vec![Rect::new(at(-10_000.0, -10_000.0), at(10_000.0, 10_000.0))];
+
+    let data = GroundData::new(tiles, Vec::new(), covered);
+
+    assert_eq!(data.surface_at(between), Surface::Road);
+    assert_eq!(data.surface_at(on_path), Surface::OffRoad);
 }

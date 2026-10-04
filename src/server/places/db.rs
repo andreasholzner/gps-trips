@@ -4,14 +4,13 @@
 
 use std::collections::HashSet;
 use std::path::Path;
-use std::str::FromStr;
 
 use geo::{BoundingRect, Coord, Rect};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 
 use super::shape::{decode_area, encode_area};
 use super::{Place, PlaceKind, Shape, Source};
+use crate::server::geodata;
 
 const SCHEMA: &str = "
 CREATE TABLE place (
@@ -42,19 +41,8 @@ impl PlaceDb {
     /// Opens the database at `path` read-only; `Ok(None)` when there is no
     /// file there, which is a supported way to run (ADR-0027).
     pub async fn open(path: &Path) -> Result<Option<Self>, sqlx::Error> {
-        if !path.is_file() {
-            return Ok(None);
-        }
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            .read_only(true)
-            .immutable(true);
-        let pool = SqlitePoolOptions::new().connect_with(options).await?;
-        // Fails here, at boot, for a file that is not a place database.
-        sqlx::query("SELECT 1 FROM place, place_bbox LIMIT 1")
-            .fetch_optional(&pool)
-            .await?;
-        Ok(Some(Self { pool }))
+        let pool = geodata::open_read_only(path, "SELECT 1 FROM place, place_bbox LIMIT 1").await?;
+        Ok(pool.map(|pool| Self { pool }))
     }
 
     /// Every place whose bounding box meets one of `boxes` (longitude/
@@ -117,25 +105,9 @@ pub struct PlaceWriter {
 impl PlaceWriter {
     /// Creates an empty place database at `path`, which must not exist yet.
     pub async fn create(path: &Path) -> Result<Self, sqlx::Error> {
-        use sqlx::ConnectOptions;
-        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", path.display()))?
-            .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Off)
-            .synchronous(SqliteSynchronous::Off);
-        let mut conn = options.connect().await?;
-        if sqlx::query("SELECT 1 FROM sqlite_master LIMIT 1")
-            .fetch_optional(&mut conn)
-            .await?
-            .is_some()
-        {
-            return Err(sqlx::Error::Protocol(format!(
-                "{} already holds a database",
-                path.display()
-            )));
-        }
-        sqlx::raw_sql(SCHEMA).execute(&mut conn).await?;
-        sqlx::query("BEGIN").execute(&mut conn).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn: geodata::create(path, SCHEMA).await?,
+        })
     }
 
     /// Adds `place`, known to its source as `source_id`; a place already
@@ -193,12 +165,7 @@ impl PlaceWriter {
     /// Copies every place of the database at `source` whose bounding box
     /// meets one of `boxes`: a test fixture cut from the real database.
     pub async fn copy_within(&mut self, source: &Path, boxes: &[Rect]) -> Result<(), sqlx::Error> {
-        sqlx::query("COMMIT").execute(&mut self.conn).await?;
-        sqlx::query("ATTACH DATABASE ? AS src")
-            .bind(source.display().to_string())
-            .execute(&mut self.conn)
-            .await?;
-        sqlx::query("BEGIN").execute(&mut self.conn).await?;
+        geodata::attach_source(&mut self.conn, source).await?;
         for rect in boxes {
             sqlx::query(
                 "INSERT OR IGNORE INTO place \
@@ -225,19 +192,12 @@ impl PlaceWriter {
         )
         .execute(&mut self.conn)
         .await?;
-        sqlx::query("COMMIT").execute(&mut self.conn).await?;
-        sqlx::query("DETACH DATABASE src")
-            .execute(&mut self.conn)
-            .await?;
-        sqlx::query("BEGIN").execute(&mut self.conn).await?;
-        Ok(())
+        geodata::detach_source(&mut self.conn).await
     }
 
     /// Commits what was added and compacts the file.
-    pub async fn finish(mut self) -> Result<(), sqlx::Error> {
-        sqlx::query("COMMIT").execute(&mut self.conn).await?;
-        sqlx::query("VACUUM").execute(&mut self.conn).await?;
-        Ok(())
+    pub async fn finish(self) -> Result<(), sqlx::Error> {
+        geodata::finish(self.conn).await
     }
 }
 
@@ -342,15 +302,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn us74_a_missing_database_is_no_database() {
-        let dir = tempfile::tempdir().expect("a temp dir");
-        assert!(PlaceDb::open(&dir.path().join("none.sqlite"))
-            .await
-            .expect("not an error")
-            .is_none());
-    }
-
-    #[tokio::test]
     async fn us74_a_fixture_is_cut_from_the_places_around_the_tracks() {
         let dir = tempfile::tempdir().expect("a temp dir");
         let full = written(
@@ -383,9 +334,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn us74_an_existing_file_is_not_written_over() {
+    async fn us74_a_ground_database_is_not_a_place_database() {
         let dir = tempfile::tempdir().expect("a temp dir");
-        let path = written(dir.path(), &[]).await;
-        assert!(PlaceWriter::create(&path).await.is_err());
+        let ground = dir.path().join("ground.sqlite");
+        crate::server::ground::GroundWriter::create(&ground)
+            .await
+            .expect("a new database")
+            .finish()
+            .await
+            .expect("finished");
+
+        assert!(PlaceDb::open(&ground).await.is_err());
     }
 }

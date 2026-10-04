@@ -10,6 +10,7 @@ pub mod delete;
 pub mod edit;
 pub mod error;
 pub mod filter;
+pub mod geodata;
 pub mod geojson;
 pub mod gpx;
 pub mod ground;

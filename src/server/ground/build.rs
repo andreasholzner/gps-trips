@@ -161,6 +161,61 @@ pub async fn cut_fixture(source: &Path, out: &Path, gpx: &[&Path]) -> anyhow::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::ground::{GroundDb, Surface};
+    use shapefile::{Point, Polygon, PolygonRing};
+
+    /// A square `side` degrees across, its south-west corner at (`x`, `y`).
+    fn square(x: f64, y: f64, side: f64) -> Polygon {
+        Polygon::new(PolygonRing::Outer(vec![
+            Point::new(x, y),
+            Point::new(x, y + side),
+            Point::new(x + side, y + side),
+            Point::new(x + side, y),
+            Point::new(x, y),
+        ]))
+    }
+
+    #[tokio::test]
+    async fn us76_the_sea_is_kept_where_the_extracts_cover_it() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let shp = dir.path().join("water_polygons.shp");
+        let mut sea = shapefile::ShapeWriter::from_path(&shp).expect("a shapefile");
+        sea.write_shape(&square(8.0, 60.0, 0.1)).expect("written");
+        sea.write_shape(&square(100.0, 10.0, 0.1)).expect("written");
+        drop(sea);
+        let path = dir.path().join("ground.sqlite");
+        let mut writer = GroundWriter::create(&path).await.expect("a new database");
+        writer
+            .add_coverage(Rect::new(
+                Coord { x: 7.0, y: 59.0 },
+                Coord { x: 9.0, y: 61.0 },
+            ))
+            .await
+            .expect("coverage");
+
+        let kept = add_sea(&mut writer, &shp).await.expect("read");
+        writer.finish().await.expect("finished");
+
+        assert_eq!(kept, 1);
+        let db = GroundDb::open(&path).await.expect("opens").expect("exists");
+        let at_sea = Coord { x: 8.05, y: 60.05 };
+        let ashore = Coord { x: 8.2, y: 60.05 };
+        let data = db.around(&[at_sea, ashore]).await.expect("read");
+        assert_eq!(data.surface_at(at_sea), Surface::Water);
+        assert_eq!(data.surface_at(ashore), Surface::OffRoad);
+    }
+
+    #[tokio::test]
+    async fn us76_the_sea_needs_the_extracts_first() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let mut writer = GroundWriter::create(&dir.path().join("ground.sqlite"))
+            .await
+            .expect("a new database");
+
+        let refused = add_sea(&mut writer, &dir.path().join("none.shp")).await;
+
+        assert!(refused.is_err());
+    }
 
     #[test]
     fn us76_an_extract_s_box_is_read_as_osmium_prints_it() {

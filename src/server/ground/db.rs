@@ -5,13 +5,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::str::FromStr;
 
 use geo::{BoundingRect, Coord, MultiPolygon, Polygon, Rect};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 
 use super::{tile::cells_along, water, Cell, GroundData, Tile, Way};
+use crate::server::geodata;
 use crate::server::places::{decode_area, encode_area};
 
 /// At most this many points in a stored water piece.
@@ -49,14 +48,10 @@ impl GroundDb {
     /// Opens the database at `path` read-only; `Ok(None)` when there is no
     /// file there, which is a supported way to run (ADR-0027).
     pub async fn open(path: &Path) -> Result<Option<Self>, sqlx::Error> {
-        if !path.is_file() {
+        let probe = "SELECT 1 FROM tile, water, water_bbox, coverage LIMIT 1";
+        let Some(pool) = geodata::open_read_only(path, probe).await? else {
             return Ok(None);
-        }
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            .read_only(true)
-            .immutable(true);
-        let pool = SqlitePoolOptions::new().connect_with(options).await?;
+        };
         let coverage = sqlx::query("SELECT min_lon, min_lat, max_lon, max_lat FROM coverage")
             .fetch_all(&pool)
             .await?
@@ -74,10 +69,6 @@ impl GroundDb {
                 )
             })
             .collect();
-        // Fails here, at boot, for a file that is not a ground database.
-        sqlx::query("SELECT 1 FROM tile, water, water_bbox LIMIT 1")
-            .fetch_optional(&pool)
-            .await?;
         Ok(Some(Self { pool, coverage }))
     }
 
@@ -140,26 +131,8 @@ pub struct GroundWriter {
 impl GroundWriter {
     /// Creates an empty ground database at `path`, which must not exist yet.
     pub async fn create(path: &Path) -> Result<Self, sqlx::Error> {
-        use sqlx::ConnectOptions;
-        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", path.display()))?
-            .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Off)
-            .synchronous(SqliteSynchronous::Off);
-        let mut conn = options.connect().await?;
-        if sqlx::query("SELECT 1 FROM sqlite_master LIMIT 1")
-            .fetch_optional(&mut conn)
-            .await?
-            .is_some()
-        {
-            return Err(sqlx::Error::Protocol(format!(
-                "{} already holds a database",
-                path.display()
-            )));
-        }
-        sqlx::raw_sql(SCHEMA).execute(&mut conn).await?;
-        sqlx::query("BEGIN").execute(&mut conn).await?;
         Ok(Self {
-            conn,
+            conn: geodata::create(path, SCHEMA).await?,
             tiles: HashMap::new(),
             coverage: Vec::new(),
         })
@@ -223,12 +196,7 @@ impl GroundWriter {
     /// Copies what the database at `source` knows within `boxes`: a test
     /// fixture cut from the real database. Its coverage is copied whole.
     pub async fn copy_within(&mut self, source: &Path, boxes: &[Rect]) -> Result<(), sqlx::Error> {
-        sqlx::query("COMMIT").execute(&mut self.conn).await?;
-        sqlx::query("ATTACH DATABASE ? AS src")
-            .bind(source.display().to_string())
-            .execute(&mut self.conn)
-            .await?;
-        sqlx::query("BEGIN").execute(&mut self.conn).await?;
+        geodata::attach_source(&mut self.conn, source).await?;
         for rect in boxes {
             // Rows count southwards: the box's north-east corner has the
             // lower one.
@@ -274,12 +242,7 @@ impl GroundWriter {
         )
         .execute(&mut self.conn)
         .await?;
-        sqlx::query("COMMIT").execute(&mut self.conn).await?;
-        sqlx::query("DETACH DATABASE src")
-            .execute(&mut self.conn)
-            .await?;
-        sqlx::query("BEGIN").execute(&mut self.conn).await?;
-        Ok(())
+        geodata::detach_source(&mut self.conn).await
     }
 
     /// Writes the ways, commits and compacts the file.
@@ -291,8 +254,6 @@ impl GroundWriter {
                 .execute(&mut self.conn)
                 .await?;
         }
-        sqlx::query("COMMIT").execute(&mut self.conn).await?;
-        sqlx::query("VACUUM").execute(&mut self.conn).await?;
-        Ok(())
+        geodata::finish(self.conn).await
     }
 }
