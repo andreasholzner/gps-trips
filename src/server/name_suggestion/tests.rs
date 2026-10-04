@@ -441,3 +441,20 @@ fn us74_two_places_of_one_name_far_apart_are_two_places() {
         Some("Langvatnet")
     );
 }
+
+// ── Looking places up ───────────────────────────────────────────────────────
+
+#[test]
+fn us74_places_are_looked_up_as_far_as_any_reaches() {
+    use crate::config::name_suggestion::{
+        end_reach_m, main_reach_m, NAMESAKE_REACH_M, STOP_REACH_M,
+    };
+    let reach = super::LOOKUP_REACH_M;
+
+    // The place a hut at an end is named after lies beyond the hut.
+    assert!(reach >= STOP_REACH_M + NAMESAKE_REACH_M, "{reach}");
+    for kind in PlaceKind::ALL {
+        assert!(end_reach_m(kind).unwrap_or(0.0) <= reach, "{kind:?}");
+        assert!(main_reach_m(kind).unwrap_or(0.0) <= reach, "{kind:?}");
+    }
+}

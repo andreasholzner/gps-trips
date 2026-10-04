@@ -24,15 +24,33 @@ use crate::config::name_suggestion::{
     STOP_REACH_M, TURNING_POINT_BONUS,
 };
 use crate::server::gpx::TrackPoint;
-use crate::server::places::Place;
+use crate::server::places::{Place, PlaceKind};
 use crate::server::track_boxes;
 
 use geometry::{distance, Plane, Track};
 use ranking::{dedupe, Located};
 
 /// The farthest any place reaches, from an end or from the track: how far
-/// around them places are looked up.
-pub const LOOKUP_REACH_M: f64 = NAMESAKE_REACH_M;
+/// around them places are looked up. Worked out from the reaches, so a
+/// change to one of them cannot leave places unfetched.
+pub const LOOKUP_REACH_M: f64 = lookup_reach_m();
+
+const fn lookup_reach_m() -> f64 {
+    // The place a hut at an end is named after lies beyond the hut.
+    let mut reach = STOP_REACH_M + NAMESAKE_REACH_M;
+    let mut i = 0;
+    while i < PlaceKind::ALL.len() {
+        let kind = PlaceKind::ALL[i];
+        if let Some(end) = end_reach_m(kind) {
+            reach = reach.max(end);
+        }
+        if let Some(main) = main_reach_m(kind) {
+            reach = reach.max(main);
+        }
+        i += 1;
+    }
+    reach
+}
 
 /// The part of the name behind the date for the track through `points`,
 /// from `places` around it; `None` when no place names it.
