@@ -14,6 +14,7 @@ use dioxus::prelude::*;
 use crate::filters::Filters;
 use crate::stats::StatsView;
 use crate::summary::SummaryView;
+use crate::tags::TagsView;
 use crate::Route;
 
 /// Signing out, as the app hands it to this menu. The action needs the
@@ -92,6 +93,11 @@ pub fn AppMenu() -> Element {
                     "Statistics"
                 }
                 Link {
+                    to: Route::Tags { view: TagsView::default() },
+                    onclick: move |_| open.set(false),
+                    "Tags"
+                }
+                Link {
                     to: Route::ImportTrip {},
                     onclick: move |_| open.set(false),
                     "Import a trip"
@@ -159,7 +165,14 @@ mod tests {
         // US-78: the tag summary between them.
         assert!(position("All trips") < position("Summary"), "{html}");
         assert!(position("Summary") < position("Statistics"), "{html}");
-        assert!(position("Statistics") < position("Import a trip"), "{html}");
+        // US-83: every tag, right after the statistics.
+        assert!(position("Statistics") < position("Tags"), "{html}");
+        assert!(position("Tags") < position("Import a trip"), "{html}");
+        let tags = Route::Tags {
+            view: TagsView::default(),
+        }
+        .to_string();
+        assert!(html.contains(&format!(r#"href="{tags}""#)), "{html}");
         let summary = Route::Summary {
             view: SummaryView::default(),
         }

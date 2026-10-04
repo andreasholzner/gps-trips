@@ -5,8 +5,8 @@
   "description": "Browser-level tests for the Dioxus SPA (ADR-0012, amendment 2026-08-26b). Test-only tooling; nothing here ships.",
   "scripts": {
     "test": "playwright test",
-    "format": "prettier --write . ../../crates/ui-dioxus/assets/app.css ../../crates/ui-dioxus/assets/detail.css ../../crates/ui-dioxus/assets/stats.css ../../crates/ui-dioxus/assets/summary.css",
-    "format:check": "prettier --check . ../../crates/ui-dioxus/assets/app.css ../../crates/ui-dioxus/assets/detail.css ../../crates/ui-dioxus/assets/stats.css ../../crates/ui-dioxus/assets/summary.css"
+    "format": "prettier --write . ../../crates/ui-dioxus/assets/app.css ../../crates/ui-dioxus/assets/detail.css ../../crates/ui-dioxus/assets/stats.css ../../crates/ui-dioxus/assets/summary.css ../../crates/ui-dioxus/assets/tags.css",
+    "format:check": "prettier --check . ../../crates/ui-dioxus/assets/app.css ../../crates/ui-dioxus/assets/detail.css ../../crates/ui-dioxus/assets/stats.css ../../crates/ui-dioxus/assets/summary.css ../../crates/ui-dioxus/assets/tags.css"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

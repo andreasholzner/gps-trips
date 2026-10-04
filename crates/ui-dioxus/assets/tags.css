@@ -1,0 +1,36 @@
+/* The Tags screen (US-83). */
+
+/* The filter and the create field are short names, not prose: neither needs
+   the page's whole width. */
+#tag-filter,
+.create-tag {
+  max-width: 24rem;
+}
+
+/* Deleting sits at the row's end, as narrow as its button. */
+.tags .tag-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* The share icon marks the tag; underlined, it would read as part of the
+   name's link. */
+.tag-shared {
+  text-decoration: none;
+}
+
+/* The name and its button on one line, the button as wide as its words. */
+.create-tag {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: var(--pico-typography-spacing-vertical);
+}
+
+.create-tag input {
+  flex: 1;
+}
+
+.create-tag button {
+  width: auto;
+}
