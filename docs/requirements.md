@@ -117,7 +117,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-73](#us-73--trip-lines-when-zoomed-in)                    | ✅     | Trip lines when zoomed in                    | [Trip list & map](#trip-list--map)                                  |
 | [US-74](#us-74--place-based-name-suggestion)                  | ✅     | Place-based name suggestion                  | [Import](#import)                                                   |
 | [US-75](#us-75--activity-colors-on-maps)                      | ✅     | Activity colors on maps                      | [Maps](#maps)                                                       |
-| [US-76](#us-76--activity-type-suggestion)                     | 📋     | Activity type suggestion                     | [Import](#import)                                                   |
+| [US-76](#us-76--activity-type-suggestion)                     | ✅     | Activity type suggestion                     | [Import](#import)                                                   |
 | [US-77](#us-77--statistics)                                   | ✅     | Statistics                                   | [Statistics](#statistics)                                           |
 | [US-78](#us-78--tag-summary)                                  | ✅     | Tag summary                                  | [Statistics](#statistics)                                           |
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
@@ -256,7 +256,7 @@ precedent of an offline geographic lookup), ADR-0012 (the suggestion rule is uni
 
 ### US-76 — Activity type suggestion
 
-**Planned 📋** — As the owner, when I import a trip or edit its activity type, I am offered an
+**Done ✅** — As the owner, when I import a trip or edit its activity type, I am offered an
 activity type that fits the track, so I rarely have to pick one myself.
 
 **Acceptance criteria:**
