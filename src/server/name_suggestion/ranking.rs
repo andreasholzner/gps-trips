@@ -2,9 +2,9 @@
 
 use crate::config::name_suggestion::{
     base_weight, AREA_WEIGHT_PER_KM, DUPLICATE_REACH_M, ELEVATION_PER_WEIGHT_M,
-    PROMINENCE_PER_WEIGHT_M,
+    PROMINENCE_PER_WEIGHT_M, RENAMED_DUPLICATE_REACH_M,
 };
-use crate::server::places::{Place, PlaceKind};
+use crate::server::places::{Place, PlaceKind, Source};
 
 use super::geometry::{Flat, Plane};
 
@@ -41,17 +41,21 @@ impl Located {
 }
 
 /// `places` with every place the sources name twice counted once: two of a
-/// kind within [`DUPLICATE_REACH_M`] of each other, from different sources
-/// or under the same name. The one kept is the named one over one known
-/// only by its height, and it takes on what the other knows about its size.
+/// kind under one name within [`DUPLICATE_REACH_M`] of each other, or from
+/// different sources within [`RENAMED_DUPLICATE_REACH_M`].
 pub fn dedupe(places: Vec<Located>) -> Vec<Located> {
     let mut kept: Vec<Located> = Vec::with_capacity(places.len());
     for candidate in places {
         let twin = kept.iter_mut().find(|other| {
+            let reach = if other.place.name.eq_ignore_ascii_case(&candidate.place.name) {
+                DUPLICATE_REACH_M
+            } else if other.place.source != candidate.place.source {
+                RENAMED_DUPLICATE_REACH_M
+            } else {
+                return false;
+            };
             other.place.kind == candidate.place.kind
-                && (other.place.source != candidate.place.source
-                    || other.place.name.eq_ignore_ascii_case(&candidate.place.name))
-                && other.flat.distance_to_shape(&candidate.flat) <= DUPLICATE_REACH_M
+                && other.flat.distance_to_shape(&candidate.flat) <= reach
         });
         match twin {
             Some(twin) => merge(twin, candidate),
@@ -61,12 +65,21 @@ pub fn dedupe(places: Vec<Located>) -> Vec<Located> {
     kept
 }
 
+/// One place from two: named as the register names it, in its first
+/// language — or by a name rather than a height — with OSM's outline, and
+/// what either knows about its size.
 fn merge(kept: &mut Located, other: Located) {
-    let other = if kept.place.is_height_only() && !other.place.is_height_only() {
-        std::mem::replace(kept, other)
-    } else {
-        other
-    };
+    let better_name = !other.place.is_height_only()
+        && (kept.place.is_height_only()
+            || (kept.place.source == Source::Osm && other.place.source != Source::Osm));
+    if better_name {
+        kept.place.name = other.place.name;
+        kept.place.source = other.place.source;
+    }
+    if matches!(kept.flat, Flat::Point(_)) && matches!(other.flat, Flat::Area(_)) {
+        kept.flat = other.flat;
+        kept.place.shape = other.place.shape;
+    }
     let place = &mut kept.place;
     place.ele_m = place.ele_m.or(other.place.ele_m);
     place.prominence_m = place.prominence_m.or(other.place.prominence_m);

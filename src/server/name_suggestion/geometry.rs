@@ -8,6 +8,7 @@
 use geo::{Coord, EuclideanDistance, Line, MapCoords, MultiPolygon, Point};
 use rstar::{primitives::GeomWithData, RTree, AABB};
 
+use crate::config::name_suggestion::TURNING_CLIMB_FACTOR;
 use crate::server::places::Shape;
 
 const METRES_PER_DEGREE_LAT: f64 = 110_574.0;
@@ -114,12 +115,14 @@ pub struct Passing {
 /// A track on the plane, its segments indexed to find what passes near.
 pub struct Track {
     pub points: Vec<Coord>,
+    /// Each point's elevation, where the track has one.
+    elevations: Vec<Option<f64>>,
     segments: RTree<GeomWithData<Line, usize>>,
 }
 
 impl Track {
-    /// The track through `points`, which must not be empty.
-    pub fn new(points: Vec<Coord>) -> Self {
+    /// The track through `points` at `elevations`, which must not be empty.
+    pub fn new(points: Vec<Coord>, elevations: Vec<Option<f64>>) -> Self {
         let segments = if points.len() == 1 {
             vec![GeomWithData::new(Line::new(points[0], points[0]), 0)]
         } else {
@@ -131,6 +134,7 @@ impl Track {
         };
         Self {
             points,
+            elevations,
             segments: RTree::bulk_load(segments),
         }
     }
@@ -180,14 +184,21 @@ impl Track {
             .min_by(|a, b| a.distance_m.total_cmp(&b.distance_m))
     }
 
-    /// The index of the point farthest from the start: where a round trip
-    /// turned.
+    /// The index of the point farthest from the start, a metre climbed
+    /// above it counting [`TURNING_CLIMB_FACTOR`] metres out: where a round
+    /// trip turned — on a hike, its summit.
     pub fn turning_point(&self) -> usize {
         let start = self.start();
+        let start_ele = self.elevations.first().copied().flatten();
+        let effort = |i: usize| {
+            let climbed = match (start_ele, self.elevations.get(i).copied().flatten()) {
+                (Some(from), Some(to)) => (to - from).max(0.0),
+                _ => 0.0,
+            };
+            distance(self.points[i], start) + TURNING_CLIMB_FACTOR * climbed
+        };
         (0..self.points.len())
-            .max_by(|&a, &b| {
-                distance(self.points[a], start).total_cmp(&distance(self.points[b], start))
-            })
+            .max_by(|&a, &b| effort(a).total_cmp(&effort(b)))
             .unwrap_or(0)
     }
 }

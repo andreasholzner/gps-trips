@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context};
 
+use super::kartverket::Register;
 use super::osm::place_from_feature;
 use super::PlaceWriter;
 use crate::server::gpx::parse_gpx;
@@ -69,6 +70,19 @@ pub async fn add_osm_extract(writer: &mut PlaceWriter, pbf: &Path) -> anyhow::Re
     }
     if !export.wait()?.success() {
         bail!("osmium export failed on {}", pbf.display());
+    }
+    Ok(found)
+}
+
+/// Adds the places of Kartverket's register, from its GML download at
+/// `gml` (EPSG:4258), to `writer`; how many it found.
+pub async fn add_kartverket(writer: &mut PlaceWriter, gml: &Path) -> anyhow::Result<u64> {
+    let file = std::fs::File::open(gml).with_context(|| format!("opening {}", gml.display()))?;
+    let mut found = 0;
+    for read in Register::new(BufReader::new(file)) {
+        let (place, number) = read.with_context(|| format!("reading {}", gml.display()))?;
+        writer.insert(&place, &number).await?;
+        found += 1;
     }
     Ok(found)
 }

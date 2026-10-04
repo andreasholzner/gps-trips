@@ -8,6 +8,7 @@
 
 pub mod build;
 mod db;
+pub mod kartverket;
 pub mod osm;
 mod shape;
 
@@ -88,18 +89,22 @@ impl PlaceKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Source {
     Osm,
+    /// Norway's place-name register.
+    Kartverket,
 }
 
 impl Source {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Osm => "osm",
+            Self::Kartverket => "kartverket",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "osm" => Some(Self::Osm),
+            "kartverket" => Some(Self::Kartverket),
             _ => None,
         }
     }

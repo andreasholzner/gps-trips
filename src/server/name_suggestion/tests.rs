@@ -6,6 +6,7 @@ use geo::{Coord, LineString, MultiPolygon, Polygon};
 use geo::Contains;
 
 use super::place_part;
+use crate::server::gpx::TrackPoint;
 use crate::server::places::{Place, PlaceKind, Shape, Source};
 
 const ORIGIN: Coord = Coord { x: 8.0, y: 60.0 };
@@ -20,17 +21,45 @@ fn at(x: f64, y: f64) -> Coord {
 }
 
 /// A track through `waypoints` (metres), a point every 50 m between them.
-fn track(waypoints: &[(f64, f64)]) -> Vec<Coord> {
-    let mut points = vec![at(waypoints[0].0, waypoints[0].1)];
+fn track(waypoints: &[(f64, f64)]) -> Vec<TrackPoint> {
+    let waypoints: Vec<(f64, f64, f64)> = waypoints.iter().map(|&(x, y)| (x, y, 0.0)).collect();
+    track_3d(&waypoints)
+}
+
+/// A track through `waypoints` (metres east, north and up), a point every
+/// 50 m between them.
+fn track_3d(waypoints: &[(f64, f64, f64)]) -> Vec<TrackPoint> {
+    let point = |x: f64, y: f64, ele: f64| {
+        let c = at(x, y);
+        TrackPoint {
+            lat: c.y,
+            lon: c.x,
+            ele: Some(ele),
+            time: None,
+        }
+    };
+    let (x, y, ele) = waypoints[0];
+    let mut points = vec![point(x, y, ele)];
     for pair in waypoints.windows(2) {
-        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        let ((x0, y0, e0), (x1, y1, e1)) = (pair[0], pair[1]);
         let steps = ((x1 - x0).hypot(y1 - y0) / 50.0).ceil().max(1.0) as usize;
         for step in 1..=steps {
             let t = step as f64 / steps as f64;
-            points.push(at(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+            points.push(point(
+                x0 + (x1 - x0) * t,
+                y0 + (y1 - y0) * t,
+                e0 + (e1 - e0) * t,
+            ));
         }
     }
     points
+}
+
+fn coords(points: &[TrackPoint]) -> Vec<Coord> {
+    points
+        .iter()
+        .map(|p| Coord { x: p.lon, y: p.lat })
+        .collect()
 }
 
 fn point(name: &str, kind: PlaceKind, x: f64, y: f64) -> Place {
@@ -244,7 +273,7 @@ fn us74_no_place_found_is_no_suggestion() {
 // ── A round trip ────────────────────────────────────────────────────────────
 
 /// Out to 8 km east and back, ending 300 m from the start.
-fn out_and_back() -> Vec<Coord> {
+fn out_and_back() -> Vec<TrackPoint> {
     track(&[(0.0, 0.0), (8_000.0, 0.0), (8_000.0, 500.0), (0.0, 300.0)])
 }
 
@@ -265,16 +294,17 @@ fn us74_a_round_trip_reads_its_start_then_its_main_places() {
 
 #[test]
 fn us74_on_a_round_trip_the_place_nearest_the_turning_point_weighs_most() {
-    // Four of a height; the one nearest the start is the one left out.
+    // Four of a height: those near the start weigh under a third of the
+    // one at the turning point, and are left out.
     let places = vec![
         summit("A", 600.0, 1_000.0, 0.0),
         summit("B", 600.0, 2_000.0, 0.0),
-        summit("C", 600.0, 3_000.0, 0.0),
+        summit("C", 600.0, 6_000.0, 0.0),
         summit("D", 600.0, 7_500.0, 490.0),
     ];
     assert_eq!(
         place_part(&out_and_back(), places).as_deref(),
-        Some("B - C - D")
+        Some("C - D")
     );
 }
 
@@ -309,6 +339,25 @@ fn us74_a_round_trip_names_its_turning_point_over_a_place_near_the_start() {
 }
 
 #[test]
+fn us74_a_hike_turns_at_its_summit_rather_than_its_farthest_point() {
+    // Up 300 m to a summit 1 km out, then on along the flat to a lake 2 km
+    // out and back: the summit is where the effort turned.
+    let hike = track_3d(&[
+        (0.0, 0.0, 100.0),
+        (1_000.0, 0.0, 400.0),
+        (1_200.0, 0.0, 100.0),
+        (2_000.0, 0.0, 100.0),
+        (2_000.0, 200.0, 100.0),
+        (0.0, 200.0, 100.0),
+    ]);
+    let places = vec![
+        summit("Toppen", 400.0, 1_000.0, 0.0),
+        area("Vatnet", PlaceKind::Lake, 2_000.0, 300.0, 120.0),
+    ];
+    assert_eq!(place_part(&hike, places).as_deref(), Some("Toppen"));
+}
+
+#[test]
 fn us74_a_round_trip_without_a_named_start_is_its_main_places() {
     let places = vec![summit("Toppen", 900.0, 8_000.0, 250.0)];
     assert_eq!(
@@ -340,6 +389,55 @@ fn us74_a_place_named_twice_counts_once() {
     );
 }
 
+fn in_register(place: Place) -> Place {
+    Place {
+        source: Source::Kartverket,
+        ..place
+    }
+}
+
+#[test]
+fn us74_the_register_s_name_wins_and_its_place_counts_once() {
+    let places = vec![
+        summit("Stuora Gáranasgáisi", 1_404.0, 5_000.0, 0.0),
+        in_register(point("Hamperokken", PlaceKind::Summit, 5_030.0, 0.0)),
+        summit("Liten", 300.0, 7_000.0, 0.0),
+    ];
+    // Both summits named: the merged one keeps OSM's height and outweighs
+    // the other.
+    assert_eq!(
+        place_part(&track(&[(0.0, 0.0), (10_000.0, 0.0)]), places).as_deref(),
+        Some("Hamperokken - Liten")
+    );
+}
+
+#[test]
+fn us74_a_register_s_lake_takes_osm_s_outline() {
+    let places = vec![
+        point("Start", PlaceKind::Village, 0.0, 0.0),
+        // The register's lake is a point 1.1 km from the end; OSM's outline
+        // around it reaches to 100 m.
+        in_register(point("Storvatnet", PlaceKind::Lake, 10_000.0, 1_100.0)),
+        area("Store vatn", PlaceKind::Lake, 10_000.0, 1_100.0, 2_000.0),
+    ];
+    assert_eq!(
+        place_part(&track(&[(0.0, 0.0), (10_000.0, 0.0)]), places).as_deref(),
+        Some("Start - Storvatnet")
+    );
+}
+
+#[test]
+fn us74_differently_named_places_of_two_sources_apart_are_two_places() {
+    let places = vec![
+        summit("Nordtoppen", 900.0, 5_000.0, 0.0),
+        in_register(point("Sørtoppen", PlaceKind::Summit, 5_000.0, 120.0)),
+    ];
+    assert_eq!(
+        place_part(&track(&[(0.0, 0.0), (10_000.0, 0.0)]), places).as_deref(),
+        Some("Nordtoppen - Sørtoppen")
+    );
+}
+
 #[test]
 fn us74_two_places_of_one_name_far_apart_are_two_places() {
     let places = vec![
@@ -357,7 +455,7 @@ fn us74_two_places_of_one_name_far_apart_are_two_places() {
 
 #[test]
 fn us74_places_are_looked_up_stretch_by_stretch_as_far_as_any_reaches() {
-    let coords = track(&[(0.0, 0.0), (30_000.0, 0.0), (30_000.0, 30_000.0)]);
+    let coords = coords(&track(&[(0.0, 0.0), (30_000.0, 0.0), (30_000.0, 30_000.0)]));
 
     let boxes = super::lookup_boxes(&coords);
 

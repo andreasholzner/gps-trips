@@ -313,15 +313,23 @@ pub mod name_suggestion {
     /// A trip that ends within this distance of its start is a round trip.
     pub const ROUND_TRIP_M: f64 = 1_000.0;
 
-    /// On a round trip, a main place that weighs this many times the next
-    /// one is named alone.
+    /// On a round trip, a main place that weighs this many times another
+    /// leaves that one out: one this much weightier than all the rest is
+    /// named alone.
     pub const DOMINANCE_RATIO: f64 = 3.0;
 
     /// On a round trip, a main place at the turning point weighs this much
-    /// more than its importance alone, falling off with the square of its
-    /// distance from there as a share of the turning point's from the start
-    /// — one halfway back a quarter as much. A round trip goes somewhere.
+    /// more than its importance alone, falling off with the cube of its
+    /// nearness to it — the share of the turning point's distance from the
+    /// start it is not away from it: one halfway back an eighth as much. A
+    /// round trip goes somewhere.
     pub const TURNING_POINT_BONUS: f64 = 4.0;
+
+    /// Where a round trip turned is its point farthest from the start, a
+    /// metre climbed above the start counting as this many metres out —
+    /// Naismith's rule, about an hour for 600 m up or 5 km on — so a hike
+    /// turns at its summit.
+    pub const TURNING_CLIMB_FACTOR: f64 = 8.0;
 
     /// A hut or campsite this close to an end is where the trip stopped.
     pub const STOP_REACH_M: f64 = 150.0;
@@ -329,9 +337,13 @@ pub mod name_suggestion {
     /// How far from a hut or campsite the place it is named after may lie.
     pub const NAMESAKE_REACH_M: f64 = 5_000.0;
 
-    /// Two places of a kind this close, from different sources or under
-    /// the same name, are the same place.
+    /// Two places of a kind and a name this close are the same place.
     pub const DUPLICATE_REACH_M: f64 = 300.0;
+
+    /// Two places of a kind this close from different sources are the same
+    /// place under two names — the register's and OSM's, in another
+    /// language. A register's lake within OSM's outline is 0 m from it.
+    pub const RENAMED_DUPLICATE_REACH_M: f64 = 50.0;
 
     /// How far from an end a place of `kind` may lie and still name it;
     /// `None` for a kind that never names an end.

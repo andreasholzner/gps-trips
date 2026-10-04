@@ -23,6 +23,7 @@ use crate::config::name_suggestion::{
     end_reach_m, main_reach_m, DOMINANCE_RATIO, MAX_MAIN_PLACES, NAMESAKE_REACH_M, ROUND_TRIP_M,
     STOP_REACH_M, TURNING_POINT_BONUS,
 };
+use crate::server::gpx::TrackPoint;
 use crate::server::places::Place;
 
 use geometry::{bounds, distance, Plane, Track};
@@ -32,15 +33,21 @@ use ranking::{dedupe, Located};
 /// around them places are looked up.
 pub const LOOKUP_REACH_M: f64 = NAMESAKE_REACH_M;
 
-/// The part of the name behind the date for the track through `coords`
-/// (longitude/latitude, in track order), from `places` around it; `None`
-/// when no place names it.
-pub fn place_part(coords: &[Coord], places: Vec<Place>) -> Option<String> {
-    if coords.is_empty() {
+/// The part of the name behind the date for the track through `points`,
+/// from `places` around it; `None` when no place names it.
+pub fn place_part(points: &[TrackPoint], places: Vec<Place>) -> Option<String> {
+    if points.is_empty() {
         return None;
     }
-    let plane = Plane::around(coords);
-    let track = Track::new(coords.iter().map(|c| plane.project(*c)).collect());
+    let coords: Vec<Coord> = points
+        .iter()
+        .map(|p| Coord { x: p.lon, y: p.lat })
+        .collect();
+    let plane = Plane::around(&coords);
+    let track = Track::new(
+        coords.iter().map(|c| plane.project(*c)).collect(),
+        points.iter().map(|p| p.ele).collect(),
+    );
     let places = dedupe(
         places
             .into_iter()
@@ -160,7 +167,8 @@ fn namesake(stop: &Located, places: &[Located]) -> Option<String> {
 /// The main places of the trip, in the order the track passes them: the
 /// weightiest it passes close to, one name once, none of the `ends`. On a
 /// round trip, a place weighs more the nearer it lies to the turning point,
-/// and one far weightier than the rest stands alone.
+/// and one [`DOMINANCE_RATIO`] times weightier than another leaves that one
+/// out — one far weightier than all the rest stands alone.
 fn main_places(track: &Track, places: &[Located], round: bool, ends: &[&str]) -> Vec<String> {
     let turning = track.points[track.turning_point()];
     let span = distance(track.start(), turning).max(1.0);
@@ -172,7 +180,7 @@ fn main_places(track: &Track, places: &[Located], round: bool, ends: &[&str]) ->
             let mut weight = p.weight();
             if round {
                 let closeness = 1.0 - distance(track.points[passing.index], turning) / span;
-                weight *= 1.0 + TURNING_POINT_BONUS * closeness.max(0.0).powi(2);
+                weight *= 1.0 + TURNING_POINT_BONUS * closeness.max(0.0).powi(3);
             }
             Some((p, passing.index, weight))
         })
@@ -188,8 +196,11 @@ fn main_places(track: &Track, places: &[Located], round: bool, ends: &[&str]) ->
             chosen.push(candidate);
         }
     }
-    let dominant = round && chosen.len() >= 2 && chosen[0].2 >= DOMINANCE_RATIO * chosen[1].2;
-    chosen.truncate(if dominant { 1 } else { MAX_MAIN_PLACES });
+    if round {
+        let least = chosen.first().map_or(0.0, |top| top.2 / DOMINANCE_RATIO);
+        chosen.retain(|c| c.2 > least);
+    }
+    chosen.truncate(MAX_MAIN_PLACES);
     chosen.sort_by_key(|c| c.1);
     chosen.into_iter().map(|c| c.0.place.name.clone()).collect()
 }

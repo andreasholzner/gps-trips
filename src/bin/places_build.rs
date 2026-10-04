@@ -4,7 +4,8 @@
 //! the same policy as the other CLIs.
 //!
 //! Usage:
-//!   `places_build build <out.sqlite> <extract.osm.pbf>...` — needs `osmium`
+//!   `places_build build <out.sqlite> <source>...` — needs `osmium`; each
+//!   source an OSM extract (`*.osm.pbf`) or Kartverket's register (`*.gml`)
 //!   `places_build cut <places.sqlite> <out.sqlite> <track.gpx>...`
 //!
 //! How the database is refreshed and deployed is in `docs/deployment.md`.
@@ -14,16 +15,22 @@ use std::process::ExitCode;
 
 use trip_archive::server::places::{build, PlaceWriter};
 
-const USAGE: &str = "usage: places_build build <out.sqlite> <extract.osm.pbf>...\n       \
+const USAGE: &str =
+    "usage: places_build build <out.sqlite> <extract.osm.pbf|register.gml>...\n       \
                      places_build cut <places.sqlite> <out.sqlite> <track.gpx>...";
 
 async fn run(args: &[String]) -> anyhow::Result<()> {
     match args {
-        [command, out, extracts @ ..] if command == "build" && !extracts.is_empty() => {
+        [command, out, sources @ ..] if command == "build" && !sources.is_empty() => {
             let mut writer = PlaceWriter::create(Path::new(out)).await?;
-            for extract in extracts {
-                let found = build::add_osm_extract(&mut writer, Path::new(extract)).await?;
-                println!("{extract}: {found} places");
+            for source in sources {
+                let path = Path::new(source);
+                let found = if path.extension().is_some_and(|ext| ext == "gml") {
+                    build::add_kartverket(&mut writer, path).await?
+                } else {
+                    build::add_osm_extract(&mut writer, path).await?
+                };
+                println!("{source}: {found} places");
             }
             writer.finish().await?;
             Ok(())
