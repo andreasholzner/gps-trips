@@ -123,7 +123,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-79](#us-79--speed-and-incline-on-the-elevation-profile)   | ✅     | Speed and incline on the elevation profile   | [Trip page](#trip-page)                                             |
 | [US-80](#us-80--average-speed)                                | 📋     | Average speed                                | [Trip page](#trip-page)                                             |
 | [US-81](#us-81--climbing-rate)                                | 📋     | Climbing rate                                | [Trip page](#trip-page)                                             |
-| [US-82](#us-82--share-a-summary)                              | 🚧     | Share a summary                              | [Sharing](#sharing)                                                 |
+| [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | 📋     | Tags page                                    | [Tags](#tags)                                                       |
 
 ### Maintaining this file
@@ -1294,7 +1294,7 @@ ADR-0012 (the browser layer for the row↔line highlight)
 
 ### US-82 — Share a summary
 
-**In progress 🚧** — As the owner, I share a tag summary (US-78) by link, so someone I travelled with, or
+**In progress ✅** — As the owner, I share a tag summary (US-78) by link, so someone I travelled with, or
 told about the trip, can look back on the whole vacation — its figures, its map and every trip in it.
 
 **Acceptance criteria:** The owner creates the share from the Summary screen, for the tags it shows,
