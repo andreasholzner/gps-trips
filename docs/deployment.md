@@ -216,47 +216,57 @@ sqlite3 /data/trip-archive.db
 
 `fly ssh console` needs a running machine; any request wakes it.
 
-### The place database
+### The place and ground databases
 
-A trip's suggested name says where it went (US-74), read from `places.sqlite` beside the archive's
-database — `/data` on the volume, `./data` on the laptop. It is optional: without it names are
-suggested from the GPX, as before. It is no part of the archive ([ADR-0027](./adr/0027-offline-place-name-database.md)):
+A trip's suggested name says where it went (US-74), read from `places.sqlite`; its suggested
+activity type comes from what its track runs on (US-76), read from `ground.sqlite`. Both sit beside
+the archive's database — `/data` on the volume, `./data` on the laptop — and both are optional:
+without the first, names are suggested from the GPX as before; without the second, no activity is
+suggested. They are no part of the archive ([ADR-0027](./adr/0027-offline-place-name-database.md)):
 built on the laptop from open data, never in the backup, and rebuilt rather than migrated. Place
-names change slowly; rebuilding it once a year or so is plenty.
+names and ways change slowly; rebuilding them once a year or so is plenty.
 
-Its sources, downloaded into `data/geo-src/` (which git ignores):
+Their sources, downloaded into `data/geo-src/` (which git ignores):
 
 - OpenStreetMap extracts (ODbL) from [Geofabrik](https://download.geofabrik.de/europe.html):
   `norway`, `sweden`, `finland`, `germany`, `austria`, `switzerland`, `slovenia`,
   `italy/nord-ovest`, `italy/nord-est`, `france/rhone-alpes` and
-  `france/provence-alpes-cote-d-azur`, each as `*-latest.osm.pbf`.
-- Kartverket's place-name register (CC BY 4.0), as GML in geographic ETRS89:
+  `france/provence-alpes-cote-d-azur`, each as `*-latest.osm.pbf` — for both.
+- Kartverket's place-name register (CC BY 4.0), as GML in geographic ETRS89, for the places:
   `https://nedlasting.geonorge.no/geonorge/Basisdata/Stedsnavn/GML/Basisdata_0000_Norge_4258_Stedsnavn_GML.zip`, unzipped.
+- The sea, as the water polygons derived from OSM's coastlines (ODbL), for the ground:
+  `https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip`, unzipped.
 
-Building it needs [`osmium`](https://osmcode.org/osmium-tool/) and takes a few minutes per
-extract:
+Building them needs [`osmium`](https://osmcode.org/osmium-tool/) and takes a few minutes per
+extract. The ground database marks what the extracts' bounding boxes cover; outside them no
+activity is suggested, so the sea comes last:
 
 ```sh
 cargo build --release --bin places_build
 target/release/places_build build data/places.sqlite data/geo-src/*.osm.pbf data/geo-src/*.gml
+target/release/places_build ground data/ground.sqlite data/geo-src/*.osm.pbf \
+    data/geo-src/water-polygons-split-4326/water_polygons.shp
 ```
 
-To put it on the volume, keep the machine up while the file travels — neither sftp nor ssh
-counts as traffic — and swap it in whole. The server opens it at boot, so the restart that turns
-auto-stop back on is what puts it to use:
+To put them on the volume, keep the machine up while the files travel — neither sftp nor ssh
+counts as traffic — and swap each in whole. The server opens them at boot, so the restart that
+turns auto-stop back on is what puts them to use:
 
 ```sh
 M=$(fly machines list --app "$FLY_APP" --quiet)
 fly machine update "$M" --autostop=off --app "$FLY_APP"
-fly ssh sftp put data/places.sqlite /data/places.sqlite.new --app "$FLY_APP"
-fly ssh console --app "$FLY_APP" -C "mv /data/places.sqlite.new /data/places.sqlite"
+for db in places ground; do
+  fly ssh sftp put data/$db.sqlite /data/$db.sqlite.new --app "$FLY_APP"
+  fly ssh console --app "$FLY_APP" -C "mv /data/$db.sqlite.new /data/$db.sqlite"
+done
 fly machine update "$M" --autostop=stop --app "$FLY_APP"
-fly logs --app "$FLY_APP" --no-tail | grep 'Suggesting names'
+fly logs --app "$FLY_APP" --no-tail | grep 'Suggesting'
 ```
 
-The file counts against the volume's 5 GB like the photos do. The tests read a small fixture cut
-out of it around their synthetic tracks (`tests/fixtures/place_names`): after a rule or a source
-changes, cut it afresh with `places_build cut data/places.sqlite <out> tests/fixtures/place_names/*.gpx`.
+The files count against the volume's 5 GB like the photos do. The tests read small fixtures cut
+out of them around their synthetic tracks: after a rule or a source changes, cut them afresh with
+`places_build cut data/places.sqlite <out> tests/fixtures/place_names/*.gpx` and
+`places_build cut-ground data/ground.sqlite <out> tests/fixtures/activities/*.gpx`.
 
 ### The access log
 
