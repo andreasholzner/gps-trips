@@ -27,6 +27,9 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 # Domain: GPX parsing, geodesic stats, time
 gpx  = "0.10"
 geo  = "0.28"
+# US-74: the track's segments indexed, to find the places it passes (the
+# version geo itself depends on, so its geometries index directly).
+rstar = "0.12"
 # `serde-well-known` is what lets `TrackStats` travel as RFC-3339 JSON in
 # `import_staging.derived` (US-12), the same representation ADR-0009 stores
 # timestamps in everywhere else.

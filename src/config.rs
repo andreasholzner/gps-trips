@@ -301,3 +301,96 @@ pub mod climbs {
         }
     }
 }
+
+/// The place-based name suggestion (US-74): how far each kind of place
+/// reaches, what it weighs, and how a name is put together from them.
+pub mod name_suggestion {
+    use crate::server::places::PlaceKind;
+
+    /// At most this many main places in a name.
+    pub const MAX_MAIN_PLACES: usize = 3;
+
+    /// A trip that ends within this distance of its start is a round trip.
+    pub const ROUND_TRIP_M: f64 = 1_000.0;
+
+    /// On a round trip, a main place that weighs this many times the next
+    /// one is named alone.
+    pub const DOMINANCE_RATIO: f64 = 3.0;
+
+    /// On a round trip, a main place at the turning point weighs this much
+    /// more than its importance alone, falling off with the square of its
+    /// distance from there as a share of the turning point's from the start
+    /// — one halfway back a quarter as much. A round trip goes somewhere.
+    pub const TURNING_POINT_BONUS: f64 = 4.0;
+
+    /// A hut or campsite this close to an end is where the trip stopped.
+    pub const STOP_REACH_M: f64 = 150.0;
+
+    /// How far from a hut or campsite the place it is named after may lie.
+    pub const NAMESAKE_REACH_M: f64 = 5_000.0;
+
+    /// Two places of a kind this close, from different sources or under
+    /// the same name, are the same place.
+    pub const DUPLICATE_REACH_M: f64 = 300.0;
+
+    /// How far from an end a place of `kind` may lie and still name it;
+    /// `None` for a kind that never names an end.
+    pub const fn end_reach_m(kind: PlaceKind) -> Option<f64> {
+        match kind {
+            PlaceKind::City => Some(5_000.0),
+            PlaceKind::Town => Some(3_000.0),
+            PlaceKind::Village => Some(1_500.0),
+            PlaceKind::Hamlet => Some(600.0),
+            PlaceKind::Lake | PlaceKind::Bay => Some(300.0),
+            PlaceKind::Glacier | PlaceKind::Summit | PlaceKind::Pass => Some(200.0),
+            PlaceKind::Hut | PlaceKind::Campsite => Some(STOP_REACH_M),
+            // A trailhead is often a named spot with nothing on it.
+            PlaceKind::Locality => Some(400.0),
+            PlaceKind::Farm => None,
+        }
+    }
+
+    /// How close the track must pass a place of `kind` for it to be one of
+    /// the trip's main places; `None` for a kind that never is.
+    pub const fn main_reach_m(kind: PlaceKind) -> Option<f64> {
+        match kind {
+            PlaceKind::City => Some(2_000.0),
+            PlaceKind::Town => Some(1_000.0),
+            PlaceKind::Village => Some(500.0),
+            PlaceKind::Hamlet => Some(200.0),
+            PlaceKind::Summit | PlaceKind::Pass => Some(150.0),
+            PlaceKind::Bay => Some(300.0),
+            PlaceKind::Hut | PlaceKind::Lake => Some(100.0),
+            PlaceKind::Glacier => Some(50.0),
+            PlaceKind::Campsite | PlaceKind::Farm | PlaceKind::Locality => None,
+        }
+    }
+
+    /// What a place of `kind` weighs before what the sources say about its
+    /// size: a settlement's kind is all there is to it.
+    pub const fn base_weight(kind: PlaceKind) -> f64 {
+        match kind {
+            PlaceKind::City => 100.0,
+            PlaceKind::Town => 40.0,
+            PlaceKind::Village => 15.0,
+            PlaceKind::Hamlet => 4.0,
+            PlaceKind::Hut => 10.0,
+            PlaceKind::Pass => 8.0,
+            PlaceKind::Campsite => 2.0,
+            PlaceKind::Summit | PlaceKind::Lake | PlaceKind::Bay | PlaceKind::Glacier => 2.0,
+            PlaceKind::Farm | PlaceKind::Locality => 1.0,
+        }
+    }
+
+    /// A lake, bay or glacier weighs this much per square root of its area
+    /// in km², on top of its base weight: a 1 km² lake 10, a 25 km² one 50.
+    pub const AREA_WEIGHT_PER_KM: f64 = 10.0;
+
+    /// A summit weighs its prominence divided by this, where a source gives
+    /// it — 300 m weighs 30.
+    pub const PROMINENCE_PER_WEIGHT_M: f64 = 10.0;
+
+    /// A summit without a known prominence weighs its height divided by
+    /// this — 884 m weighs about 9.
+    pub const ELEVATION_PER_WEIGHT_M: f64 = 100.0;
+}

@@ -6557,6 +6557,7 @@ dependencies = [
  "md-5",
  "reqwest",
  "rpassword",
+ "rstar",
  "serde",
  "serde_json",
  "sha2",
