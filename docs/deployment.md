@@ -216,6 +216,48 @@ sqlite3 /data/trip-archive.db
 
 `fly ssh console` needs a running machine; any request wakes it.
 
+### The place database
+
+A trip's suggested name says where it went (US-74), read from `places.sqlite` beside the archive's
+database — `/data` on the volume, `./data` on the laptop. It is optional: without it names are
+suggested from the GPX, as before. It is no part of the archive ([ADR-0027](./adr/0027-offline-place-name-database.md)):
+built on the laptop from open data, never in the backup, and rebuilt rather than migrated. Place
+names change slowly; rebuilding it once a year or so is plenty.
+
+Its sources, downloaded into `data/geo-src/` (which git ignores):
+
+- OpenStreetMap extracts (ODbL) from [Geofabrik](https://download.geofabrik.de/europe.html):
+  `norway`, `sweden`, `finland`, `germany`, `austria`, `switzerland`, `slovenia`,
+  `italy/nord-ovest`, `italy/nord-est`, `france/rhone-alpes` and
+  `france/provence-alpes-cote-d-azur`, each as `*-latest.osm.pbf`.
+- Kartverket's place-name register (CC BY 4.0), as GML in geographic ETRS89:
+  `https://nedlasting.geonorge.no/geonorge/Basisdata/Stedsnavn/GML/Basisdata_0000_Norge_4258_Stedsnavn_GML.zip`, unzipped.
+
+Building it needs [`osmium`](https://osmcode.org/osmium-tool/) and takes a few minutes per
+extract:
+
+```sh
+cargo build --release --bin places_build
+target/release/places_build build data/places.sqlite data/geo-src/*.osm.pbf data/geo-src/*.gml
+```
+
+To put it on the volume, keep the machine up while the file travels — neither sftp nor ssh
+counts as traffic — and swap it in whole. The server opens it at boot, so the restart that turns
+auto-stop back on is what puts it to use:
+
+```sh
+M=$(fly machines list --app "$FLY_APP" --quiet)
+fly machine update "$M" --autostop=off --app "$FLY_APP"
+fly ssh sftp put data/places.sqlite /data/places.sqlite.new --app "$FLY_APP"
+fly ssh console --app "$FLY_APP" -C "mv /data/places.sqlite.new /data/places.sqlite"
+fly machine update "$M" --autostop=stop --app "$FLY_APP"
+fly logs --app "$FLY_APP" --no-tail | grep 'Suggesting names'
+```
+
+The file counts against the volume's 5 GB like the photos do. The tests read a small fixture cut
+out of it around their synthetic tracks (`tests/fixtures/place_names`): after a rule or a source
+changes, cut it afresh with `places_build cut data/places.sqlite <out> tests/fixtures/place_names/*.gpx`.
+
 ### The access log
 
 Every request is one line in `fly logs`, saying who made it (US-70) — the owner, a share with

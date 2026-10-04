@@ -155,6 +155,7 @@ C4Component
     Container(spa, "Web UI", "Dioxus / WASM")
     ContainerDb(db, "Database", "SQLite")
     Container(blobs, "Photo Store", "filesystem")
+    ContainerDb(places, "Place Database", "SQLite + R*Tree", "Optional, read-only: named places from OpenStreetMap and Kartverket's register, built on the laptop by places_build (ADR-0027).")
 
     Container_Boundary(server, "Application Server") {
         Component(router, "HTTP Router", "Axum", "Routing, request-body limit, and the gate: resolves a principal onto every request — the owner from the session cookie or a Bearer token, a share from the token in a /s/<token>/… path — and refuses anything outside its allowlist.")
@@ -164,7 +165,8 @@ C4Component
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; the Tags screen's list of every tag with its trip counts and the summary shares naming it, creating a tag, and deleting one, which narrows or stops those shares (US-83); serves track.geojson, the trip's climbs found again under its current activity (US-81), the positions of many trips' tracks in one request (US-73), and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
-        Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX and parks it in import_staging; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
+        Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX, parks it in import_staging and answers with the suggested name; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
+        Component(suggest, "Name Suggestion", "Rust (geo, rstar)", "US-74: one interface that takes the trip. Looks up the places around its track, counts a place two sources name once, names its ends and main places — a round trip turning at its farthest point, climbing counted — and puts them behind its date; without places, the date and the GPX name. Also GET /api/trips/:id/suggestion for the edit form.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
         Component(komootc, "Komoot Client", "reqwest (blocking) + rate limiter", "Reverse-engineered komoot API: auth, tour listing/GPX download, photo fetch, edit/delete pushes; throttled with 429 backoff.")
         Component(gpx, "GPX Parser & Stats", "gpx + geo", "Parse track; compute distance, ascent/descent, duration, bbox, start/end.")
@@ -189,6 +191,9 @@ C4Component
     Rel(import, photo, "Process photos")
     Rel(import, geojson, "Build track blob")
     Rel(import, repo, "Insert trip+track+photos in one transaction")
+    Rel(staged, suggest, "Suggest a name for the parsed track")
+    Rel(router, suggest, "GET /api/trips/:id/suggestion")
+    Rel(suggest, places, "Places around the track", "sqlx, read-only")
     Rel(sync, komootc, "List/pull tours + photos; push edits/deletes")
     Rel(sync, import, "Reuses derive_track per pulled tour")
     Rel(sync, photo, "Ingests pulled photos")
@@ -326,5 +331,6 @@ C4Component
 | Photo Ingestion — thumbnails                     | [ADR-0020](./adr/0020-image-crate-for-thumbnails.md)                                                   |
 | Komoot Client + Komoot Sync; backfill/check CLIs | [ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)                                             |
 | qmapshack_export CLI; QMapShack database         | [ADR-0022](./adr/0022-qmapshack-export.md)                                                             |
+| Name Suggestion; Place Database; places_build    | [ADR-0027](./adr/0027-offline-place-name-database.md)                                                  |
 
 See [`deployment.md`](./deployment.md) for how to build and run a self-hosted instance (US-10).
