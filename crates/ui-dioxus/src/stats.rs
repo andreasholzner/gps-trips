@@ -252,8 +252,8 @@ fn picked(activities: &[ActivityType]) -> String {
     }
 }
 
-/// The current year so far against the year before by the same date, over
-/// every year's line.
+/// The current year so far against the year before by the same date —
+/// unless a past year is chosen — over the years' lines.
 #[component]
 fn RunningSection(running: Running, measure: Measure, color: &'static str) -> Element {
     let years: Vec<i32> = running.years.iter().map(|(year, _)| *year).collect();
@@ -267,11 +267,13 @@ fn RunningSection(running: Running, measure: Measure, color: &'static str) -> El
         value.map_or_else(|| format::or_dash(None), |value| measure.format(value))
     };
     rsx! {
-        p { id: "stats-headline",
-            "This year so far: "
-            strong { {shown(running.this_year)} }
-            " — last year by the same date: "
-            strong { {shown(running.last_year)} }
+        if running.compares {
+            p { id: "stats-headline",
+                "This year so far: "
+                strong { {shown(running.this_year)} }
+                " — last year by the same date: "
+                strong { {shown(running.last_year)} }
+            }
         }
         RunningChart {
             years,

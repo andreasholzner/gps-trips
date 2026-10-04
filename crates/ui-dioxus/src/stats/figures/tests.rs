@@ -219,6 +219,53 @@ fn us77_the_running_total_highlights_the_chosen_year_and_counts_days_out() {
 }
 
 #[test]
+fn us77_a_chosen_year_has_its_line_alone() {
+    let trips = archive();
+
+    let running = running(
+        &dated(&trips, &[]),
+        Measure::Distance,
+        Some(2024),
+        date!(2025 - 06 - 01),
+    );
+
+    let years: Vec<i32> = running.years.iter().map(|(year, _)| *year).collect();
+    assert_eq!(years, [2024]);
+    assert_eq!(running.years[0].1[365], Some(100.0));
+    // A past year is no place for this year against last.
+    assert!(!running.compares);
+}
+
+#[test]
+fn us77_all_years_or_the_current_one_compare_this_year_with_last() {
+    let archive = archive();
+    let trips = dated(&archive, &[]);
+    let today = date!(2025 - 06 - 01);
+
+    assert!(running(&trips, Measure::Distance, None, today).compares);
+    let current = running(&trips, Measure::Distance, Some(2025), today);
+    assert!(current.compares);
+    assert_eq!(current.this_year, Some(8.0));
+    assert_eq!(current.last_year, Some(50.0));
+}
+
+#[test]
+fn us77_a_chosen_year_without_the_chosen_activity_has_a_flat_line() {
+    let trips = archive();
+
+    let running = running(
+        &dated(&trips, &[Kayaking]),
+        Measure::Distance,
+        Some(2024),
+        date!(2025 - 06 - 01),
+    );
+
+    assert_eq!(running.years.len(), 1);
+    assert_eq!(running.years[0].0, 2024);
+    assert_eq!(running.years[0].1[365], Some(0.0));
+}
+
+#[test]
 fn us77_on_29_february_last_year_is_read_at_28_february() {
     let trips = vec![trip(1, Hiking, "2023-02-28", "2023-02-28", 3.0)];
 

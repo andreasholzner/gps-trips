@@ -1358,9 +1358,9 @@ view while the columns scroll. With one activity, a bar chart on that activity's
 hike is not dwarfed by a ride.
 
 **Running total:** the chosen measure added up day by day through the year, a line per year in a
-color of its own, the chosen year (or else the current one) highlighted by a wider line. Pointing
-at a line or its legend entry singles that year out. Above it, this year so far against last year
-by the same date.
+color of its own, the current one highlighted by a wider line; with one year chosen, that year's
+line alone. Pointing at a line or its legend entry singles that year out. Above it, unless a past
+year is chosen, this year so far against last year by the same date.
 
 **Records:** the three longest trips, the three with the most ascent, and the three longest days —
 the most distance started on one local date — best first, for the chosen period, overall and per

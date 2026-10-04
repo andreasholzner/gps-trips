@@ -95,6 +95,9 @@ async fn us77_a_chosen_activity_and_year_narrow_every_figure() {
     assert!(html.contains(r#"id="stats-bars""#), "{html}");
     assert!(!html.contains("Share"), "{html}");
     assert!(!html.contains("Oslo Ride"), "{html}");
+    // A past year has no this-year-against-last headline.
+    assert!(html.contains(r#"id="stats-running""#), "{html}");
+    assert!(!html.contains(r#"id="stats-headline""#), "{html}");
 }
 
 #[tokio::test]

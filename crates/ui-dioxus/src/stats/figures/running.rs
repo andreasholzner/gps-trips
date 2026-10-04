@@ -13,8 +13,9 @@ use crate::stats::view::Measure;
 /// others at the same date.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Running {
-    /// Oldest first, each with a value per day of the year (1 January at
-    /// index 0, 366 in all). The current year's stops at today.
+    /// Oldest first, or the chosen year alone, each with a value per day of
+    /// the year (1 January at index 0, 366 in all). The current year's stops
+    /// at today.
     pub years: Vec<(i32, Vec<Option<f64>>)>,
     /// The chosen year, or else the current one.
     pub highlighted: i32,
@@ -22,13 +23,16 @@ pub struct Running {
     /// `None` for a ratio with nothing yet to divide by.
     pub this_year: Option<f64>,
     pub last_year: Option<f64>,
+    /// Whether the screen compares them: not when a past year is chosen.
+    pub compares: bool,
 }
 
 /// The running totals for `measure` from trips already narrowed to the
-/// chosen activity, as of `today`. A ratio (US-80) runs as its two sides,
-/// each added up day by day, and reads as the one over the other: the
-/// average so far, with nothing to show before the year's first trip that
-/// gives it a base.
+/// chosen activity, as of `today`: every year's line, or the chosen
+/// `year`'s alone — flat if it has none of those trips. A ratio (US-80)
+/// runs as its two sides, each added up day by day, and reads as the one
+/// over the other: the average so far, with nothing to show before the
+/// year's first trip that gives it a base.
 pub fn running(trips: &[Dated], measure: Measure, year: Option<i32>, today: Date) -> Running {
     // Per year and day of the year: the amount, and the base it is divided by.
     let mut per_day: BTreeMap<i32, [(f64, f64); 366]> = BTreeMap::new();
@@ -47,6 +51,10 @@ pub fn running(trips: &[Dated], measure: Measure, year: Option<i32>, today: Date
             day.0 += amount;
             day.1 += base;
         }
+    }
+
+    if let Some(year) = year {
+        per_day.entry(year).or_insert([(0.0, 0.0); 366]);
     }
 
     let value = |(amount, base): (f64, f64)| -> Option<f64> {
@@ -73,6 +81,7 @@ pub fn running(trips: &[Dated], measure: Measure, year: Option<i32>, today: Date
     Running {
         years: per_day
             .iter()
+            .filter(|(line, _)| year.is_none_or(|year| **line == year))
             .map(|(year, days)| {
                 let values = days
                     .iter()
@@ -97,6 +106,7 @@ pub fn running(trips: &[Dated], measure: Measure, year: Option<i32>, today: Date
         highlighted: year.unwrap_or(today.year()),
         this_year: up_to(today.year(), today),
         last_year: up_to(today.year() - 1, same_date_last_year),
+        compares: year.is_none_or(|year| year == today.year()),
     }
 }
 
