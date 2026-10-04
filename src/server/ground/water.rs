@@ -10,10 +10,10 @@
 use geo::{Coord, LineString, Polygon};
 
 /// Pieces of `polygon` with at most `max_points` points each, together
-/// covering what it covers.
+/// covering what it covers — except a ring no cut can shrink, every point
+/// on the cut line, which is kept whole rather than cut forever.
 pub fn split(polygon: Polygon, max_points: usize) -> Vec<Polygon> {
-    let points =
-        polygon.exterior().0.len() + polygon.interiors().iter().map(|r| r.0.len()).sum::<usize>();
+    let points = point_count(&polygon);
     if points <= max_points {
         return vec![polygon];
     }
@@ -25,11 +25,21 @@ pub fn split(polygon: Polygon, max_points: usize) -> Vec<Polygon> {
     } else {
         (Axis::Y, (min.y + max.y) / 2.0)
     };
-    [Side::Below, Side::Above]
+    let halves: Vec<Polygon> = [Side::Below, Side::Above]
         .into_iter()
         .filter_map(|side| clip(&polygon, axis, middle, side))
+        .collect();
+    if halves.iter().any(|half| point_count(half) >= points) {
+        return vec![polygon];
+    }
+    halves
+        .into_iter()
         .flat_map(|half| split(half, max_points))
         .collect()
+}
+
+fn point_count(polygon: &Polygon) -> usize {
+    polygon.exterior().0.len() + polygon.interiors().iter().map(|r| r.0.len()).sum::<usize>()
 }
 
 /// Whether `point` is on `piece`: inside an odd number of its rings.
@@ -193,8 +203,7 @@ mod tests {
 
         assert!(pieces.len() > 4, "{}", pieces.len());
         for piece in &pieces {
-            let points = piece.exterior().0.len()
-                + piece.interiors().iter().map(|r| r.0.len()).sum::<usize>();
+            let points = point_count(piece);
             assert!(points <= 60, "{points}");
         }
         // On a grid of points, avoiding the cut lines, the pieces say what
@@ -210,6 +219,19 @@ mod tests {
                 assert!(on_a_piece <= 1, "{point:?}");
             }
         }
+    }
+
+    #[test]
+    fn us76_a_ring_no_cut_can_shrink_is_kept_whole_rather_than_cut_forever() {
+        // Every point on the line any cut would run along.
+        let line = Polygon::new(
+            LineString((0..2_000).map(|_| Coord { x: 1.0, y: 1.0 }).collect()),
+            vec![],
+        );
+
+        let pieces = split(line, 100);
+
+        assert!(!pieces.is_empty());
     }
 
     #[test]
