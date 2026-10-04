@@ -226,6 +226,10 @@ suggested. They are no part of the archive ([ADR-0027](./adr/0027-offline-place-
 built on the laptop from open data, never in the backup, and rebuilt rather than migrated. Place
 names and ways change slowly; rebuilding them once a year or so is plenty.
 
+`scripts/update-geo.sh` does all of what follows: it fetches the sources that changed, rebuilds
+both databases (or only those named, `places` or `ground`), and with `--upload` puts them on the
+volume (`FLY_APP` set as for a deploy). `--no-download` builds from the sources already there.
+
 Their sources, downloaded into `data/geo-src/` (which git ignores):
 
 - OpenStreetMap extracts (ODbL) from [Geofabrik](https://download.geofabrik.de/europe.html):
