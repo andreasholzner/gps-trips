@@ -25,8 +25,9 @@ use crate::config::name_suggestion::{
 };
 use crate::server::gpx::TrackPoint;
 use crate::server::places::Place;
+use crate::server::track_boxes;
 
-use geometry::{bounds, distance, Plane, Track};
+use geometry::{distance, Plane, Track};
 use ranking::{dedupe, Located};
 
 /// The farthest any place reaches, from an end or from the track: how far
@@ -90,28 +91,9 @@ pub fn place_part(points: &[TrackPoint], places: Vec<Place>) -> Option<String> {
 }
 
 /// The boxes (longitude/latitude) to look places up in for the track
-/// through `coords`: around each stretch of it, wide enough for the
-/// farthest reach. Stretch by stretch, so a long trip does not fetch every
-/// place in the rectangle it spans.
+/// through `coords`: wide enough for the farthest reach.
 pub fn lookup_boxes(coords: &[Coord]) -> Vec<Rect> {
-    const STRETCH_POINTS: usize = 200;
-    let Some(first) = coords.first() else {
-        return Vec::new();
-    };
-    let margin = Coord {
-        x: LOOKUP_REACH_M / (111_320.0 * first.y.to_radians().cos().max(0.1)),
-        y: LOOKUP_REACH_M / 110_574.0,
-    };
-    (0..coords.len())
-        .step_by(STRETCH_POINTS)
-        .map(|from| {
-            // Each stretch ends where the next one starts, so no segment
-            // falls between two boxes.
-            let to = (from + STRETCH_POINTS + 1).min(coords.len());
-            let (min, max) = bounds(&coords[from..to]);
-            Rect::new(min - margin, max + margin)
-        })
-        .collect()
+    track_boxes::around(coords, LOOKUP_REACH_M)
 }
 
 /// What names the end at `at`: the hut or campsite the trip stopped at,

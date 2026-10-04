@@ -26,6 +26,9 @@ pub mod storage {
     /// but no part of the archive: built by `places_build`, copied there by
     /// hand, and optional.
     pub const PLACES_DB_FILENAME: &str = "places.sqlite";
+    /// The ground database (US-76, ADR-0027), likewise: built by
+    /// `places_build ground`, copied there by hand, and optional.
+    pub const GROUND_DB_FILENAME: &str = "ground.sqlite";
 }
 
 /// HTTP server networking (US-10 on the laptop, US-45 in a container).
@@ -409,4 +412,48 @@ pub mod name_suggestion {
     /// A summit without a known prominence weighs its height divided by
     /// this — 884 m weighs about 9.
     pub const ELEVATION_PER_WEIGHT_M: f64 = 100.0;
+}
+
+/// The activity type suggestion (US-76): what makes a track a winter trip,
+/// a water trip, a road trip or an off-road one, and how each is told apart.
+pub mod activity_suggestion {
+    use time::Month;
+
+    /// A trip starting in one of these months is a winter trip — a ski
+    /// trip, even across frozen lakes.
+    pub const WINTER_MONTHS: [Month; 5] = [
+        Month::December,
+        Month::January,
+        Month::February,
+        Month::March,
+        Month::April,
+    ];
+
+    /// A share of the track at least this large is "mostly".
+    pub const MAJORITY: f64 = 0.5;
+
+    /// A winter trip moving at this average speed or faster, in km/h, is
+    /// cross-country skiing; a slower one ski touring.
+    pub const CROSS_COUNTRY_MIN_KMH: f64 = 7.0;
+
+    /// A road trip moving at this average speed or faster, in km/h, is
+    /// cycling; a slower one, loaded, bikepacking.
+    pub const CYCLING_MIN_KMH: f64 = 16.0;
+
+    /// The slowest a stretch moves and still counts towards the average
+    /// moving speed — the activity is what is being worked out, so not
+    /// `moving_time::min_speed_kmh` of one.
+    pub const MOVING_MIN_KMH: f64 = 1.0;
+
+    /// An incline at least this steep, in percent over US-79's window,
+    /// is scrambling ground.
+    pub const STEEP_GRADIENT_PCT: f64 = 30.0;
+
+    /// An off-road trip with at least this share of its track that steep
+    /// is mountaineering; a flatter one hiking.
+    pub const STEEP_SHARE: f64 = 0.15;
+
+    /// Water bodies smaller than this, in m², are not stored: nobody
+    /// paddles a pond.
+    pub const MIN_WATER_M2: f64 = 10_000.0;
 }

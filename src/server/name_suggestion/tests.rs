@@ -3,8 +3,6 @@
 
 use geo::{Coord, LineString, MultiPolygon, Polygon};
 
-use geo::Contains;
-
 use super::place_part;
 use crate::server::gpx::TrackPoint;
 use crate::server::places::{Place, PlaceKind, Shape, Source};
@@ -53,13 +51,6 @@ fn track_3d(waypoints: &[(f64, f64, f64)]) -> Vec<TrackPoint> {
         }
     }
     points
-}
-
-fn coords(points: &[TrackPoint]) -> Vec<Coord> {
-    points
-        .iter()
-        .map(|p| Coord { x: p.lon, y: p.lat })
-        .collect()
 }
 
 fn point(name: &str, kind: PlaceKind, x: f64, y: f64) -> Place {
@@ -449,27 +440,4 @@ fn us74_two_places_of_one_name_far_apart_are_two_places() {
         place_part(&track(&[(0.0, 0.0), (10_000.0, 0.0)]), places).as_deref(),
         Some("Langvatnet")
     );
-}
-
-// ── Looking places up ───────────────────────────────────────────────────────
-
-#[test]
-fn us74_places_are_looked_up_stretch_by_stretch_as_far_as_any_reaches() {
-    let coords = coords(&track(&[(0.0, 0.0), (30_000.0, 0.0), (30_000.0, 30_000.0)]));
-
-    let boxes = super::lookup_boxes(&coords);
-
-    // Long enough for several stretches, not one box over the whole corner.
-    assert!(boxes.len() > 1, "{boxes:?}");
-    assert!(!boxes.iter().any(|b| b.contains(&at(15_000.0, 15_000.0))));
-    // Every point, and the farthest reach around it, is covered.
-    let reach = super::LOOKUP_REACH_M - 1.0;
-    for c in [
-        at(0.0, -reach),
-        at(30_000.0 + reach, 30_000.0),
-        at(15_000.0, reach),
-    ] {
-        assert!(boxes.iter().any(|b| b.contains(&c)), "{c:?} not covered");
-    }
-    assert!(super::lookup_boxes(&[]).is_empty());
 }

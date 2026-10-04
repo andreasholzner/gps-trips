@@ -33,6 +33,9 @@ rstar = "0.12"
 # US-74: Kartverket's place-name register, streamed from its GML download
 # by `places_build` (ADR-0027).
 quick-xml = "0.42"
+# US-76: the sea, from the water polygons derived from OSM's coastlines,
+# read by `places_build` (ADR-0027).
+shapefile = { version = "0.9", features = ["geo-types"] }
 # `serde-well-known` is what lets `TrackStats` travel as RFC-3339 JSON in
 # `import_staging.derived` (US-12), the same representation ADR-0009 stores
 # timestamps in everywhere else.

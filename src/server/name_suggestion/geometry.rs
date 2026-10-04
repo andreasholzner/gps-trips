@@ -82,7 +82,7 @@ impl Flat {
 
 /// The south-west and north-east corners of `coords`, which must not be
 /// empty.
-pub fn bounds(coords: &[Coord]) -> (Coord, Coord) {
+fn bounds(coords: &[Coord]) -> (Coord, Coord) {
     coords[1..]
         .iter()
         .fold((coords[0], coords[0]), |(min, max), c| {
