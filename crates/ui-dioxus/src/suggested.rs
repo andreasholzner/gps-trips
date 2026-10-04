@@ -4,9 +4,15 @@
 
 use dioxus::prelude::*;
 
-/// `text` offered under a field; `on_use` puts what it says there.
+/// `text` offered under a field; `on_use` puts what it says there. `what`
+/// names the field for the button's label — a form can offer two.
 #[component]
-pub fn Suggested(id: String, text: String, on_use: EventHandler<()>) -> Element {
+pub fn Suggested(
+    id: String,
+    what: &'static str,
+    text: String,
+    on_use: EventHandler<()>,
+) -> Element {
     rsx! {
         p { id, class: "suggested",
             "Suggested: "
@@ -14,6 +20,7 @@ pub fn Suggested(id: String, text: String, on_use: EventHandler<()>) -> Element 
             button {
                 r#type: "button",
                 class: "quiet",
+                aria_label: "Use the suggested {what}",
                 onclick: move |_| on_use.call(()),
                 "Use"
             }
@@ -21,15 +28,16 @@ pub fn Suggested(id: String, text: String, on_use: EventHandler<()>) -> Element 
     }
 }
 
-/// The credits the place names' sources require (ADR-0027), wherever a
-/// name suggested from them is offered.
+/// The credits the suggestions' sources require (ADR-0027): OpenStreetMap
+/// for the ways, the water and most place names, Kartverket for the rest.
+/// Once, under whatever a form suggests.
 #[component]
-pub fn PlaceCredits() -> Element {
+pub fn MapCredits() -> Element {
     rsx! {
         small { class: "credits",
-            "Place names: © "
+            "Map data © "
             a { href: "https://www.openstreetmap.org/copyright", "OpenStreetMap contributors" }
-            ", © "
+            " · Place names © "
             a { href: "https://www.kartverket.no/", "Kartverket" }
         }
     }
@@ -48,6 +56,7 @@ mod tests {
             rsx! {
                 Suggested {
                     id: "edit-name-suggestion",
+                    what: "name",
                     text: "2019-09-07 Rysstad - Kilefjorden",
                     on_use: move |_| {},
                 }
@@ -57,17 +66,25 @@ mod tests {
         assert!(html.contains(r#"id="edit-name-suggestion""#), "{html}");
         assert!(html.contains("2019-09-07 Rysstad - Kilefjorden"), "{html}");
         assert!(html.contains(">Use</button>"), "{html}");
+        // Two of these in one form: each button says what it is for.
+        assert!(
+            html.contains(r#"aria-label="Use the suggested name""#),
+            "{html}"
+        );
     }
 
     #[test]
-    fn us74_the_place_names_sources_are_credited() {
-        let html = render(|| rsx! { PlaceCredits {} });
+    fn us74_us76_the_sources_of_what_is_suggested_are_credited() {
+        let html = render(|| rsx! { MapCredits {} });
 
+        // The ways and water (US-76) and the place names (US-74).
+        assert!(html.contains("Map data © "), "{html}");
         assert!(html.contains("OpenStreetMap contributors"), "{html}");
         assert!(
             html.contains("https://www.openstreetmap.org/copyright"),
             "{html}"
         );
+        assert!(html.contains("Place names © "), "{html}");
         assert!(html.contains("Kartverket"), "{html}");
     }
 }

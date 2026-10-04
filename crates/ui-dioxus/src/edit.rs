@@ -11,7 +11,7 @@ use trip_archive_types::{ActivityType, KomootLink, KomootPrivacy, TripDetail as 
 
 use crate::api::{self, ApiClient, TripEdit};
 use crate::overlay::Overlay;
-use crate::suggested::{PlaceCredits, Suggested};
+use crate::suggested::{MapCredits, Suggested};
 
 /// The form's fields, as strings, exactly as the inputs hold them.
 #[derive(Clone, Debug, PartialEq)]
@@ -61,13 +61,15 @@ fn privacy_value(link: Option<&KomootLink>) -> &'static str {
 }
 
 /// What to ask the archive to change: every field the owner actually altered,
-/// and nothing else (US-15). A privacy left on its placeholder asks for
-/// nothing, which is what keeps an unmappable one from being pushed back to
-/// Komoot as a choice (US-35, ADR-0021).
+/// and nothing else (US-15). A name goes without the space around it — a
+/// suggestion of the date alone ends in one (US-74). A privacy left on its
+/// placeholder asks for nothing, which is what keeps an unmappable one from
+/// being pushed back to Komoot as a choice (US-35, ADR-0021).
 pub fn changes(trip: &Trip, form: &EditForm) -> TripEdit {
     let opened_with = EditForm::of(trip);
+    let name = form.name.trim();
     TripEdit {
-        name: (form.name != opened_with.name).then(|| form.name.clone()),
+        name: (name != opened_with.name).then(|| name.to_string()),
         activity_type: (form.activity != opened_with.activity).then(|| form.activity.clone()),
         privacy_status: (form.privacy != opened_with.privacy).then(|| form.privacy.clone()),
     }
@@ -129,8 +131,10 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
     // US-74: what the archive suggests for the trip as stored, asked for as
     // the form opens. Only offered: a failure just offers nothing.
     // US-76: and the activity type the track looks like.
-    let suggestion =
-        use_resource(move || async move { api::trip_suggestion(&archive(), id).await.ok() });
+    // Asked again for another trip, should the form be shown for one.
+    let suggestion = use_resource(use_reactive!(|id| async move {
+        api::trip_suggestion(&archive(), id).await.ok()
+    }));
     let suggested = suggestion.read().clone().flatten();
     // Neither is offered when it is what the field already says.
     let offered_name = suggested
@@ -180,13 +184,13 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                         oninput: move |event| form.write().name = event.value(),
                     }
                 }
-                if let Some(name) = offered_name {
+                if let Some(name) = offered_name.clone() {
                     Suggested {
                         id: "edit-name-suggestion",
+                        what: "name",
                         text: name.clone(),
                         on_use: move |_| form.write().name = name.clone(),
                     }
-                    PlaceCredits {}
                 }
                 label {
                     "Activity "
@@ -207,9 +211,14 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                 if let Some(activity) = offered_activity {
                     Suggested {
                         id: "edit-activity-suggestion",
+                        what: "activity",
                         text: activity.label(),
                         on_use: move |_| form.write().activity = activity.as_str().to_string(),
                     }
+                }
+                // Once, under whatever is suggested.
+                if offered_name.is_some() || offered_activity.is_some() {
+                    MapCredits {}
                 }
                 // US-35: privacy belongs to the linked Komoot tour, so a trip
                 // that never came from Komoot is offered none — the archive

@@ -174,7 +174,7 @@ fn the_confirm_step_offers_every_field_the_trip_is_stored_with() {
 }
 
 #[test]
-fn us74_the_confirm_step_credits_the_place_names_sources() {
+fn us74_us76_the_confirm_step_credits_the_sources_once_under_its_suggestions() {
     let html = render(|| {
         rsx! {
             ConfirmImportStep {
@@ -185,8 +185,17 @@ fn us74_the_confirm_step_credits_the_place_names_sources() {
         }
     });
 
-    assert!(html.contains("OpenStreetMap contributors"), "{html}");
-    assert!(html.contains("Kartverket"), "{html}");
+    assert_eq!(
+        html.matches("OpenStreetMap contributors").count(),
+        1,
+        "{html}"
+    );
+    // Under the activity as well as the name: both are suggested.
+    let activity = html.find("import-activity").expect("an activity picker");
+    assert!(
+        html.rfind("credits").expect("a credit line") > activity,
+        "{html}"
+    );
 }
 
 #[test]

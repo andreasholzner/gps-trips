@@ -1,7 +1,7 @@
 use super::*;
 use crate::test_support::{
     import_gpx, import_sample, render, render_against_archive, serve_test_archive,
-    serve_test_archive_with_ground,
+    serve_test_archive_with_ground, ALPS_GPX,
 };
 use trip_archive_types::{KomootLink, KomootPrivacy};
 
@@ -79,6 +79,21 @@ fn only_the_fields_that_changed_are_asked_for() {
     assert_eq!(edit.name.as_deref(), Some("Renamed Trip"));
     assert_eq!(edit.activity_type, None);
     assert_eq!(edit.privacy_status, None);
+}
+
+#[test]
+fn us74_a_name_is_sent_without_the_space_around_it() {
+    // A suggestion of the date alone ends in the space it leaves to type
+    // into; that space is not part of the name.
+    let trip = a_trip(ActivityType::Hiking, None);
+    let mut form = a_form(&trip);
+    form.name = "2024-06-01 ".to_string();
+
+    assert_eq!(changes(&trip, &form).name.as_deref(), Some("2024-06-01"));
+
+    // Spaces alone are no change at all.
+    form.name = format!(" {} ", trip.name);
+    assert_eq!(changes(&trip, &form).name, None);
 }
 
 #[test]
@@ -315,9 +330,54 @@ async fn us76_the_form_offers_the_suggested_activity_without_choosing_it() {
 
     let offer = &html[html.find("edit-activity-suggestion").expect("offered")..];
     assert!(offer.contains("Kayaking"), "{html}");
+    assert!(
+        offer.contains(r#"aria-label="Use the suggested activity""#),
+        "{html}"
+    );
+    // Derived from OSM's ways and water, so credited.
+    assert!(offer.contains("OpenStreetMap contributors"), "{html}");
     // The selector still holds what the trip has: unspecified.
     assert!(
         html.contains(r#"id="edit-activity_type" value="""#),
         "{html}"
     );
+}
+
+/// The edit form for `first`, then — a moment later, its suggestion
+/// fetched — for `second`, as the router shows the next trip through the
+/// same scope.
+#[component]
+fn SwitchingTrips(first: Trip, second: Trip) -> Element {
+    let mut trip = use_signal(|| first.clone());
+    use_future(move || {
+        let second = second.clone();
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            trip.set(second);
+        }
+    });
+    rsx! {
+        EditTripForm { trip: trip(), on_saved: move |_| {}, on_cancel: move |_| {} }
+    }
+}
+
+// US-74/US-76: what is offered belongs to the trip the form is for, also
+// when the form is shown for another trip without closing.
+#[tokio::test]
+async fn us74_the_suggestion_follows_the_trip_the_form_is_for() {
+    let (archive, _dir) = serve_test_archive().await;
+    let oslo = import_sample(&archive, &[("name", "First")]).await;
+    let alps = import_gpx(&archive, ALPS_GPX, &[("name", "Second")]).await;
+    let first = api::get_trip(&archive, oslo).await.expect("trip");
+    let second = api::get_trip(&archive, alps).await.expect("trip");
+
+    let html = render_against_archive(
+        &archive,
+        move || rsx! { SwitchingTrips { first: first.clone(), second: second.clone() } },
+        |html| html.contains("Inn Valley Ride"),
+    )
+    .await;
+
+    assert!(html.contains("2024-07-01 Inn Valley Ride"), "{html}");
+    assert!(!html.contains("Oslo Hills Walk"), "{html}");
 }

@@ -84,7 +84,7 @@ test("editing opens over the screen and Escape closes it (US-62)", async ({ page
   await page.getByRole("button", { name: "Edit name / activity" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit trip" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Name")).toBeVisible();
+  await expect(dialog.getByLabel("Name", { exact: true })).toBeVisible();
   await expect(page.locator("body")).toHaveClass(/overlay-open/);
   expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
 

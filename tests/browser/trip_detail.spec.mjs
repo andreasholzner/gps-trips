@@ -297,8 +297,8 @@ test("editing the name and activity saves them (US-15)", async ({ page, request 
   await page.goto(`/app/trips/${id}`);
 
   await page.getByRole("button", { name: "Edit name / activity" }).click();
-  await page.getByLabel("Name").fill("Renamed By Hand");
-  await page.getByLabel("Activity").selectOption("cycling");
+  await page.getByLabel("Name", { exact: true }).fill("Renamed By Hand");
+  await page.locator("#edit-activity_type").selectOption("cycling");
   await page.getByRole("button", { name: "Save" }).click();
 
   // The screen re-reads the trip rather than trusting what was typed.
@@ -325,10 +325,10 @@ test("a suggested name goes into the field only when it is used (US-74)", async 
   await page.getByRole("button", { name: "Edit name / activity" }).click();
   const suggestion = page.locator("#edit-name-suggestion");
   await expect(suggestion).toContainText("2024-06-01 Oslo Hills Walk");
-  await expect(page.getByLabel("Name")).toHaveValue(/^Unsuggested Trip/);
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(/^Unsuggested Trip/);
 
   await suggestion.getByRole("button", { name: "Use" }).click();
-  await expect(page.getByLabel("Name")).toHaveValue("2024-06-01 Oslo Hills Walk");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("2024-06-01 Oslo Hills Walk");
   // What the field already says is not offered again.
   await expect(suggestion).toHaveCount(0);
 
@@ -347,10 +347,10 @@ test("a suggested activity is selected only when it is used (US-76)", async ({ p
   await page.getByRole("button", { name: "Edit name / activity" }).click();
   const suggestion = page.locator("#edit-activity-suggestion");
   await expect(suggestion).toContainText("Kayaking");
-  await expect(page.getByLabel("Activity")).toHaveValue("");
+  await expect(page.locator("#edit-activity_type")).toHaveValue("");
 
   await suggestion.getByRole("button", { name: "Use" }).click();
-  await expect(page.getByLabel("Activity")).toHaveValue("kayaking");
+  await expect(page.locator("#edit-activity_type")).toHaveValue("kayaking");
   await expect(suggestion).toHaveCount(0);
 
   await page.getByRole("button", { name: "Save" }).click();
