@@ -23,6 +23,7 @@ pub mod photo_api;
 pub mod photo_backfill;
 pub mod photos;
 pub mod placement;
+pub mod profile;
 pub mod qmapshack;
 pub mod repo;
 pub mod session;

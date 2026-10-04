@@ -895,13 +895,19 @@ US-78's figures.
 hills — so I can tell how strong a ride or hike went uphill and compare trips and years by it.
 
 **Acceptance criteria:** **A climb** is a stretch of the track whose elevation, averaged over the
-same distance US-79's incline is measured across, rises from a low point to a high point; it ends where the elevation falls more than a
-set amount below its highest point so far, so a short dip or flat does not split one hill in two.
+same distance US-79's incline is measured across, rises from a low point to a high point. It ends
+at its highest point once the elevation falls below it by more than a set amount, or a set share of
+the height gained so far if that is more — so a short dip or flat does not split one hill in two,
+and a long climb is not split by a drop that is small beside it. A gentle stretch at either end of
+a climb is cut off if it is longer than a set distance, so a long approach or a plateau is not part
+of the hill, while a summit that flattens out within that distance is; a stretch gentle throughout
+is no climb. A point the GPX gives no elevation is filled in from the points either side of it.
 A climb counts only if it is significant for the trip's activity: on a bike ride (cycling,
 bikepacking) it gains at least 30 m at an average gradient of at least 3 %, in cross-country skiing
 and ski touring at least 15 m at 3 %, on a hike (hiking, mountaineering, snowshoeing) at least 75 m.
-Other activities have no climbs. The thresholds and the dip are set per activity in `config.rs`, as
-the moving-time thresholds are.
+Other activities have no climbs. A climb's height is its rises added up, so the height won back
+after a drop within it counts. The thresholds, the drop, what counts as gentle and for how long are
+set per activity in `config.rs`, as the moving-time thresholds are.
 **The climbing rate** of a stretch is the height it gains divided by its moving time (US-77), in
 m/h, so a break on the way up does not lower it. A trip's climbing rate is the height of all its
 climbs added up divided by their moving time added up; a trip with no climb, or without timestamps,
@@ -1362,7 +1368,8 @@ chosen activity, or for the one chosen activity alone. Each links to its trips.
 
 **Definitions:** a trip counts in the year and month of its local start date. Days out are the
 distinct local dates the trips cover, start to end, in each trip's timezone. Moving time is the time
-between consecutive timed points whose speed reaches the activity's threshold; it is computed at
+between consecutive timed points whose speed reaches the activity's threshold, or whose smoothed
+elevation changes at a set rate or faster — so a slow, steep climb is moving too; it is computed at
 import, recomputed when a trip's activity changes, and backfilled for trips imported before it
 existed. Per-tag figures are US-78's.
 

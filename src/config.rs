@@ -223,6 +223,17 @@ pub mod moving_time {
             ActivityType::Cycling => 3.0,
         }
     }
+
+    /// The rate, in metres an hour, at which the smoothed elevation changing
+    /// counts as moving whatever the speed over the ground (US-81): on a
+    /// steep slope a hiker climbing 400 m/h covers under 1 km/h, which the
+    /// speed alone would read as standing still.
+    pub const MIN_VERTICAL_MH: f64 = 100.0;
+
+    /// The time the elevation's rate of change is measured over, centred on
+    /// each stretch: a minute, so GPS noise while standing still averages
+    /// out and a slow climb still shows.
+    pub const VERTICAL_WINDOW_S: i64 = 60;
 }
 
 /// What counts as a climb (US-81): a rise significant for the activity, and
@@ -238,9 +249,23 @@ pub mod climbs {
         pub min_gain_m: f64,
         /// The least average gradient, in percent, if the activity has one.
         pub min_gradient_pct: Option<f64>,
-        /// A fall below the highest point so far greater than this ends it.
+        /// A fall below the highest point so far ends it if it is greater
+        /// than this, or than `max_dip_share` of the height gained so far,
+        /// whichever is more — so a long climb is not split by a short drop.
         pub max_dip_m: f64,
+        pub max_dip_share: f64,
+        /// A stretch flatter than this at either end of a climb, measured
+        /// over [`TRIM_WINDOW_M`], is cut off if it is longer than
+        /// `trim_tolerance_m`: a gentle approach, or a plateau, is not part
+        /// of the hill — though a summit that flattens out within the
+        /// tolerance is.
+        pub trim_gradient_pct: f64,
+        pub trim_tolerance_m: f64,
     }
+
+    /// The distance a climb's ends are judged gentle or not over: long
+    /// enough that a bump on a plateau does not read as climbing.
+    pub const TRIM_WINDOW_M: f64 = 200.0;
 
     /// The rule for `activity`; `None` for an activity that has no climbs.
     pub const fn rule(activity: ActivityType) -> Option<ClimbRule> {
@@ -249,17 +274,27 @@ pub mod climbs {
                 min_gain_m: 30.0,
                 min_gradient_pct: Some(3.0),
                 max_dip_m: 10.0,
+                max_dip_share: 0.1,
+                trim_gradient_pct: 3.0,
+                trim_tolerance_m: 1000.0,
             }),
             ActivityType::CrossCountrySkiing | ActivityType::SkiTouring => Some(ClimbRule {
                 min_gain_m: 15.0,
                 min_gradient_pct: Some(3.0),
                 max_dip_m: 10.0,
+                max_dip_share: 0.1,
+                trim_gradient_pct: 3.0,
+                trim_tolerance_m: 1000.0,
             }),
+            // Summits often sit at the end of a long, nearly flat ridge.
             ActivityType::Hiking | ActivityType::Mountaineering | ActivityType::SnowShoe => {
                 Some(ClimbRule {
                     min_gain_m: 75.0,
                     min_gradient_pct: None,
                     max_dip_m: 20.0,
+                    max_dip_share: 0.1,
+                    trim_gradient_pct: 3.0,
+                    trim_tolerance_m: 3000.0,
                 })
             }
             ActivityType::Kayaking | ActivityType::Unknown => None,

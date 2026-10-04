@@ -6,91 +6,49 @@
 //! trip's figures, and the climbs themselves are found again whenever they
 //! are asked for, under the trip's current activity.
 
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use crate::config::{
+    self,
+    climbs::{ClimbRule, TRIM_WINDOW_M},
+};
+use crate::models::{ActivityType, Climb};
+use crate::server::moving_time;
+use crate::server::profile::Profile;
 
-use crate::config::{self, climbs::ClimbRule};
-use crate::models::{ActivityType, Climb, INCLINE_WINDOW_M};
+#[cfg(test)]
+use crate::models::INCLINE_WINDOW_M;
 
-/// A track's elevation profile, point by point in track order, as its
-/// stored blob carries it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Profile {
-    pub distance_m: Vec<f64>,
-    pub elevation_m: Vec<f64>,
-    /// Unix seconds; `None` for a point the GPX gave no time.
-    pub seconds: Vec<Option<i64>>,
-}
-
-impl Profile {
-    /// The profile of a stored track blob (`geojson::build_track_geojson`);
-    /// `None` for one that cannot be read, or whose arrays disagree.
-    pub fn from_geojson(geojson: &str) -> Option<Self> {
-        let value: serde_json::Value = serde_json::from_str(geojson).ok()?;
-        let properties = &value["properties"];
-        let numbers = |name: &str| -> Option<Vec<f64>> {
-            properties[name]
-                .as_array()?
-                .iter()
-                .map(|n| n.as_f64())
-                .collect()
-        };
-        let distance_m = numbers("cumulative_distance_m")?;
-        let elevation_m = numbers("elevation_m")?;
-        let seconds: Vec<Option<i64>> = properties["timestamps"]
-            .as_array()?
-            .iter()
-            .map(|timestamp| {
-                let parsed = OffsetDateTime::parse(timestamp.as_str()?, &Rfc3339).ok()?;
-                Some(parsed.unix_timestamp())
-            })
-            .collect();
-        (distance_m.len() == elevation_m.len() && distance_m.len() == seconds.len()).then_some(
-            Self {
-                distance_m,
-                elevation_m,
-                seconds,
-            },
-        )
-    }
-}
-
-/// The elevation at each point averaged over [`INCLINE_WINDOW_M`] of track
-/// centred on it — the distance US-79's incline is measured over.
-pub fn smoothed(distance_m: &[f64], elevation_m: &[f64]) -> Vec<f64> {
-    let half = INCLINE_WINDOW_M / 2.0;
-    let mut prefix = Vec::with_capacity(elevation_m.len() + 1);
-    prefix.push(0.0);
-    for elevation in elevation_m {
-        prefix.push(prefix[prefix.len() - 1] + elevation);
-    }
-    distance_m
-        .iter()
-        .map(|&d| {
-            let from = distance_m.partition_point(|&m| m < d - half);
-            let to = distance_m.partition_point(|&m| m <= d + half);
-            (prefix[to] - prefix[from]) / (to - from) as f64
-        })
-        .collect()
-}
+/// Less than any rise worth the name, more than the averaging's rounding.
+const ROUNDING_M: f64 = 1e-6;
 
 /// The climbs of `profile` under `rule`, in track order, each with its
 /// moving time under `min_speed_kmh` (US-77).
 ///
-/// A climb runs from a low point to the highest point after it, and ends
-/// once the smoothed elevation falls more than `rule.max_dip_m` below that
-/// highest point; it counts if it gains enough at a steep enough gradient.
+/// On the smoothed elevation, a climb runs from a low point to the highest
+/// point after it, and ends once the elevation falls below that highest
+/// point by more than `rule.max_dip_m` or `rule.max_dip_share` of the height
+/// gained so far, whichever is more — at its top, not where the fall ended
+/// it. Its gentle ends are then trimmed ([`trimmed`]), and it counts if it
+/// still gains enough at a steep enough gradient.
 pub fn find(profile: &Profile, rule: ClimbRule, min_speed_kmh: f64) -> Vec<Climb> {
-    let smooth = smoothed(&profile.distance_m, &profile.elevation_m);
+    let smooth = profile.smoothed();
+    let steps = moving_time::steps(profile, min_speed_kmh);
     let mut climbs = Vec::new();
     if smooth.is_empty() {
         return climbs;
     }
+    let mut found = |low, high| {
+        climbs.extend(climb(profile, &smooth, &steps, low, high, rule));
+    };
     let (mut low, mut high) = (0, 0);
     for k in 1..smooth.len() {
-        if smooth[k] > smooth[high] {
+        let gained = smooth[high] - smooth[low];
+        let allowed = rule.max_dip_m.max(rule.max_dip_share * gained);
+        // A real rise moves the top on, not the rounding of the average:
+        // on a flat summit that would carry it along the flat.
+        if smooth[k] > smooth[high] + ROUNDING_M {
             high = k;
-        } else if smooth[high] - smooth[k] > rule.max_dip_m {
-            climbs.extend(climb(profile, &smooth, low, high, rule, min_speed_kmh));
+        } else if smooth[high] - smooth[k] > allowed {
+            found(low, high);
             (low, high) = (k, k);
         } else if high == low || smooth[k] < smooth[low] {
             // Not yet climbing, or fallen below where it started without
@@ -98,50 +56,87 @@ pub fn find(profile: &Profile, rule: ClimbRule, min_speed_kmh: f64) -> Vec<Climb
             (low, high) = (k, k);
         }
     }
-    climbs.extend(climb(profile, &smooth, low, high, rule, min_speed_kmh));
+    found(low, high);
     climbs
 }
 
-/// The stretch from `low` to `high` as a climb, if it is significant.
+/// The stretch from `low` to `high` as a climb, trimmed, if it is
+/// significant: its net height and average gradient decide that; its height
+/// as reported is its rises added up, so a drop within it and the height
+/// won back both count as they were climbed.
 fn climb(
     profile: &Profile,
+    smooth: &[f64],
+    steps: &[Option<(i64, bool)>],
+    low: usize,
+    high: usize,
+    rule: ClimbRule,
+) -> Option<Climb> {
+    let (low, high) = trimmed(&profile.distance_m, smooth, low, high, rule)?;
+    let net_m = smooth[high] - smooth[low];
+    let length_m = profile.distance_m[high] - profile.distance_m[low];
+    let steep_enough = rule
+        .min_gradient_pct
+        .is_none_or(|min| net_m / length_m * 100.0 >= min);
+    if length_m <= 0.0 || net_m < rule.min_gain_m || !steep_enough {
+        return None;
+    }
+    let gain_m = smooth[low..=high]
+        .windows(2)
+        .map(|pair| (pair[1] - pair[0]).max(0.0))
+        .sum();
+    Some(Climb {
+        start_m: profile.distance_m[low],
+        end_m: profile.distance_m[high],
+        gain_m,
+        moving_secs: moving_time::sum(profile, steps, low, high).map(|moving| moving.secs),
+    })
+}
+
+/// `low..=high` with a gentle end cut off where it is longer than
+/// `rule.trim_tolerance_m`. An end is gentle up to the first point, seen
+/// from that end, where the slope over [`TRIM_WINDOW_M`] reaches
+/// `rule.trim_gradient_pct`: a gentle approach or a plateau is not part of
+/// the hill, but a summit that flattens out within the tolerance is. `None`
+/// when the slope reaches it nowhere — a gentle rise, and no climb.
+fn trimmed(
+    distance_m: &[f64],
     smooth: &[f64],
     low: usize,
     high: usize,
     rule: ClimbRule,
-    min_speed_kmh: f64,
-) -> Option<Climb> {
-    let gain_m = smooth[high] - smooth[low];
-    let length_m = profile.distance_m[high] - profile.distance_m[low];
-    let steep_enough = rule
-        .min_gradient_pct
-        .is_none_or(|min| gain_m / length_m * 100.0 >= min);
-    (length_m > 0.0 && gain_m >= rule.min_gain_m && steep_enough).then(|| Climb {
-        start_m: profile.distance_m[low],
-        end_m: profile.distance_m[high],
-        gain_m,
-        moving_secs: moving_secs(profile, low, high, min_speed_kmh),
-    })
-}
+) -> Option<(usize, usize)> {
+    let steep = |from: usize, to: usize| {
+        let run = distance_m[to] - distance_m[from];
+        run > 0.0 && (smooth[to] - smooth[from]) / run * 100.0 >= rule.trim_gradient_pct
+    };
+    // The point the window reaches from `p`, forward or back, kept within
+    // the climb.
+    let ahead = |p: usize| {
+        (p..=high)
+            .find(|&q| distance_m[q] >= distance_m[p] + TRIM_WINDOW_M)
+            .unwrap_or(high)
+    };
+    let behind = |p: usize| {
+        (low..=p)
+            .rev()
+            .find(|&q| distance_m[q] <= distance_m[p] - TRIM_WINDOW_M)
+            .unwrap_or(low)
+    };
 
-/// The seconds between consecutive timed points from `low` to `high` whose
-/// speed reaches `min_speed_kmh`, in track order; `None` when no two
-/// consecutive points there carry times.
-fn moving_secs(profile: &Profile, low: usize, high: usize, min_speed_kmh: f64) -> Option<i64> {
-    let mut timed = false;
-    let mut moving = 0;
-    for i in low..high {
-        let (Some(from), Some(to)) = (profile.seconds[i], profile.seconds[i + 1]) else {
-            continue;
-        };
-        timed = true;
-        let secs = to - from;
-        let metres = profile.distance_m[i + 1] - profile.distance_m[i];
-        if secs > 0 && metres / secs as f64 * 3.6 >= min_speed_kmh {
-            moving += secs;
-        }
-    }
-    timed.then_some(moving)
+    let start = (low..high).find(|&p| steep(p, ahead(p)))?;
+    let low = if distance_m[start] - distance_m[low] > rule.trim_tolerance_m {
+        start
+    } else {
+        low
+    };
+    let end = ((low + 1)..=high).rev().find(|&p| steep(behind(p), p))?;
+    let high = if distance_m[high] - distance_m[end] > rule.trim_tolerance_m {
+        end
+    } else {
+        high
+    };
+    (low < high).then_some((low, high))
 }
 
 /// The climbs of a stored track blob under `activity`'s rule and moving

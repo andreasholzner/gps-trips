@@ -16,7 +16,8 @@ pub struct Climb {
     /// elevation profile's own x-axis.
     pub start_m: f64,
     pub end_m: f64,
-    /// The height it gains, on the smoothed elevation.
+    /// The height it gains: its rises on the smoothed elevation added up, so
+    /// the height won back after a drop within it counts.
     pub gain_m: f64,
     /// The time spent moving on it (US-77); `None` for a stretch without
     /// times, which has no climbing rate.

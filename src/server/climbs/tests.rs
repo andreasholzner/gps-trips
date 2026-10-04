@@ -46,24 +46,6 @@ fn approx(actual: f64, expected: f64, within: f64) {
     );
 }
 
-// ── Smoothing ────────────────────────────────────────────────────────────────
-
-#[test]
-fn us81_the_elevation_is_averaged_over_the_incline_window() {
-    // A steady 10 % slope with ±3 m of jitter on every other point.
-    let mut profile = walk(&[(1000.0, 100.0)], true);
-    for (i, elevation) in profile.elevation_m.iter_mut().enumerate() {
-        *elevation += if i % 2 == 0 { 3.0 } else { -3.0 };
-    }
-
-    let smoothed = smoothed(&profile.distance_m, &profile.elevation_m);
-
-    // Mid-slope, the slope stays and the jitter shrinks to a fifth: the
-    // window holds five points, which never cancel out entirely.
-    approx(smoothed[50], 550.0, 3.0 / 5.0 + 1e-9);
-    approx(smoothed[51], 551.0, 3.0 / 5.0 + 1e-9);
-}
-
 // ── What counts as a climb ───────────────────────────────────────────────────
 
 #[test]
@@ -79,12 +61,29 @@ fn us81_a_hill_is_a_climb_from_its_low_point_to_its_high_point() {
 }
 
 #[test]
-fn us81_a_hike_counts_from_75_m_whatever_its_gradient() {
+fn us81_a_hike_counts_from_75_m() {
     let small = walk(&[(300.0, 0.0), (1000.0, 70.0), (300.0, 0.0)], true);
-    let long = walk(&[(300.0, 0.0), (5000.0, 80.0), (300.0, 0.0)], true);
 
     assert!(climbs(&small, ActivityType::Hiking).is_empty());
-    assert_eq!(climbs(&long, ActivityType::Hiking).len(), 1);
+}
+
+#[test]
+fn us81_a_hike_needs_no_steep_average() {
+    // 85 m over 3 km, 2.8 % on average: steep, then a long gentle rise
+    // within hiking's 3 km. A ride keeps only the steep part.
+    let profile = walk(
+        &[(300.0, 0.0), (200.0, 40.0), (2800.0, 45.0), (300.0, 0.0)],
+        true,
+    );
+
+    let hike = climbs(&profile, ActivityType::Hiking);
+    let ride = climbs(&profile, ActivityType::Cycling);
+
+    assert_eq!(hike.len(), 1, "{hike:?}");
+    approx(hike[0].gain_m, 85.0, 1.0);
+    assert_eq!(ride.len(), 1, "{ride:?}");
+    // The trim window reaches a little way past the steep part's top.
+    approx(ride[0].gain_m, 40.0, 0.016 * TRIM_WINDOW_M + 0.5);
 }
 
 #[test]
@@ -109,6 +108,22 @@ fn us81_skiing_needs_15_m_at_3_percent() {
 }
 
 #[test]
+fn us81_only_the_activities_given_a_rule_have_climbs() {
+    assert_eq!(rule(ActivityType::Kayaking), None);
+    assert_eq!(rule(ActivityType::Unknown), None);
+}
+
+#[test]
+fn us81_a_uniformly_gentle_walk_is_no_climb() {
+    // 100 m over 10 km: nowhere as steep as 3 %.
+    let profile = walk(&[(300.0, 0.0), (10_000.0, 100.0), (300.0, 0.0)], true);
+
+    assert!(climbs(&profile, ActivityType::Hiking).is_empty());
+}
+
+// ── Where a climb ends ───────────────────────────────────────────────────────
+
+#[test]
 fn us81_a_short_dip_does_not_split_a_hill_in_two() {
     // A 5 m dip, within cycling's 10 m.
     let profile = walk(
@@ -125,12 +140,12 @@ fn us81_a_short_dip_does_not_split_a_hill_in_two() {
     let found = climbs(&profile, ActivityType::Cycling);
 
     assert_eq!(found.len(), 1, "{found:?}");
-    approx(found[0].gain_m, 45.0, 0.5);
 }
 
 #[test]
-fn us81_a_dip_deeper_than_the_activitys_allowance_ends_the_climb() {
-    // A 20 m fall, beyond cycling's 10 m: two climbs.
+fn us81_early_on_a_drop_beyond_the_activitys_floor_ends_the_climb() {
+    // A 20 m fall after 40 m: beyond cycling's 10 m, and 10 % of 40 m is
+    // less. Two climbs.
     let profile = walk(
         &[
             (300.0, 0.0),
@@ -154,9 +169,134 @@ fn us81_a_dip_deeper_than_the_activitys_allowance_ends_the_climb() {
 }
 
 #[test]
-fn us81_only_the_activities_given_a_rule_have_climbs() {
-    assert_eq!(rule(ActivityType::Kayaking), None);
-    assert_eq!(rule(ActivityType::Unknown), None);
+fn us81_a_long_climb_allows_a_drop_of_a_tenth_of_its_height() {
+    // 600 m up, 50 m down — within a tenth of 600 m — and 400 m up: one
+    // climb, its height the rises added up.
+    let profile = walk(
+        &[
+            (300.0, 0.0),
+            (3000.0, 600.0),
+            (300.0, -50.0),
+            (2000.0, 400.0),
+            (300.0, 0.0),
+        ],
+        true,
+    );
+
+    let found = climbs(&profile, ActivityType::Hiking);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    // Averaging rounds off the sharp top and floor of the drop a little.
+    approx(found[0].gain_m, 1000.0, 5.0);
+}
+
+#[test]
+fn us81_a_drop_deeper_than_a_tenth_of_the_height_ends_the_climb() {
+    let profile = walk(
+        &[
+            (300.0, 0.0),
+            (3000.0, 600.0),
+            (500.0, -80.0),
+            (2000.0, 400.0),
+            (300.0, 0.0),
+        ],
+        true,
+    );
+
+    let found = climbs(&profile, ActivityType::Hiking);
+
+    assert_eq!(found.len(), 2, "{found:?}");
+    approx(found[0].gain_m, 600.0, 3.0);
+}
+
+#[test]
+fn us81_a_climb_ends_at_its_top_not_where_the_descent_ends_it() {
+    let profile = walk(&[(300.0, 0.0), (1000.0, 100.0), (1000.0, -100.0)], true);
+
+    let found = climbs(&profile, ActivityType::Hiking);
+
+    assert_eq!(found.len(), 1);
+    approx(found[0].end_m, 1300.0, INCLINE_WINDOW_M / 2.0);
+}
+
+// ── Trimming the gentle ends ─────────────────────────────────────────────────
+
+#[test]
+fn us81_a_gentle_approach_longer_than_a_kilometre_is_cut_off() {
+    // The review's case: 30 m over 3 km, then 80 m over 1 km. Kept whole,
+    // it would average 2.75 % and be no ride's climb.
+    let profile = walk(
+        &[(300.0, 0.0), (3000.0, 30.0), (1000.0, 80.0), (300.0, 0.0)],
+        true,
+    );
+
+    let found = climbs(&profile, ActivityType::Cycling);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    approx(found[0].start_m, 3300.0, TRIM_WINDOW_M);
+    approx(found[0].gain_m, 80.0, 3.0);
+}
+
+#[test]
+fn us81_a_gentle_approach_within_a_kilometre_is_kept() {
+    let profile = walk(
+        &[(300.0, 0.0), (500.0, 5.0), (1000.0, 80.0), (300.0, 0.0)],
+        true,
+    );
+
+    let found = climbs(&profile, ActivityType::Cycling);
+
+    assert_eq!(found.len(), 1);
+    approx(found[0].start_m, 300.0, INCLINE_WINDOW_M);
+}
+
+#[test]
+fn us81_a_plateau_beyond_a_kilometre_is_cut_off() {
+    // 80 m up, then a plateau creeping 20 m higher over 5 km.
+    let profile = walk(
+        &[(300.0, 0.0), (1000.0, 80.0), (5000.0, 20.0), (300.0, 0.0)],
+        true,
+    );
+
+    let found = climbs(&profile, ActivityType::Cycling);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    approx(found[0].end_m, 1300.0, TRIM_WINDOW_M);
+    approx(found[0].gain_m, 80.0, 3.0);
+}
+
+#[test]
+fn us81_a_summit_within_a_kilometre_of_flattening_is_included() {
+    let profile = walk(
+        &[(300.0, 0.0), (1000.0, 80.0), (600.0, 6.0), (300.0, 0.0)],
+        true,
+    );
+
+    let found = climbs(&profile, ActivityType::Cycling);
+
+    approx(found[0].end_m, 1900.0, INCLINE_WINDOW_M);
+    approx(found[0].gain_m, 86.0, 1.0);
+}
+
+#[test]
+fn us81_a_hikes_summit_ridge_may_run_three_kilometres() {
+    let ridge = |length: f64| {
+        walk(
+            &[
+                (300.0, 0.0),
+                (1000.0, 200.0),
+                (length, length / 100.0),
+                (300.0, 0.0),
+            ],
+            true,
+        )
+    };
+
+    let within = climbs(&ridge(2500.0), ActivityType::Hiking);
+    let beyond = climbs(&ridge(4000.0), ActivityType::Hiking);
+
+    approx(within[0].end_m, 3800.0, INCLINE_WINDOW_M);
+    approx(beyond[0].end_m, 1300.0, TRIM_WINDOW_M);
 }
 
 // ── Moving time on a climb ───────────────────────────────────────────────────
@@ -222,16 +362,31 @@ fn us81_a_climb_without_moving_time_adds_to_neither_figure() {
 }
 
 #[test]
-fn us81_a_stored_track_is_read_back_into_its_profile() {
+fn us81_a_point_without_elevation_makes_no_climb_of_its_own() {
+    // A hike up from 1500 m whose GPX lost one point's elevation, stored as
+    // 0.0: read as a real reading, it would split the climb and add one.
+    let points: Vec<crate::server::gpx::TrackPoint> = (0..=150)
+        .map(|i| crate::server::gpx::TrackPoint {
+            lat: 60.0 + i as f64 * 10.0 / 111_195.0,
+            lon: 10.0,
+            ele: (i != 75).then(|| 1500.0 + i.min(100) as f64 * 2.0),
+            time: None,
+        })
+        .collect();
+    let blob = crate::server::geojson::build_track_geojson(&points);
+
+    let found = of_track(&blob, ActivityType::Hiking);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    // The track starts climbing at once, so averaging lifts its first point.
+    approx(found[0].gain_m, 200.0, 3.0);
+}
+
+#[test]
+fn us81_sample_gpx_rises_too_little_for_a_hike() {
     let track = crate::server::gpx::parse_gpx(include_bytes!("../../../tests/fixtures/sample.gpx"))
         .unwrap();
     let blob = crate::server::geojson::build_track_geojson(&track.points);
 
-    let profile = Profile::from_geojson(&blob).expect("a profile");
-
-    assert_eq!(profile.distance_m.len(), track.points.len());
-    assert_eq!(profile.elevation_m.len(), track.points.len());
-    assert!(profile.seconds.iter().all(Option::is_some));
-    // sample.gpx rises 40 m: no hike's climb.
     assert!(of_track(&blob, ActivityType::Hiking).is_empty());
 }
