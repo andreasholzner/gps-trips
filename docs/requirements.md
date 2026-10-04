@@ -210,24 +210,23 @@ Walk`); a GPX name is often a device default or empty, so the date is all the su
 part behind the date becomes the trip's places, read from its track** in the offline place-name
 database of [ADR-0027](./adr/0027-offline-place-name-database.md). It covers Norway, Sweden,
 Finland, Germany, Austria, Switzerland, northern Italy, Slovenia and the French Alps: OpenStreetMap
-everywhere, supplemented by the national name registers of Norway (Kartverket), Sweden
-(Lantmäteriet) and Finland (Maanmittauslaitos). **A trip that ends somewhere other than where it
-started** reads `A - B`, A naming its start and B its end: `2019-09-07 Rysstad - Kilefjorden`. An
-end is named after the most important place within reach of it rather than the nearest — a town
-before a hamlet a few hundred metres closer, each kind of place with its own reach. A lake counts by
-its shoreline, not its centre, so a trip ending on its shore is named after it. A hut or campsite
-right at an end is where the trip stopped and gives its name — the name of the place it is named
-after, if any (`Fjordbotn Camping` gives `Fjordbotn`). If neither end has a name in reach, the
-trip's main places stand in their track order: `2024-07-27 Leirholtinden - Storsteinnestinden -
-884`. **A round trip** — one that ends within a distance of its start set in `config.rs` — reads `A:
-D1 - D2 - D3`, A naming its start as above and D1… its main places in the order the track passes
-them. A round trip goes somewhere, so the place nearest its turning point weighs most (`2026-06-27
-Tromsø: Kvaløyvågen`), and one main place far more important than the rest is named alone
-(`2024-07-31 Langryggen: Hamperokken`). **Main places** are summits, passes, huts, lakes, bays,
-glaciers and settlements the track passes close to, ranked by what the sources say about them — a
-summit's prominence, a lake's area, a register's importance, a settlement's kind; farms and minor
-localities never count. How many at most, the reaches, the round-trip distance and the dominance
-ratio are set in `config.rs`.
+everywhere, supplemented by Norway's national name register (Kartverket). **A trip that ends
+somewhere other than where it started** reads `A - B`, A naming its start and B its end: `2019-09-07
+Rysstad - Kilefjorden`. An end is named after the most important place within reach of it rather
+than the nearest — a town before a hamlet a few hundred metres closer, each kind of place with its
+own reach. A lake counts by its shoreline, not its centre, so a trip ending on its shore is named
+after it. A hut or campsite right at an end is where the trip stopped and gives its name — the name
+of the place it is named after, if any (`Fjordbotn Camping` gives `Fjordbotn`). If neither end has a
+name in reach, the trip's main places stand in their track order: `2024-07-27 Leirholtinden -
+Storsteinnestinden - 884`. **A round trip** — one that ends within a distance of its start set in
+`config.rs` — reads `A: D1 - D2 - D3`, A naming its start as above and D1… its main places in the
+order the track passes them. A round trip goes somewhere, so the place nearest its turning point
+weighs most (`2026-06-27 Tromsø: Kvaløyvågen`), and one main place far more important than the rest
+is named alone (`2024-07-31 Langryggen: Hamperokken`). **Main places** are summits, passes, huts,
+lakes, bays, glaciers and settlements the track passes close to, ranked by what the sources say
+about them — a summit's prominence, a lake's area, a register's importance, a settlement's kind;
+farms and minor localities never count. How many at most, the reaches, the round-trip distance and
+the dominance ratio are set in `config.rs`.
 
 **Names:** a summit known only by its height keeps it (`884`); a name given in several languages
 contributes the one in the register's first language; a place named by two sources counts once. If
@@ -247,7 +246,9 @@ synthetic tracks, each with the name it should get, over a place-name fixture cu
 database around them (ADR-0012) — no real track of the owner's is checked in.
 
 **Not this story:** weighting kinds of places by the trip's activity type — a ski tour across a
-plateau is not about the hut it passed at the end.
+plateau is not about the hut it passed at the end. The name registers of Sweden (Lantmäteriet)
+and Finland (Maanmittauslaitos): both need an account or an API key to download, so there
+OpenStreetMap stands alone for now.
 
 **Decisions:** US-74 → [ADR-0027](./adr/0027-offline-place-name-database.md) (the offline place
 names), ADR-0019 (the
