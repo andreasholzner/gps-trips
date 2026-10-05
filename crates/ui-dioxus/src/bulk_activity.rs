@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use dioxus::prelude::*;
 use trip_archive_types::ActivityType;
 
+use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient};
 
 /// What the panel asks before overwriting. `Unknown` is named the way the
@@ -44,21 +45,22 @@ pub fn BulkActivityPanel(selected: Signal<BTreeSet<i64>>, on_applied: EventHandl
         fieldset {
             legend { "Set activity of selected trips" }
             div { class: "tag-entry",
-                select {
-                    "aria-label": "Activity for selected trips",
+                // Nothing is chosen until the owner picks: "unspecified"
+                // is a real choice here — it clears the trips' activity —
+                // not a default to apply by accident.
+                ActivitySelect {
+                    id: "bulk-activity",
+                    label: "Activity for selected trips",
+                    hide_label: true,
                     value: chosen().map_or("", |activity| activity.as_str()),
-                    onchange: move |event| {
-                        chosen.set(event.value().parse::<ActivityType>().ok());
+                    choices: choices(&[
+                        Choice::plain("", "Choose…"),
+                        Choice::unspecified(ActivityType::Unknown.as_str()),
+                    ]),
+                    onchange: move |value: String| {
+                        chosen.set(value.parse::<ActivityType>().ok());
                         confirming.set(false);
                     },
-                    // Nothing is chosen until the owner picks: "unspecified"
-                    // is a real choice here — it clears the trips' activity —
-                    // not a default to apply by accident.
-                    option { value: "", "Choose…" }
-                    option { value: ActivityType::Unknown.as_str(), "{ActivityType::Unknown.label()}" }
-                    for activity in ActivityType::SELECTABLE {
-                        option { key: "{activity}", value: activity.as_str(), "{activity.label()}" }
-                    }
                 }
             }
             // On its own line, as tagging's "Apply" is, so the two panels'

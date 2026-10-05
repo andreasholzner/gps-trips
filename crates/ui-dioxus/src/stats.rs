@@ -9,7 +9,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, StatsTrips};
 
-use crate::activity_color::{self, Swatch};
+use crate::activity_icon::ActivityIcon;
 use crate::api::{self, ApiClient};
 use crate::interop;
 
@@ -184,6 +184,10 @@ fn ActivityPicker(view: StatsView, activities: Vec<ActivityType>) -> Element {
                 aria_expanded: "{open()}",
                 aria_controls: "stats-activity-list",
                 onclick: move |_| open.toggle(),
+                if let [one] = view.activities[..] {
+                    ActivityIcon { activity: one }
+                    " "
+                }
                 "{summary}"
             }
             if open() {
@@ -220,7 +224,7 @@ fn ActivityChoice(view: StatsView, activity: ActivityType) -> Element {
                 checked,
                 onchange: move |event: FormEvent| show(view.toggled(activity, event.checked())),
             }
-            Swatch { color: activity_color::color(activity) }
+            ActivityIcon { activity }
             " {activity.label()}"
         }
     }

@@ -9,6 +9,7 @@ import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { zoomBy } from "./map.mjs";
+import { chooseActivity } from "./trips.mjs";
 
 const SAMPLE_GPX = readFileSync(fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)));
 
@@ -388,16 +389,16 @@ test.describe("one activity for many trips (US-63)", () => {
     await expect(rows(page)).toHaveCount(2);
 
     await page.locator("table thead").getByRole("checkbox").check();
-    await page.getByLabel("Activity for selected trips").selectOption("kayaking");
+    await chooseActivity(page, "bulk-activity", "kayaking");
     await page.getByRole("button", { name: "Set for 2 selected" }).click();
 
     // It says what it will overwrite, and has not done it yet.
     await expect(page.getByText("Set the activity of 2 trips to Kayaking?")).toBeVisible();
-    await expect(rows(page).filter({ hasText: "Hiking" })).toHaveCount(2);
+    await expect(rows(page).filter({ has: page.locator('[title="Hiking"]') })).toHaveCount(2);
 
     await page.getByRole("button", { name: "Change", exact: true }).click();
 
-    await expect(rows(page).filter({ hasText: "Kayaking" })).toHaveCount(2);
+    await expect(rows(page).filter({ has: page.locator('[title="Kayaking"]') })).toHaveCount(2);
     // Done with: the selection is cleared, and the panels with it.
     await expect(page.getByLabel("Activity for selected trips")).toHaveCount(0);
   });
@@ -525,7 +526,7 @@ test("the panels for the selected trips line up", async ({ page }) => {
   const entry = await middle(page.getByPlaceholder("add a tag"));
   for (const [what, control] of [
     ["Add", page.getByRole("button", { name: "Add", exact: true })],
-    ["the activity", page.getByLabel("Activity for selected trips")],
+    ["the activity", page.locator("#bulk-activity")],
     ["Share", page.locator("#share-selected")],
   ]) {
     expect(Math.abs((await middle(control)) - entry), what).toBeLessThanOrEqual(1);
@@ -544,7 +545,7 @@ test("the confirmations' buttons do not touch", async ({ page }) => {
   await page.locator("table thead input[type=checkbox]").check();
   await page.getByPlaceholder("add a tag").fill(`unconfirmed-${NEW_TAG}`);
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await page.getByLabel("Activity for selected trips").selectOption("kayaking");
+  await chooseActivity(page, "bulk-activity", "kayaking");
   await page.getByRole("button", { name: /^Set for/ }).click();
 
   for (const [confirm, cancel] of [

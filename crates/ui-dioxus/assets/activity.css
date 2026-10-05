@@ -1,0 +1,151 @@
+/* The activities' icons and the activity drop-down (US-84), used across
+   the screens. */
+
+/* An activity's icon: the height of the text it stands in, or the
+   name it stands for in a table cell, where it is the cell's whole content. */
+.activity-icon {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+  vertical-align: -0.25em;
+}
+
+.activity-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+td > .activity-icon,
+th > .activity-icon {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+h1 > .activity-icon {
+  margin-inline-end: 0.35em;
+}
+
+/* Named for a screen reader, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The activity drop-down: a button that looks like the selects around it
+   and opens a list of icons and names over the page, since a native select
+   cannot show an icon in its options. */
+.activity-select {
+  margin-bottom: var(--pico-spacing);
+}
+
+.activity-select-label {
+  display: block;
+  margin-bottom: calc(var(--pico-spacing) * 0.25);
+}
+
+.activity-select-custom {
+  position: relative;
+}
+
+.activity-select-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0;
+  text-align: start;
+  color: var(--pico-form-element-color);
+  font-weight: normal;
+  background-color: var(--pico-form-element-background-color);
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  padding: var(--pico-form-element-spacing-vertical)
+    calc(var(--pico-form-element-spacing-horizontal) + 1.5rem)
+    var(--pico-form-element-spacing-vertical) var(--pico-form-element-spacing-horizontal);
+  background-image: var(--pico-icon-chevron);
+  background-position: center right 0.75rem;
+  background-size: 1rem auto;
+  background-repeat: no-repeat;
+}
+
+.activity-select-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Behind the open list, catching the click that closes it. */
+.activity-select-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+
+/* As wide as the drop-down, or as its longest name if that is wider. */
+.activity-select-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  z-index: 3;
+  max-height: 60vh;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  background-color: var(--pico-background-color);
+  border: var(--pico-border-width) solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
+}
+
+.activity-select-list:focus {
+  outline: none;
+}
+
+.activity-select-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.375rem 0.5rem;
+  list-style: none;
+  border-radius: var(--pico-border-radius);
+  cursor: pointer;
+}
+
+.activity-select-list li.active {
+  background-color: var(--pico-muted-border-color);
+}
+
+.activity-select-list li[aria-selected="true"] {
+  font-weight: bold;
+}
+
+/* The native select with the chosen activity's icon before it, kept for a
+   phone's own picker. To use it there instead of the list, uncomment:
+
+@media (pointer: coarse) {
+  .activity-select-custom {
+    display: none;
+  }
+  .activity-select .activity-select-native {
+    display: flex;
+  }
+}
+*/
+.activity-select-native {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.activity-select-native select {
+  margin-bottom: 0;
+}

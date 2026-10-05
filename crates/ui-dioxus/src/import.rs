@@ -16,8 +16,9 @@
 //! is sequencing.
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, ConfirmImport, StagedImport, TripKind};
+use trip_archive_types::{ConfirmImport, StagedImport, TripKind};
 
+use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::photos::{upload_in_batches, PartialUpload};
 use crate::suggested::MapCredits;
@@ -416,16 +417,13 @@ fn ConfirmImportStep(
                 }
             }
 
-            p {
-                label { r#for: "import-activity", "Activity" }
-                select {
+            div {
+                ActivitySelect {
                     id: "import-activity",
-                    value: "{form.read().activity}",
-                    oninput: move |event| form.write().activity = event.value(),
-                    option { value: "", {ActivityType::Unknown.label()} }
-                    for activity in ActivityType::SELECTABLE {
-                        option { value: activity.as_str(), {activity.label()} }
-                    }
+                    label: "Activity",
+                    value: form.read().activity.clone(),
+                    choices: choices(&[Choice::unspecified("")]),
+                    onchange: move |value| form.write().activity = value,
                 }
                 // US-74/US-76: the name and the activity may come from the
                 // places and the ways the track passes.

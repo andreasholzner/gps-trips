@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 
 mod activity_color;
 mod activity_icon;
+mod activity_select;
 mod api;
 mod bulk_activity;
 mod bulk_tag;
@@ -68,6 +69,8 @@ use tags::{Tags, TagsView};
 /// the components. `app.css` holds only what Pico has no opinion about.
 const PICO_CSS: Asset = asset!("/assets/pico.classless.min.css");
 const APP_CSS: Asset = asset!("/assets/app.css");
+/// The activities' icons and drop-down (US-84), used on every screen.
+const ACTIVITY_CSS: Asset = asset!("/assets/activity.css");
 /// The detail screen's own layout, apart so neither sheet outgrows the size cap.
 const DETAIL_CSS: Asset = asset!("/assets/detail.css");
 /// The statistics screen's own (US-77), on the same terms.
@@ -261,6 +264,7 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "stylesheet", href: PICO_CSS }
         document::Link { rel: "stylesheet", href: APP_CSS }
+        document::Link { rel: "stylesheet", href: ACTIVITY_CSS }
         document::Link { rel: "stylesheet", href: DETAIL_CSS }
         document::Link { rel: "stylesheet", href: STATS_CSS }
         document::Link { rel: "stylesheet", href: SUMMARY_CSS }

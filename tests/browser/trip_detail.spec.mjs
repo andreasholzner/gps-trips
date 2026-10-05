@@ -10,7 +10,7 @@
 // These assertions are the ones that moved off the server-rendered detail
 // page when US-42 deleted it: coverage transferred, it did not evaporate.
 import { expect, signIn, test } from "./session.mjs";
-import { GEOTAGGED_JPEG, KAYAKING_GPX, ownTrips } from "./trips.mjs";
+import { chooseActivity, GEOTAGGED_JPEG, KAYAKING_GPX, ownTrips } from "./trips.mjs";
 
 const ownTrip = ownTrips(test);
 
@@ -298,17 +298,58 @@ test("editing the name and activity saves them (US-15)", async ({ page, request 
 
   await page.getByRole("button", { name: "Edit name / activity" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Renamed By Hand");
-  await page.locator("#edit-activity_type").selectOption("cycling");
+  await chooseActivity(page, "edit-activity_type", "cycling");
   await page.getByRole("button", { name: "Save" }).click();
 
   // The screen re-reads the trip rather than trusting what was typed.
   await expect(page.locator("#trip-name")).toHaveText("Renamed By Hand");
   await expect(page.locator("#trip-activity")).toHaveText("Cycling");
+  // The name is led by the activity's icon, named on hover.
+  await expect(page.locator("#trip-name .activity-icon")).toHaveAttribute("title", "Cycling");
 
   // And it is the archive that changed, not just the screen.
   const trip = await (await request.get(`/api/trips/${id}`)).json();
   expect(trip.name).toBe("Renamed By Hand");
   expect(trip.activity_type).toBe("cycling");
+});
+
+// The activity drop-down's own behaviour: a list of icons and names, which
+// opens from the keyboard too and closes on Escape or a click outside.
+test("the activity drop-down is driven by pointer and keyboard", async ({ page, request }) => {
+  const id = await ownTrip(request, "Picked Trip", "hiking");
+  await page.goto(`/app/trips/${id}`);
+  await page.getByRole("button", { name: "Edit name / activity" }).click();
+  const toggle = page.locator("#edit-activity_type");
+  const list = page.locator("#edit-activity_type-list");
+  await expect(toggle).toHaveAttribute("data-value", "hiking");
+
+  // Every entry shows its icon; the chosen one is marked.
+  await toggle.click();
+  await expect(list.getByRole("option")).toHaveCount(9);
+  await expect(list.locator(".activity-icon[title]")).toHaveCount(9);
+  await expect(list.getByRole("option", { selected: true })).toHaveAttribute(
+    "data-value",
+    "hiking",
+  );
+
+  // Escape closes it without a choice, and so does a click outside it.
+  await page.keyboard.press("Escape");
+  await expect(list).toHaveCount(0);
+  await expect(toggle).toBeFocused();
+  await toggle.click();
+  await page.mouse.click(5, 5);
+  await expect(list).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("data-value", "hiking");
+
+  // The keyboard opens it on the chosen entry; Enter takes the next one.
+  await toggle.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(list).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(list).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("data-value", "mountaineering");
+  await expect(toggle).toContainText("Mountaineering");
 });
 
 // US-74: "one click puts it in the field, and nothing is replaced without
@@ -347,10 +388,10 @@ test("a suggested activity is selected only when it is used (US-76)", async ({ p
   await page.getByRole("button", { name: "Edit name / activity" }).click();
   const suggestion = page.locator("#edit-activity-suggestion");
   await expect(suggestion).toContainText("Kayaking");
-  await expect(page.locator("#edit-activity_type")).toHaveValue("");
+  await expect(page.locator("#edit-activity_type")).toHaveAttribute("data-value", "");
 
   await suggestion.getByRole("button", { name: "Use" }).click();
-  await expect(page.locator("#edit-activity_type")).toHaveValue("kayaking");
+  await expect(page.locator("#edit-activity_type")).toHaveAttribute("data-value", "kayaking");
   await expect(suggestion).toHaveCount(0);
 
   await page.getByRole("button", { name: "Save" }).click();

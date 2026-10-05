@@ -56,6 +56,13 @@ async fn us53_a_share_of_several_lists_them_under_its_title_and_a_map() {
         );
         assert!(html.contains(name), "{html}");
     }
+    // Each trip's activity as its icon alone.
+    let table = html.split(r#"id="shared-trips""#).nth(1).unwrap();
+    assert_eq!(
+        table.matches(r#"class="activity-icon""#).count(),
+        2,
+        "{table}"
+    );
 }
 
 #[tokio::test]

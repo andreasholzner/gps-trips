@@ -9,6 +9,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, KomootLink, KomootPrivacy, TripDetail as Trip};
 
+use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient, TripEdit};
 use crate::overlay::Overlay;
 use crate::suggested::{MapCredits, Suggested};
@@ -192,21 +193,12 @@ fn EditTripForm(trip: Trip, on_saved: EventHandler<()>, on_cancel: EventHandler<
                         on_use: move |_| form.write().name = name.clone(),
                     }
                 }
-                label {
-                    "Activity "
-                    select {
-                        id: "edit-activity_type",
-                        value: "{form.read().activity}",
-                        oninput: move |event| form.write().activity = event.value(),
-                        option { value: "", "{ActivityType::Unknown.label()}" }
-                        for activity in ActivityType::SELECTABLE {
-                            option {
-                                key: "{activity}",
-                                value: activity.as_str(),
-                                "{activity.label()}"
-                            }
-                        }
-                    }
+                ActivitySelect {
+                    id: "edit-activity_type",
+                    label: "Activity",
+                    value: form.read().activity.clone(),
+                    choices: choices(&[Choice::unspecified("")]),
+                    onchange: move |value| form.write().activity = value,
                 }
                 if let Some(activity) = offered_activity {
                     Suggested {

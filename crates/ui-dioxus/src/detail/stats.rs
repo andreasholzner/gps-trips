@@ -2,8 +2,9 @@
 
 use dioxus::prelude::*;
 // The screen is `TripDetail`; so is the shape it shows.
-use trip_archive_types::TripDetail as Trip;
+use trip_archive_types::{ActivityType, TripDetail as Trip};
 
+use crate::activity_icon::ActivityIcon;
 use crate::{format, rates};
 
 /// The trip's name and its stats — every one of them computed at import and
@@ -38,7 +39,13 @@ pub fn TripStats(trip: Trip) -> Element {
 
     rsx! {
         hgroup {
-            h1 { id: "trip-name", "{trip.name}" }
+            h1 { id: "trip-name",
+                // An unspecified activity has nothing to show in front.
+                if trip.activity_type != ActivityType::Unknown {
+                    ActivityIcon { activity: trip.activity_type }
+                }
+                "{trip.name}"
+            }
             if let Some(date) = date {
                 p { id: "trip-date", "{date}" }
             }
@@ -114,6 +121,31 @@ mod tests {
         assert!(html.contains("410 m"), "{html}");
         assert!(html.contains("395 m"), "{html}");
         assert!(html.contains("03:45:00"), "{html}");
+    }
+
+    #[test]
+    fn the_trips_name_is_led_by_its_activitys_icon_and_the_field_keeps_the_name() {
+        let trip = a_trip("Oslo Hills Walk");
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        let heading = &html[html.find(r#"id="trip-name""#).unwrap()..];
+        let heading = &heading[..heading.find("</h1>").unwrap()];
+        assert!(heading.contains(r#"title="Hiking""#), "{heading}");
+        assert!(heading.ends_with("Oslo Hills Walk"), "{heading}");
+        assert!(html.contains(r#"id="trip-activity">Hiking<"#), "{html}");
+    }
+
+    #[test]
+    fn an_unspecified_activity_puts_no_icon_before_the_name() {
+        let trip = Trip {
+            activity_type: ActivityType::Unknown,
+            ..a_trip("Oslo Hills Walk")
+        };
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(!html.contains("activity-icon"), "{html}");
     }
 
     #[test]

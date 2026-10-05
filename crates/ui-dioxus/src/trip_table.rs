@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use dioxus::prelude::*;
 use trip_archive_types::TripSummary;
 
+use crate::activity_icon::ActivityIcon;
 use crate::format;
 use crate::Route;
 
@@ -78,7 +79,7 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
                             // hand-written one would have to know about.
                             Link { to: Route::TripDetail { id: trip.id }, "{trip.name}" }
                         }
-                        td { "{trip.activity_type.label()}" }
+                        td { ActivityIcon { activity: trip.activity_type } }
                         td { class: "num", {format::or_dash(trip.start_date.as_deref())} }
                         td { class: "num", {format::km(trip.distance_m)} }
                         td { class: "num", {format::metres(trip.ascent_m)} }
@@ -147,7 +148,10 @@ mod tests {
         assert!(html.contains("12.35 km"), "{html}");
         assert!(html.contains("410 m"), "{html}");
         assert!(html.contains("01:02:05"), "{html}");
-        assert!(html.contains("Hiking"), "{html}");
+        // The activity as its icon, named on hover.
+        assert!(html.contains(r#"class="activity-icon""#), "{html}");
+        assert!(html.contains(r#"title="Hiking""#), "{html}");
+        assert!(!html.contains(">Hiking<"), "{html}");
     }
 
     // US-34: the owner can select rows individually or all at once. The

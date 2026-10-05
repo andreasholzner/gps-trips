@@ -125,6 +125,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-81](#us-81--climbing-rate)                                | ✅     | Climbing rate                                | [Trip page](#trip-page)                                             |
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
+| [US-84](#us-84--activity-icons)                               | ✅     | Activity icons                               | [App & clients](#app--clients)                                      |
 
 ### Maintaining this file
 
@@ -1580,6 +1581,21 @@ of the list's controls.
 
 **Decisions:** US-68 → ADR-0023 (deployed instance, deploy command), ADR-0024 (the SPA that carries
 its own version), ADR-0008 (the JSON endpoint reporting the server's version)
+
+### US-84 — Activity icons
+
+**Done ✅** — As the owner and as a share's recipient, I recognize a trip's activity by its icon,
+so a column of activity names does not take a phone's screen.
+
+**Acceptance criteria:** Each activity type has an icon, drawn in its map color (US-75), and its
+name shows when the pointer rests on it. In tables the icon stands alone in place of the name: the
+trip list, a share's trip list (US-53), the Summary's trips (US-78) and the Statistics tables
+(US-77). Where there is room — the activity drop-downs, the map legends, the Summary's activity
+headings — the icon comes before the name. The trip page leads the trip's name with its activity's
+icon, unless the activity is unspecified, while the activity entry keeps the name alone. The
+activity drop-downs (trip list filter, edit and import forms, bulk activity) show the icon on every
+entry, which a native select cannot; a phone could later get its native picker back, with the
+chosen activity's icon beside it.
 
 ## Hosting & backup
 

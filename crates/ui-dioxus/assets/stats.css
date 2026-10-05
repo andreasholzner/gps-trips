@@ -90,19 +90,6 @@
   white-space: nowrap;
 }
 
-/* An activity is its icon, so the column stays narrow on a phone. */
-.stats-table .activity-icon {
-  display: block;
-  width: 1.5rem;
-  height: 1.5rem;
-}
-
-.stats-table .activity-icon svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 .stats-table .total,
 .stats-table tfoot {
   font-weight: bold;

@@ -13,6 +13,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, Tag, TripKind};
 
+use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::filters::Filters;
 
 /// Everything the owner narrows the list with.
@@ -35,18 +36,14 @@ pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                     oninput: move |event| filters.write().q = event.value(),
                 }
             }
-            label {
-                "Activity "
-                select {
-                    value: filters.read().activity.map_or("", |activity| activity.as_str()),
-                    onchange: move |event| {
-                        filters.write().activity = event.value().parse::<ActivityType>().ok();
-                    },
-                    option { value: "", "— any —" }
-                    for activity in ActivityType::SELECTABLE {
-                        option { key: "{activity}", value: activity.as_str(), "{activity.label()}" }
-                    }
-                }
+            ActivitySelect {
+                id: "filter-activity",
+                label: "Activity",
+                value: filters.read().activity.map_or("", |activity| activity.as_str()),
+                choices: choices(&[Choice::plain("", "— any —")]),
+                onchange: move |value: String| {
+                    filters.write().activity = value.parse::<ActivityType>().ok();
+                },
             }
             // Clearing is on the toolbar because it resets the filters behind
             // the disclosure too: a shared link that arrives narrowed by a

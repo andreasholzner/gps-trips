@@ -91,6 +91,12 @@ async fn us78_one_tag_shows_its_figures_its_map_and_what_was_left_out() {
         trips.contains(&format!(r#"href="/trips/{ride}""#)),
         "{trips}"
     );
+    // Each trip's activity as its icon alone.
+    assert_eq!(
+        trips.matches(r#"class="activity-icon""#).count(),
+        2,
+        "{trips}"
+    );
     assert!(html.contains(r#"id="overview-map""#), "{html}");
     assert!(
         html.contains("One recorded trip tagged alps has no dates"),

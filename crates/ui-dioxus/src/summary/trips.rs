@@ -7,6 +7,7 @@ use trip_archive_types::{StatsTrip, TagSummaries};
 
 use super::{lines, Viewer};
 use crate::activity_color::Swatch;
+use crate::activity_icon::ActivityIcon;
 use crate::format;
 
 /// One chosen tag's trips, oldest first, each with its line's color.
@@ -88,7 +89,7 @@ fn TripRows(trips: Vec<(StatsTrip, &'static str)>, viewer: Viewer) -> Element {
                                 Link { to: viewer.trip_route(trip.id), "{trip.name}" }
                             }
                             td { {format::day(&trip.start_date)} }
-                            td { "{trip.activity_type.label()}" }
+                            td { ActivityIcon { activity: trip.activity_type } }
                             td { class: "num", {format::km(trip.distance_m)} }
                         }
                     }

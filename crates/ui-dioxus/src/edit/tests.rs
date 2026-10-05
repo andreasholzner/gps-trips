@@ -337,10 +337,9 @@ async fn us76_the_form_offers_the_suggested_activity_without_choosing_it() {
     // Derived from OSM's ways and water, so credited.
     assert!(offer.contains("OpenStreetMap contributors"), "{html}");
     // The selector still holds what the trip has: unspecified.
-    assert!(
-        html.contains(r#"id="edit-activity_type" value="""#),
-        "{html}"
-    );
+    let picker = &html[html.find(r#"id="edit-activity_type""#).expect("the picker")..];
+    let picker = &picker[..picker.find('>').unwrap()];
+    assert!(picker.contains(r#"data-value="""#), "{picker}");
 }
 
 /// The edit form for `first`, then — a moment later, its suggestion

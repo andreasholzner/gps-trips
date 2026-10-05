@@ -9,6 +9,8 @@
 use dioxus::prelude::*;
 use trip_archive_types::ActivityType;
 
+use crate::activity_icon::ActivityIcon;
+
 /// The color a trip of this activity is drawn in, on every map.
 pub fn color(activity: ActivityType) -> &'static str {
     shades(activity)[0]
@@ -59,16 +61,15 @@ pub fn in_list_order(activities: impl IntoIterator<Item = ActivityType>) -> Vec<
 }
 
 /// What a map's legend lists for the activities it shows: each activity
-/// once, as a label and its color, in the order the activity picker lists
-/// them, an unspecified activity last. Empty when the map shows a single
-/// activity — or none — since then there is nothing to tell apart.
-pub fn legend(shown: impl IntoIterator<Item = ActivityType>) -> Vec<(&'static str, &'static str)> {
+/// once, in the order the activity picker lists them, an unspecified
+/// activity last. Empty when the map shows a single activity — or none —
+/// since then there is nothing to tell apart.
+pub fn legend(shown: impl IntoIterator<Item = ActivityType>) -> Vec<ActivityType> {
     let shown: Vec<ActivityType> = shown.into_iter().collect();
     let entries: Vec<_> = ActivityType::SELECTABLE
         .into_iter()
         .chain([ActivityType::Unknown])
         .filter(|activity| shown.contains(activity))
-        .map(|activity| (label(activity), color(activity)))
         .collect();
     if entries.len() < 2 {
         return Vec::new();
@@ -85,8 +86,8 @@ pub fn label(activity: ActivityType) -> &'static str {
     }
 }
 
-/// The legend under a map that shows several activities: a short stroke in
-/// each color, like the line it stands for, and the activity's name.
+/// The legend under a map that shows several activities: each activity's
+/// icon, in the color of its lines, and its name.
 #[component]
 pub fn ActivityLegend(shown: Vec<ActivityType>) -> Element {
     let entries = legend(shown);
@@ -95,10 +96,10 @@ pub fn ActivityLegend(shown: Vec<ActivityType>) -> Element {
     }
     rsx! {
         ul { class: "map-legend",
-            for (label, color) in entries {
-                li { key: "{label}",
-                    Swatch { color }
-                    "{label}"
+            for activity in entries {
+                li { key: "{activity}",
+                    ActivityIcon { activity }
+                    "{label(activity)}"
                 }
             }
         }
@@ -230,11 +231,7 @@ mod tests {
     fn the_legend_names_each_shown_activity_once_in_picker_order() {
         assert_eq!(
             legend([Kayaking, Unknown, Hiking, Kayaking]),
-            vec![
-                ("Hiking", "#b2182b"),
-                ("Kayaking", "#0e8a8a"),
-                ("Unspecified", "#6b6b6b"),
-            ]
+            vec![Hiking, Kayaking, Unknown]
         );
     }
 
@@ -242,14 +239,11 @@ mod tests {
     fn the_legend_lists_nothing_that_is_not_shown() {
         let entries = legend([Cycling, SnowShoe]);
 
-        assert_eq!(
-            entries,
-            vec![("Cycling", "#1f4e9c"), ("Snowshoeing", "#e377d0")]
-        );
+        assert_eq!(entries, vec![Cycling, SnowShoe]);
     }
 
     #[test]
-    fn the_legend_renders_a_swatch_and_label_per_entry() {
+    fn the_legend_renders_an_icon_and_label_per_entry() {
         let html = render(|| rsx! { ActivityLegend { shown: vec![Hiking, Cycling] } });
 
         assert!(html.contains("map-legend"), "{html}");
@@ -259,6 +253,11 @@ mod tests {
         );
         assert!(
             html.contains("#b2182b") && html.contains("#1f4e9c"),
+            "{html}"
+        );
+        assert_eq!(
+            html.matches(r#"class="activity-icon""#).count(),
+            2,
             "{html}"
         );
     }

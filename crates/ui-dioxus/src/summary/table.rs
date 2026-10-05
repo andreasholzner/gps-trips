@@ -8,6 +8,7 @@ use trip_archive_types::ActivityType;
 use super::figures::{self, Sums, TagFigures, TagSummary};
 use super::Viewer;
 use crate::activity_color::{self, Swatch};
+use crate::activity_icon::ActivityIcon;
 use crate::format;
 use crate::stats::figures::DayRecord;
 use crate::stats::Measure;
@@ -138,8 +139,8 @@ fn SumsGroup(activity: Option<ActivityType>, sums: Vec<Option<Sums>>) -> Element
                 th { class: "summary-activity", colspan: "{columns}", scope: "colgroup",
                     match activity {
                         Some(activity) => rsx! {
-                            Swatch { color: activity_color::color(activity) }
-                            " {activity.label()}"
+                            ActivityIcon { activity }
+                            " {activity_color::label(activity)}"
                         },
                         None => rsx! { "All activities" },
                     }

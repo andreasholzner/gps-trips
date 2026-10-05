@@ -200,6 +200,7 @@ nav.tabs {
 }
 
 .filter-toolbar > *,
+.filter-toolbar .activity-select,
 .filter-toolbar nav.tabs,
 .filter-toolbar input,
 .filter-toolbar select {
@@ -429,7 +430,7 @@ nav.pager {
 }
 
 /* Which color is which activity (US-75), under a map that shows several:
-   a row of swatches, wrapping on a phone. */
+   a row of icons and names, wrapping on a phone. */
 .map-legend {
   display: flex;
   flex-wrap: wrap;
@@ -618,12 +619,14 @@ body.overlay-open {
 
 .tag-entry input,
 .tag-entry select,
-.tag-entry button {
+.tag-entry button,
+.tag-entry .activity-select {
   margin-bottom: 0;
 }
 
 .tag-entry input,
-.tag-entry select {
+.tag-entry select,
+.tag-entry .activity-select {
   flex: 1 1 12rem;
   max-width: 22rem;
 }

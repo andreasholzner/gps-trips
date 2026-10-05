@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use trip_archive_types::{ShareOverview, SharedTrip, SharedTripSummary, TripDetail, TripTrack};
 
 use crate::activity_color::{self, ActivityLegend, Swatch};
+use crate::activity_icon::ActivityIcon;
 use crate::api::{self, ApiClient, ApiError};
 use crate::format;
 use crate::interop::{self, OverviewEvent, OverviewLine};
@@ -129,7 +130,7 @@ fn SharedTrips(token: String, overview: ShareOverview) -> Element {
                             }
                         }
                         td { {format::or_dash(trip.start_date.as_deref())} }
-                        td { "{trip.activity_type.label()}" }
+                        td { ActivityIcon { activity: trip.activity_type } }
                         td { {format::km(trip.distance_m)} }
                     }
                 }

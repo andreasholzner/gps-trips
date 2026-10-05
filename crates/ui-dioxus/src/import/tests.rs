@@ -9,6 +9,7 @@
 
 use super::*;
 use crate::test_support::{render, serve_test_archive};
+use trip_archive_types::ActivityType;
 
 fn a_suggestion(name: &str) -> StagedImport {
     StagedImport {

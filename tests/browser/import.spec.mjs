@@ -13,6 +13,7 @@
 // when US-43 deleted it: coverage transferred, it did not evaporate.
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
+import { chooseActivity } from "./trips.mjs";
 import { fileURLToPath } from "node:url";
 
 const SAMPLE_GPX = readFileSync(fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)));
@@ -93,7 +94,7 @@ test("importing a GPX with photos creates the trip and lands on it (US-43)", asy
 
   const name = `Imported By Hand ${Math.random().toString(36).slice(2, 8)}`;
   await page.locator("#import-name").fill(name);
-  await page.locator("#import-activity").selectOption("hiking");
+  await chooseActivity(page, "import-activity", "hiking");
   await page.getByLabel("Planned").check();
 
   // One dialog, several files — the picker the batching behind it must not

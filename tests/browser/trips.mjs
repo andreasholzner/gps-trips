@@ -23,6 +23,14 @@ export const KAYAKING_GPX = fixture("activities/kayaking.gpx");
 /// EXIF path here is the real one.
 export const GEOTAGGED_JPEG = fixture("geotagged.jpg");
 
+/// Pick `value` (an activity's wire value, or "" for the first entry) in
+/// the activity drop-down whose button is `#id`.
+export async function chooseActivity(page, id, value) {
+  await page.locator(`#${id}`).click();
+  await page.locator(`#${id}-list [data-value="${value}"]`).click();
+  await expect(page.locator(`#${id}-list`)).toHaveCount(0);
+}
+
 /// Import a trip through the real API and return its id, from the redirect —
 /// which US-42 repointed at the SPA's own screen. Without an `activity` (its
 /// wire value), the trip's activity is left unspecified; without a `gpx`, it
