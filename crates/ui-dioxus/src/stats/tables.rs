@@ -6,7 +6,7 @@ use trip_archive_types::ActivityType;
 
 use super::figures::{DayRecord, RecordRow, Totals, TotalsRow, TripRecord};
 use super::view::Measure;
-use crate::activity_color::{self, Swatch};
+use crate::activity_icon::{ActivityIcon, SumIcon};
 use crate::Route;
 
 /// What a cell with nothing in it shows — the dash the rest of the app uses.
@@ -24,7 +24,7 @@ pub fn TotalsTable(totals: Totals, measure: Measure, together: &'static str) -> 
             table { id: "stats-totals", class: "stats-table",
                 thead {
                     tr {
-                        th { scope: "col", "Activity" }
+                        th { scope: "col", "aria-label": "Activity" }
                         for column in totals.columns.iter() {
                             th { scope: "col", class: "num", "{column}" }
                         }
@@ -69,7 +69,7 @@ fn TotalsLine(row: TotalsRow, measure: Measure, shares: bool, together: &'static
 }
 
 /// A value, or a dash for none — a column of zeros reads as noise.
-fn cell(measure: Measure, value: f64) -> String {
+pub(super) fn cell(measure: Measure, value: f64) -> String {
     if value == 0.0 {
         NOTHING.to_string()
     } else {
@@ -77,16 +77,13 @@ fn cell(measure: Measure, value: f64) -> String {
     }
 }
 
-/// An activity with its map color, or what the activities together are
-/// called.
+/// An activity as its icon, or the activities together as a sum sign —
+/// a column of names would take a phone's screen.
 #[component]
 fn ActivityName(activity: Option<ActivityType>, together: &'static str) -> Element {
     match activity {
-        Some(activity) => rsx! {
-            Swatch { color: activity_color::color(activity) }
-            " {activity.label()}"
-        },
-        None => rsx! { "{together}" },
+        Some(activity) => rsx! { ActivityIcon { activity } },
+        None => rsx! { SumIcon { label: together } },
     }
 }
 
@@ -100,7 +97,7 @@ pub fn RecordsTable(rows: Vec<RecordRow>, together: &'static str) -> Element {
             table { id: "stats-records", class: "stats-table",
                 thead {
                     tr {
-                        th { scope: "col", "Activity" }
+                        th { scope: "col", "aria-label": "Activity" }
                         th { scope: "col", "Longest trip" }
                         th { scope: "col", "Most ascent" }
                         th { scope: "col", "Longest day" }
@@ -212,6 +209,9 @@ mod tests {
         assert!(html.contains("60 %") && html.contains("40 %"), "{html}");
         assert!(html.contains("All activities"), "{html}");
         assert!(html.contains("<tfoot>"), "{html}");
+        // The activities as icons, not as names that widen the column.
+        assert_eq!(html.matches("activity-icon").count(), 3, "{html}");
+        assert!(!html.contains(" Hiking<"), "{html}");
         // An empty cell is a dash, not "0.0 km".
         assert!(!html.contains(">0.0 km<"), "{html}");
         assert!(html.contains(NOTHING), "{html}");

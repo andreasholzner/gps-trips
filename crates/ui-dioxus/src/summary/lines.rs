@@ -7,12 +7,32 @@ use trip_archive_types::{TagSummaries, TripTrack};
 
 use crate::activity_color;
 use crate::interop::OverviewLine;
-use crate::stats::year_colors::SLOTS;
 use crate::track;
 
-/// The color of the `index`th chosen tag, with several chosen: the running
-/// chart's categorical palette, in the order the tags were chosen, starting
-/// over past its end.
+/// The tags' colors, as light/dark pairs: the reference categorical
+/// palette's hues without its blue, followed by seven more. The first seven
+/// are neighbours that pass the colour-vision checks (`validate_palette.js`);
+/// the rest trade that contrast for more tags having a color of their own.
+const SLOTS: [(&str, &str); 14] = [
+    ("#eb6834", "#d95926"), // orange
+    ("#1baf7a", "#199e70"), // aqua
+    ("#eda100", "#c98500"), // yellow
+    ("#e87ba4", "#d55181"), // magenta
+    ("#008300", "#008300"), // green
+    ("#4a3aa7", "#9085e9"), // violet
+    ("#e34948", "#e66767"), // red
+    ("#17a2b8", "#3fc9d6"), // teal
+    ("#8c564b", "#b07a6e"), // brown
+    ("#9a9a1f", "#bcbd22"), // olive
+    ("#9467bd", "#b294d6"), // plum
+    ("#5f7d95", "#8aa4b8"), // slate
+    ("#b8860b", "#d4a017"), // ochre
+    ("#c2185b", "#e05a8a"), // rose
+];
+
+/// The color of the `index`th chosen tag, with several chosen: the light
+/// steps of [`SLOTS`], in the order the tags were chosen, starting over past
+/// their end.
 pub fn tag_color(index: usize) -> &'static str {
     SLOTS[index % SLOTS.len()].0
 }

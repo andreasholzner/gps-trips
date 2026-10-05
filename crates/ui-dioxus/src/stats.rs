@@ -1,7 +1,6 @@
 //! The statistics screen (US-77): what the owner did per activity and over
 //! the years. Three controls pick the period, the measure and the activity;
-//! under them sit the totals, the running total through the year, and the
-//! records.
+//! under them sit the totals, as a chart over their table, and the records.
 //!
 //! The archive hands over every dated recorded trip once
 //! (`GET /api/stats/trips`); [`figures`] adds them up for whatever the
@@ -12,21 +11,17 @@ use trip_archive_types::{ActivityType, StatsTrips};
 
 use crate::activity_color::{self, Swatch};
 use crate::api::{self, ApiClient};
-use crate::{format, interop};
+use crate::interop;
 
 pub(crate) mod figures;
+mod plot;
 mod tables;
 mod view;
-pub(crate) mod year_colors;
 
 pub use view::{activity_order, Measure, StatsView};
 
-use figures::{Running, MONTHS};
+pub(crate) use plot::Plot;
 use tables::{RecordsTable, TotalsTable};
-
-/// What the charts are drawn in with all activities together — the
-/// elevation profile's blue, which no activity color is close to.
-const ACCENT: &str = "#3367d6";
 
 /// `/stats` — the screen. The `view` comes from the URL's query string, and
 /// a control changes it by navigating there (US-52's mechanism): the URL is
@@ -60,9 +55,6 @@ fn StatsBody(stats: StatsTrips, view: StatsView) -> Element {
     let trips = figures::dated(&stats.trips, &current.activities);
     let totals = figures::totals(&trips, &current);
     let records = figures::records(&trips, &current);
-    let running = figures::parse_date(&stats.today)
-        .map(|today| figures::running(&trips, current.measure, current.year, today));
-    let color = current.single().map_or(ACCENT, activity_color::color);
     // What the foot of the totals and the first row of the records add up.
     let together = if current.activities.is_empty() {
         "All activities"
@@ -74,10 +66,7 @@ fn StatsBody(stats: StatsTrips, view: StatsView) -> Element {
         Some(year) => format!("{} per month in {year}", measure.label()),
         None => format!("{} per year", measure.label()),
     };
-    let bars = current
-        .single()
-        .and(totals.rows.first())
-        .map(|row| row.values.clone());
+    let plot = plot::plot(&totals, &current, together);
 
     rsx! {
         Controls { view: current.clone(), years, activities }
@@ -86,15 +75,10 @@ fn StatsBody(stats: StatsTrips, view: StatsView) -> Element {
         }
         section { class: "stats-section",
             h2 { "{totals_heading}" }
-            if let Some(values) = bars {
-                BarsChart { labels: totals.columns.clone(), values, color, label: measure.axis_label() }
-            }
-            TotalsTable { totals, measure, together }
-        }
-        if let Some(running) = running {
-            section { class: "stats-section",
-                h2 { "{measure.label()} through the year" }
-                RunningSection { running, measure, color }
+            TotalsChart { plot }
+            details { class: "stats-table-details",
+                summary { "Table" }
+                TotalsTable { totals, measure, together }
             }
         }
         section { class: "stats-section",
@@ -252,85 +236,16 @@ fn picked(activities: &[ActivityType]) -> String {
     }
 }
 
-/// The current year so far against the year before by the same date —
-/// unless a past year is chosen — over the years' lines.
+/// The totals as a chart. The container is Dioxus-empty; uPlot owns it
+/// (ADR-0025). Redrawn whenever the figures change, and the handle is held
+/// so the script keeps its channel until it has drawn.
 #[component]
-fn RunningSection(running: Running, measure: Measure, color: &'static str) -> Element {
-    let years: Vec<i32> = running.years.iter().map(|(year, _)| *year).collect();
-    let series: Vec<Vec<Option<f64>>> = running
-        .years
-        .iter()
-        .map(|(_, values)| values.clone())
-        .collect();
-    // A ratio has no figure before its year's first trip (US-80).
-    let shown = |value: Option<f64>| {
-        value.map_or_else(|| format::or_dash(None), |value| measure.format(value))
-    };
-    rsx! {
-        if running.compares {
-            p { id: "stats-headline",
-                "This year so far: "
-                strong { {shown(running.this_year)} }
-                " — last year by the same date: "
-                strong { {shown(running.last_year)} }
-            }
-        }
-        RunningChart {
-            years,
-            series,
-            highlighted: running.highlighted,
-            color,
-            label: measure.axis_label(),
-        }
-    }
-}
-
-/// The chosen activity's totals as bars. The container is Dioxus-empty;
-/// uPlot owns it (ADR-0025). Redrawn whenever the figures change, and the
-/// handle is held so the script keeps its channel until it has drawn.
-#[component]
-fn BarsChart(
-    labels: Vec<String>,
-    values: Vec<f64>,
-    color: &'static str,
-    label: &'static str,
-) -> Element {
+fn TotalsChart(plot: Plot) -> Element {
     let mut handle = use_signal(|| None::<document::Eval>);
-    use_effect(use_reactive!(|labels, values, color, label| {
-        handle.set(Some(interop::draw_stats_bars(labels, values, color, label)));
+    use_effect(use_reactive!(|plot| {
+        handle.set(Some(interop::draw_stats_plot(plot)));
     }));
-    rsx! { div { id: "stats-bars", class: "stats-chart" } }
-}
-
-/// Every year's running total as a line, on the same terms as [`BarsChart`].
-#[component]
-fn RunningChart(
-    years: Vec<i32>,
-    series: Vec<Vec<Option<f64>>>,
-    highlighted: i32,
-    color: &'static str,
-    label: &'static str,
-) -> Element {
-    let mut handle = use_signal(|| None::<document::Eval>);
-    use_effect(use_reactive!(|years, series, highlighted, color, label| {
-        let newest = years.iter().copied().max().unwrap_or(highlighted);
-        let colors = years
-            .iter()
-            .map(|year| year_colors::year_color(*year, newest))
-            .collect();
-        handle.set(Some(interop::draw_stats_running(interop::RunningView {
-            colors,
-            years,
-            series,
-            highlighted,
-            color,
-            label,
-            day_labels: figures::day_labels(),
-            month_starts: figures::month_starts(),
-            month_labels: MONTHS.to_vec(),
-        })));
-    }));
-    rsx! { div { id: "stats-running", class: "stats-chart" } }
+    rsx! { div { id: "stats-plot", class: "stats-chart" } }
 }
 
 #[cfg(test)]

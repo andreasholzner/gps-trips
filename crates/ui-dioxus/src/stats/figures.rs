@@ -267,12 +267,6 @@ pub fn totals(trips: &[Dated], view: &StatsView) -> Totals {
     }
 }
 
-// ── Running total ────────────────────────────────────────────────────────────
-
-mod running;
-
-pub use running::{day_labels, month_starts, running, Running};
-
 // ── Records ──────────────────────────────────────────────────────────────────
 
 /// How many places each record lists.

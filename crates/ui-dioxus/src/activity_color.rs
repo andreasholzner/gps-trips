@@ -78,7 +78,7 @@ pub fn legend(shown: impl IntoIterator<Item = ActivityType>) -> Vec<(&'static st
 
 /// The picker's label, except for an unspecified activity, whose picker
 /// label (`— unspecified —`) is written for a `<select>`.
-fn label(activity: ActivityType) -> &'static str {
+pub fn label(activity: ActivityType) -> &'static str {
     match activity {
         ActivityType::Unknown => "Unspecified",
         other => other.label(),

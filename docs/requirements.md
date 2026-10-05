@@ -878,9 +878,8 @@ without timestamps leaves the entry out rather than showing a dash.
 **Statistics:** average speed is a new measure on the Statistics screen (US-77). Over several trips
 it is their moving distance added up divided by their moving time added up, never an average of
 averages, and the activities together at the table's foot are figured the same way. A speed is not
-a share of anything, so the share column is left out for it. The running total shows the average so
-far by each date, and the comparison above it this year's average so far against last year's by the
-same date.
+a share of anything, so the share column is left out for it, and the chart draws it as lines rather
+than stacked bars.
 
 **Summary:** the Summary screen (US-78) shows the average speed per activity, and for the activities
 together, figured as on the Statistics screen. If this story is done first, that criterion moves into
@@ -928,7 +927,7 @@ climbing rate reading as a dash.
 **Statistics:** climbing rate is a new measure on the Statistics screen (US-77). Over several trips
 it is their climbs' height added up divided by their climbing time added up, never an average of
 averages, and the activities together at the table's foot are figured the same way. It has no share
-column, and the running total shows the rate so far by each date, as average speed does (US-80).
+column, and the chart draws it as lines, as average speed does (US-80).
 
 **Summary:** the Summary screen (US-78) shows the climbing rate per activity, and for the activities
 together, figured as on the Statistics screen. If this story is done first, that criterion moves into
@@ -1354,20 +1353,20 @@ ascent, moving time, trips, days out) and the activities (all, or any of them, f
 checkboxes). They live in the URL, as the trip list's filters do (US-52), so a view can be bookmarked
 and survives a reload.
 
-**Totals:** the chosen measure per year (all years) or per month (one year). With all or several
-activities, a table with a row per activity, a column per year or month, a total, and each
-activity's share of the total; those activities together at its foot. The activity column stays in
-view while the columns scroll. With one activity, a bar chart on that activity's own scale, so a
-hike is not dwarfed by a ride.
-
-**Running total:** the chosen measure added up day by day through the year, a line per year in a
-color of its own, the current one highlighted by a wider line; with one year chosen, that year's
-line alone. Pointing at a line or its legend entry singles that year out. Above it, unless a past
-year is chosen, this year so far against last year by the same date.
+**Totals:** the chosen measure per year (all years) or per month (one year), as a chart over a
+table that is folded away until opened. The table has a row per activity, a column per year or
+month, a total, and — with all or several activities — each activity's share of the total, with
+those activities together at its foot. Each activity is shown as an icon in its map color (US-75),
+the activities together as a sum sign, so the activity column stays narrow on a phone; it stays in
+view while the columns scroll. The chart shows the same figures: bars stacked by activity in their
+map colors where the activities add up to their total, or a line per activity and one for them
+together where they do not — a ratio, or days out, where two activities can share a date. With one
+activity, bars on that activity's own scale, so a hike is not dwarfed by a ride.
 
 **Records:** the three longest trips, the three with the most ascent, and the three longest days —
 the most distance started on one local date — best first, for the chosen period, overall and per
-chosen activity, or for the one chosen activity alone. Each links to its trips.
+chosen activity — shown by its icon, as in the totals table — or for the one chosen activity alone.
+Each links to its trips.
 
 **Definitions:** a trip counts in the year and month of its local start date. Days out are the
 distinct local dates the trips cover, start to end, in each trip's timezone. Moving time is the time

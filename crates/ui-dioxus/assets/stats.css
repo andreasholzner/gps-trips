@@ -90,6 +90,19 @@
   white-space: nowrap;
 }
 
+/* An activity is its icon, so the column stays narrow on a phone. */
+.stats-table .activity-icon {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.stats-table .activity-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .stats-table .total,
 .stats-table tfoot {
   font-weight: bold;
@@ -110,16 +123,6 @@
   z-index: 1;
   background-color: var(--pico-background-color);
   box-shadow: inset -1px 0 var(--pico-muted-border-color);
-}
-
-/* The year the pointer is on, in the running chart's legend (uPlot fades
-   the other lines; the script marks the entry). */
-.stats-chart .u-legend .u-series.u-focused {
-  font-weight: bold;
-}
-
-.stats-chart .u-legend:has(.u-focused) .u-series:not(.u-focused, :first-child) {
-  opacity: 0.5;
 }
 
 /* uPlot sizes its own canvas; the container only needs room above it and

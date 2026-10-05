@@ -1,7 +1,6 @@
 //! US-77's figures, on hand-made trips (ADR-0012).
 
 use super::*;
-use time::macros::date;
 
 fn trip(id: i64, activity: ActivityType, start: &str, end: &str, km: f64) -> StatsTrip {
     StatsTrip {
@@ -175,130 +174,6 @@ fn us77_one_trips_days_are_capped_at_a_year() {
 }
 
 #[test]
-fn us77_the_running_total_compares_this_year_with_last_at_the_same_date() {
-    let trips = vec![
-        trip(1, Hiking, "2024-02-01", "2024-02-01", 10.0),
-        trip(2, Hiking, "2024-11-01", "2024-11-01", 50.0),
-        trip(3, Hiking, "2025-01-15", "2025-01-15", 7.0),
-    ];
-    let today = date!(2025 - 06 - 01);
-
-    let running = running(&dated(&trips, &[]), Measure::Distance, None, today);
-
-    assert_eq!(running.highlighted, 2025);
-    assert_eq!(running.this_year, Some(7.0));
-    // By 1 June 2024 only February's trip had been done.
-    assert_eq!(running.last_year, Some(10.0));
-    let (year, values) = &running.years[0];
-    assert_eq!(*year, 2024);
-    assert_eq!(values.len(), 366);
-    assert_eq!(values[30], Some(0.0), "31 January");
-    assert_eq!(values[31], Some(10.0), "1 February");
-    assert_eq!(values[365], Some(60.0));
-    // This year's line stops at today.
-    let (_, values) = &running.years[1];
-    let today_index = today.ordinal() as usize - 1;
-    assert_eq!(values[today_index], Some(7.0));
-    assert_eq!(values[today_index + 1], None);
-}
-
-#[test]
-fn us77_the_running_total_highlights_the_chosen_year_and_counts_days_out() {
-    let trips = archive();
-
-    let running = running(
-        &dated(&trips, &[]),
-        Measure::DaysOut,
-        Some(2024),
-        date!(2025 - 06 - 01),
-    );
-
-    assert_eq!(running.highlighted, 2024);
-    assert_eq!(running.years[0].1[365], Some(5.0));
-    assert_eq!(running.this_year, Some(2.0));
-}
-
-#[test]
-fn us77_a_chosen_year_has_its_line_alone() {
-    let trips = archive();
-
-    let running = running(
-        &dated(&trips, &[]),
-        Measure::Distance,
-        Some(2024),
-        date!(2025 - 06 - 01),
-    );
-
-    let years: Vec<i32> = running.years.iter().map(|(year, _)| *year).collect();
-    assert_eq!(years, [2024]);
-    assert_eq!(running.years[0].1[365], Some(100.0));
-    // A past year is no place for this year against last.
-    assert!(!running.compares);
-}
-
-#[test]
-fn us77_all_years_or_the_current_one_compare_this_year_with_last() {
-    let archive = archive();
-    let trips = dated(&archive, &[]);
-    let today = date!(2025 - 06 - 01);
-
-    assert!(running(&trips, Measure::Distance, None, today).compares);
-    let current = running(&trips, Measure::Distance, Some(2025), today);
-    assert!(current.compares);
-    assert_eq!(current.this_year, Some(8.0));
-    assert_eq!(current.last_year, Some(50.0));
-}
-
-#[test]
-fn us77_a_chosen_year_without_the_chosen_activity_has_a_flat_line() {
-    let trips = archive();
-
-    let running = running(
-        &dated(&trips, &[Kayaking]),
-        Measure::Distance,
-        Some(2024),
-        date!(2025 - 06 - 01),
-    );
-
-    assert_eq!(running.years.len(), 1);
-    assert_eq!(running.years[0].0, 2024);
-    assert_eq!(running.years[0].1[365], Some(0.0));
-}
-
-#[test]
-fn us77_on_29_february_last_year_is_read_at_28_february() {
-    let trips = vec![trip(1, Hiking, "2023-02-28", "2023-02-28", 3.0)];
-
-    let running = running(
-        &dated(&trips, &[]),
-        Measure::Distance,
-        None,
-        date!(2024 - 02 - 29),
-    );
-
-    assert_eq!(running.last_year, Some(3.0));
-}
-
-#[test]
-fn us77_the_months_start_where_a_leap_year_has_them() {
-    let starts = month_starts();
-
-    assert_eq!(starts.len(), 12);
-    assert_eq!(starts[..3], [0, 31, 60]);
-    assert_eq!(starts[11], 335);
-}
-
-#[test]
-fn us77_every_day_of_a_leap_year_has_a_name() {
-    let labels = day_labels();
-
-    assert_eq!(labels.len(), 366);
-    assert_eq!(labels[0], "1 Jan");
-    assert_eq!(labels[59], "29 Feb");
-    assert_eq!(labels[365], "31 Dec");
-}
-
-#[test]
 fn us77_records_come_overall_and_per_activity() {
     let trips = archive();
 
@@ -455,41 +330,6 @@ fn us80_a_trip_without_moving_figures_adds_to_neither_side() {
     assert_eq!(totals.rows[0].values, [5.0, 0.0], "hiking");
 }
 
-#[test]
-fn us80_the_running_average_is_the_speed_so_far_by_each_date() {
-    let trips = vec![
-        moved(1, Hiking, "2024-02-01", 10.0, 2.0),
-        moved(2, Hiking, "2024-11-01", 30.0, 1.0),
-        moved(3, Hiking, "2025-01-15", 7.0, 1.0),
-    ];
-    let today = date!(2025 - 06 - 01);
-
-    let running = running(&dated(&trips, &[]), Measure::AverageSpeed, None, today);
-
-    let (_, values) = &running.years[0];
-    assert_eq!(values[30], None, "no speed before the year's first trip");
-    assert_eq!(values[31], Some(5.0), "1 February");
-    assert_eq!(values[365], Some(40.0 / 3.0));
-    assert_eq!(running.this_year, Some(7.0));
-    // By 1 June 2024 only February's trip had been done.
-    assert_eq!(running.last_year, Some(5.0));
-}
-
-#[test]
-fn us80_a_year_without_moving_has_no_average_to_compare() {
-    let trips = vec![moved(1, Hiking, "2025-01-15", 7.0, 1.0)];
-
-    let running = running(
-        &dated(&trips, &[]),
-        Measure::AverageSpeed,
-        None,
-        date!(2025 - 06 - 01),
-    );
-
-    assert_eq!(running.this_year, Some(7.0));
-    assert_eq!(running.last_year, None);
-}
-
 // ── US-81: climbing rate ─────────────────────────────────────────────────────
 
 /// A trip whose climbs gained `gain_m` in `hours` of moving on them.
@@ -516,11 +356,4 @@ fn us81_a_climbing_rate_is_the_climbs_height_over_their_moving_time() {
     assert_eq!(totals.sum.as_ref().unwrap().total, 550.0);
     assert_eq!(totals.rows[1].total, 800.0, "cycling");
     assert!(totals.rows.iter().all(|row| row.share.is_none()));
-    let running = running(
-        &dated(&trips, &[]),
-        Measure::ClimbingRate,
-        Some(2024),
-        date!(2025 - 06 - 01),
-    );
-    assert_eq!(running.years[0].1[365], Some(550.0));
 }

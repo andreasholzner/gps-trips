@@ -1,6 +1,6 @@
 //! The statistics screen against a real server (ADR-0012). What the figures
 //! are is `figures`' tests'; here, that the screen shows them for the view
-//! it was opened with. Changing a control and the charts' canvases are the
+//! it was opened with. Changing a control and the chart's canvas are the
 //! browser layer's (`tests/browser/statistics.spec.mjs`).
 
 use super::*;
@@ -9,7 +9,7 @@ use crate::test_support::{import_gpx, import_sample, render_against_archive, ser
 const UNTIMED_GPX: &[u8] = include_bytes!("../../../../tests/fixtures/untimed.gpx");
 
 #[tokio::test]
-async fn us77_the_screen_shows_the_totals_the_running_total_and_the_records() {
+async fn us77_the_screen_shows_the_totals_as_a_chart_over_a_folded_table_and_the_records() {
     let (archive, _dir) = serve_test_archive().await;
     import_sample(
         &archive,
@@ -45,11 +45,14 @@ async fn us77_the_screen_shows_the_totals_the_running_total_and_the_records() {
         "{html}"
     );
     assert!(html.contains("50 %"), "{html}");
-    // With all activities, a table rather than bars.
-    assert!(!html.contains(r#"id="stats-bars""#), "{html}");
-    // The running total.
-    assert!(html.contains(r#"id="stats-headline""#), "{html}");
-    assert!(html.contains(r#"id="stats-running""#), "{html}");
+    // The chart, with the table folded away under it.
+    let chart = html.find(r#"id="stats-plot""#).expect("a chart");
+    let table = html.find("<details").expect("a folded table");
+    assert!(chart < table, "{html}");
+    assert!(!html.contains("<details open"), "{html}");
+    // No running total through the year.
+    assert!(!html.contains(r#"id="stats-running""#), "{html}");
+    assert!(!html.contains(r#"id="stats-headline""#), "{html}");
     // The records, linking to their trips.
     assert!(html.contains("Longest day"), "{html}");
     assert!(html.contains("Oslo Hills Walk"), "{html}");
@@ -90,14 +93,11 @@ async fn us77_a_chosen_activity_and_year_narrow_every_figure() {
 
     assert!(html.contains("Moving time per month in 2024"), "{html}");
     assert!(html.contains(">Jun<"), "{html}");
-    // The hike's hour, on its own scale, as bars.
+    // The hike's hour, on its own scale.
     assert!(html.contains("1:00 h"), "{html}");
-    assert!(html.contains(r#"id="stats-bars""#), "{html}");
+    assert!(html.contains(r#"id="stats-plot""#), "{html}");
     assert!(!html.contains("Share"), "{html}");
     assert!(!html.contains("Oslo Ride"), "{html}");
-    // A past year has no this-year-against-last headline.
-    assert!(html.contains(r#"id="stats-running""#), "{html}");
-    assert!(!html.contains(r#"id="stats-headline""#), "{html}");
 }
 
 #[tokio::test]
@@ -116,7 +116,7 @@ async fn us77_an_archive_without_recorded_trips_says_so() {
 }
 
 #[tokio::test]
-async fn us77_several_chosen_activities_are_compared_in_the_table_without_bars() {
+async fn us77_several_chosen_activities_are_compared_in_the_chart_and_the_table() {
     let (archive, _dir) = serve_test_archive().await;
     import_sample(
         &archive,
@@ -152,7 +152,7 @@ async fn us77_several_chosen_activities_are_compared_in_the_table_without_bars()
 
     // The closed picker names what is chosen.
     assert!(html.contains("Hiking, Kayaking"), "{html}");
-    assert!(!html.contains(r#"id="stats-bars""#), "{html}");
+    assert!(html.contains(r#"id="stats-plot""#), "{html}");
     assert!(html.contains("Chosen activities"), "{html}");
     assert!(html.contains("50 %"), "{html}");
     assert!(!html.contains("Oslo Ride"), "{html}");

@@ -34,7 +34,7 @@ pub use region::{
     arm_region_map, bbox_corners, bbox_param, draw_heat_marks, draw_trip_lines, show_region,
     start_region_map, RegionEvent,
 };
-pub use stats::{draw_stats_bars, draw_stats_running, RunningView};
+pub use stats::draw_stats_plot;
 pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};
 
 use dioxus::prelude::*;

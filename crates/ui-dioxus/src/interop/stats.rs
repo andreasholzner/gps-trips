@@ -1,16 +1,19 @@
-//! The statistics screen's two charts (US-77): one activity's totals as
-//! bars, and every year's running total as lines. Rust adds the figures up
-//! (`crate::stats`); these scripts only draw them (ADR-0025).
+//! The statistics screen's chart (US-77): the totals per year or month, as
+//! bars stacked by activity or as a line per activity. Rust decides which
+//! and works out every figure (`crate::stats::plot`); this script only draws
+//! them (ADR-0025).
 //!
-//! Both are redrawn whenever a control changes, so — like the elevation
-//! chart — each keeps its instance in the page's widget registry and
-//! destroys the previous one before drawing the next into its container.
+//! It is redrawn whenever a control changes, so — like the elevation chart
+//! — it keeps its instance in the page's widget registry and destroys the
+//! previous one before drawing the next into its container.
 
 use dioxus::prelude::*;
 use serde::Serialize;
 
+use crate::stats::Plot;
+
 /// Waiting for uPlot and the container, the registry, and the page's own
-/// colours for the axes — shared by both scripts. uPlot draws into a canvas
+/// colours for the axes. uPlot draws into a canvas
 /// CSS cannot reach, so the colours are read from Pico's variables, through
 /// functions uPlot calls on every draw, and a scheme change repaints.
 const PRELUDE: &str = r##"
@@ -45,160 +48,80 @@ const PRELUDE: &str = r##"
     }
 "##;
 
-/// The bars: one per column, labelled with the column's name, from zero up.
-const BARS_SCRIPT: &str = r##"
-    const CONTAINER = "stats-bars";
+/// One mark per column and series, labelled with the column's name, from
+/// zero up. Bars come top of the stack first, so each lower segment is drawn
+/// over the taller ones; a thin stroke in the page's background parts the
+/// segments. Lines are the activities' colors, the activities together a
+/// dashed line in the text color. The legend names the series and reads
+/// each one's own value at the cursor, as the table shows it.
+///
+/// The column names thin out where they would collide on a phone.
+const PLOT_SCRIPT: &str = r##"
+    const CONTAINER = "stats-plot";
     PRELUDE
-    if (!view.values.length) return;
+    if (!view.series.length) return;
 
-    const xs = view.values.map((_, i) => i);
+    const xs = view.labels.map((_, i) => i);
+    const bars = view.kind === "bars";
+    const surface = () => pico("--pico-background-color");
+    const mark = (series) => {
+      const value = (u, v, s, i) => (i == null ? "–" : series.shown[i]);
+      if (bars) {
+        return {
+          label: series.label,
+          fill: series.color,
+          stroke: surface,
+          width: 1,
+          paths: uPlot.paths.bars({ size: [0.7, 64] }),
+          points: { show: false },
+          value,
+        };
+      }
+      const stroke = series.color ?? text;
+      return {
+        label: series.label,
+        stroke,
+        width: 2,
+        dash: series.color ? undefined : [6, 4],
+        points: { show: true, size: 8, fill: stroke },
+        value,
+      };
+    };
     widgets[CONTAINER] = new uPlot(
       {
         width: el.clientWidth || 600,
-        height: 220,
-        legend: { show: false },
+        height: 240,
         cursor: { drag: { x: false, y: false } },
         scales: {
           x: { time: false, range: () => [-0.5, xs.length - 0.5] },
           y: { range: (u, min, max) => [0, max > 0 ? max : 1] },
         },
         series: [
-          {},
-          {
-            label: view.label,
-            stroke: view.color,
-            fill: view.color,
-            paths: uPlot.paths.bars({ size: [0.7, 64] }),
-            points: { show: false },
-          },
+          { label: view.column, value: (u, i) => (i == null ? "–" : view.labels[i]) },
+          ...view.series.map(mark),
         ],
         axes: [
           {
             ...themed,
             grid: { show: false },
             splits: () => xs,
-            values: (u, splits) => splits.map((i) => view.labels[i] ?? ""),
-          },
-          { label: view.label, ...themed },
-        ],
-      },
-      [xs, view.values],
-      el,
-    );
-"##;
-
-/// The lines: one per year against the day of the year. The highlighted
-/// year is drawn wider in the accent colour; each other year in the colour
-/// Rust gave it, in the scheme's own step. The legend names the years and
-/// reads their totals at the cursor.
-///
-/// Pointing near a line, or at its legend entry, focuses that year: the
-/// other lines fade (uPlot's `focus`) and its legend entry is marked
-/// `u-focused`, which `stats.css` emphasises.
-const RUNNING_SCRIPT: &str = r##"
-    const CONTAINER = "stats-running";
-    PRELUDE
-    if (!view.years.length) return;
-
-    const dark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const xs = view.day_labels.map((_, i) => i);
-    widgets[CONTAINER] = new uPlot(
-      {
-        width: el.clientWidth || 600,
-        height: 260,
-        scales: {
-          x: { time: false },
-          y: { range: (u, min, max) => [0, max > 0 ? max : 1] },
-        },
-        focus: { alpha: 0.25 },
-        cursor: { focus: { prox: 24 } },
-        hooks: {
-          setSeries: [
-            // Fired for a legend click's show/hide too, which is no focus.
-            (u, index, opts) => {
-              if (opts?.focus == null) return;
-              const focused = opts.focus ? index : null;
-              u.root.querySelectorAll(".u-legend .u-series").forEach((row, i) => {
-                row.classList.toggle("u-focused", focused != null && i === focused);
-              });
+            values: (u, splits) => {
+              const every = Math.max(1, Math.ceil((xs.length * 40) / (u.width || 600)));
+              return splits.map((i) => (i % every ? "" : view.labels[i] ?? ""));
             },
-          ],
-        },
-        series: [
-          { label: "Date", value: (u, i) => (i == null ? "–" : view.day_labels[i]) },
-          ...view.years.map((year, i) => {
-            const label = String(year);
-            if (year === view.highlighted) return { label, stroke: view.color, width: 2.5 };
-            const [light, darkStep] = view.colors[i];
-            return { label, stroke: () => (dark() ? darkStep : light), width: 1.5 };
-          }),
-        ],
-        axes: [
-          {
-            ...themed,
-            splits: () => view.month_starts,
-            values: (u, splits) => splits.map((_, i) => view.month_labels[i] ?? ""),
           },
-          { label: view.label, ...themed },
+          { label: view.axis, ...themed },
         ],
       },
-      [xs, ...view.series],
+      [xs, ...view.series.map((series) => series.drawn)],
       el,
     );
 "##;
 
-/// What the bar chart draws.
-#[derive(Serialize)]
-struct BarsView {
-    labels: Vec<String>,
-    values: Vec<f64>,
-    color: &'static str,
-    label: &'static str,
-}
-
-/// Draw `values` as bars into `#stats-bars`, one per label, in `color`, on
-/// an axis called `label`. The handle must be kept until the script has
-/// taken the payload.
-pub fn draw_stats_bars(
-    labels: Vec<String>,
-    values: Vec<f64>,
-    color: &'static str,
-    label: &'static str,
-) -> document::Eval {
-    start(
-        BARS_SCRIPT,
-        BarsView {
-            labels,
-            values,
-            color,
-            label,
-        },
-    )
-}
-
-/// What the running-total chart draws.
-#[derive(Serialize)]
-pub struct RunningView {
-    pub years: Vec<i32>,
-    /// Per year, a value per day of the year; `null` where the line stops.
-    pub series: Vec<Vec<Option<f64>>>,
-    pub highlighted: i32,
-    /// The highlighted year's color.
-    pub color: &'static str,
-    /// Each year's light and dark color.
-    pub colors: Vec<(&'static str, &'static str)>,
-    pub label: &'static str,
-    /// The name of each day of the year, for the cursor's readout.
-    pub day_labels: Vec<String>,
-    /// Where each month starts among those days, and its name, for the ticks.
-    pub month_starts: Vec<usize>,
-    pub month_labels: Vec<&'static str>,
-}
-
-/// Draw the running totals into `#stats-running`, on the same terms as
-/// [`draw_stats_bars`].
-pub fn draw_stats_running(view: RunningView) -> document::Eval {
-    start(RUNNING_SCRIPT, view)
+/// Draw `plot` into `#stats-plot`. The handle must be kept until the script
+/// has taken the payload.
+pub fn draw_stats_plot(plot: Plot) -> document::Eval {
+    start(PLOT_SCRIPT, plot)
 }
 
 /// Run a script with the shared prelude, handing it its payload over the
