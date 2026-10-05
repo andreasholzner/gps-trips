@@ -31,6 +31,10 @@ pub async fn begin_write(pool: &SqlitePool) -> Result<Transaction<'static, Sqlit
     pool.begin_with("BEGIN IMMEDIATE").await
 }
 
+/// How long [`close`] waits for the pool's last connections to finish
+/// closing, at most.
+const CLOSE_PATIENCE: Duration = Duration::from_secs(2);
+
 /// Close the archive's database for good (US-47), checkpointing its WAL into
 /// the database file and removing it.
 ///
@@ -38,10 +42,35 @@ pub async fn begin_write(pool: &SqlitePool) -> Result<Transaction<'static, Sqlit
 /// close at the same moment — a dropped one goes back in a task of its own —
 /// and each then sees another still open and leaves the WAL. So once the pool
 /// is closed, one connection more is opened and closed: alone, it is the last.
+///
+/// Alone only once the pool's connections have finished closing, though,
+/// and one may still be closing when the pool says it is closed — on a
+/// single CPU, often. It finishes only once the pool itself is dropped, so
+/// that comes first; and the last connection is tried again until the WAL
+/// is gone, since the process exits next and would cut a slower one short.
 pub async fn close(pool: SqlitePool, db_path: &Path) -> anyhow::Result<()> {
     pool.close().await;
-    options(db_path).connect().await?.close().await?;
-    Ok(())
+    drop(pool);
+    let wal = wal_path(db_path);
+    let deadline = tokio::time::Instant::now() + CLOSE_PATIENCE;
+    loop {
+        options(db_path).connect().await?.close().await?;
+        if !wal.exists() {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            tracing::warn!("The database's WAL outlived closing it; the next start recovers it");
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// The WAL SQLite keeps beside the database at `db_path`.
+fn wal_path(db_path: &Path) -> std::path::PathBuf {
+    let mut wal = db_path.as_os_str().to_owned();
+    wal.push("-wal");
+    wal.into()
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────

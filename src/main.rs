@@ -62,8 +62,10 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     // Every request has finished; the last of their records go in before
-    // the database closes (US-70), checkpointing the WAL (US-47).
+    // the database closes (US-70), checkpointing the WAL (US-47). Dropped
+    // then, so its writer lets go of the pool, which closing waits for.
     access_log.flush().await;
+    drop(access_log);
     server::db::close(pool, &db_path).await?;
     tracing::info!("Trip Archive stopped");
     Ok(())
