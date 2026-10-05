@@ -112,13 +112,34 @@ async fn places_of(db: &PlaceDb, points: &[TrackPoint]) -> Result<Option<String>
 /// This is a *suggestion*, not the fallback `resolve_name` applies when the
 /// field arrives empty; that precedence is unchanged and still decides what
 /// an unanswered confirm stores.
+///
+/// A name that already leads with a date — a track named that way before
+/// it was exported — has it dropped first, so the date is not repeated.
 fn with_date(name: Option<&str>, start_time: Option<OffsetDateTime>, tz_name: &str) -> String {
-    let name = name.map(str::trim).filter(|n| !n.is_empty());
+    let name = name
+        .map(|n| without_leading_date(n.trim()))
+        .filter(|n| !n.is_empty());
     match (date_prefix(start_time, tz_name), name) {
         (Some(prefix), Some(name)) => format!("{prefix} {name}"),
         (Some(prefix), None) => format!("{prefix} "),
         (None, Some(name)) => name.to_string(),
         (None, None) => String::new(),
+    }
+}
+
+/// `name` without a whole `YYYY-MM-DD` it leads with, and the space after.
+fn without_leading_date(name: &str) -> &str {
+    let Some((date, rest)) = name.get(..10).zip(name.get(10..)) else {
+        return name;
+    };
+    let is_date = date.bytes().enumerate().all(|(i, b)| match i {
+        4 | 7 => b == b'-',
+        _ => b.is_ascii_digit(),
+    });
+    if is_date && rest.chars().next().is_none_or(char::is_whitespace) {
+        rest.trim_start()
+    } else {
+        name
     }
 }
 
@@ -208,6 +229,61 @@ mod tests {
             ),
             "2024-06-02 Midnight Ride"
         );
+    }
+
+    #[test]
+    fn us12_a_track_name_that_leads_with_its_date_does_not_get_it_twice() {
+        assert_eq!(
+            with_date(
+                Some("2024-06-01 Oslo Hills Walk"),
+                Some(datetime!(2024-06-01 08:00 UTC)),
+                "Europe/Oslo",
+            ),
+            "2024-06-01 Oslo Hills Walk"
+        );
+        assert_eq!(
+            with_date(
+                Some("2024-06-01"),
+                Some(datetime!(2024-06-01 08:00 UTC)),
+                "Europe/Oslo"
+            ),
+            "2024-06-01 "
+        );
+    }
+
+    #[test]
+    fn us12_a_track_name_leading_with_another_date_gets_the_tracks_date_instead() {
+        // The day where the track is wins, as for any suggestion: a name
+        // dated in another timezone, or by hand, is not dated twice.
+        assert_eq!(
+            with_date(
+                Some("2024-05-31 Midnight Ride"),
+                Some(datetime!(2024-06-01 08:00 UTC)),
+                "Europe/Oslo",
+            ),
+            "2024-06-01 Midnight Ride"
+        );
+    }
+
+    #[test]
+    fn us12_only_a_whole_leading_date_is_taken_for_one() {
+        // The tenth byte inside a letter must not be split, either.
+        for name in [
+            "2024-06-01x Walk",
+            "2024-6-1 Walk",
+            "Walk 2024-06-01",
+            "Ålesund–Ørsta",
+            "Tur",
+        ] {
+            assert_eq!(
+                with_date(
+                    Some(name),
+                    Some(datetime!(2024-06-01 08:00 UTC)),
+                    "Europe/Oslo"
+                ),
+                format!("2024-06-01 {name}")
+            );
+        }
     }
 
     #[test]
