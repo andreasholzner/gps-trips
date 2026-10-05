@@ -77,11 +77,13 @@ test("choosing activities and a measure redraws the chart and keeps the view in 
   expect(await series(page, "stats-plot")).toEqual(["Year", "Kayaking"]);
   expect(await axis(page)).toBe("Distance (km)");
 
-  // A second activity is stacked on the first.
+  // A second activity gets a line of its own, and they get one together.
   await pick(page, "hiking");
   await expect(page).toHaveURL(/activity=hiking,kayaking/);
   await expect(page.locator("#stats-activity")).toHaveText("Hiking, Kayaking");
-  await expect.poll(() => series(page, "stats-plot")).toEqual(["Year", "Kayaking", "Hiking"]);
+  await expect
+    .poll(() => series(page, "stats-plot"))
+    .toEqual(["Year", "Hiking", "Kayaking", "Chosen activities"]);
   await pick(page, "hiking");
   await expect.poll(() => series(page, "stats-plot")).toEqual(["Year", "Kayaking"]);
 

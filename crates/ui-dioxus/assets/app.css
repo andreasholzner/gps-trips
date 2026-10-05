@@ -21,6 +21,26 @@ button {
   width: auto;
 }
 
+/* A fold's chevron leads its summary, where it reads as part of it; Pico
+   floats it to the far right, where on a wide screen it is easily missed. */
+details > summary {
+  display: flex;
+  align-items: center;
+}
+
+details > summary::after {
+  order: -1;
+  float: none;
+  margin-inline: 0 0.5rem;
+}
+
+/* A map keeps its layers to itself. Leaflet stacks its panes and controls
+   with z-indexes of 200 to 1000, which would otherwise compete with the
+   page's own — and paint the tiles over a drop-down opened above the map. */
+.leaflet-container {
+  isolation: isolate;
+}
+
 /* Pico's classless build styles every `[role=button]`, and Leaflet puts that
    role on its zoom buttons, its popup close button and every keyboard-
    reachable marker — none of which is a Pico button (US-58). Pico gives them

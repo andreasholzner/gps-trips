@@ -108,6 +108,34 @@ test("a filtered list is in the URL and survives a reload (US-52)", async ({ pag
   await expect(rows(page).first()).toContainText("Inn Valley Ride");
 });
 
+// The activity filter's list opens over the map below it: Leaflet's panes
+// and controls must not cover it (US-84). On a phone the list lies over the
+// map's zoom control.
+test("the activity filter's list opens over the map (US-84)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/app/");
+  await expect(page.locator(".leaflet-control-zoom")).toBeVisible();
+  // Tiles ignore the pointer, so a hit test would see through them; make
+  // everything on the map hit-testable, so the test sees what is painted.
+  await page.evaluate(() =>
+    document.querySelectorAll(".leaflet-container *").forEach((el) => {
+      el.style.pointerEvents = "auto";
+    }),
+  );
+  await page.locator("#filter-activity").click();
+
+  const covered = await page.locator("#filter-activity-list").evaluate((list) =>
+    [...list.querySelectorAll("li")]
+      .filter((li) => {
+        const box = li.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + 12, box.top + box.height / 2);
+        return !li.contains(hit);
+      })
+      .map((li) => li.dataset.value),
+  );
+  expect(covered).toEqual([]);
+});
+
 test("switching tabs keeps the active filter (US-32)", async ({ page }) => {
   // Needs a real click *and* a preserved input value across it — the one
   // criterion that is only observable once both events have happened.
@@ -139,6 +167,15 @@ test("the occasional filters open on demand and stay open (US-61)", async ({ pag
   // The controls the owner reaches for constantly are not behind it.
   await expect(page.getByRole("searchbox")).toBeVisible();
   await expect(page.getByRole("button", { name: "Recorded" })).toBeVisible();
+
+  // Its chevron leads the summary, where it is seen, rather than trailing at
+  // the far right: the words start after it.
+  const indent = await disclosure.locator("summary").evaluate((summary) => {
+    const range = document.createRange();
+    range.selectNodeContents(summary);
+    return range.getClientRects()[0].left - summary.getBoundingClientRect().left;
+  });
+  expect(indent).toBeGreaterThanOrEqual(16);
 
   await page.getByText("More filters").click();
   await expect(page.getByLabel("From")).toBeVisible();

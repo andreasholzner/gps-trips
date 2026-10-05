@@ -879,8 +879,8 @@ without timestamps leaves the entry out rather than showing a dash.
 **Statistics:** average speed is a new measure on the Statistics screen (US-77). Over several trips
 it is their moving distance added up divided by their moving time added up, never an average of
 averages, and the activities together at the table's foot are figured the same way. A speed is not
-a share of anything, so the share column is left out for it, and the chart draws it as lines rather
-than stacked bars.
+a share of anything, so the share column is left out for it, and the chart leaves a gap where
+there is no moving time to divide by.
 
 **Summary:** the Summary screen (US-78) shows the average speed per activity, and for the activities
 together, figured as on the Statistics screen. If this story is done first, that criterion moves into
@@ -928,7 +928,7 @@ climbing rate reading as a dash.
 **Statistics:** climbing rate is a new measure on the Statistics screen (US-77). Over several trips
 it is their climbs' height added up divided by their climbing time added up, never an average of
 averages, and the activities together at the table's foot are figured the same way. It has no share
-column, and the chart draws it as lines, as average speed does (US-80).
+column, and the chart leaves a gap where there is no climbing time, as for average speed (US-80).
 
 **Summary:** the Summary screen (US-78) shows the climbing rate per activity, and for the activities
 together, figured as on the Statistics screen. If this story is done first, that criterion moves into
@@ -1359,10 +1359,9 @@ table that is folded away until opened. The table has a row per activity, a colu
 month, a total, and — with all or several activities — each activity's share of the total, with
 those activities together at its foot. Each activity is shown as an icon in its map color (US-75),
 the activities together as a sum sign, so the activity column stays narrow on a phone; it stays in
-view while the columns scroll. The chart shows the same figures: bars stacked by activity in their
-map colors where the activities add up to their total, or a line per activity and one for them
-together where they do not — a ratio, or days out, where two activities can share a date. With one
-activity, bars on that activity's own scale, so a hike is not dwarfed by a ride.
+view while the columns scroll. The chart shows the same figures as a line per activity in its map
+color and, with several activities, a dashed one for them together. With one activity, its line
+alone, on that activity's own scale, so a hike is not dwarfed by a ride.
 
 **Records:** the three longest trips, the three with the most ascent, and the three longest days —
 the most distance started on one local date — best first, for the chosen period, overall and per

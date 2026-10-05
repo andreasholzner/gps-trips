@@ -1,7 +1,6 @@
 //! The statistics screen's chart (US-77): the totals per year or month, as
-//! bars stacked by activity or as a line per activity. Rust decides which
-//! and works out every figure (`crate::stats::plot`); this script only draws
-//! them (ADR-0025).
+//! a line per activity. Rust works out every figure (`crate::stats::plot`);
+//! this script only draws them (ADR-0025).
 //!
 //! It is redrawn whenever a control changes, so — like the elevation chart
 //! — it keeps its instance in the page's widget registry and destroys the
@@ -48,12 +47,11 @@ const PRELUDE: &str = r##"
     }
 "##;
 
-/// One mark per column and series, labelled with the column's name, from
-/// zero up. Bars come top of the stack first, so each lower segment is drawn
-/// over the taller ones; a thin stroke in the page's background parts the
-/// segments. Lines are the activities' colors, the activities together a
-/// dashed line in the text color. The legend names the series and reads
-/// each one's own value at the cursor, as the table shows it.
+/// A point per column on each series' line, labelled with the column's
+/// name, from zero up: the activities in their colors, the activities
+/// together a dashed line in the text color. A line breaks where a series
+/// has no figure. The legend names the series and reads each one's value at
+/// the cursor, as the table shows it.
 ///
 /// The column names thin out where they would collide on a phone.
 const PLOT_SCRIPT: &str = r##"
@@ -62,21 +60,7 @@ const PLOT_SCRIPT: &str = r##"
     if (!view.series.length) return;
 
     const xs = view.labels.map((_, i) => i);
-    const bars = view.kind === "bars";
-    const surface = () => pico("--pico-background-color");
-    const mark = (series) => {
-      const value = (u, v, s, i) => (i == null ? "–" : series.shown[i]);
-      if (bars) {
-        return {
-          label: series.label,
-          fill: series.color,
-          stroke: surface,
-          width: 1,
-          paths: uPlot.paths.bars({ size: [0.7, 64] }),
-          points: { show: false },
-          value,
-        };
-      }
+    const styled = (series) => {
       const stroke = series.color ?? text;
       return {
         label: series.label,
@@ -84,7 +68,7 @@ const PLOT_SCRIPT: &str = r##"
         width: 2,
         dash: series.color ? undefined : [6, 4],
         points: { show: true, size: 8, fill: stroke },
-        value,
+        value: (u, v, s, i) => (i == null ? "–" : series.shown[i]),
       };
     };
     widgets[CONTAINER] = new uPlot(
@@ -98,7 +82,7 @@ const PLOT_SCRIPT: &str = r##"
         },
         series: [
           { label: view.column, value: (u, i) => (i == null ? "–" : view.labels[i]) },
-          ...view.series.map(mark),
+          ...view.series.map(styled),
         ],
         axes: [
           {
