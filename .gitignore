@@ -29,6 +29,8 @@
 /memory/
 *.sqlite
 *.sqlite-journal
+# The test fixtures cut from the place and ground databases (US-74, US-76).
+!tests/fixtures/**/*.sqlite
 # Keep: .claude-flow/config.yaml, .claude-flow/CAPABILITIES.md
 **/.claude-flow/daemon-state.json
 **/.claude-flow/daemon.pid
