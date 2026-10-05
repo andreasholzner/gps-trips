@@ -138,3 +138,33 @@ test("each tag's trips stand apart from the group above (US-78)", async ({ page,
   expect(gap).toBeGreaterThanOrEqual(4);
   expect(gap).toBeLessThanOrEqual(10);
 });
+
+// An activity's heading in the figures is its icon and its name on one line
+// (US-84), on a desktop as on a phone.
+for (const width of [1280, 390]) {
+  test(`an activity's heading keeps its icon beside its name at ${width}px (US-84)`, async ({
+    page,
+    request,
+  }) => {
+    const alps = fresh("alps");
+    await tag(request, await ownTrip(request, "Headed Walk", "hiking"), alps);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/app/summary?tags=${alps}`);
+
+    const heading = page.locator("th.summary-activity", { hasText: "Hiking" });
+    const [icon, text] = await heading.evaluate((th) => {
+      const range = document.createRange();
+      range.selectNodeContents(th);
+      const text = [...range.getClientRects()].at(-1);
+      const icon = th.querySelector(".activity-icon").getBoundingClientRect();
+      return [
+        { top: icon.top, bottom: icon.bottom, right: icon.right },
+        { top: text.top, bottom: text.bottom, left: text.left },
+      ];
+    });
+    // Side by side: the name starts right of the icon, at the same height.
+    expect(text.left).toBeGreaterThanOrEqual(icon.right - 1);
+    expect(text.top).toBeLessThan(icon.bottom);
+    expect(text.bottom).toBeGreaterThan(icon.top);
+  });
+}
