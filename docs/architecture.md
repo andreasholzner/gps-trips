@@ -265,7 +265,7 @@ C4Component
     Rel(list, server, "GET /api/trips (+filters); GET /api/trips/tracks for the lines in view (US-73); POST /api/shares", "JSON")
     Rel(detail, server, "GET detail, track.geojson, photos, tags; PATCH/DELETE; POST photos; PATCH a photo's position; POST /api/shares", "JSON")
     Rel(shares, server, "GET /api/shares; DELETE /api/shares/:id", "JSON")
-    Rel(tags, server, "GET /api/tags/overview; POST /api/tags; DELETE /api/tags/:id", "JSON")
+    Rel(tags, server, "GET /api/tags/overview; POST /api/tags; PATCH, DELETE /api/tags/:id", "JSON")
     Rel(shared, server, "GET /s/:token/api/… and /s/:token/media/*", "JSON")
     Rel(importform, server, "POST import / add photos", "multipart")
     Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")

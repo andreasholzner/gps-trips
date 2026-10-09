@@ -55,4 +55,5 @@ mod us80_average_speed;
 mod us81_climbing_rate;
 mod us82_share_summary;
 mod us83_tags_page;
+mod us85_rename_tag;
 mod us9_delete_trip;

@@ -7,7 +7,7 @@
   max-width: 24rem;
 }
 
-/* Deleting sits at the row's end, as narrow as its button. */
+/* Renaming and deleting sit at the row's end, as narrow as their buttons. */
 .tags .tag-actions {
   width: 1%;
   white-space: nowrap;
@@ -20,17 +20,26 @@
   text-decoration: none;
 }
 
-/* The name and its button on one line, the button as wide as its words. */
-.create-tag {
+/* The name and its buttons on one line, each button as wide as its words;
+   renaming's form fills the name's cell (US-85). */
+.create-tag,
+.rename-tag {
   display: flex;
   gap: 0.5rem;
   margin-top: var(--pico-typography-spacing-vertical);
 }
 
-.create-tag input {
+.create-tag input,
+.rename-tag input {
   flex: 1;
 }
 
-.create-tag button {
+.create-tag button,
+.rename-tag button {
   width: auto;
+}
+
+/* In a row, the form sits on the row's own baseline, not a paragraph's. */
+.rename-tag {
+  margin: 0;
 }

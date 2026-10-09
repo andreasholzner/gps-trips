@@ -1,10 +1,11 @@
-// US-83: the Tags screen, driven as the owner drives it (ADR-0012's browser
-// layer).
+// US-83/US-85: the Tags screen, driven as the owner drives it (ADR-0012's
+// browser layer).
 //
 // Scope rule, from the 2026-08-26b amendment: only real user events —
-// typing in the filter, deleting through the confirmation, creating a tag.
-// What the rows, the paging and the confirmation say is asserted in
-// `crates/ui-dioxus` (`tags`), without a browser.
+// typing in the filter, deleting through the confirmation, renaming in a
+// row, creating a tag. What the rows, the paging, the confirmation and the
+// rename form say is asserted in `crates/ui-dioxus` (`tags`), without a
+// browser.
 import { expect, signIn, test } from "./session.mjs";
 import { ownTrips } from "./trips.mjs";
 
@@ -119,4 +120,44 @@ test("a created tag shows at once, and a refused name says why (US-83)", async (
   await expect(page.locator("#create-tag-error")).toHaveText(
     "Could not create the tag: tag name cannot contain spaces",
   );
+});
+
+test("renaming a tag in its row shows the new name on its trips, and a refused name says why (US-85)", async ({
+  page,
+  request,
+}) => {
+  const base = fresh("rename");
+  const [before, after, taken] = [`${base}-old`, `${base}-new`, `${base}-taken`];
+  created.push(before, after);
+  const trip = await ownTrip(request, "Renamed Tag Walk", "hiking");
+  const tagged = await request.post(`/api/trips/${trip}/tags`, { data: { name: before } });
+  expect(tagged.status()).toBe(201);
+  await createTag(request, taken);
+
+  await page.goto(`/app/tags?q=${base}`);
+  const row = page.locator(`table.tags tbody tr:has-text("${before}")`);
+  await row.getByRole("button", { name: "Rename" }).click();
+  const field = page.locator(".rename-tag input");
+  await expect(field).toHaveValue(before);
+  await field.press("Escape");
+  await expect(page.locator(".rename-tag")).toHaveCount(0);
+  await expect(row).toContainText(`${before} (1)`);
+
+  await row.getByRole("button", { name: "Rename" }).click();
+  await field.fill(taken);
+  await field.press("Enter");
+  await expect(page.locator(".rename-tag + .error")).toHaveText(
+    `Could not rename the tag: tag "${taken}" already exists`,
+  );
+
+  await field.fill(after.toUpperCase());
+  await field.press("Enter");
+  await expect(page.locator(".rename-tag")).toHaveCount(0);
+  await expect(rows(page)).toHaveCount(2);
+  await expect(rows(page).first()).toContainText(`${after} (1)`);
+  await expect(page.getByText(before)).toHaveCount(0);
+
+  await page.goto(`/app/trips/${trip}`);
+  await expect(page.locator(".trip-tags")).toContainText(after);
+  await expect(page.locator(".trip-tags")).not.toContainText(before);
 });

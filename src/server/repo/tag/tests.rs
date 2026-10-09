@@ -1,4 +1,4 @@
-//! US-33/34/83 — the tag repository, against a real SQLite file (ADR-0012).
+//! US-33/34/83/85 — the tag repository, against a real SQLite file (ADR-0012).
 
 use super::*;
 use crate::models::{ActivityType, TripKind};
@@ -465,5 +465,64 @@ mod tags_page {
             .await
             .unwrap();
         assert_eq!(left, 0, "share {gone} should have gone");
+    }
+
+    #[tokio::test]
+    async fn us85_a_renamed_tag_keeps_its_trips_and_shares_under_the_new_name() {
+        let db = TestDb::new().await;
+        let trip = insert_sample_trip(&db.pool).await;
+        let alps = tag(&db.pool, trip, "alps").await;
+        let share = a_tag_share(&db.pool, "t", None, &["alps"], None).await;
+
+        let renamed = rename_tag(&db.pool, alps, "alpen").await.unwrap();
+
+        let alpen = Tag {
+            id: alps,
+            name: "alpen".to_string(),
+        };
+        assert_eq!(renamed, Rename::Renamed(alpen.clone()));
+        assert_eq!(list_trip_tags(&db.pool, trip).await.unwrap(), vec![alpen]);
+        assert_eq!(
+            shared_tag_names(&db.pool, share).await.unwrap(),
+            vec!["alpen"]
+        );
+    }
+
+    #[tokio::test]
+    async fn us85_a_name_another_tag_has_is_taken_and_nothing_changes() {
+        let db = TestDb::new().await;
+        let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
+        get_or_create_tag(&db.pool, "norway").await.unwrap();
+
+        assert_eq!(
+            rename_tag(&db.pool, alps, "norway").await.unwrap(),
+            Rename::Taken
+        );
+        let names: Vec<String> = list_all_tags(&db.pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|tag| tag.name)
+            .collect();
+        assert_eq!(names, vec!["alps", "norway"]);
+    }
+
+    #[tokio::test]
+    async fn us85_renaming_to_its_own_name_changes_nothing_and_an_unknown_tag_is_missing() {
+        let db = TestDb::new().await;
+        let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
+
+        assert_eq!(
+            rename_tag(&db.pool, alps, "alps").await.unwrap(),
+            Rename::Renamed(Tag {
+                id: alps,
+                name: "alps".to_string()
+            })
+        );
+        assert_eq!(
+            rename_tag(&db.pool, 999, "alpen").await.unwrap(),
+            Rename::Missing
+        );
+        assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
     }
 }

@@ -34,7 +34,7 @@ pub use share::{
 };
 pub use stats::{stats_trips, tag_summaries};
 pub use suggestion::trip_suggestion;
-pub use tags::{create_tag, delete_tag, tag_overview};
+pub use tags::{create_tag, delete_tag, rename_tag, tag_overview};
 pub use tracks::{list_climbs, list_tracks};
 
 /// A failed API call, already reduced to what the UI shows.

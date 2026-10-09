@@ -4,8 +4,9 @@
 //!
 //! The archive hands over every tag at once (`GET /api/tags/overview`); the
 //! filter and the paging work over that list, as the trip list's paging does
-//! (US-63). Deleting or creating a tag reads the list again, since deleting
-//! one can change what the others' shares are.
+//! (US-63). Deleting, renaming (US-85) or creating a tag reads the list
+//! again, since deleting one can change what the others' shares are and a
+//! renamed one moves to its new alphabetical place.
 
 use dioxus::prelude::*;
 use trip_archive_types::{TagOverview, TagShare};
@@ -15,8 +16,10 @@ use crate::pager::{self, Pager};
 use crate::summary::SummaryView;
 use crate::Route;
 
+mod rename;
 mod view;
 
+use rename::RenameTag;
 pub use view::TagsView;
 
 /// The tags whose names contain `query`, ignoring case and the spaces around
@@ -132,7 +135,7 @@ pub fn TagTable(tags: Vec<TagOverview>, query: String, on_changed: EventHandler<
         table { class: "tags",
             tbody {
                 for tag in shown {
-                    TagRow { key: "{tag.id}", tag, on_deleted: on_changed }
+                    TagRow { key: "{tag.id}", tag, on_changed }
                 }
             }
         }
@@ -141,10 +144,12 @@ pub fn TagTable(tags: Vec<TagOverview>, query: String, on_changed: EventHandler<
 }
 
 /// One tag: its name — linking to its summary when it has one — and its
-/// trips, the share icon when a summary share names it, and deleting it.
+/// trips, the share icon when a summary share names it, renaming it in place
+/// (US-85) and deleting it.
 #[component]
-fn TagRow(tag: TagOverview, on_deleted: EventHandler<()>) -> Element {
+fn TagRow(tag: TagOverview, on_changed: EventHandler<()>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
+    let mut renaming = use_signal(|| false);
     let mut arming = use_signal(|| false);
     let mut deleting = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
@@ -157,32 +162,55 @@ fn TagRow(tag: TagOverview, on_deleted: EventHandler<()>) -> Element {
     rsx! {
         tr { id: "tag-{id}",
             td {
-                // Without a recorded trip its summary would be empty (US-78).
-                if tag.recorded_trip_count > 0 {
-                    Link {
-                        to: Route::Summary { view: SummaryView::of(&tag.name) },
-                        "{tag.name}"
+                if renaming() {
+                    RenameTag {
+                        id,
+                        name: tag.name.clone(),
+                        on_renamed: move |_| {
+                            renaming.set(false);
+                            on_changed.call(());
+                        },
+                        on_cancel: move |_| renaming.set(false),
                     }
                 } else {
-                    "{tag.name}"
-                }
-                " ({tag.trip_count})"
-                if let Some(title) = shared {
-                    " "
-                    Link {
-                        to: Route::Shares {},
-                        class: "tag-shared",
-                        title: "{title}",
-                        aria_label: "{title}",
-                        "🔗"
+                    // Without a recorded trip its summary would be empty (US-78).
+                    if tag.recorded_trip_count > 0 {
+                        Link {
+                            to: Route::Summary { view: SummaryView::of(&tag.name) },
+                            "{tag.name}"
+                        }
+                    } else {
+                        "{tag.name}"
+                    }
+                    " ({tag.trip_count})"
+                    if let Some(title) = shared {
+                        " "
+                        Link {
+                            to: Route::Shares {},
+                            class: "tag-shared",
+                            title: "{title}",
+                            aria_label: "{title}",
+                            "🔗"
+                        }
                     }
                 }
             }
             td { class: "tag-actions",
                 button {
                     r#type: "button",
+                    class: "quiet",
+                    disabled: renaming() || arming(),
+                    onclick: move |_| {
+                        error.set(None);
+                        renaming.set(true);
+                    },
+                    "Rename"
+                }
+                " "
+                button {
+                    r#type: "button",
                     class: "quiet danger",
-                    disabled: arming(),
+                    disabled: renaming() || arming(),
                     onclick: move |_| {
                         error.set(None);
                         arming.set(true);
@@ -205,7 +233,7 @@ fn TagRow(tag: TagOverview, on_deleted: EventHandler<()>) -> Element {
                             }
                             deleting.set(true);
                             match api::delete_tag(&archive(), id).await {
-                                Ok(()) => on_deleted.call(()),
+                                Ok(()) => on_changed.call(()),
                                 Err(err) => error.set(Some(err.to_string())),
                             }
                             arming.set(false);

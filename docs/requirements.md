@@ -126,7 +126,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
 | [US-84](#us-84--activity-icons)                               | ✅     | Activity icons                               | [App & clients](#app--clients)                                      |
-| [US-85](#us-85--rename-a-tag)                                 | 📋     | Rename a tag                                 | [Tags](#tags)                                                       |
+| [US-85](#us-85--rename-a-tag)                                 | ✅     | Rename a tag                                 | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1160,7 +1160,7 @@ exists. The new tag shows in the table at once.
 
 ### US-85 — Rename a tag
 
-**Planned 📋** — As the owner, I can rename a tag on the Tags page, so that I can fix a typo or
+**Done ✅** — As the owner, I can rename a tag on the Tags page, so that I can fix a typo or
 reword a tag without retagging every trip that carries it.
 
 **Acceptance criteria:** Each row of the Tags screen (US-83) has a rename button, to the left of

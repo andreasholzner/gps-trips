@@ -1,5 +1,5 @@
 //! The Tags screen's calls (US-83): every tag with its trips and shares,
-//! creating a tag, and deleting one.
+//! creating a tag, renaming one (US-85) and deleting one.
 
 use serde::Serialize;
 use trip_archive_types::{Tag, TagOverview};
@@ -12,8 +12,8 @@ pub async fn tag_overview(archive: &ApiClient) -> Result<Vec<TagOverview>, ApiEr
     get_json(archive, archive.url("/api/tags/overview")).await
 }
 
-/// The `POST /api/tags` body: the name as typed. The archive normalizes it
-/// as it does a trip's tag (US-33).
+/// The `POST /api/tags` and `PATCH /api/tags/:id` body: the name as typed.
+/// The archive normalizes it as it does a trip's tag (US-33).
 #[derive(Serialize)]
 struct CreateTag<'a> {
     name: &'a str,
@@ -26,6 +26,24 @@ pub async fn create_tag(archive: &ApiClient, name: &str) -> Result<Tag, ApiError
     let url = archive.url("/api/tags");
     let response = archive
         .post(&url)
+        .json(&CreateTag { name })
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response)
+        .await?
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `PATCH /api/tags/:id` — rename a tag; its trips and shares carry the new
+/// name. A refused name comes back in the archive's own words, as
+/// `create_tag`'s does.
+pub async fn rename_tag(archive: &ApiClient, id: i64, name: &str) -> Result<Tag, ApiError> {
+    let url = archive.url(&format!("/api/tags/{id}"));
+    let response = archive
+        .patch(&url)
         .json(&CreateTag { name })
         .send()
         .await
@@ -87,5 +105,35 @@ mod tests {
 
         assert_eq!(existing.to_string(), "tag \"alps\" already exists");
         assert_eq!(invalid.to_string(), "tag name cannot contain a comma");
+    }
+
+    #[tokio::test]
+    async fn us85_a_renamed_tag_keeps_its_trips_under_the_new_name() {
+        let (archive, _dir) = serve_test_archive().await;
+        let trip = import_sample(&archive, &[]).await;
+        tag_trip(&archive, trip, "alps").await;
+        let alps = tag_overview(&archive).await.expect("overview")[0].id;
+
+        let renamed = rename_tag(&archive, alps, " Alpen").await.expect("rename");
+
+        assert_eq!((renamed.id, renamed.name.as_str()), (alps, "alpen"));
+        let listed = tag_overview(&archive).await.expect("overview");
+        assert_eq!(
+            (listed[0].name.as_str(), listed[0].trip_count),
+            ("alpen", 1)
+        );
+    }
+
+    #[tokio::test]
+    async fn us85_a_refused_new_name_comes_back_in_the_archives_words() {
+        let (archive, _dir) = serve_test_archive().await;
+        let alps = create_tag(&archive, "alps").await.expect("create");
+        create_tag(&archive, "norway").await.expect("create");
+
+        let existing = rename_tag(&archive, alps.id, "Norway").await.unwrap_err();
+        let invalid = rename_tag(&archive, alps.id, "day trip").await.unwrap_err();
+
+        assert_eq!(existing.to_string(), "tag \"norway\" already exists");
+        assert_eq!(invalid.to_string(), "tag name cannot contain spaces");
     }
 }

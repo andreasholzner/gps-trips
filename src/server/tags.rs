@@ -11,7 +11,7 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 
 use crate::models::{normalize_tag_name, Tag, TagOverview};
-use crate::server::{error::AppError, repo, state::AppState};
+use crate::server::{error::AppError, repo, repo::Rename, state::AppState};
 
 /// The `POST /api/trips/:id/tags` request body (ADR-0008).
 #[derive(Deserialize)]
@@ -102,6 +102,24 @@ pub async fn handle_create_tag(
     match repo::create_tag(&state.pool, &name).await? {
         Some(tag) => Ok((StatusCode::CREATED, Json(tag))),
         None => Err(AppError::Conflict(format!("tag \"{name}\" already exists"))),
+    }
+}
+
+/// PATCH `/api/tags/:id` — rename a tag (US-85), from the same body a trip
+/// is tagged with: every trip and summary share naming it carries the new
+/// name. 200 with the renamed tag; 400 for a name US-33 would refuse, with
+/// its reason; 404 for a tag that does not exist; 409 for a name another tag
+/// has, normalized.
+pub async fn handle_rename_tag(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<AddTagRequest>,
+) -> Result<Json<Tag>, AppError> {
+    let name = normalize_tag_name(&body.name).map_err(AppError::BadRequest)?;
+    match repo::rename_tag(&state.pool, id, &name).await? {
+        Rename::Renamed(tag) => Ok(Json(tag)),
+        Rename::Missing => Err(AppError::NotFound),
+        Rename::Taken => Err(AppError::Conflict(format!("tag \"{name}\" already exists"))),
     }
 }
 

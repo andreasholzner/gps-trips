@@ -1,7 +1,8 @@
-//! The Tags screen (US-83). What the rows, the filter, the paging and the
-//! confirmation say is asserted on rendered HTML; one test reads the tags
-//! from a real server. Typing in the filter, deleting and creating are the
-//! browser layer's (`tests/browser/tags.spec.mjs`).
+//! The Tags screen (US-83, US-85). What the rows, the filter, the paging,
+//! the confirmation and the rename form say is asserted on rendered HTML; one
+//! test reads the tags from a real server. Typing in the filter, deleting,
+//! renaming and creating are the browser layer's
+//! (`tests/browser/tags.spec.mjs`).
 
 use super::*;
 use crate::test_support::{
@@ -171,6 +172,34 @@ fn us83_the_confirmation_says_what_happens_to_each_share() {
 fn us83_the_trips_are_counted_in_words_the_owner_reads() {
     assert!(delete_question(&a_tag(1, "a", 0, 0)).contains("No trip carries it."));
     assert!(delete_question(&a_tag(1, "a", 1, 0)).contains("It comes off its one trip;"));
+}
+
+// ── Renaming a tag ───────────────────────────────────────────────────────────
+
+#[test]
+fn us85_every_row_offers_renaming_left_of_deleting() {
+    let html = table(vec![a_tag(1, "alps", 1, 1), a_tag(2, "norway", 1, 1)]);
+
+    assert_eq!(html.matches(">Rename<").count(), 2, "{html}");
+    let rename = html.find(">Rename<").unwrap();
+    let delete = html.find(">Delete<").unwrap();
+    assert!(rename < delete, "{html}");
+    assert!(
+        !html.contains(r#"class="rename-tag""#),
+        "nothing is open: {html}"
+    );
+}
+
+#[test]
+fn us85_the_rename_form_starts_on_the_current_name() {
+    let html = render(|| {
+        rsx! { RenameTag { id: 1, name: "alps".to_string(), on_renamed: |_| {}, on_cancel: |_| {} } }
+    });
+
+    assert!(html.contains(r#"class="rename-tag""#), "{html}");
+    assert!(html.contains(r#"value="alps""#), "{html}");
+    assert!(html.contains(">Save<"), "{html}");
+    assert!(html.contains(">Cancel<"), "{html}");
 }
 
 // ── Against the archive ──────────────────────────────────────────────────────

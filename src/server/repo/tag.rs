@@ -1,6 +1,7 @@
 //! Tag CRUD and trip/tag associations (US-33), and the Tags screen's
-//! listing, creating and deleting of tags (US-83). Kept separate from `trip`/
-//! `photo`, mirroring how each domain gets its own repo submodule.
+//! listing, creating and deleting (US-83) and renaming (US-85) of tags. Kept
+//! separate from `trip`/`photo`, mirroring how each domain gets its own repo
+//! submodule.
 
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use time::OffsetDateTime;
@@ -126,6 +127,46 @@ pub async fn create_tag(pool: &SqlitePool, name: &str) -> Result<Option<Tag>, sq
         id,
         name: name.to_string(),
     }))
+}
+
+/// What renaming a tag came to (US-85).
+#[derive(Debug, PartialEq, Eq)]
+pub enum Rename {
+    Renamed(Tag),
+    /// There is no such tag.
+    Missing,
+    /// Another tag already has the name.
+    Taken,
+}
+
+/// Rename tag `id` to `name` (already normalized by the caller) (US-85).
+/// Trips and shares name the tag by its id, so they all carry the new name
+/// at once. Renaming a tag to its own name is no change and no conflict.
+pub async fn rename_tag(pool: &SqlitePool, id: i64, name: &str) -> Result<Rename, sqlx::Error> {
+    let mut tx = db::begin_write(pool).await?;
+    let renamed: Option<i64> =
+        sqlx::query_scalar("UPDATE OR IGNORE tag SET name = ? WHERE id = ? RETURNING id")
+            .bind(name)
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let outcome = if renamed.is_some() {
+        Rename::Renamed(Tag {
+            id,
+            name: name.to_string(),
+        })
+    } else {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM tag WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        match exists {
+            Some(_) => Rename::Taken,
+            None => Rename::Missing,
+        }
+    };
+    tx.commit().await?;
+    Ok(outcome)
 }
 
 /// Delete tag `id` (US-83), in one transaction. A share naming no other tag
