@@ -126,6 +126,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-82](#us-82--share-a-summary)                              | ✅     | Share a summary                              | [Sharing](#sharing)                                                 |
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
 | [US-84](#us-84--activity-icons)                               | ✅     | Activity icons                               | [App & clients](#app--clients)                                      |
+| [US-85](#us-85--rename-a-tag)                                 | 📋     | Rename a tag                                 | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1156,6 +1157,22 @@ says why a name is refused; a name that already exists is not created twice, and
 exists. The new tag shows in the table at once.
 
 **Decisions:** US-83 → ADR-0008 (the screen reads and changes the tags through the JSON API)
+
+### US-85 — Rename a tag
+
+**Planned 📋** — As the owner, I can rename a tag on the Tags page, so that I can fix a typo or
+reword a tag without retagging every trip that carries it.
+
+**Acceptance criteria:** Each row of the Tags screen (US-83) has a rename button, to the left of
+its delete button. Clicking it lets the owner enter a new name, prefilled with the current one;
+confirming renames the tag, cancelling leaves it unchanged. The new name is normalized and
+validated as US-33's are, and the screen says why a name is refused; a name another tag already
+has is refused too, and the screen says it exists. Renaming to the tag's own name changes nothing.
+
+**Only the name changes:** every trip that carried the tag still carries it and now shows the new
+name — on the trip page, in the trip list, its tag filter and the tag suggestions (US-33/38), and
+on the Summary screen (US-78). A summary share (US-82) that names the tag keeps working and shows
+the new name. The table shows the renamed tag at once, in its new alphabetical place.
 
 ## Maps
 
