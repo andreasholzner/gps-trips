@@ -419,7 +419,9 @@ test("a new tag is created only after it is confirmed (US-33)", async ({ page, r
 
   await page.getByRole("button", { name: "Create it" }).click();
 
-  await expect(page.getByText(name, { exact: false })).toBeVisible();
+  // The chip, not the name: the prompt quoting it stays up until the tag
+  // has been created.
+  await expect(page.locator(".trip-tags .chip a", { hasText: name })).toBeVisible();
   const tags = await (await request.get(`/api/trips/${id}/tags`)).json();
   expect(tags.map((tag) => tag.name)).toContain(name);
 });
