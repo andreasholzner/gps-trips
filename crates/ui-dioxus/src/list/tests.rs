@@ -455,3 +455,51 @@ async fn the_list_shows_the_version_it_was_built_with() {
     assert!(html.contains(r#"class="app-version""#), "{html}");
     assert!(html.contains(trip_archive_types::VERSION), "{html}");
 }
+
+// US-13: typing into the search while the list is still being fetched must
+// not take the screen down. The fetch used to hold its read of the filters
+// across the request, so the keystroke's write found them borrowed — a panic
+// that, under wasm, leaves the whole page unresponsive.
+#[tokio::test]
+async fn the_filters_can_change_while_the_list_is_loading() {
+    // An archive that accepts the request and never answers it, so the fetch
+    // is reliably in flight when the filters change.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let archive = ApiClient::new(format!("http://{}", listener.local_addr().expect("addr")));
+    let _silent = tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            held.push(stream);
+        }
+    });
+
+    let filters = std::rc::Rc::new(std::cell::Cell::new(None));
+    #[component]
+    fn Fetching(
+        archive: ApiClient,
+        exposed: std::rc::Rc<std::cell::Cell<Option<Signal<Filters>>>>,
+    ) -> Element {
+        use_context_provider(|| Signal::new(archive.clone()));
+        let filters = use_signal(Filters::default);
+        exposed.set(Some(filters));
+        use_trips(filters);
+        rsx! {}
+    }
+    let mut dom = VirtualDom::new_with_props(
+        Fetching,
+        FetchingProps {
+            archive,
+            exposed: filters.clone(),
+        },
+    );
+    dom.rebuild_in_place();
+    // Let the fetch start and park on the silent archive.
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(200), dom.wait_for_work()).await;
+
+    let mut filters = filters.get().expect("the component exposed its filters");
+    dom.in_runtime(|| filters.write().q = "oslo".to_string());
+
+    assert_eq!(dom.in_runtime(|| filters.read().q.clone()), "oslo");
+}

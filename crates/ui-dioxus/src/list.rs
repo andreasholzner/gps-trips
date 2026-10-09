@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::{TripKind, VERSION};
+use trip_archive_types::{TripKind, TripSummary, VERSION};
 
 use crate::api::{self, ApiClient};
 use crate::bulk_activity::BulkActivityPanel;
@@ -35,11 +35,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     use_effect(move || {
         navigator().replace(format!("/?{}", filters.read().to_query()));
     });
-    // Re-runs whenever the filters or the configured archive change —
-    // reading the signals inside the closure is the whole subscription.
-    let mut trips = use_resource(move || async move {
-        api::list_trips(&archive(), filters.read().to_query()).await
-    });
+    let mut trips = use_trips(filters);
     // The known tags: the tag filter's choices (US-38) and the bulk-tag
     // suggestions (US-34). A failure here costs those choices, not the list
     // — hence the separate resource and the fallback to none.
@@ -139,6 +135,20 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             },
         }
     }
+}
+
+/// Every trip `filters` match. Re-runs whenever the filters or the
+/// configured archive change — reading the signals inside the closure is the
+/// whole subscription.
+fn use_trips(filters: Signal<Filters>) -> Resource<Result<Vec<TripSummary>, api::ApiError>> {
+    let archive = use_context::<Signal<ApiClient>>();
+    use_resource(move || async move {
+        // Read into a local, not inline in the call: a temporary read guard
+        // would live across the `.await`, and every keystroke's write during
+        // the request would panic on the borrowed signal.
+        let query = filters.read().to_query();
+        api::list_trips(&archive(), query).await
+    })
 }
 
 /// Whether this page was built from another version than the server's
