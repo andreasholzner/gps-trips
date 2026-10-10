@@ -26,8 +26,11 @@ covers and why it comes where it does. Only what is not yet done is listed: a st
 table when its stories ship. Each story's own state is recorded with the story and in the
 [story index](#story-index) below.
 
-| Step | Stories | Why it sits here |
-|:-----|---------|------------------|
+| Step | Stories             | Why it sits here                                                                                                                            |
+|:-----|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| 1    | US-86               | Everything else rests on it: it brings collections, their tracks and waypoints into the archive, and the collection page an import ends on. |
+| 2    | US-87               | The way back to a collection once its import is over; needs US-86's collections.                                                            |
+| 3    | US-88, US-89, US-90 | Each builds only on US-86/87, not on each other, so their order is free.                                                                    |
 
 ## Story index
 
@@ -127,6 +130,11 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
 | [US-84](#us-84--activity-icons)                               | ✅     | Activity icons                               | [App & clients](#app--clients)                                      |
 | [US-85](#us-85--rename-a-tag)                                 | ✅     | Rename a tag                                 | [Tags](#tags)                                                       |
+| [US-86](#us-86--import-a-guide-book-collection)               | 📋     | Import a guide-book collection               | [Collections](#collections)                                         |
+| [US-87](#us-87--collections-tab)                              | 📋     | Collections tab                              | [Collections](#collections)                                         |
+| [US-88](#us-88--add-a-file-to-a-collection)                   | 📋     | Add a file to a collection                   | [Collections](#collections)                                         |
+| [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
+| [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
 
 ### Maintaining this file
 
@@ -647,6 +655,26 @@ draws the rectangle. The share's overview map is unchanged: it always draws line
 
 **Decisions:** US-73 → ADR-0025 (the map reports its viewport; Rust decides marks or lines, the
 script draws them), ADR-0012 (the browser layer for the switch at the threshold and a line's click)
+
+### US-90 — Collections and trips on one map
+
+**Planned 📋** — As the owner, I see a guide book's tracks together with my planned and recorded
+trips on one map of a region, so I spot at a glance which of the book's suggestions I have neither
+planned nor done.
+
+**Acceptance criteria:** The trip-list map (US-63) draws the selected tab's trips, as now, unless
+the owner chooses more: a control on the map picks which of recorded trips, planned trips and
+collections — all of them, or chosen ones — are drawn together. The table below still lists only
+the selected tab. The activity and region filters (US-13/14) narrow every kind drawn; the filters
+that are about trips alone — dates, distance, tags — narrow only the trips. Each line keeps its
+activity color (US-75), and the kinds are told apart by line style, for instance recorded solid,
+planned dashed and collection tracks dotted; the legend names the styles the map shows. Marks and
+lines switch at the zoom threshold as in US-73, collection waypoints show with the lines, and a
+click on a line opens its trip page. The choice lives in the URL (US-52). The comparison is by eye:
+nothing computes which collection tracks a trip covers.
+
+**Decisions:** US-90 → ADR-0025 (Rust decides what is drawn and in which style, the script draws
+it), ADR-0011 (region matching by bounding box)
 
 ## Trip page
 
@@ -1174,6 +1202,108 @@ name — on the trip page, in the trip list, its tag filter and the tag suggesti
 on the Summary screen (US-78). A summary share (US-82) that names the tag keeps working and shows
 the new name. The table shows the renamed tag at once, in its new alphabetical place.
 
+## Collections
+
+Guide books come with GPX files of their tours, sometimes one file for a whole book, sometimes a
+few files with several tracks or waypoints each. A **collection** holds one book's tracks and
+waypoints. They are suggestions, not trips: neither planned nor done, never synced to Komoot.
+
+### US-86 — Import a guide-book collection
+
+**Planned 📋** — As the owner, I import a guide book's GPX file as a collection of its tracks and
+waypoints, kept apart from my own trips, so the book's suggestions are in the archive next to what
+I planned and did.
+
+**Acceptance criteria:** The import screen (US-43) gets a third choice beside Recorded and Planned
+(US-31): *Guide book*. With it, one GPX file creates a new collection holding every track in the
+file as a collection track and every waypoint as one of its waypoints. A file for a whole book
+imports in one go — `data/collections/Alpencross-light-Baukasten.gpx` holds 125 tracks and 46
+waypoints — as does a file with a single tour. Adding further files to an existing collection is
+US-88's.
+
+**The collection's details:** a name, a description and an optional activity type. Name and
+description are prefilled from what the file says about itself — its metadata, the categories its
+waypoints carry, its file name — and can be changed before importing and later on the collection
+page. With an activity type, every track takes it; without one, for a book with no activity focus,
+a track is `unknown` until given its own. Changing the collection's activity type changes every
+track that has none of its own.
+
+**Tracks:** a track's name is the one in the file, else the collection's name and the track's
+position in the file. On its trip page (US-7) a collection track shows its map and elevation
+profile, and its name and activity can be edited (US-15) — an activity set here overrides the
+collection's. Its stats are distance, ascent and descent only: a guide book's timestamps, where a
+file has any, are not when anyone went, so dates, durations, speeds and moving time are neither
+shown nor computed. No name or activity suggestion (US-12/74/76) is made and no photos are
+attached (US-2). A single track can be deleted (US-9).
+
+**Waypoints:** each keeps its name, position, elevation and description from the file. A waypoint
+from a file with exactly one track belongs to that track as well as to its collection, and shows
+on that track's map; any other belongs to the collection alone. Waypoints are drawn as markers in a
+style no track uses, named on hover or tap.
+
+**The collection page:** an import ends on its collection's page. It shows the details, all the
+collection's tracks in their activity colors (US-75) and its waypoints on one map, and its tracks
+as a list linking to their trip pages. The details are edited here. Deleting the collection, after
+a confirmation naming how many tracks and waypoints go with it, deletes it with all its tracks and
+waypoints.
+
+**Kept apart:** no Komoot sync path ever creates, pushes or deletes a collection track
+(US-20/22/24). Collection tracks are counted in neither the Statistics (US-77) nor tag summaries
+(US-78), and listed in neither the Recorded nor the Planned tab (US-32). A file that is not valid
+GPX, or holds neither a track nor a waypoint, is refused with the reason, and nothing is created.
+
+**Decisions:** US-86 → the ADR on the collection data model (to be proposed; it must settle
+whether a collection track is a trip of a new kind or a record of its own, how waypoints are
+stored and tied to a collection and a track, and that deleting a collection deletes everything it
+holds), ADR-0004 (the import pipeline), ADR-0003 (track storage), ADR-0008 (the screens use the
+JSON API)
+
+### US-87 — Collections tab
+
+**Planned 📋** — As the owner, the trip list has a Collections tab, so I find my guide books where
+I find my trips.
+
+**Acceptance criteria:** A third tab after Recorded and Planned (US-32) lists every collection
+alphabetically, each with its activity icon (US-84) — none for a collection without an activity
+type — and its number of tracks and waypoints, linking to its collection page (US-86). The count
+above the list says how many collections match and how many there are (US-61). The name search
+narrows the list as on the other tabs; the other filters are about trips, so they are hidden on
+this tab and kept for when the owner switches back. The tab lives in the URL (US-52) and pages as
+the trip list does (US-63). The trip-list map shows the listed collections' tracks the way the
+other tabs show their trips, as marks or, zoomed in, as lines (US-63/73); a click on a line opens
+that track's trip page.
+
+**Decisions:** US-87 → US-86's ADR on the collection data model, ADR-0008 (the tab reads the
+collections from the JSON API), ADR-0025 (Rust decides what the map draws)
+
+### US-88 — Add a file to a collection
+
+**Planned 📋** — As the owner, I import further or corrected GPX files into an existing collection
+and decide track by track what happens, so a book spread over several files, or a corrected file,
+leaves no duplicates.
+
+**Acceptance criteria:** With *Guide book* chosen, the import can target an existing collection
+instead of creating one. Before anything changes, a review screen lists every track and waypoint
+in the file beside what the collection holds, each with a proposed action the owner can change:
+
+- *add* — nothing in the collection matches it;
+- *skip* — the collection holds the same track or waypoint;
+- *replace* — the collection holds one of the same name that differs; a replaced track keeps its
+  activity override (US-86);
+- *keep* or *remove* — for what the collection holds but the file does not, proposed *keep*.
+
+Tracks are matched by name and geometry, waypoints by name and position, both within a tolerance,
+so a file whose points were merely rounded or shifted slightly is still the same. Instead of
+deciding item by item, the owner can choose *replace the whole collection*: everything it holds is
+removed and the file's contents imported, while its details stay. Nothing changes until the owner
+confirms, and then all of it or none of it; cancelling leaves the collection untouched. A file
+that is not valid GPX, or holds neither a track nor a waypoint, is refused as in US-86.
+
+**Decisions:** US-88 → the ADR on matching tracks and waypoints on re-import (to be proposed; it
+must settle what counts as the same, a changed and a new track or waypoint — by name, geometry and
+tolerance — and that the server only proposes while the owner decides), US-86's ADR on the
+collection data model
+
 ## Maps
 
 ### US-58 — Map zoom controls
@@ -1481,6 +1611,24 @@ have a mapping in the config, before any trips are exported. If some configs are
 entries are listed in an error message.
 
 **Decisions:** US-36/37/39 → ADR-0022 (QMapShack export)
+
+### US-89 — Collections in the QMapShack export
+
+**Planned 📋** — As the owner, my guide-book collections are in the QMapShack export too, apart
+from my trips, so I can plan routes from a book's tracks in QMapShack.
+
+**Acceptance criteria:** The export (US-36) also writes every collection (US-86): its tracks as
+track items in their activity colors, its waypoints as waypoint items, in one folder per
+collection. A folder template of its own in the export config places those folders, e.g.
+`Guidebooks/{collection}`, so collection tracks never land in the trips' folders. Re-running the
+export reconciles collections as US-37 does trips: added, changed and deleted collections, tracks
+and waypoints are added, updated or moved to QMapShack's trash; items the export did not create
+are untouched. A config without the collection template is refused before anything is exported,
+listed with any other missing entries (US-39).
+
+**Decisions:** US-89 → ADR-0022 (extension to be proposed; it must settle writing waypoint items
+in the format [`qmapshack-format.md`](./qmapshack-format.md) documents, and the identity of
+collection items in the exporter's namespace), US-86's ADR on the collection data model
 
 ## Access & security
 
