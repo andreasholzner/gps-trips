@@ -195,7 +195,7 @@ screen still holds rather than sending them back to the file picker.
 
 ### US-18 — Import from Garmin Connect
 
-**Planned 📋** — As the owner, I import trips from **Garmin Connect**.
+**Backlog ⏳** — As the owner, I import trips from **Garmin Connect**.
 
 **Notes:** Plugs into the same import pipeline as an alternate ingestion source.
 
@@ -1423,7 +1423,7 @@ and the volume snapshots carry them)
 
 ### US-71 — Bound the access log
 
-**Planned 📋** — As the owner, the access log does not grow without bound, so the volume and my
+**Backlog ⏳** — As the owner, the access log does not grow without bound, so the volume and my
 backups stay small after years of use.
 
 **Notes:** Rough: records older than a retention period set in `config.rs` are
@@ -1691,7 +1691,7 @@ password) and its 2026-09-19 amendment (Argon2id under a salt the server keeps)
 
 ### US-16 — Native Android app
 
-**Planned 📋** — As the owner, I access my archive from **Android**.
+**Backlog ⏳** — As the owner, I access my archive from **Android**.
 
 **Notes:** Deferred in favour of US-67, the installed web UI. A native Android app,
 built from the same Dioxus source as the web UI (ADR-0024) and reading the JSON API; recording stays
@@ -1801,7 +1801,7 @@ data directory (`TRIP_ARCHIVE_DATA_DIR`); no external services required.
 
 ### US-17 — Photos on ownCloud
 
-**Planned 📋** — As the owner, my photos live on my private **ownCloud** instance.
+**Backlog ⏳** — As the owner, my photos live on my private **ownCloud** instance.
 
 **Notes:** Photos move to an `OwnCloudWebDav` storage backend; the SQLite DB (incl.
 tracks) stays local.
