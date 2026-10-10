@@ -135,6 +135,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-88](#us-88--add-a-file-to-a-collection)                   | 📋     | Add a file to a collection                   | [Collections](#collections)                                         |
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
+| [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 
 ### Maintaining this file
 
@@ -1560,6 +1561,17 @@ each group is headed by its tag's name and color.
 
 **Decisions:** US-78 → ADR-0025 (Rust adds the figures up and decides the lines, the script draws
 them), ADR-0008 (the screen reads its trips from the JSON API)
+
+## Export
+
+### US-91 — Export tracks
+
+**Backlog ⏳** — As the owner, I export tracks from the archive as files, whichever kind they are —
+recorded, planned or from a guide-book collection (US-86) — so I can use them in other tools.
+
+**Notes:** A placeholder. Collection tracks deliberately keep no original file to download
+(US-21), so this is how they leave the archive. What can be exported together, in which format,
+and whether it replaces US-21's download is open.
 
 ## QMapShack export
 
