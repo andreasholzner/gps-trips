@@ -136,7 +136,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
-| [US-92](#us-92--filter-by-the-maps-view)                      | 📋     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
+| [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 
 ### Maintaining this file
 
@@ -690,7 +690,7 @@ it), ADR-0011 (region matching by bounding box)
 
 ### US-92 — Filter by the map's view
 
-**Planned 📋** — As the owner, I narrow the trip list to the part of the world the trip-list map
+**Done ✅** — As the owner, I narrow the trip list to the part of the world the trip-list map
 shows, by switching region filtering on and then simply panning and zooming, instead of drawing a
 rectangle.
 

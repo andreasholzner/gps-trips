@@ -474,26 +474,18 @@ nav.pager {
   flex: none;
 }
 
-/* Select area, Clear region, Fit to trips: a row of buttons with room
-   between them, wrapping on a phone. */
+/* Filter to map, Fit to trips (US-92): a row with room between them,
+   wrapping on a phone. Aligned on their text, since the button carries
+   Pico's bottom margin and the label does not. */
 .region-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
 }
 
-/* Armed for drawing (US-65): a finger on the map draws, and the browser
-   neither scrolls nor pinch-zooms the page from under it. */
-.region-map.region-drawing {
-  touch-action: none;
-}
-
-/* The trips' lines (US-73) open nothing while armed. A mouse's click
-   already lands on the map, which captures the pointer to draw; a tap's
-   does not, so the lines take no pointer at all. Specific enough to
-   outweigh Leaflet's own `pointer-events: auto` on its interactive paths. */
-.region-drawing path.trip-line.leaflet-interactive {
-  pointer-events: none;
+.region-controls > label {
+  margin: 0;
 }
 
 /* Staged tag names, before they are applied (US-34). */

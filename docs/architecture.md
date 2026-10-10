@@ -235,7 +235,7 @@ C4Component
 
     Container_Boundary(spa, "Web UI") {
         Component(approuter, "App Router", "dioxus_router", "Client-side routing between pages.")
-        Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; region-select map; bulk-tagging of selected trips.")
+        Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; a map whose view can be the region filter; bulk-tagging of selected trips.")
         Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, sharing, downloading the original GPX, and deleting the trip.")
         Component(shared, "Shared Trips", "Dioxus", "US-53: what a share's link opens, with no login and no menu — the share's title, every track on one overview map and the trips' list, and each trip read-only: stats, map, elevation, gallery, GPX download. Reads through a client that puts every call under /s/<token>.")
         Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): upload the GPX, then confirm the suggested date-prefixed name, activity type and kind; photos follow in batches with a progress count.")
@@ -271,7 +271,7 @@ C4Component
     Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")
     Rel(gallery, server, "GET /media/* (thumbnails)", "HTTPS")
     Rel(map, osm, "Fetch tiles", "HTTPS")
-    Rel(list, osm, "Fetch tiles (region-select map, US-14)", "HTTPS")
+    Rel(list, osm, "Fetch tiles (trip-list map, US-63)", "HTTPS")
     Rel(shared, osm, "Fetch tiles (overview map, US-53)", "HTTPS")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
@@ -296,13 +296,14 @@ C4Component
   with one set of types rather than mirroring shapes by hand
   ([ADR-0015](./adr/0015-db-model-response-type-separation.md)).
 - **Built so far:** the App Router, the Trip List — filter bar, tag filter, bulk-tagging and the
-  region-select map (US-41, US-52) — and the Trip Detail screen with its Map, Elevation Chart and
+  trip-list map (US-41, US-52, US-63) — and the Trip Detail screen with its Map, Elevation Chart and
   Photo Gallery (US-42), and the two-step Import screen (US-43/US-12) — choose a GPX, confirm the
   suggested name, activity type and kind, then watch the photos upload in batches. A Komoot
   review screen arrives with US-44.
 - The list screen's filters live in the SPA's own URL query, so a narrowed list is bookmarkable
-  and survives a reload, and the region rectangle can be restored onto the map (US-52). The map
-  reports each dragged rectangle back into Rust state over `document::eval`'s channel — the
+  and survives a reload, and the map starts on a stored region (US-52). The map reports its view
+  back into Rust state over `document::eval`'s channel each time it settles, and with "Filter to
+  map" on, that view is the region (US-92) — the
   sustained two-way interaction [ADR-0025](./adr/0025-js-widget-interop-via-eval.md) named as
   its own revisit trigger, spiked before implementation and found to hold
   ([eval-two-way-spike.md](./eval-two-way-spike.md)).

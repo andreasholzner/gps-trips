@@ -220,66 +220,102 @@ test("choosing a tag narrows the list to trips carrying it (US-38)", async ({ pa
 // US-14, carried by US-52. Dragging is a real mouse gesture and the map is
 // drawn by JS through `document::eval`, so neither is observable anywhere but
 // here — both of this layer's exemptions at once.
-test("dragging a rectangle on the map filters by region, and it survives a reload (US-14)", async ({
-  page,
-}) => {
+/// Drag the region map sideways from `from` to `to`, as fractions of its
+/// width, with the mouse: a real pan.
+///
+/// `page.mouse` works in viewport coordinates and does not scroll the way
+/// `locator.click()` does, so the map has to be brought into view first or
+/// the drag lands on whatever happens to be there instead.
+async function pan(page, from, to) {
+  const map = page.locator("#region-map");
+  await map.scrollIntoViewIfNeeded();
+  const box = await map.boundingBox();
+  await page.mouse.move(box.x + box.width * from, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * to, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+}
+
+/// The corners in the URL's `bbox`, or `null` when there is none.
+function bboxOf(page) {
+  const param = new URL(page.url()).searchParams.get("bbox");
+  return param === null ? null : param.split(",").map(Number);
+}
+
+// US-92: the visible area is the region while "Filter to map" is ticked.
+// Panning and zooming are real user events on a map drawn by JS.
+test("with Filter to map on, panning and zooming move the region (US-92)", async ({ page }) => {
   await page.goto("/app/");
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+  // Fitted to the fixture's short walk — every fixture trip is the same one.
+  await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
 
-  // In view from the start since US-63: nothing to open first.
-  await expect(page.locator("#region-map.leaflet-container")).toBeVisible();
-
-  // Arm the drawing, then drag a rectangle over the map's western ocean,
-  // nowhere near the fixture's Oslo track.
-  //
-  // `page.mouse` works in viewport coordinates and does not scroll the way
-  // `locator.click()` does, so the map has to be brought into view first or
-  // the drag lands on whatever happens to be there instead. Starting a tenth
-  // of the way in also keeps clear of Leaflet's zoom control, which swallows
-  // mousedown in the top-left corner.
-  await page.locator("#region-select").click();
-  await page.locator("#region-map").scrollIntoViewIfNeeded();
-  const box = await page.locator("#region-map").boundingBox();
-  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.35);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.75, { steps: 8 });
-  await page.mouse.up();
-
-  // The region reached the filters, the query and the URL.
-  await expect(page.getByText("No trips match your filters.")).toBeVisible();
+  const follow = page.locator("#region-follow");
+  await follow.check();
   await expect(page).toHaveURL(/[?&]bbox=/);
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+
+  // Panned off the walk, the list follows the view.
+  await pan(page, 0.05, 0.95);
+  await pan(page, 0.05, 0.95);
+  await expect(page.getByText("No trips match your filters.")).toBeVisible();
+
+  // Zooming out brings it back into view, and into the list.
+  const [west, , east] = bboxOf(page);
+  await zoomBy(page, "region-map", "Zoom out", 3, 12);
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+  const [wider, , further] = bboxOf(page);
+  expect(further - wider).toBeGreaterThan(east - west);
 
   // The region outlives a tab switch, like every other filter (US-14).
   await page.getByRole("button", { name: "Planned" }).click();
-  await expect(page).toHaveURL(/[?&]bbox=/);
   await expect(page).toHaveURL(/kind=planned/);
+  await expect(page).toHaveURL(/[?&]bbox=/);
   await page.getByRole("button", { name: "Recorded" }).click();
 
-  // And it is restored onto the map on the next load (US-14).
+  // And a reload starts on it, still filtering.
   await page.reload();
-  await expect(page.getByText("No trips match your filters.")).toBeVisible();
-  await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
+  await expect(follow).toBeChecked();
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+  await expect(page).toHaveURL(/[?&]bbox=/);
 
-  // Clearing brings the trips back, and takes the rectangle off the map:
-  // a rectangle the filters no longer hold would claim a region that is
-  // not narrowing anything.
-  await page.locator("#region-clear").click();
+  // Off again: the region goes, and the map stays where it is.
+  await expect(follow).toBeEnabled();
+  await pan(page, 0.05, 0.95);
+  await pan(page, 0.05, 0.95);
+  await expect(page.getByText("No trips match your filters.")).toBeVisible();
+  await follow.uncheck();
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
   await expect(page).not.toHaveURL(/[?&]bbox=/);
-  await expect(page.locator("#region-map .leaflet-interactive")).toHaveCount(0);
 });
 
-// The toolbar's "Clear filters" clears the region too, so it must take the
-// rectangle with it just as "Clear region" does.
-test("clearing the filters takes the region off the map (US-14)", async ({ page }) => {
+test("with Filter to map off, panning narrows nothing (US-92)", async ({ page }) => {
+  await page.goto("/app/");
+  await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
+
+  await pan(page, 0.05, 0.95);
+  await pan(page, 0.05, 0.95);
+  // Nothing to wait *for* when nothing should happen: give a re-query the
+  // time it would take, then look.
+  await page.waitForTimeout(300);
+
+  await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]bbox=/);
+  await expect(page.locator("#region-follow")).not.toBeChecked();
+});
+
+// The toolbar's "Clear filters" clears the region too, so it must untick
+// "Filter to map" with it (US-92).
+test("clearing the filters stops filtering to the map (US-92)", async ({ page }) => {
   await page.goto("/app/?bbox=-30,30,-20,40");
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
-  await expect(page.locator("#region-map .leaflet-interactive")).toBeVisible();
+  await expect(page.locator("#region-follow")).toBeChecked();
 
   await page.getByRole("button", { name: "Clear filters" }).click();
 
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
-  await expect(page.locator("#region-map .leaflet-interactive")).toHaveCount(0);
+  await expect(page.locator("#region-follow")).not.toBeChecked();
+  await expect(page).not.toHaveURL(/[?&]bbox=/);
 });
 
 // US-58: the same control on the other map. The fix belongs to the control
@@ -332,13 +368,8 @@ test("the map fits the trips on load and again when asked (US-63)", async ({ pag
   await page.goto("/app/");
   await expect(mark).toBeInViewport();
 
-  // Pan the marks off the map: an unarmed drag moves the view.
-  await map.scrollIntoViewIfNeeded();
-  const box = await map.boundingBox();
-  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height * 0.5, { steps: 8 });
-  await page.mouse.up();
+  // Pan the marks off the map.
+  await pan(page, 0.2, 0.9);
   const inside = async () => {
     // Zoomed in, a line panned out of view is taken off the map (US-73).
     if ((await mark.count()) === 0) return false;
@@ -489,6 +520,22 @@ test.describe("paging (US-63)", () => {
     // Where the owner is stays out of the URL (US-52 is about what the list is).
     await expect(page).not.toHaveURL(/page=/);
   });
+
+  test("with Filter to map on, a pan goes back to the first page (US-92)", async ({ page }) => {
+    await page.goto("/app/?q=paged");
+    await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
+    await page.locator("#region-follow").check();
+    await expect(page).toHaveURL(/[?&]bbox=/);
+    await page.getByRole("button", { name: "Next ›" }).click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+
+    // A small pan keeps every trip in view, but moves the region.
+    const before = bboxOf(page);
+    await pan(page, 0.4, 0.5);
+    await expect.poll(() => bboxOf(page)).not.toEqual(before);
+
+    await expect(page.getByText("Page 1 of 2")).toBeVisible();
+  });
 });
 
 // US-66's "Unnamed" filter. Ticking it is a real `change` event. Its one
@@ -614,16 +661,11 @@ test("the confirmations' buttons do not touch", async ({ page }) => {
 
 // Layout, which only a browser computes: the region map's buttons stand
 // apart rather than touching (US-63).
-test("the region map's buttons do not touch", async ({ page }) => {
+test("the region map's controls do not touch", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app/");
 
-  const boxes = [];
-  for (const id of ["#region-select", "#region-clear", "#region-fit"]) {
-    boxes.push(await page.locator(id).boundingBox());
-  }
-  for (let i = 1; i < boxes.length; i++) {
-    const gap = boxes[i].x - (boxes[i - 1].x + boxes[i - 1].width);
-    expect(gap, `gap before button ${i + 1}`).toBeGreaterThanOrEqual(8);
-  }
+  const follow = await page.locator(".region-controls > label").boundingBox();
+  const fit = await page.locator("#region-fit").boundingBox();
+  expect(fit.x - (follow.x + follow.width)).toBeGreaterThanOrEqual(8);
 });

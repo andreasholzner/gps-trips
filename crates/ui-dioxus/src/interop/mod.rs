@@ -14,7 +14,7 @@
 //! - **The container is Dioxus-empty**; Leaflet owns that subtree, and the
 //!   script refuses to initialise a second time into it.
 //! - **JS renders; Rust decides.** The scripts hold no fetching and no
-//!   business logic: Rust reads the API, prepares the values — a rectangle's
+//!   business logic: Rust reads the API, prepares the values — a view's
 //!   corners into a `bbox`, a track into a polyline and a pair of chart
 //!   series — and passes them in, where all of it stays unit-testable.
 //!
@@ -31,8 +31,7 @@ mod track;
 pub use overview::{highlight_on_overview_map, start_overview_map, OverviewEvent, OverviewLine};
 pub use place::start_place_map;
 pub use region::{
-    arm_region_map, bbox_corners, bbox_param, draw_heat_marks, draw_trip_lines, show_region,
-    start_region_map, RegionEvent,
+    bbox_corners, bbox_param, draw_heat_marks, draw_trip_lines, start_region_map, RegionEvent,
 };
 pub use stats::draw_stats_plot;
 pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};

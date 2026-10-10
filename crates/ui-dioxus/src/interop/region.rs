@@ -1,4 +1,5 @@
-//! The region map (US-52/US-14, US-63, US-73) — the trip list's own widget.
+//! The region map (US-52/US-14, US-63, US-73, US-92) — the trip list's own
+//! widget.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -7,32 +8,30 @@ use crate::heat::HeatMarks;
 use crate::trip_lines::{TripLines, Viewport};
 
 /// Coordinate decimals kept in the `bbox` parameter. Six is ~10 cm — far
-/// finer than a rectangle dragged by hand needs, and it keeps a shared URL
-/// readable.
+/// finer than a region taken from the map's view needs, and it keeps a
+/// shared URL readable.
 const BBOX_DECIMALS: usize = 6;
 
-/// The region map (US-52/US-14, US-63, US-65, US-73). Draws into
-/// `#region-map`, restores the rectangle it is given, and reports back
-/// [`RegionEvent`]s: every finished drag while armed, where the map is
-/// looking whenever it settles, and a click on a trip's line.
+/// The region map (US-52/US-14, US-63, US-73, US-92). Draws into
+/// `#region-map`, starts on the region it is given, and reports back
+/// [`RegionEvent`]s: where the map is looking whenever it settles — after a
+/// pan and a zoom alike — and a click on a trip's line.
 ///
-/// Its channel carries [`MapMessage`]s: the rectangle the filters hold —
-/// first when the map starts, then whenever the region changes, including
-/// to none when it is cleared — and either the marks or the lines whenever
-/// the list's rows or the view change; each replaces the other. The view
-/// fits once — to the first rectangle, or else to the
-/// first marks there are — and after that only when the owner asks with
-/// "Fit to trips", so the map does not jump on every keystroke.
+/// Its channel carries [`MapMessage`]s: the region the filters hold, once,
+/// when the map starts, and either the marks or the lines whenever the
+/// list's rows or the view change; each replaces the other. The view fits
+/// once — to that region, or else to the first marks there are — and after
+/// that only when the owner asks with "Fit to trips", so the map does not
+/// jump on every keystroke.
 ///
 /// Coordinate hygiene stays on the JS side because it needs the live map:
 /// Leaflet's world repeats horizontally, so a map panned east reports
-/// longitudes like 309 rather than -51, and a drag into the blank space
-/// above the projected world reports latitudes beyond ±90 — either of which
-/// the server rejects with a 400. `wrapLatLngBounds` shifts the rectangle
-/// back by whole world widths, keeping its size and its place on the globe.
-/// A rectangle that genuinely straddles the antimeridian still ends up out
-/// of range and still gets the server's 400: that one is unsupported in v1
-/// (ADR-0011), unlike merely having panned east.
+/// longitudes like 309 rather than -51, and a view of the blank space above
+/// the projected world reaches latitudes beyond ±90 — either of which the
+/// server rejects with a 400. `wrapLatLngBounds` shifts the view back by
+/// whole world widths, keeping its size and its place on the globe, and the
+/// latitudes are clamped. A view that genuinely straddles the antimeridian
+/// still ends east of 180; Rust widens that one to every longitude.
 const REGION_MAP_SCRIPT: &str = r##"
     const CONTAINER = "region-map";
     // Europe, roughly Iceland to Malta and Iberia to the western Urals —
@@ -67,45 +66,7 @@ const REGION_MAP_SCRIPT: &str = r##"
       attribution: "© OpenStreetMap contributors",
     }).addTo(map);
 
-    let rect = null;
-    const show = (bounds) => {
-      if (rect) rect.setBounds(bounds);
-      else rect = L.rectangle(bounds, { color: "#3388ff", weight: 2 }).addTo(map);
-    };
-
     map.fitBounds(EUROPE);
-
-    // The rectangle the filters hold, put back when a drag comes to nothing.
-    let held = null;
-    const restore = () => {
-      if (held) show(held);
-      else {
-        rect?.remove();
-        rect = null;
-      }
-    };
-
-    // Drawing is armed from Rust (US-65), so an ordinary drag still pans the
-    // map. While armed, one pointer draws — mouse, finger or pen alike — and
-    // everything else a touch could do to the map is off: panning, pinch
-    // zoom and the two-finger pan that comes with it, and, through
-    // `region-drawing`'s `touch-action: none`, the browser's own pinch of
-    // the page.
-    let drawing = false;
-    let origin = null;
-    let pointer = null;
-    const arm = (on) => {
-      drawing = on;
-      if (!on && pointer !== null) {
-        pointer = null;
-        restore();
-      }
-      el.classList.toggle("region-drawing", on);
-      for (const handler of [map.dragging, map.touchZoom]) {
-        if (on) handler.disable();
-        else handler.enable();
-      }
-    };
 
     const clampLat = (n) => Math.min(90, Math.max(-90, n));
     const corners = (w) => [
@@ -113,58 +74,16 @@ const REGION_MAP_SCRIPT: &str = r##"
       w.getEast(), clampLat(w.getNorth()),
     ];
 
-    // A tap, or a slip of the finger, is not a region: anything narrower or
-    // lower than this on screen is dropped, and the map stays armed.
-    const MIN_SIDE = 5;
-
-    el.addEventListener("pointerdown", (e) => {
-      if (!drawing || !e.isPrimary || pointer !== null) return;
-      // The zoom buttons keep their clicks.
-      if (e.target.closest(".leaflet-control")) return;
-      e.preventDefault();
-      pointer = e.pointerId;
-      origin = map.mouseEventToContainerPoint(e);
-      // Captured, so a pointer lifted outside the map still ends the drag
-      // rather than stranding a rectangle the filters do not hold.
-      el.setPointerCapture(pointer);
-      const at = map.containerPointToLatLng(origin);
-      show([at, at]);
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== pointer) return;
-      show([map.containerPointToLatLng(origin), map.mouseEventToLatLng(e)]);
-    });
-    el.addEventListener("pointerup", (e) => {
-      if (e.pointerId !== pointer) return;
-      pointer = null;
-      const end = map.mouseEventToContainerPoint(e);
-      if (Math.abs(end.x - origin.x) < MIN_SIDE || Math.abs(end.y - origin.y) < MIN_SIDE) {
-        restore();
-        return;
-      }
-      const w = map.wrapLatLngBounds(L.latLngBounds(
-        map.containerPointToLatLng(origin), map.containerPointToLatLng(end),
-      ));
-      report({ region: corners(w) });
-    });
-    // Taken away by the browser — a call coming in, say: not a region.
-    el.addEventListener("pointercancel", (e) => {
-      if (e.pointerId !== pointer) return;
-      pointer = null;
-      restore();
-    });
-
     // Only now read the channel — after the map is interactive, never
     // before. Awaiting it first would leave the map drawn but dead if the
     // first message were slow or never came, which is exactly what it did.
     let fitted = false;
 
     // The heat marks (US-63): not interactive, so a drag that starts on one
-    // still draws or pans. `heat-mark` names them for the browser tests.
+    // still pans. `heat-mark` names them for the browser tests.
     const heat = L.layerGroup().addTo(map);
     // The trips' own lines once zoomed in (US-73). `trip-line` names them
-    // for the browser tests, and for the style that has them take no
-    // pointer while armed.
+    // for the browser tests.
     const lines = L.layerGroup().addTo(map);
     // Thinner than a share's lines: a dense region draws many at once.
     const LINE_WEIGHT = 3;
@@ -182,8 +101,11 @@ const REGION_MAP_SCRIPT: &str = r##"
       }
     };
 
-    // Where the map is looking, whenever it settles, for Rust to decide
-    // between marks and lines (US-73). Wrapped like a drawn rectangle.
+    // Where the map is looking, whenever it settles — a zoom ends in a
+    // `moveend` too — for Rust to decide between marks and lines (US-73)
+    // and, while filtering to the map is on, to take as the region (US-92).
+    // The first report waits for the region the map starts on: reporting
+    // Europe before it would briefly make Europe the region.
     const reportView = () => {
       report({ view: {
         zoom: map.getZoom(),
@@ -191,25 +113,19 @@ const REGION_MAP_SCRIPT: &str = r##"
       } });
     };
     map.on("moveend", reportView);
-    reportView();
 
     for (;;) {
       const message = await dioxus.recv();
       if ("region" in message) {
-        // The rectangle follows the filters, so clearing the region —
-        // by "Clear region" or by "Clear filters" — takes it off the map.
+        // The region the map starts on, from the URL (US-92). Fitted
+        // without padding or animation, so the view — and with filtering
+        // on, the region — is as close to it as the map's shape allows.
         const region = message.region;
-        held = region && [[region[1], region[0]], [region[3], region[2]]];
-        // Not over a rectangle still being drawn; it is put back when that
-        // drag ends.
-        if (pointer === null) restore();
-        if (!held) continue;
-        if (!fitted) {
-          map.fitBounds(held, { padding: [20, 20] });
+        if (region && !fitted) {
+          map.fitBounds([[region[1], region[0]], [region[3], region[2]]], { animate: false });
           fitted = true;
         }
-      } else if ("armed" in message) {
-        arm(message.armed);
+        reportView();
       } else if ("marks" in message) {
         heat.clearLayers();
         lines.clearLayers();
@@ -254,13 +170,11 @@ const REGION_MAP_SCRIPT: &str = r##"
 "##;
 
 /// What Rust tells the region map, keyed by kind: `{"region": [..]}` (or
-/// `null` for none), `{"armed": bool}`, `{"marks": {..}}` and
-/// `{"lines": {..}}`.
+/// `null` for none) to start on, `{"marks": {..}}` and `{"lines": {..}}`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum MapMessage<'a> {
     Region(Option<[f64; 4]>),
-    Armed(bool),
     Marks(&'a HeatMarks),
     Lines(&'a TripLines),
 }
@@ -269,15 +183,13 @@ enum MapMessage<'a> {
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RegionEvent {
-    /// A finished drag while armed: `[west, south, east, north]`.
-    Region([f64; 4]),
     /// Where the map is looking, once it has settled (US-73).
     View(Viewport),
     /// A trip's line was clicked or tapped: open the trip (US-73).
     Open(i64),
 }
 
-/// Start the region map, handing it the rectangle the filters already hold.
+/// Start the region map on the region the filters already hold (US-92).
 ///
 /// The returned handle must be kept alive — and `recv()`ed in a loop, as
 /// [`RegionEvent`]s — for as long as the map should report: it is the
@@ -288,22 +200,6 @@ pub fn start_region_map(restore: Option<[f64; 4]>) -> document::Eval {
         dioxus::logger::tracing::error!("could not seed the region map: {err}");
     }
     eval
-}
-
-/// Draw `region` on the region map in place of whatever rectangle it shows,
-/// or take the rectangle off when there is none (US-14).
-pub fn show_region(map: &document::Eval, region: Option<[f64; 4]>) {
-    if let Err(err) = map.send(MapMessage::Region(region)) {
-        dioxus::logger::tracing::error!("could not show the region on the map: {err}");
-    }
-}
-
-/// Arm the region map for drawing, or disarm it (US-65): while armed, a drag
-/// draws a rectangle instead of panning.
-pub fn arm_region_map(map: &document::Eval, armed: bool) {
-    if let Err(err) = map.send(MapMessage::Armed(armed)) {
-        dioxus::logger::tracing::error!("could not arm the region map: {err}");
-    }
 }
 
 /// Replace the marks on the region map with `marks` (US-63), on the map's
@@ -321,7 +217,7 @@ pub fn draw_trip_lines(map: &document::Eval, lines: &TripLines) {
     }
 }
 
-/// The four corners the map reported, as the `bbox` query parameter the API
+/// A region's four corners, as the `bbox` query parameter the API
 /// takes (`minLon,minLat,maxLon,maxLat`, ADR-0008).
 pub fn bbox_param(corners: [f64; 4]) -> String {
     corners
@@ -331,9 +227,9 @@ pub fn bbox_param(corners: [f64; 4]) -> String {
         .join(",")
 }
 
-/// The inverse, for restoring a stored rectangle onto the map. `None` for
-/// anything that is not four numbers — a hand-edited URL loses the
-/// rectangle rather than breaking the screen.
+/// The inverse, for starting the map on a stored region. `None` for
+/// anything that is not four numbers — a hand-edited URL loses the region's
+/// view rather than breaking the screen.
 pub fn bbox_corners(param: &str) -> Option<[f64; 4]> {
     let numbers: Vec<f64> = param
         .split(',')
@@ -377,9 +273,6 @@ mod tests {
                 "opacity": 0.6,
             } })
         );
-        // US-65: arming and disarming "Select area" is Rust's to decide.
-        let armed = serde_json::to_value(MapMessage::Armed(true)).unwrap();
-        assert_eq!(armed, serde_json::json!({ "armed": true }));
     }
 
     #[test]
@@ -405,13 +298,9 @@ mod tests {
     }
 
     #[test]
-    fn the_map_reports_a_rectangle_its_view_and_a_click_apart() {
+    fn the_map_reports_its_view_and_a_click_apart() {
         let read = |json| serde_json::from_value::<RegionEvent>(json).unwrap();
 
-        assert_eq!(
-            read(serde_json::json!({ "region": [1.0, 2.0, 3.0, 4.0] })),
-            RegionEvent::Region([1.0, 2.0, 3.0, 4.0])
-        );
         assert_eq!(
             read(serde_json::json!({ "view": { "zoom": 11, "bounds": [1.0, 2.0, 3.0, 4.0] } })),
             RegionEvent::View(Viewport {
@@ -420,6 +309,15 @@ mod tests {
             })
         );
         assert_eq!(read(serde_json::json!({ "open": 7 })), RegionEvent::Open(7));
+    }
+
+    #[test]
+    fn us92_the_map_reports_no_rectangle_any_more() {
+        // The visible area is the region; nothing is drawn to report.
+        assert!(serde_json::from_value::<RegionEvent>(
+            serde_json::json!({ "region": [1.0, 2.0, 3.0, 4.0] })
+        )
+        .is_err());
     }
 
     #[test]

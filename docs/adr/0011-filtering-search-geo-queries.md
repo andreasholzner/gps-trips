@@ -24,7 +24,7 @@ Implement all filtering as **SQL `WHERE` clauses over indexed `trip` columns** �
 - **Distance** — range on `trip.distance_m`.
 - **Free-text name** — `name LIKE '%q%'` for v1 (upgrade to SQLite FTS5 only if needed).
 - **Geographic region** — a **bounding-box overlap** test between the region rectangle the owner
-  draws on the map and each trip's stored bbox columns (`min_lat`/`min_lon`/`max_lat`/`max_lon`):
+  chooses on the map and each trip's stored bbox columns (`min_lat`/`min_lon`/`max_lat`/`max_lon`):
   two trips' boxes overlap iff they overlap on both axes. The region selection is a rectangle
   (lon/lat min/max), not a free polygon, in v1.
 

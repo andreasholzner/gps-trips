@@ -1,10 +1,11 @@
 //! The region map (US-52, carrying US-14; made the screen's centre by
 //! US-63): the trips the filters match, drawn as a heat map — or, zoomed
-//! in, as their tracks (US-73) — and the rectangle the owner drags to
-//! narrow the list to trips whose stored bounding box overlaps it.
+//! in, as their tracks (US-73). With "Filter to map" ticked, its visible
+//! area is the region (US-92): the list narrows to trips whose stored
+//! bounding box overlaps it, and follows every pan and zoom.
 //!
 //! The map itself is Leaflet, reached through `interop`; this module is the
-//! Rust half — what to hand the map, and what to do with the rectangle it
+//! Rust half — what to hand the map, and what to do with the view it
 //! reports back.
 
 use std::collections::HashSet;
@@ -29,25 +30,21 @@ use crate::Route;
 /// the map on screen costs, and it is paid on purpose.
 #[component]
 pub fn RegionFilter(filters: Signal<Filters>, trips: Option<Vec<TripSummary>>) -> Element {
-    let armed = use_signal(|| false);
+    // Where the map was last looking once it settled (US-73), and so the
+    // region "Filter to map" takes (US-92).
+    let viewport = use_signal(|| None::<Viewport>);
     // The activities of the lines drawn while zoomed in (US-73); `None`
     // while the map shows the marks, whose activities the legend names.
     let lined = use_signal(|| None::<Vec<ActivityType>>);
     let shown = legend_activities(lined(), trips.as_deref());
     rsx! {
         section { class: "region",
-            RegionMap { filters, trips, armed, lined }
+            RegionMap { filters, trips, viewport, lined }
             if let Some(shown) = shown {
                 ActivityLegend { shown }
             }
             p { class: "region-controls",
-                SelectArea { armed }
-                button {
-                    r#type: "button",
-                    id: "region-clear",
-                    onclick: move |_| filters.write().bbox = String::new(),
-                    "Clear region"
-                }
+                FilterToMap { filters, viewport }
                 // Handled by the map's script alone: fitting the view to the
                 // marks it already holds needs nothing from Rust.
                 button {
@@ -70,44 +67,74 @@ fn legend_activities(
     lined.or_else(|| trips.map(|trips| heat::marks(trips).activities()))
 }
 
-/// Arms the map for drawing, or backs out of it (US-65). While armed a drag
-/// draws rather than pans — by finger as much as by mouse — so the button
-/// says so, and pressing it again is the way back. Drawing a rectangle
-/// disarms it too.
+/// Turns the map's view into the region filter, and back off (US-92). Ticked
+/// exactly when the filters hold a region, so a region from the URL ticks
+/// it and "Clear filters" unticks it; there is nothing to take until the
+/// map has said where it is looking.
 #[component]
-fn SelectArea(armed: Signal<bool>) -> Element {
+fn FilterToMap(mut filters: Signal<Filters>, viewport: Signal<Option<Viewport>>) -> Element {
     rsx! {
-        button {
-            r#type: "button",
-            id: "region-select",
-            aria_pressed: "{armed}",
-            onclick: move |_| armed.toggle(),
-            if armed() { "Cancel selection" } else { "Select area" }
+        label {
+            input {
+                r#type: "checkbox",
+                id: "region-follow",
+                checked: !filters.read().bbox.is_empty(),
+                disabled: viewport().is_none(),
+                onchange: move |event| {
+                    let region = match viewport() {
+                        Some(view) if event.checked() => interop::bbox_param(region_of(&view)),
+                        _ => String::new(),
+                    };
+                    filters.write().bbox = region;
+                },
+            }
+            "Filter to map"
         }
     }
 }
 
-/// The map itself: draws the rectangle the filters already hold and the
-/// matching trips — as marks, or zoomed in as lines (US-73) — and writes
-/// back every rectangle the owner drags while `armed`. A click on a line
-/// opens that trip.
+/// The region the visible area filters by (US-92), `[west, south, east,
+/// north]`. A view across the antimeridian, or wider than the world, covers
+/// every longitude: the API rejects a region that crosses it (ADR-0011).
+fn region_of(view: &Viewport) -> [f64; 4] {
+    let [west, south, east, north] = view.bounds;
+    if west < -180.0 || east > 180.0 {
+        [-180.0, south, 180.0, north]
+    } else {
+        view.bounds
+    }
+}
+
+/// The `bbox` the filters take once the map settles on `view` (US-92):
+/// `None` while filtering to the map is off, or when the region already is
+/// that view, so a settle without a move does not re-query the list.
+fn followed(bbox: &str, view: &Viewport) -> Option<String> {
+    if bbox.is_empty() {
+        return None;
+    }
+    let region = interop::bbox_param(region_of(view));
+    (region != bbox).then_some(region)
+}
+
+/// The map itself: draws the matching trips — as marks, or zoomed in as
+/// lines (US-73) — and reports where it is looking, which the region
+/// follows while filtering to the map is on (US-92). A click on a line opens
+/// that trip.
 #[component]
 fn RegionMap(
     filters: Signal<Filters>,
     trips: Option<Vec<TripSummary>>,
-    armed: Signal<bool>,
+    mut viewport: Signal<Option<Viewport>>,
     lined: Signal<Option<Vec<ActivityType>>>,
 ) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut handle = use_signal(|| None::<document::Eval>);
-    // Where the map was last looking once it settled (US-73).
-    let mut viewport = use_signal(|| None::<Viewport>);
     // Every track read while the list is open (US-73), and those asked for
     // whose answer is still on its way.
     let cache = use_signal(TrackCache::default);
     let mut pending = use_signal(HashSet::<i64>::new);
     // One channel for the life of this component. `use_future` runs once, so
-    // the re-render each new rectangle causes — the filters change, the list
+    // the re-render each new region causes — the filters change, the list
     // re-queries — does not restart the map or drop the channel
     // (`docs/eval-two-way-spike.md`).
     use_future(move || async move {
@@ -116,11 +143,13 @@ fn RegionMap(
         handle.set(Some(map));
         loop {
             match map.recv::<RegionEvent>().await {
-                Ok(RegionEvent::Region(corners)) => {
-                    filters.write().bbox = interop::bbox_param(corners);
-                    armed.set(false);
+                Ok(RegionEvent::View(settled)) => {
+                    viewport.set(Some(settled));
+                    let region = followed(&filters.peek().bbox, &settled);
+                    if let Some(region) = region {
+                        filters.write().bbox = region;
+                    }
                 }
-                Ok(RegionEvent::View(settled)) => viewport.set(Some(settled)),
                 Ok(RegionEvent::Open(id)) => {
                     navigator().push(Route::TripDetail { id });
                 }
@@ -129,25 +158,6 @@ fn RegionMap(
                     break;
                 }
             }
-        }
-    });
-
-    // The rectangle follows the region the filters hold, so clearing it —
-    // "Clear region", or "Clear filters" on the toolbar — takes it off the
-    // map. A memo, so a keystroke in the search box sends nothing here.
-    let region = use_memo(move || filters.read().bbox.clone());
-    use_effect(move || {
-        let corners = interop::bbox_corners(&region.read());
-        if let Some(map) = handle.read().as_ref() {
-            interop::show_region(map, corners);
-        }
-    });
-
-    // Rust holds whether drawing is armed; the map only follows (ADR-0025).
-    use_effect(move || {
-        let armed = armed();
-        if let Some(map) = handle.read().as_ref() {
-            interop::arm_region_map(map, armed);
         }
     });
 
@@ -275,9 +285,108 @@ mod tests {
 
         assert!(html.contains("region-map"), "{html}");
         assert!(!html.contains("<details"), "{html}");
-        for control in ["Select area", "Clear region", "Fit to trips"] {
+        for control in ["Filter to map", "Fit to trips"] {
             assert!(html.contains(control), "{control}: {html}");
         }
+    }
+
+    #[test]
+    fn us92_the_rectangle_and_its_buttons_are_gone() {
+        let html = render(|| {
+            let filters = Signal::new(Filters::default());
+            rsx! { RegionFilter { filters, trips: None } }
+        });
+
+        for control in ["Select area", "Cancel selection", "Clear region"] {
+            assert!(!html.contains(control), "{control}: {html}");
+        }
+    }
+
+    #[test]
+    fn us92_filtering_to_the_map_is_on_exactly_when_the_filters_hold_a_region() {
+        // The checkbox has no state of its own: a region in the URL ticks
+        // it, and "Clear filters" unticks it.
+        let off = render(|| {
+            let filters = Signal::new(Filters::default());
+            rsx! { RegionFilter { filters, trips: None } }
+        });
+        let on = render(|| {
+            let filters = Signal::new(Filters {
+                bbox: "10.75,59.91,11.25,60.12".to_string(),
+                ..Filters::default()
+            });
+            rsx! { RegionFilter { filters, trips: None } }
+        });
+
+        assert!(off.contains(r#"id="region-follow""#), "{off}");
+        assert!(!off.contains("checked"), "{off}");
+        assert!(on.contains("checked"), "{on}");
+    }
+
+    #[test]
+    fn us92_filtering_to_the_map_waits_until_the_map_says_where_it_is() {
+        // Before the first view is reported there is no region to take.
+        let html = render(|| {
+            let filters = Signal::new(Filters::default());
+            rsx! { RegionFilter { filters, trips: None } }
+        });
+
+        assert!(html.contains("disabled"), "{html}");
+    }
+
+    fn view(bounds: [f64; 4]) -> Viewport {
+        Viewport { zoom: 9.0, bounds }
+    }
+
+    #[test]
+    fn us92_the_region_is_the_visible_area() {
+        assert_eq!(
+            region_of(&view([10.5, 59.8, 11.0, 60.0])),
+            [10.5, 59.8, 11.0, 60.0]
+        );
+    }
+
+    #[test]
+    fn us92_a_view_across_the_antimeridian_covers_every_longitude() {
+        // The API rejects a region that crosses it (ADR-0011).
+        assert_eq!(
+            region_of(&view([170.0, -20.0, 190.0, -10.0])),
+            [-180.0, -20.0, 180.0, -10.0]
+        );
+    }
+
+    #[test]
+    fn us92_a_view_wider_than_the_world_covers_every_longitude() {
+        assert_eq!(
+            region_of(&view([-180.0, -60.0, 300.0, 80.0])),
+            [-180.0, -60.0, 180.0, 80.0]
+        );
+        assert_eq!(
+            region_of(&view([-250.0, -60.0, 100.0, 80.0])),
+            [-180.0, -60.0, 180.0, 80.0]
+        );
+    }
+
+    #[test]
+    fn us92_with_filtering_off_the_view_narrows_nothing() {
+        assert_eq!(followed("", &view([10.5, 59.8, 11.0, 60.0])), None);
+    }
+
+    #[test]
+    fn us92_with_filtering_on_the_region_follows_the_view() {
+        assert_eq!(
+            followed("-30,30,-20,40", &view([10.5, 59.8, 11.0, 60.0])),
+            Some("10.500000,59.800000,11.000000,60.000000".to_string())
+        );
+    }
+
+    #[test]
+    fn us92_a_view_that_did_not_move_changes_nothing() {
+        // A settle without a move must not re-query the list.
+        let bounds = [10.5, 59.8, 11.0, 60.0];
+        let held = interop::bbox_param(bounds);
+
+        assert_eq!(followed(&held, &view(bounds)), None);
     }
 
     #[test]
@@ -330,18 +439,5 @@ mod tests {
 
         assert!(html.contains(r#"role="status""#), "{html}");
         assert!(html.contains("Loading tracks…"), "{html}");
-    }
-
-    #[test]
-    fn select_area_says_when_it_is_armed_and_offers_a_way_back() {
-        // US-65: once armed, a drag draws instead of panning, so the owner
-        // must be able to see that and back out of it.
-        let idle = render(|| rsx! { SelectArea { armed: Signal::new(false) } });
-        let armed = render(|| rsx! { SelectArea { armed: Signal::new(true) } });
-
-        assert!(idle.contains("Select area"), "{idle}");
-        assert!(idle.contains(r#"aria-pressed="false""#), "{idle}");
-        assert!(armed.contains("Cancel selection"), "{armed}");
-        assert!(armed.contains(r#"aria-pressed="true""#), "{armed}");
     }
 }
