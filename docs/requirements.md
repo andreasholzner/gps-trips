@@ -136,6 +136,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
+| [US-92](#us-92--filter-by-the-maps-view)                      | 📋     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 
 ### Maintaining this file
 
@@ -497,6 +498,9 @@ means "no region selected".
 
 **Decisions:** US-13/US-14 → ADR-0011 (filtering, search & geographic queries on SQLite)
 
+**Superseded in part by US-92:** the region comes from the map's visible area, not a dragged
+rectangle; the `bbox` query and its matching stay.
+
 ### US-32 — Recorded and planned tabs
 
 **Done ✅** — As the owner, when I list all trips, planned and recorded trips are list separately.
@@ -592,6 +596,9 @@ needs), ADR-0025 (Rust decides the marks, the script draws them), ADR-0018 (the 
 stays a closed set), ADR-0021 + US-22/US-26 (a bulk edit queues a Komoot push per linked trip and is
 refused during a sync)
 
+**Superseded in part by US-92:** "Select area", "Clear region" and the dragged rectangle are
+removed; the visible area is the region.
+
 ### US-65 — Region selection by touch
 
 **Done ✅** — As the owner, I select a region on the trip-list map by touch, not only with a mouse.
@@ -620,6 +627,8 @@ regression (ADR-0012).
 the region map's existing channel; the script only reads pointers and draws), ADR-0012 (touch is a
 real user event, so it is asserted in the browser layer), US-14/US-52 (the region query and URL
 contract a drawn rectangle feeds, unchanged)
+
+**Superseded by US-92:** the rectangle, its pointer drawing and the armed state are removed.
 
 ### US-66 — Find trips needing a name or photo placement
 
@@ -657,6 +666,8 @@ draws the rectangle. The share's overview map is unchanged: it always draws line
 **Decisions:** US-73 → ADR-0025 (the map reports its viewport; Rust decides marks or lines, the
 script draws them), ADR-0012 (the browser layer for the switch at the threshold and a line's click)
 
+**Superseded in part by US-92:** with no armed state, lines are always clickable.
+
 ### US-90 — Collections and trips on one map
 
 **Planned 📋** — As the owner, I see a guide book's tracks together with my planned and recorded
@@ -676,6 +687,42 @@ nothing computes which collection tracks a trip covers.
 
 **Decisions:** US-90 → ADR-0025 (Rust decides what is drawn and in which style, the script draws
 it), ADR-0011 (region matching by bounding box)
+
+### US-92 — Filter by the map's view
+
+**Planned 📋** — As the owner, I narrow the trip list to the part of the world the trip-list map
+shows, by switching region filtering on and then simply panning and zooming, instead of drawing a
+rectangle.
+
+**Acceptance criteria:**
+
+**One switch instead of a rectangle.** Beside the trip-list map (US-63) a checkbox, "Filter to map",
+turns region filtering on and off. Off — the default — the map pans and zooms as it does today and
+narrows nothing. On, the region is the map's visible area: the list shows only the trips whose
+bounding box overlaps it, and every pan or zoom moves the region with the view once the map has
+settled, not while it is still moving, so the table re-queries once per move. Paging resets to the
+first page on each move, as on any filter change (US-63). Switching it off drops the region and
+leaves the map where it is; "Clear filters" does the same and unticks it.
+
+**The rectangle goes.** "Select area"/"Cancel selection", "Clear region", the drawn rectangle and its
+pointer drawing (US-65) are removed, and with them the armed state: the map always pans and zooms,
+by mouse and by touch, and a trip line is always clickable (US-73). "Fit to trips" stays; with
+filtering on, the view it fits to becomes the region like any other move.
+
+**What stays.** The region still travels as `bbox` in the query and the URL, matched by
+bounding-box overlap (US-14, ADR-0011) — the server is unchanged. A `bbox` in the URL means the
+switch is on: a reload or a shared link ticks it and fits the map to that region, and from then on
+the visible area is the region, so it may come out wider than the link's on a map of another shape.
+The bounds the map reports are clamped to the coordinate range before they become a `bbox`, and a
+view crossing the antimeridian or wider than the world covers every longitude rather than sending a
+region the API rejects. Whether the region follows the view is decided in Rust from the viewport
+the map already reports (US-73); the script only reports and draws. Panning with the switch on
+narrows the list, with it off does not, and the removed controls are gone — asserted in the
+browser layer.
+
+**Decisions:** US-92 → ADR-0011 + US-14/US-52 (the region query and URL contract, unchanged; only
+where the region comes from changes), ADR-0025 (the map reports its settled viewport; Rust decides
+the region), ADR-0012 (pan and zoom are real user events, asserted in the browser layer)
 
 ## Trip page
 
@@ -2081,6 +2128,9 @@ until US-42 deleted the detail page, its last consumer.
 **Decisions:** US-41/42/43/44/52 → ADR-0024 (the SPA these screens are built in), ADR-0012 (the
 migration rule and the test layers that carry the criteria over), ADR-0025 (US-42's map and chart;
 and US-52, which tests that ADR's own revisit trigger)
+
+**Superseded in part by US-92:** the dragged rectangle gives way to the map's visible area; the
+URL contract stays.
 
 US-41 and US-42 are the two screens the spike already built
 ([docs/dioxus-spike.md](./dioxus-spike.md)); US-43 and US-44 were new. All of them are done: the
