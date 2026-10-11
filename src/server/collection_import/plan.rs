@@ -22,8 +22,15 @@ pub(super) struct Derived {
 }
 
 /// The figures of every file track the outcome takes. An unnamed one keeps
-/// the name of the track it replaces, else takes US-86's.
-pub(super) fn derive(worked: &Worked, collection_name: &str) -> HashMap<ItemKey, Derived> {
+/// the name of the track it replaces; an added one is named after the
+/// collection and its place in it, the tracks added going after the last of
+/// the `held_last` it holds — so it takes no name one of them has.
+pub(super) fn derive(
+    worked: &Worked,
+    collection_name: &str,
+    held_last: i64,
+) -> HashMap<ItemKey, Derived> {
+    let mut place = held_last;
     worked
         .matching
         .outcome
@@ -32,6 +39,9 @@ pub(super) fn derive(worked: &Worked, collection_name: &str) -> HashMap<ItemKey,
         .filter_map(|final_track| {
             let (file, index) = final_track.source?;
             let track = &worked.parsed[file].tracks[index];
+            if let Origin::File { .. } = final_track.origin {
+                place += 1;
+            }
             let name = match (&track.name, final_track.origin) {
                 (Some(name), _) => name.clone(),
                 (None, Origin::Held(id)) => worked
@@ -40,7 +50,11 @@ pub(super) fn derive(worked: &Worked, collection_name: &str) -> HashMap<ItemKey,
                     .iter()
                     .find(|held| held.id == id)
                     .map_or_else(String::new, |held| held.name.clone()),
-                (None, Origin::File { .. }) => track_name(None, collection_name, track.position),
+                (None, Origin::File { .. }) => track_name(
+                    None,
+                    collection_name,
+                    usize::try_from(place).unwrap_or_default(),
+                ),
             };
             Some((
                 (file, index),

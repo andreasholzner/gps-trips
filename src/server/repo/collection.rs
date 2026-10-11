@@ -215,6 +215,20 @@ pub async fn collection_name(pool: &SqlitePool, id: i64) -> Result<Option<String
         .await
 }
 
+/// The place of a collection's last track, 0 for one without tracks: an
+/// added track goes after it.
+pub async fn last_collection_track_position(
+    pool: &SqlitePool,
+    collection_id: i64,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT COALESCE(MAX(position), 0) FROM collection_track WHERE collection_id = ?",
+    )
+    .bind(collection_id)
+    .fetch_one(pool)
+    .await
+}
+
 /// A change to a collection's details; `None` leaves a field as it is.
 #[derive(Default)]
 pub struct CollectionChange<'a> {

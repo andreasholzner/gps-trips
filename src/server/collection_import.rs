@@ -240,6 +240,8 @@ struct Prepared {
     /// one — and a new one's description.
     name: String,
     description: String,
+    /// The place of the last track the collection keeps; added ones go after.
+    held_last: i64,
 }
 
 /// Read the parked files and what the collection holds, refuse if it is not
@@ -267,12 +269,17 @@ async fn prepare(
         ));
     }
 
-    let (name, description) = match staged.collection_id {
+    let (name, description, held_last) = match staged.collection_id {
         Some(id) => {
             let name = repo::collection_name(&state.pool, id)
                 .await?
                 .ok_or(AppError::NotFound)?;
-            (name, String::new())
+            let held_last = if outcome.replace_all {
+                0
+            } else {
+                repo::last_collection_track_position(&state.pool, id).await?
+            };
+            (name, String::new(), held_last)
         }
         None => {
             let name = confirm
@@ -288,7 +295,7 @@ async fn prepare(
                 || worked.parsed[0].suggested_description(),
                 |d| d.trim().to_string(),
             );
-            (name, description)
+            (name, description, 0)
         }
     };
     Ok(Prepared {
@@ -299,6 +306,7 @@ async fn prepare(
         worked,
         name,
         description,
+        held_last,
     })
 }
 
@@ -318,8 +326,9 @@ async fn store(
         worked,
         name,
         description,
+        held_last,
     } = prepared;
-    let derived = plan::derive(&worked, &name);
+    let derived = plan::derive(&worked, &name, held_last);
     let tracks = plan::tracks(&worked, &derived);
     let waypoints = plan::waypoints(&worked);
     let kept: Vec<NewCollectionFile> = files

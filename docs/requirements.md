@@ -1365,7 +1365,9 @@ proposed, and the replaced waypoint takes the file's symbol, or none if the file
 of deciding item by item, the owner can choose *replace the whole collection*: everything it holds
 is removed and the file's contents imported, while its details stay. Nothing changes until the owner
 confirms, and then all of it or none of it; cancelling leaves the collection untouched. A file that
-is not valid GPX, or holds neither a track nor a waypoint, is refused as in US-86.
+is not valid GPX, or holds neither a track nor a waypoint, is refused as in US-86. An added track
+without a name is named after the collection, as in US-86, but by its place in the collection, after
+the tracks it holds, so it takes no name one of them has.
 
 **Several files at once:** with *Collection* chosen, several GPX files can be uploaded in one go,
 for a new collection as for an existing one. The result is the same as uploading the first file

@@ -291,6 +291,33 @@ async fn us88_a_replaced_track_takes_the_files_line_and_keeps_its_activity_overr
 }
 
 #[tokio::test]
+async fn us88_an_added_unnamed_track_is_numbered_after_the_collections_tracks() {
+    let (app, _dir) = test_app().await;
+    let first = book(&[(Some("Stage 1"), 46.5), (None, 46.6)], &[]);
+    let id = import_collection(&app, &first, &[("name", "Alps")]).await;
+    assert_eq!(
+        track_names(&collection(&app, id).await),
+        ["Stage 1", "Alps 2"]
+    );
+
+    let staged = upload(
+        &app,
+        &[
+            ("a.gpx", &book(&[(None, 46.8)], &[])),
+            ("b.gpx", &book(&[(None, 46.9)], &[])),
+        ],
+        Some(id),
+    )
+    .await;
+    confirm(&app, &staged, json!({})).await;
+
+    assert_eq!(
+        track_names(&collection(&app, id).await),
+        ["Stage 1", "Alps 2", "Alps 3", "Alps 4"]
+    );
+}
+
+#[tokio::test]
 async fn us88_the_owner_decides_item_by_item() {
     let (app, _dir) = test_app().await;
     let id = import_collection(&app, &first_edition(), &[]).await;
