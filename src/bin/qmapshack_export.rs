@@ -15,7 +15,7 @@
 //! `server/qmapshack/config.rs` for its shape. Without a password command the
 //! password is asked for, unechoed. A collection template that can share a
 //! top folder with the trips' is warned about first; in a terminal the owner
-//! is asked whether to go on, from cron the run goes on (US-89).
+//! is asked whether to go on, a run from cron stops (US-89).
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
@@ -100,7 +100,8 @@ async fn main() -> ExitCode {
     };
     if let Some(warning) = cfg.collection_folder_overlap() {
         eprintln!("WARNING: {warning}.");
-        if std::io::stdin().is_terminal() && !confirm("Export anyway? [y/N] ") {
+        // From cron nobody can answer, so the run stops there.
+        if !std::io::stdin().is_terminal() || !confirm("Export anyway? [y/N] ") {
             eprintln!("Nothing exported.");
             return ExitCode::FAILURE;
         }
