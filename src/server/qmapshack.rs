@@ -1,4 +1,5 @@
-//! US-36/US-37 (ADR-0022): one-way export of the whole trip archive into a
+//! US-36/US-37/US-89 (ADR-0022): one-way export of the whole trip archive —
+//! trips and guide-book collections (see `collections`) — into a
 //! QMapShack-compatible SQLite database, run by the `qmapshack_export` CLI
 //! binary. Each run reconciles the target to the archive's current state:
 //! new trips are inserted, edited trips updated/re-linked, deleted trips
@@ -10,29 +11,35 @@
 //! execution) in ADR-0022.
 //!
 //! The archive is read over its HTTP API, as any client reads it (US-51,
-//! ADR-0022's 2026-09-19 amendment): one consistent list of every trip (see
-//! `repo::export`), then a trip's geometry only when that trip is written.
-//! A trip that changes after the list was read is caught up by the next run.
+//! ADR-0022's 2026-09-19 amendment): one consistent list of every trip and
+//! one of every collection (see `repo::export`), then a track's geometry only
+//! when that track is written. A record that changes after the lists were
+//! read is caught up by the next run.
 
 pub mod backup;
 pub mod blob;
+pub mod collections;
 pub mod config;
 #[cfg(any(test, feature = "test-support"))]
 pub mod decode;
 pub mod icons;
 pub mod qtstream;
+mod reconcile;
 pub mod target;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use anyhow::Context;
 use sqlx::SqliteConnection;
 use time::OffsetDateTime;
 
-use crate::models::ExportTrip;
+use crate::models::{ExportCollection, ExportTrip};
 use crate::server::archive_client::ArchiveClient;
 
 use self::config::ExportConfig;
+use self::reconcile::{
+    reconcile_item, record, remove_stale_items, Desired, Folders, ItemContent, ItemOutcome,
+};
 
 /// `versioninfo.version` this exporter targets (QMapShack `DB_VERSION`,
 /// stable since 2016). A target database with any other value is refused
@@ -56,9 +63,10 @@ pub fn keyqms(trip_id: i64) -> String {
     format!("{KEYQMS_PREFIX}{trip_id}")
 }
 
-/// Per-run tallies, one count per per-trip decision taken (every decision is
-/// also logged individually). `failed > 0` maps to a non-zero exit code in
-/// the binary while still letting the run complete (ADR-0022).
+/// Per-run tallies, one count per per-item decision taken — trips and
+/// collection items alike (every decision is also logged individually).
+/// `failed > 0` maps to a non-zero exit code in the binary while still
+/// letting the run complete (ADR-0022).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ExportOutcome {
     pub inserted: u64,
@@ -68,24 +76,17 @@ pub struct ExportOutcome {
     pub failed: u64,
 }
 
-/// What reconciliation did for one trip (US-37).
-enum TripOutcome {
-    Inserted { folder: Vec<String> },
-    Updated { content: bool, relinked: bool },
-    Skipped,
-}
-
 /// Reconcile the QMapShack database configured in `cfg` to the current
-/// state of the archive at `archive_url`: insert new trips, update/re-link
-/// changed ones, trash removed ones (US-37). The complete trip list is read
-/// first (US-51): a run that cannot get it — refused, unreachable, an error,
-/// a truncated or malformed answer — fails before the target is opened, let
-/// alone backed up, and so never takes a trip's absence for its deletion.
-/// Setup errors (target/gate/backup) likewise return `Err` before any item
-/// is written; a failure listing the target's items for the removal pass is
-/// also fatal, but happens after the per-trip writes (all idempotent — the
-/// next run heals). Per-trip and per-removal failures are logged, counted,
-/// and skipped.
+/// state of the archive at `archive_url`: insert new trips and collection
+/// items, update/re-link changed ones, trash removed ones (US-37, US-89).
+/// The complete trip and collection lists are read first (US-51): a run
+/// that cannot get them — refused, unreachable, an error, a truncated or
+/// malformed answer — fails before the target is opened, let alone backed
+/// up, and so never takes a record's absence for its deletion. Setup errors
+/// (target/gate/backup) likewise return `Err` before any item is written; a
+/// failure listing the target's items for a removal pass is also fatal, but
+/// happens after the per-item writes (all idempotent — the next run heals).
+/// Per-item and per-removal failures are logged, counted, and skipped.
 pub async fn run_export(
     archive_url: &str,
     password: &str,
@@ -101,65 +102,48 @@ pub async fn run_export(
         .json()
         .await
         .context("reading the trip list")?;
+    let collections: Vec<ExportCollection> = archive
+        .get_ok(&["api", "export", "collections"])
+        .await
+        .context("listing collections")?
+        .json()
+        .await
+        .context("reading the collection list")?;
 
     let mut target_conn = open_target(cfg).await?;
-
-    let root = target::root_folder_id(&mut target_conn).await?;
+    let mut folders = Folders::new(target::root_folder_id(&mut target_conn).await?);
 
     tracing::info!(
-        "exporting {} trip(s) to {}",
+        "exporting {} trip(s) and {} collection(s) to {}",
         trips.len(),
+        collections.len(),
         cfg.target_db.display()
     );
 
     let mut outcome = ExportOutcome::default();
-    let mut folder_ids: HashMap<Vec<String>, i64> = HashMap::new();
-
     for trip in &trips {
-        let key = keyqms(trip.id);
-        match reconcile_trip(
-            &archive,
-            &mut target_conn,
-            cfg,
-            &mut folder_ids,
-            root,
-            trip,
-            &key,
-        )
-        .await
-        {
-            Ok(TripOutcome::Inserted { folder }) => {
-                tracing::info!(
-                    "inserted trip {} ({:?}) under {}",
-                    trip.id,
-                    trip.name,
-                    folder.join("/")
-                );
-                outcome.inserted += 1;
-            }
-            Ok(TripOutcome::Updated { content, relinked }) => {
-                tracing::info!(
-                    "updated trip {} ({:?}): content changed: {content}, re-linked: {relinked}",
-                    trip.id,
-                    trip.name
-                );
-                outcome.updated += 1;
-            }
-            Ok(TripOutcome::Skipped) => {
-                tracing::info!("skipping trip {} ({:?}): unchanged", trip.id, trip.name);
-                outcome.skipped += 1;
-            }
-            Err(e) => {
-                tracing::error!("failed to export trip {} ({:?}): {e:#}", trip.id, trip.name);
-                outcome.failed += 1;
-            }
-        }
+        let result = reconcile_trip(&archive, &mut target_conn, cfg, &mut folders, trip).await;
+        record(
+            &mut outcome,
+            &format!("trip {} ({:?})", trip.id, trip.name),
+            result,
+        );
     }
+    collections::export_collections(
+        &archive,
+        &mut target_conn,
+        cfg,
+        &mut folders,
+        &collections,
+        &mut outcome,
+    )
+    .await;
 
-    // US-37 removal pass: exporter-owned items whose trip no longer exists
-    // in the snapshot lose their folder links (→ QMapShack's trash).
-    let archive_ids: HashSet<i64> = trips.iter().map(|t| t.id).collect();
-    remove_stale_items(&mut target_conn, &archive_ids, &mut outcome).await?;
+    // Removal passes: exporter-owned items whose record no longer exists in
+    // the lists lose their folder links (→ QMapShack's trash).
+    let trip_ids: HashSet<i64> = trips.iter().map(|t| t.id).collect();
+    remove_stale_items(&mut target_conn, KEYQMS_PREFIX, &trip_ids, &mut outcome).await?;
+    collections::remove_stale_items(&mut target_conn, &collections, &mut outcome).await?;
 
     tracing::info!(
         "export finished: {} inserted, {} updated, {} removed, {} skipped, {} failed",
@@ -196,131 +180,46 @@ async fn open_target(cfg: &ExportConfig) -> anyhow::Result<SqliteConnection> {
     Ok(target::open_existing(path).await?)
 }
 
-/// Reconcile one trip against the target (US-37): insert it if it was never
-/// exported, rewrite/re-link it if the cheap columns (name, comment
-/// summary) or the resolved folder placement differ (ADR-0022 as amended),
-/// skip it otherwise — without ever reading its geometry. Any error here
-/// fails this trip only.
+/// Reconcile one trip against the target (US-37): change detection compares
+/// its name, its comment summary — which encodes every other exported
+/// best-effort field (activity, kind, tags, stats, tz) — and its resolved
+/// folder (ADR-0022 as amended), never its geometry.
 async fn reconcile_trip(
     archive: &ArchiveClient,
     target_conn: &mut SqliteConnection,
     cfg: &ExportConfig,
-    folder_ids: &mut HashMap<Vec<String>, i64>,
-    root: i64,
+    folders: &mut Folders,
     trip: &ExportTrip,
-    keyqms: &str,
-) -> anyhow::Result<TripOutcome> {
+) -> anyhow::Result<ItemOutcome> {
+    let keyqms = keyqms(trip.id);
     let summary = item_comment(trip);
-
     let folder_path = cfg.resolve_folder_path(
         trip.activity_type,
         trip.trip_kind,
         local_start_date(trip).as_deref(),
     );
-    let folder_id = match folder_ids.get(&folder_path) {
-        Some(id) => *id,
-        None => {
-            let id = target::ensure_folder_path(target_conn, root, &folder_path)
-                .await
-                .context("creating folders")?;
-            folder_ids.insert(folder_path.clone(), id);
-            id
-        }
+    let desired = Desired {
+        keyqms: &keyqms,
+        name: &trip.name,
+        comment: &summary,
+        hash: None,
     };
-
-    let state = target::get_item_state(target_conn, keyqms)
-        .await
-        .context("looking up the existing item")?;
-    let Some(state) = state else {
-        let built = build_item_blob(archive, trip, keyqms, &summary).await?;
-        target::insert_item(
-            target_conn,
-            &built.as_new_item(trip, keyqms, &summary),
-            folder_id,
-        )
-        .await
-        .context("inserting the item")?;
-        return Ok(TripOutcome::Inserted {
-            folder: folder_path,
-        });
-    };
-
-    // The comment summary encodes every other exported best-effort field
-    // (activity, kind, tags, stats, tz), so these two column compares plus
-    // the placement compare cover everything mutable in the archive.
-    let content_changed =
-        state.name != trip.name || state.comment.as_deref() != Some(summary.as_str());
-    let placement_changed = state.folder_ids != [folder_id];
-    if !content_changed && !placement_changed {
-        return Ok(TripOutcome::Skipped);
-    }
-    if content_changed {
-        let built = build_item_blob(archive, trip, keyqms, &summary).await?;
-        target::update_item(
-            target_conn,
-            state.id,
-            &built.as_new_item(trip, keyqms, &summary),
-        )
-        .await
-        .context("updating the item")?;
-    }
-    if placement_changed {
-        target::set_item_folder(target_conn, state.id, folder_id)
-            .await
-            .context("re-linking the item")?;
-    }
-    Ok(TripOutcome::Updated {
-        content: content_changed,
-        relinked: placement_changed,
-    })
+    let content = build_trip_content(archive, trip, &keyqms, &summary);
+    reconcile_item(target_conn, folders, folder_path, &desired, content).await
 }
 
-/// The owned parts of an `items` row that require reading geometry and
-/// building the blob — deferred until a write is actually needed.
-struct BuiltItem {
-    data: Vec<u8>,
-    hash: String,
-    date: String,
-}
-
-impl BuiltItem {
-    fn as_new_item<'a>(
-        &'a self,
-        trip: &'a ExportTrip,
-        keyqms: &'a str,
-        summary: &'a str,
-    ) -> target::NewItem<'a> {
-        target::NewItem {
-            keyqms,
-            name: &trip.name,
-            icon: icons::icon_png(trip.activity_type),
-            date: &self.date,
-            comment: summary,
-            data: &self.data,
-            hash: &self.hash,
-        }
-    }
-}
-
-/// Fetch the trip's geometry from the archive and build the `items.data`
-/// blob (full rewrite semantics — a fresh single-event history, ADR-0022).
-async fn build_item_blob(
+/// Fetch the trip's geometry from the archive and build its item content
+/// (full rewrite semantics — a fresh single-event history, ADR-0022).
+async fn build_trip_content(
     archive: &ArchiveClient,
     trip: &ExportTrip,
     keyqms: &str,
     summary: &str,
-) -> anyhow::Result<BuiltItem> {
+) -> anyhow::Result<ItemContent> {
     // A trip deleted since the list was read answers 404: this trip fails,
     // the next run's list no longer holds it.
     let id = trip.id.to_string();
-    let geojson = archive
-        .get_ok(&["api", "trips", &id, "track.geojson"])
-        .await
-        .context("fetching track geometry")?
-        .text()
-        .await
-        .context("reading track geometry")?;
-    let points = blob::points_from_geojson(&geojson)?;
+    let points = fetch_points(archive, &["api", "trips", &id, "track.geojson"]).await?;
     let keywords: Vec<String> = trip.tags.iter().map(|t| t.name.clone()).collect();
 
     let (data, hash) = blob::build_track_item(
@@ -342,48 +241,28 @@ async fn build_item_blob(
             .format(&time::format_description::well_known::Rfc3339)
             .expect("RFC-3339 formatting of a valid OffsetDateTime never fails"),
     };
-    Ok(BuiltItem { data, hash, date })
+    Ok(ItemContent {
+        item_type: target::ItemType::Track,
+        icon: icons::icon_png(trip.activity_type),
+        date,
+        data,
+        hash,
+    })
 }
 
-/// US-37 removal pass: every item in the exporter's `keyqms` namespace
-/// whose trip id is gone from the archive snapshot is unlinked, letting
-/// QMapShack's trigger move it to the trash. Already-trashed items are left
-/// alone (and not re-counted); anything outside the namespace is never even
-/// considered (ADR-0022 scoping). Per-item failures are counted, not fatal.
-async fn remove_stale_items(
-    target_conn: &mut SqliteConnection,
-    archive_ids: &HashSet<i64>,
-    outcome: &mut ExportOutcome,
-) -> anyhow::Result<()> {
-    let items = target::list_exporter_items(target_conn, KEYQMS_PREFIX)
+/// Fetch a track's stored geometry from the archive at `path`.
+async fn fetch_points(
+    archive: &ArchiveClient,
+    path: &[&str],
+) -> anyhow::Result<Vec<blob::TrackPointIn>> {
+    let geojson = archive
+        .get_ok(path)
         .await
-        .context("listing exported items")?;
-    for item in items {
-        // An unparseable id suffix can't match any archive trip — it is an
-        // orphan of this exporter's namespace and gets cleaned up the same.
-        let trip_id = item.keyqms[KEYQMS_PREFIX.len()..].parse::<i64>().ok();
-        if trip_id.is_some_and(|id| archive_ids.contains(&id)) {
-            continue;
-        }
-        if !item.linked {
-            tracing::debug!("stale item {} is already in the trash", item.keyqms);
-            continue;
-        }
-        match target::unlink_item(target_conn, item.id).await {
-            Ok(()) => {
-                tracing::info!(
-                    "removed item {} (trip gone from the archive): moved to QMapShack's trash",
-                    item.keyqms
-                );
-                outcome.removed += 1;
-            }
-            Err(e) => {
-                tracing::error!("failed to remove item {}: {e:#}", item.keyqms);
-                outcome.failed += 1;
-            }
-        }
-    }
-    Ok(())
+        .context("fetching track geometry")?
+        .text()
+        .await
+        .context("reading track geometry")?;
+    Ok(blob::points_from_geojson(&geojson)?)
 }
 
 /// Best-effort plain-text summary for `items.comment` (FTS-indexed by

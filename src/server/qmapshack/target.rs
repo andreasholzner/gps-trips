@@ -295,6 +295,8 @@ pub struct ItemState {
     pub id: i64,
     pub name: String,
     pub comment: Option<String>,
+    /// `items.hash`: what a waypoint's change detection compares (US-89).
+    pub hash: String,
     /// Parent folder ids, ascending; empty means trashed (no links left).
     pub folder_ids: Vec<i64>,
 }
@@ -304,7 +306,7 @@ pub async fn get_item_state(
     conn: &mut SqliteConnection,
     keyqms: &str,
 ) -> Result<Option<ItemState>, sqlx::Error> {
-    let Some(row) = sqlx::query("SELECT id, name, comment FROM items WHERE keyqms = ?")
+    let Some(row) = sqlx::query("SELECT id, name, comment, hash FROM items WHERE keyqms = ?")
         .bind(keyqms)
         .fetch_optional(&mut *conn)
         .await?
@@ -321,12 +323,22 @@ pub async fn get_item_state(
         id,
         name: row.get("name"),
         comment: row.get("comment"),
+        hash: row.get("hash"),
         folder_ids,
     }))
 }
 
-/// Everything an `items` row needs (type is always 2 = track).
+/// QMapShack's item kinds the exporter writes (`items.type`,
+/// `IGisItem::type_e`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemType {
+    Waypoint = 1,
+    Track = 2,
+}
+
+/// Everything an `items` row needs.
 pub struct NewItem<'a> {
+    pub item_type: ItemType,
     pub keyqms: &'a str,
     pub name: &'a str,
     pub icon: &'a [u8],
@@ -337,7 +349,7 @@ pub struct NewItem<'a> {
     pub hash: &'a str,
 }
 
-/// Insert one track item and link it under `folder_id`, in one target-side
+/// Insert one item and link it under `folder_id`, in one target-side
 /// transaction. The `searchindex_insert` and `folder2item_insert` triggers
 /// handle the FTS row and the trash flag.
 pub async fn insert_item(
@@ -348,8 +360,9 @@ pub async fn insert_item(
     let mut tx = conn.begin().await?;
     let item_id = sqlx::query(
         "INSERT INTO items (type, keyqms, icon, name, date, comment, data, hash, last_user) \
-         VALUES (2, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
+    .bind(item.item_type as i64)
     .bind(item.keyqms)
     .bind(item.icon)
     .bind(item.name)

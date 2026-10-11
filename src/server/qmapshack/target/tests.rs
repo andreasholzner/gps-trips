@@ -12,6 +12,7 @@ async fn insert_dummy_item(conn: &mut SqliteConnection, keyqms: &str, folder: i6
     insert_item(
         conn,
         &NewItem {
+            item_type: ItemType::Track,
             keyqms,
             name: "A track",
             icon: b"\x89PNGfake",
@@ -265,6 +266,7 @@ async fn get_item_state_returns_columns_and_sorted_links() {
         Some("a comment for the search index")
     );
     assert_eq!(state.folder_ids, [root]);
+    assert_eq!(state.hash, "00000000000000000000000000000000");
 
     // A trashed item still resolves, with no links.
     sqlx::query("DELETE FROM folder2item")
@@ -276,6 +278,35 @@ async fn get_item_state_returns_columns_and_sorted_links() {
         .unwrap()
         .expect("trashed item still found");
     assert_eq!(state.folder_ids, Vec::<i64>::new());
+}
+
+#[tokio::test]
+async fn us89_a_waypoint_item_is_stored_as_one() {
+    let (_dir, mut conn) = bootstrapped().await;
+    let root = root_folder_id(&mut conn).await.unwrap();
+    insert_item(
+        &mut conn,
+        &NewItem {
+            item_type: ItemType::Waypoint,
+            keyqms: "trip-archive:waypoint:1",
+            name: "A hut",
+            icon: b"\x89PNGfake",
+            date: "2024-06-01T08:00:00Z",
+            comment: "",
+            data: b"blobbytes",
+            hash: "00000000000000000000000000000000",
+        },
+        root,
+    )
+    .await
+    .expect("insert waypoint");
+
+    let item_type: i64 = sqlx::query_scalar("SELECT type FROM items WHERE keyqms = ?")
+        .bind("trip-archive:waypoint:1")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(item_type, 1, "QMapShack's waypoint type");
 }
 
 #[tokio::test]
@@ -292,6 +323,7 @@ async fn update_item_rewrites_columns_and_the_search_index() {
         &mut conn,
         state.id,
         &NewItem {
+            item_type: ItemType::Track,
             keyqms: "trip-archive:trip:1",
             name: "Renamed track",
             icon: b"\x89PNGother",

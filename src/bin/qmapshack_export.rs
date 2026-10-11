@@ -127,7 +127,7 @@ async fn main() -> ExitCode {
     );
     if outcome.failed > 0 {
         eprintln!(
-            "FAILED to export {} trip(s) — see the log above; rerunning retries them.",
+            "FAILED to export {} item(s) — see the log above; rerunning retries them.",
             outcome.failed
         );
         return ExitCode::FAILURE;
