@@ -28,9 +28,8 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                           | Why it sits here                                                                                                                            |
 |:-----|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-86                             | Everything else rests on it: it brings collections, their tracks and waypoints into the archive, and the collection page an import ends on. |
-| 2    | US-87                             | The way back to a collection once its import is over; needs US-86's collections.                                                            |
-| 3    | US-88, US-89, US-90, US-93, US-94 | Each builds only on US-86/87, not on each other, so their order is free.                                                                    |
+| 1    | US-87                             | The way back to a collection once its import is over; needs US-86's collections.                                                            |
+| 2    | US-88, US-89, US-90, US-93, US-94 | Each builds only on US-86/87, not on each other, so their order is free.                                                                    |
 
 ## Story index
 
@@ -130,7 +129,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-83](#us-83--tags-page)                                    | ✅     | Tags page                                    | [Tags](#tags)                                                       |
 | [US-84](#us-84--activity-icons)                               | ✅     | Activity icons                               | [App & clients](#app--clients)                                      |
 | [US-85](#us-85--rename-a-tag)                                 | ✅     | Rename a tag                                 | [Tags](#tags)                                                       |
-| [US-86](#us-86--import-a-guide-book-collection)               | 📋     | Import a guide-book collection               | [Collections](#collections)                                         |
+| [US-86](#us-86--import-a-guide-book-collection)               | ✅     | Import a guide-book collection               | [Collections](#collections)                                         |
 | [US-87](#us-87--collections-tab)                              | 📋     | Collections tab                              | [Collections](#collections)                                         |
 | [US-88](#us-88--add-a-file-to-a-collection)                   | 📋     | Add a file to a collection                   | [Collections](#collections)                                         |
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
@@ -1276,7 +1275,7 @@ waypoints. They are suggestions, not trips: neither planned nor done, never sync
 
 ### US-86 — Import a guide-book collection
 
-**Planned 📋** — As the owner, I import a guide book's GPX file as a collection of its tracks and
+**Done ✅** — As the owner, I import a guide book's GPX file as a collection of its tracks and
 waypoints, kept apart from my own trips, so the book's suggestions are in the archive next to what
 I planned and did.
 

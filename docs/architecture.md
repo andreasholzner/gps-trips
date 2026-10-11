@@ -166,14 +166,15 @@ C4Component
         Component(spaassets, "SPA Bundle", "static files", "Serves the built Dioxus web bundle, with an index fallback for client-side routes.")
         Component(api, "Trip API Handlers", "Rust / Axum", "GET list (+filters), GET detail, PATCH edit, DELETE; photos list + add, and placing one by hand (US-30); tag add/remove/list + bulk-tag; the Tags screen's list of every tag with its trip counts and the summary shares naming it, creating a tag, and deleting one, which narrows or stops those shares (US-83); serves track.geojson, the trip's climbs found again under its current activity (US-81), the positions of many trips' tracks in one request (US-73), and the original GPX download; the unfiltered export list for qmapshack_export (US-51).")
         Component(import, "Import Handler", "Rust / Axum multipart", "POST /api/import and /api/trips/:id/photos; streams uploads (raised body limit); orchestrates a transaction.")
+        Component(collections, "Collection Handlers", "Rust / Axum", "US-86: guide books, kept apart from trips (ADR-0028). POST /api/collections/preview reads a guide book's GPX and suggests its name and description; POST /api/collections imports every track and waypoint in it as a collection in one transaction; GET/PATCH/DELETE a collection and its tracks, their positions for one map, their waypoints, and each track's geometry and GPX — built by the same code as a trip's.")
         Component(staged, "Staged Import", "Rust / Axum", "US-12's two phases: POST /api/import/staged parses the GPX, parks it in import_staging and answers with the suggested name; the confirm step promotes that parse into a trip through the same insert path. Parsed once; a staged row is not a trip and nothing else reads the table.")
         Component(suggest, "Suggestions", "Rust (geo, rstar)", "One interface that takes the trip. US-74: looks up the places around its track, counts a place two sources name once, names its ends and main places — a round trip turning at its farthest point, climbing counted — and puts them behind its date; without places, the date and the GPX name. US-76: reads what each point of the track is on — a way in its cell or the next, else water, else nothing — and from those shares, its moving speed, its steep share and its month, the activity type. Also GET /api/trips/:id/suggestion for the edit form.")
         Component(sync, "Komoot Sync", "Rust", "'Sync now' orchestration: list candidates, push pending edits/deletes, pull + import selected tours; an AppState sync guard rejects concurrent syncs and edits (US-26).")
         Component(komootc, "Komoot Client", "reqwest (blocking) + rate limiter", "Reverse-engineered komoot API: auth, tour listing/GPX download, photo fetch, edit/delete pushes; throttled with 429 backoff.")
-        Component(gpx, "GPX Parser & Stats", "gpx + geo", "Parse track; compute distance, ascent/descent, duration, bbox, start/end.")
+        Component(gpx, "GPX Parser & Stats", "gpx + geo", "Parse track; compute distance, ascent/descent, duration, bbox, start/end. A guide book's file: every track without its times, every waypoint, and the categories its waypoints carry (quick-xml).")
         Component(photo, "Photo Ingestion", "Rust (kamadak-exif, image, rayon)", "EXIF GPS/time, thumbnail, time-match to track.")
         Component(geojson, "GeoJSON Builder", "serde_json", "Build track LineString blob with elevation + distance/time arrays.")
-        Component(repo, "Repositories", "sqlx", "trip/track/photo/tag/komoot-link/share persistence; filter (incl. tags) & bbox-overlap queries.")
+        Component(repo, "Repositories", "sqlx", "trip/track/photo/tag/komoot-link/share persistence; filter (incl. tags) & bbox-overlap queries; collections, their tracks and waypoints in tables of their own.")
         Component(store, "BlobStore (LocalDisk)", "Rust trait", "put/get/url_for for photo originals & thumbnails.")
     }
 
@@ -186,6 +187,10 @@ C4Component
 
     Rel(router, sync, "GET + POST /api/komoot/sync")
     Rel(router, share, "POST/GET /api/shares; DELETE /api/shares/:id; GET /s/:token/…")
+    Rel(router, collections, "/api/collections…, /api/collection-tracks/…")
+    Rel(collections, gpx, "Read the guide book's file")
+    Rel(collections, geojson, "Build each track's blob")
+    Rel(collections, repo, "Insert a collection with its tracks and waypoints in one transaction")
     Rel(share, repo, "Resolve the share; read the trips it names; list and stop shares")
     Rel(share, store, "Serve the shared trips' photos")
     Rel(import, gpx, "Parse + derive stats")
@@ -238,11 +243,12 @@ C4Component
         Component(list, "Trip List + Filter Bar", "Dioxus", "Lists trips with stats in Recorded/Planned tabs; activity/date/distance/name/tag filters; a map whose view can be the region filter; bulk-tagging of selected trips.")
         Component(detail, "Trip Detail", "Dioxus", "Composes map, elevation, gallery; edit of name + activity type and the linked tour's Komoot privacy; tag chips with add/remove + autocomplete; adding photos, sharing, downloading the original GPX, and deleting the trip.")
         Component(shared, "Shared Trips", "Dioxus", "US-53: what a share's link opens, with no login and no menu — the share's title, every track on one overview map and the trips' list, and each trip read-only: stats, map, elevation, gallery, GPX download. Reads through a client that puts every call under /s/<token>.")
-        Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): upload the GPX, then confirm the suggested date-prefixed name, activity type and kind; photos follow in batches with a progress count.")
+        Component(importform, "Import Screen", "Dioxus", "Two steps (US-12): choose Recorded, Planned or Guide book and upload the GPX, then confirm the suggested date-prefixed name and activity type; photos follow in batches with a progress count. A guide book (US-86) confirms the collection's suggested name and description and an optional activity, and lands on its page.")
+        Component(collection, "Collection + Collection Track", "Dioxus", "US-86: a guide book's page — its details, every track in its activity color and every waypoint on one overview map, the tracks as a list, editing the details and deleting it all — and a track's own page: map with its waypoints and elevation through the trip page's own views, distance, ascent and descent only, editing its name and activity, GPX download, delete.")
         Component(tags, "Tags Screen", "Dioxus", "US-83: every tag, alphabetical and narrowed by a filter kept in the URL, 50 a page — its trip count, a link to its summary when it has a recorded trip, a mark when a summary share names it — with deleting one after a confirmation that says what becomes of each such share, and creating one.")
         Component(shares, "Shares Screen", "Dioxus", "US-69: every active share — its title, the trips it reaches, when it was made and until when it works — with its link to copy again and stopping it after a confirmation.")
         Component(komootsync, "Komoot Sync Screen", "Dioxus", "US-44: lists the tours Komoot has that the archive does not, labeled by kind, none ticked; says how many edits/deletes the run will push first; reports the run, naming the tour that halted it (US-25).")
-        Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, drawn through `document::eval`.")
+        Component(map, "Map", "Dioxus + Leaflet", "Track polyline + photo markers, and a guide book's waypoints, drawn through `document::eval`.")
         Component(elev, "Elevation Chart", "Dioxus + uPlot", "Elevation vs distance/time, drawn through `document::eval`.")
         Component(gallery, "Photo Gallery", "Dioxus", "Thumbnails; links markers ↔ photos.")
     }
@@ -255,6 +261,9 @@ C4Component
     Rel(approuter, shares, "Route")
     Rel(approuter, tags, "Route")
     Rel(approuter, shared, "Route (/s/:token)")
+    Rel(approuter, collection, "Route (/collections/:id, /collection-tracks/:id)")
+    Rel(collection, map, "Embeds")
+    Rel(collection, elev, "Embeds")
     Rel(detail, map, "Embeds")
     Rel(detail, elev, "Embeds")
     Rel(detail, gallery, "Embeds")
@@ -267,7 +276,8 @@ C4Component
     Rel(shares, server, "GET /api/shares; DELETE /api/shares/:id", "JSON")
     Rel(tags, server, "GET /api/tags/overview; POST /api/tags; PATCH, DELETE /api/tags/:id", "JSON")
     Rel(shared, server, "GET /s/:token/api/… and /s/:token/media/*", "JSON")
-    Rel(importform, server, "POST import / add photos", "multipart")
+    Rel(importform, server, "POST import / add photos; POST /api/collections/preview and /api/collections", "multipart")
+    Rel(collection, server, "GET/PATCH/DELETE /api/collections/:id and /api/collection-tracks/:id; their tracks, waypoints, geometry", "JSON")
     Rel(komootsync, server, "GET + POST /api/komoot/sync", "JSON")
     Rel(gallery, server, "GET /media/* (thumbnails)", "HTTPS")
     Rel(map, osm, "Fetch tiles", "HTTPS")
@@ -326,6 +336,7 @@ C4Component
 | Clock seam (UTC)                                 | [ADR-0009](./adr/0009-utc-timestamp-normalization.md)                                                  |
 | Session Gate / auth middleware; Share Handlers   | [ADR-0010](./adr/0010-single-user-optional-auth.md) + its 2026-09-02 amendment                          |
 | Filter/region queries in Repositories            | [ADR-0011](./adr/0011-filtering-search-geo-queries.md)                                                 |
+| Collection Handlers; collections in Repositories | [ADR-0028](./adr/0028-collections-apart-from-trips.md)                                                 |
 | Trait seams as test mocks                        | [ADR-0012](./adr/0012-tdd-test-strategy.md)                                                            |
 | Static assets served next to the binary          | [ADR-0016](./adr/0016-assets-relative-to-executable.md)                                                |
 | Photo Ingestion — EXIF GPS extraction            | [ADR-0017](./adr/0017-kamadak-exif-for-gps-extraction.md)                                              |
