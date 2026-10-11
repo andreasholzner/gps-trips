@@ -9,7 +9,7 @@ use super::climbs::ClimbsList;
 use crate::activity_color;
 use crate::api::{self, ApiClient};
 use crate::format;
-use crate::interop;
+use crate::interop::{self, MapWaypoint};
 use crate::photos::{self, PhotoMarker, PhotoView, PopupTap};
 use crate::track::{self, Track};
 
@@ -61,7 +61,9 @@ pub fn TrackSection(
 
 /// The two widgets themselves, once there is a track to draw. Split from the
 /// fetch above so each starts its script exactly once, when it mounts with
-/// the values it draws — never on a re-render of the screen around it.
+/// the values it draws — never on a re-render of the screen around it — and
+/// so a track that is not a trip's, a guide book's (US-86), is drawn by the
+/// same views, with its `waypoints` on the map.
 ///
 /// This is also where the hover (US-59) turns around: the chart reports the
 /// index the cursor is on, and the index is resolved *here*, in Rust, into
@@ -69,11 +71,12 @@ pub fn TrackSection(
 /// index and the polyline's are not the same point (`track::hover_points`),
 /// which is the whole reason the resolution does not happen in either script.
 #[component]
-fn TrackViews(
+pub fn TrackViews(
     track: Track,
     activity: ActivityType,
     climbs: Vec<Climb>,
     markers: Vec<PhotoMarker>,
+    #[props(default)] waypoints: Vec<MapWaypoint>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
     let points = track::polyline(&track);
@@ -87,7 +90,14 @@ fn TrackViews(
     let hovered_at = hovered().and_then(|i| samples.get(i).and_then(|sample| sample.position));
 
     rsx! {
-        TrackMap { points, color: activity_color::color(activity), markers, hovered_at, on_open_photos }
+        TrackMap {
+            points,
+            color: activity_color::color(activity),
+            markers,
+            waypoints,
+            hovered_at,
+            on_open_photos,
+        }
         if let Some((distance_km, elevation_m)) = series {
             ElevationChart { distance_km, elevation_m, speed_kmh, climbs: shading, hovered }
             HoverReadout { points: samples, hovered: hovered() }
@@ -103,6 +113,7 @@ fn TrackMap(
     points: Vec<[f64; 2]>,
     color: &'static str,
     markers: Vec<PhotoMarker>,
+    waypoints: Vec<MapWaypoint>,
     hovered_at: Option<[f64; 2]>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
@@ -126,15 +137,17 @@ fn TrackMap(
     // does not restart when `use_reactive!`'s props change, so the map kept
     // the markers it was first drawn with — a photo added or placed (US-30)
     // stayed where it was until the page was reloaded.
-    let _draw = use_resource(use_reactive!(|points, color, markers| async move {
-        let mut map = interop::start_track_map(points, color, markers.clone());
-        handle.set(Some(map));
-        while let Ok(tap) = map.recv::<PopupTap>().await {
-            if let Some(opened) = photos::tapped(&markers, tap) {
-                on_open_photos.call(opened);
+    let _draw = use_resource(use_reactive!(
+        |points, color, markers, waypoints| async move {
+            let mut map = interop::start_track_map(points, color, markers.clone(), waypoints);
+            handle.set(Some(map));
+            while let Ok(tap) = map.recv::<PopupTap>().await {
+                if let Some(opened) = photos::tapped(&markers, tap) {
+                    on_open_photos.call(opened);
+                }
             }
         }
-    }));
+    ));
 
     // Sent on every change of the hovered point, and again when a redraw
     // replaces the handle — a fresh map must not be left without the mark

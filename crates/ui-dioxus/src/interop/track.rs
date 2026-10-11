@@ -5,6 +5,7 @@
 use dioxus::prelude::*;
 use serde::Serialize;
 
+use super::waypoints::{with_waypoints, MapWaypoint};
 use crate::photos::PhotoMarker;
 
 /// The track map. Draws into `#track-map`: the polyline it is given, fitted
@@ -60,11 +61,13 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // One payload carries the whole picture — the line and the photos on it —
     // so a redraw replaces what is there rather than layering on top of it.
     const view = await dioxus.recv();
-    for (const layer of [map.trackLine, map.photoMarkers, map.hoverMark]) {
+    for (const layer of [map.trackLine, map.photoMarkers, map.waypointMarkers, map.hoverMark]) {
       if (layer) map.removeLayer(layer);
     }
     map.trackLine = null;
     map.photoMarkers = null;
+    // A guide book's waypoints on the track (US-86); none on a trip's.
+    map.waypointMarkers = drawWaypoints(map, view.waypoints);
     // A mark for a chart that is being replaced points at a track that is
     // no longer drawn.
     map.hoverMark = null;
@@ -148,8 +151,8 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // view of the whole world.
     const bounds = L.latLngBounds([]);
     if (map.trackLine) bounds.extend(map.trackLine.getBounds());
-    if (map.photoMarkers.getLayers().length > 0) {
-      bounds.extend(map.photoMarkers.getBounds());
+    for (const markers of [map.photoMarkers, map.waypointMarkers]) {
+      if (markers.getLayers().length > 0) bounds.extend(markers.getBounds());
     }
     if (bounds.isValid()) {
       // Only when there is something new to frame. This script runs again
@@ -399,14 +402,16 @@ const ELEVATION_SCRIPT: &str = r##"
 "##;
 
 /// What the map shows: the track as `[lat, lon]` pairs in its activity's
-/// color (US-75), and a marker per group of photos taken at the same place
-/// (US-3/US-4, grouped by US-57). Sent as one value because it is one
-/// picture — a redraw with new markers must not lose the line.
+/// color (US-75), a marker per group of photos taken at the same place
+/// (US-3/US-4, grouped by US-57), and a guide book's waypoints on the track
+/// (US-86). Sent as one value because it is one picture — a redraw with new
+/// markers must not lose the line.
 #[derive(Serialize)]
 struct TrackMapView {
     points: Vec<[f64; 2]>,
     color: &'static str,
     markers: Vec<PhotoMarker>,
+    waypoints: Vec<MapWaypoint>,
 }
 
 /// Start the track map with the line, its color, and the photo markers to
@@ -421,13 +426,15 @@ pub fn start_track_map(
     points: Vec<[f64; 2]>,
     color: &'static str,
     markers: Vec<PhotoMarker>,
+    waypoints: Vec<MapWaypoint>,
 ) -> document::Eval {
     start(
-        TRACK_MAP_SCRIPT,
+        &with_waypoints(TRACK_MAP_SCRIPT),
         TrackMapView {
             points,
             color,
             markers,
+            waypoints,
         },
         "the track map",
     )

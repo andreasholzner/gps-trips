@@ -20,7 +20,7 @@ mod track_views;
 use actions::TripActions;
 // Also what a share's recipient sees of a trip (US-53).
 pub use stats::TripStats;
-pub use track_views::TrackSection;
+pub use track_views::{TrackSection, TrackViews};
 
 /// The screen. `id` comes from the route (`/trips/:id`), so a link, a
 /// bookmark and a reload all land on the same trip.

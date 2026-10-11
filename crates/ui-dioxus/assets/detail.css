@@ -159,6 +159,18 @@
   line-height: 1;
 }
 
+/* A guide book's waypoint (US-86): a diamond, a shape no line, photo circle
+   or hover ring has. Qualified by the container for the same two reasons as
+   the photo group's marker above. */
+.leaflet-container .waypoint-mark {
+  background: #37474f;
+  border: 2px solid #ffffff;
+  border-radius: 2px;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  transform-origin: center;
+  rotate: 45deg;
+}
+
 /* The photo gallery (US-7). Thumbnails are already small (US-5); the cap is
    for the full-size original that stands in when none could be made. Each
    is a button that opens the viewer, captioned with when it was taken

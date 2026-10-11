@@ -125,7 +125,55 @@ pub const ALPS_GPX: &[u8] = include_bytes!("../../../tests/fixtures/region_alps.
 /// A walk with one hill (US-81): 1 km up 100 m between two flats, timed.
 pub const HILL_GPX: &[u8] = include_bytes!("../../../tests/fixtures/hill.gpx");
 
+/// A guide book's file (US-86): three tracks and two waypoints.
+pub const GUIDE_BOOK_GPX: &[u8] = include_bytes!("../../../tests/fixtures/guide_book.gpx");
+
 const BOUNDARY: &str = "UiDioxusTestBoundary";
+
+/// Seed a collection through the real API (`POST /api/collections`, US-86)
+/// and return its id and its tracks' ids, in file order.
+pub async fn import_collection(
+    archive: &ApiClient,
+    gpx: &[u8],
+    fields: &[(&str, &str)],
+) -> (i64, Vec<i64>) {
+    let mut form = reqwest::multipart::Form::new().part(
+        "gpx",
+        reqwest::multipart::Part::bytes(gpx.to_vec()).file_name("book.gpx"),
+    );
+    for (field, value) in fields {
+        form = form.text(field.to_string(), value.to_string());
+    }
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/api/collections", archive.base_url()))
+        .bearer_auth(token())
+        .multipart(form)
+        .send()
+        .await
+        .expect("collection request");
+    assert!(
+        response.status().is_success(),
+        "collection import failed: {}",
+        response.status()
+    );
+    let created: trip_archive_types::CreatedCollection = response.json().await.expect("id");
+    let collection: trip_archive_types::CollectionDetail = client
+        .get(format!(
+            "{}/api/collections/{}",
+            archive.base_url(),
+            created.id
+        ))
+        .bearer_auth(token())
+        .send()
+        .await
+        .expect("collection")
+        .json()
+        .await
+        .expect("collection JSON");
+    let tracks = collection.tracks.iter().map(|track| track.id).collect();
+    (created.id, tracks)
+}
 
 /// Seed a trip through the real import API (`POST /api/import`), the same
 /// path the owner's own uploads take — no direct database writes. `fields`

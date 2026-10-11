@@ -1,0 +1,143 @@
+use super::*;
+use crate::test_support::{
+    import_collection, render, render_against_archive, serve_test_archive, GUIDE_BOOK_GPX,
+};
+
+fn a_track(own_activity: Option<ActivityType>) -> CollectionTrackDetail {
+    CollectionTrackDetail {
+        id: 4,
+        collection_id: 2,
+        collection_name: "Lakes & Passes".to_string(),
+        name: "Stage 1".to_string(),
+        activity_type: own_activity.unwrap_or(ActivityType::Cycling),
+        own_activity,
+        distance_m: 12_345.0,
+        ascent_m: 615.0,
+        descent_m: 20.0,
+    }
+}
+
+// US-86: the screen against a real archive, nothing mocked (ADR-0012).
+#[tokio::test]
+async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
+    let (archive, _dir) = serve_test_archive().await;
+    let (_, tracks) = import_collection(
+        &archive,
+        GUIDE_BOOK_GPX,
+        &[("name", "Lakes"), ("activity_type", "cycling")],
+    )
+    .await;
+    let id = tracks[0];
+
+    let html = render_against_archive(
+        &archive,
+        move || rsx! { CollectionTrack { id } },
+        |html| html.contains("Stage 1: Splügen") && html.contains("track-map"),
+    )
+    .await;
+
+    assert!(html.contains("From the guide book Lakes"), "{html}");
+    assert!(html.contains("Cycling"), "{html}");
+    assert!(
+        html.contains(r#"<div id="track-map" class="track-map"></div>"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(&format!(
+            "{}/api/collection-tracks/{id}/gpx",
+            archive.base_url()
+        )),
+        "{html}"
+    );
+    assert!(html.contains(r#"id="edit-trip""#), "{html}");
+    assert!(html.contains(r#"id="delete-trip""#), "{html}");
+}
+
+#[test]
+fn us86_only_distance_ascent_and_descent_are_shown() {
+    // A guide book's timestamps are not when anyone went.
+    let track = a_track(None);
+
+    let html = render(move || rsx! { TrackFigures { track: track.clone() } });
+
+    let labels: Vec<&str> = html
+        .split("<dt>")
+        .skip(1)
+        .filter_map(|rest| rest.split("</dt>").next())
+        .collect();
+    assert_eq!(labels, ["Activity", "Distance", "Ascent", "Descent"]);
+    assert!(html.contains("12.35 km"), "{html}");
+    assert!(html.contains("615 m"), "{html}");
+    assert!(!html.contains("trip-date"), "{html}");
+}
+
+#[test]
+fn us86_an_activity_taken_from_the_guide_book_says_so() {
+    let taken = a_track(None);
+    let own = a_track(Some(ActivityType::Hiking));
+
+    let taken = render(move || rsx! { TrackFigures { track: taken.clone() } });
+    let own = render(move || rsx! { TrackFigures { track: own.clone() } });
+
+    assert!(taken.contains("(the guide book&#39;s)"), "{taken}");
+    assert!(!own.contains("(the guide book"), "{own}");
+}
+
+#[test]
+fn us86_the_form_starts_on_the_tracks_own_activity_or_the_guide_books() {
+    assert_eq!(TrackForm::of(&a_track(None)).activity, "");
+    assert_eq!(
+        TrackForm::of(&a_track(Some(ActivityType::Hiking))).activity,
+        "hiking"
+    );
+}
+
+#[test]
+fn us86_only_what_changed_is_sent() {
+    let track = a_track(None);
+    let mut form = TrackForm::of(&track);
+    assert_eq!(changes(&track, &form), CollectionTrackEdit::default());
+
+    form.name = "  Day one ".to_string();
+    form.activity = "hiking".to_string();
+    assert_eq!(
+        changes(&track, &form),
+        CollectionTrackEdit {
+            name: Some("Day one".to_string()),
+            activity_type: Some("hiking".to_string()),
+        }
+    );
+}
+
+#[test]
+fn us86_an_own_activity_can_be_given_back_to_the_guide_book() {
+    let track = a_track(Some(ActivityType::Hiking));
+    let form = TrackForm {
+        activity: String::new(),
+        ..TrackForm::of(&track)
+    };
+
+    assert_eq!(changes(&track, &form).activity_type.as_deref(), Some(""));
+}
+
+#[tokio::test]
+async fn us86_a_track_that_no_longer_exists_says_so() {
+    let (archive, _dir) = serve_test_archive().await;
+
+    let html = render_against_archive(
+        &archive,
+        || rsx! { CollectionTrack { id: 9_999 } },
+        |html| !html.contains("Loading"),
+    )
+    .await;
+
+    assert!(html.contains("no such track"), "{html}");
+}
+
+#[test]
+fn us86_deleting_a_track_is_offered_but_not_armed() {
+    let html = render(|| rsx! { DeleteCollectionTrack { id: 1 } });
+
+    assert!(html.contains("Delete track"), "{html}");
+    assert!(!html.contains("cannot be undone"), "{html}");
+}

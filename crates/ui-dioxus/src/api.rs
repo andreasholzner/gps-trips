@@ -20,6 +20,7 @@ use trip_archive_types::{
 use crate::track::Track;
 
 mod client;
+mod collections;
 mod session;
 mod share;
 mod stats;
@@ -28,6 +29,10 @@ mod tags;
 mod tracks;
 
 pub use client::ApiClient;
+pub use collections::{
+    collection_track_gpx_url, delete_collection_track, edit_collection_track, get_collection_track,
+    get_collection_track_geometry, list_collection_track_waypoints,
+};
 pub use session::{login, logout, session};
 pub use share::{
     create_share, get_shared_trip, list_shares, share_link, share_overview, stop_share,
