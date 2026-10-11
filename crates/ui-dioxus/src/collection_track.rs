@@ -12,7 +12,6 @@ use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient};
 use crate::detail::TrackViews;
-use crate::filters::Filters;
 use crate::format;
 use crate::interop::MapWaypoint;
 use crate::overlay::Overlay;
@@ -48,7 +47,7 @@ pub fn CollectionTrack(id: i64) -> Element {
                         href: api::collection_track_gpx_url(&archive(), id),
                         "Download GPX"
                     }
-                    DeleteCollectionTrack { id }
+                    DeleteCollectionTrack { id, collection_id: detail.collection_id }
                 }
             },
         }
@@ -66,7 +65,10 @@ fn TrackFigures(track: CollectionTrackDetail) -> Element {
                 }
                 "{track.name}"
             }
-            p { id: "collection-of-track", "From the guide book {track.collection_name}" }
+            p { id: "collection-of-track",
+                "From the guide book "
+                Link { to: Route::Collection { id: track.collection_id }, "{track.collection_name}" }
+            }
         }
         dl { class: "stats",
             div {
@@ -238,9 +240,10 @@ fn EditCollectionTrackForm(
     }
 }
 
-/// Deleting one track, after a confirmation.
+/// Deleting one track, after a confirmation; the screen goes back to its
+/// guide book.
 #[component]
-fn DeleteCollectionTrack(id: i64) -> Element {
+fn DeleteCollectionTrack(id: i64, collection_id: i64) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut arming = use_signal(|| false);
     let mut deleting = use_signal(|| false);
@@ -261,7 +264,7 @@ fn DeleteCollectionTrack(id: i64) -> Element {
                         deleting.set(true);
                         match api::delete_collection_track(&archive(), id).await {
                             Ok(()) => {
-                                navigator().replace(Route::TripList { filters: Filters::default() });
+                                navigator().replace(Route::Collection { id: collection_id });
                             }
                             Err(err) => {
                                 arming.set(false);

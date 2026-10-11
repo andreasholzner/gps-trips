@@ -288,7 +288,7 @@ fn SummaryMap(summary: TagSummaries, viewer: Viewer) -> Element {
                 .map(|trip| trip.activity_type)
                 .collect(),
         );
-        let mut map = interop::start_overview_map(lines::lines(&summary, &tracks));
+        let mut map = interop::start_overview_map(lines::lines(&summary, &tracks), Vec::new());
         while let Ok(event) = map.recv::<OverviewEvent>().await {
             if let OverviewEvent::Open(id) = event {
                 navigator().push(viewer.trip_route(id));

@@ -30,8 +30,9 @@ mod tracks;
 
 pub use client::ApiClient;
 pub use collections::{
-    collection_track_gpx_url, delete_collection_track, edit_collection_track, get_collection_track,
-    get_collection_track_geometry, list_collection_track_waypoints,
+    collection_track_gpx_url, delete_collection, delete_collection_track, edit_collection,
+    edit_collection_track, get_collection, get_collection_track, get_collection_track_geometry,
+    list_collection_track_waypoints, list_collection_tracks, list_collection_waypoints,
 };
 pub use session::{login, logout, session};
 pub use share::{

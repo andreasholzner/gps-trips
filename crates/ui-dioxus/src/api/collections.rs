@@ -1,10 +1,75 @@
 //! A guide book's collection and its tracks (US-86): read, edited and
 //! deleted over the JSON API, apart from trips (ADR-0028).
 
-use trip_archive_types::{CollectionTrackDetail, CollectionTrackEdit, Waypoint};
+use trip_archive_types::{
+    CollectionDetail, CollectionEdit, CollectionTrackDetail, CollectionTrackEdit, TripTrack,
+    Waypoint,
+};
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
 use crate::track::Track;
+
+/// `GET /api/collections/:id` — the details and the tracks in file order. A
+/// 404 travels back as such.
+pub async fn get_collection(archive: &ApiClient, id: i64) -> Result<CollectionDetail, ApiError> {
+    get_json(archive, archive.url(&format!("/api/collections/{id}"))).await
+}
+
+/// `GET /api/collections/:id/tracks` — every track's positions, for drawing
+/// them on one map.
+pub async fn list_collection_tracks(
+    archive: &ApiClient,
+    id: i64,
+) -> Result<Vec<TripTrack>, ApiError> {
+    get_json(
+        archive,
+        archive.url(&format!("/api/collections/{id}/tracks")),
+    )
+    .await
+}
+
+/// `GET /api/collections/:id/waypoints` — every waypoint, in file order.
+pub async fn list_collection_waypoints(
+    archive: &ApiClient,
+    id: i64,
+) -> Result<Vec<Waypoint>, ApiError> {
+    get_json(
+        archive,
+        archive.url(&format!("/api/collections/{id}/waypoints")),
+    )
+    .await
+}
+
+/// `PATCH /api/collections/:id` — change the details; a refusal comes back
+/// in the archive's words.
+pub async fn edit_collection(
+    archive: &ApiClient,
+    id: i64,
+    edit: &CollectionEdit,
+) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/collections/{id}"));
+    let response = archive
+        .patch(&url)
+        .json(edit)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response).await?;
+    Ok(())
+}
+
+/// `DELETE /api/collections/:id` — the collection with all its tracks and
+/// waypoints.
+pub async fn delete_collection(archive: &ApiClient, id: i64) -> Result<(), ApiError> {
+    let url = archive.url(&format!("/api/collections/{id}"));
+    let response = archive
+        .delete(&url)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response).await?;
+    Ok(())
+}
 
 /// `GET /api/collection-tracks/:id` — one track of a collection. A 404
 /// travels back as such, as a trip's does.

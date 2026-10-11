@@ -173,7 +173,7 @@ fn OverviewMap(
                     .map(|trip| trip.activity_type)
                     .collect(),
             );
-            let mut map = interop::start_overview_map(overview_lines(&trips, &tracks));
+            let mut map = interop::start_overview_map(overview_lines(&trips, &tracks), Vec::new());
             handle.set(Some(map));
             while let Ok(event) = map.recv::<OverviewEvent>().await {
                 match event {

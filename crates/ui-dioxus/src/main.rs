@@ -12,6 +12,7 @@ mod activity_select;
 mod api;
 mod bulk_activity;
 mod bulk_tag;
+mod collection;
 mod collection_track;
 mod config;
 mod delete;
@@ -50,6 +51,7 @@ mod trip_tags;
 mod viewer;
 
 use api::ApiClient;
+use collection::Collection;
 use collection_track::CollectionTrack;
 use detail::TripDetail;
 use filters::Filters;
@@ -141,6 +143,9 @@ enum Route {
     /// The filter lives in the query string, as the list's filters do.
     #[route("/tags?:..view")]
     Tags { view: TagsView },
+    /// A guide book's collection (US-86), where its import ends.
+    #[route("/collections/:id")]
+    Collection { id: i64 },
     /// One track of a guide book's collection (US-86).
     #[route("/collection-tracks/:id")]
     CollectionTrack { id: i64 },

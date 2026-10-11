@@ -21,7 +21,7 @@ fn a_track(own_activity: Option<ActivityType>) -> CollectionTrackDetail {
 #[tokio::test]
 async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
     let (archive, _dir) = serve_test_archive().await;
-    let (_, tracks) = import_collection(
+    let (collection, tracks) = import_collection(
         &archive,
         GUIDE_BOOK_GPX,
         &[("name", "Lakes"), ("activity_type", "cycling")],
@@ -36,7 +36,11 @@ async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
     )
     .await;
 
-    assert!(html.contains("From the guide book Lakes"), "{html}");
+    assert!(html.contains("From the guide book "), "{html}");
+    assert!(
+        html.contains(&format!(r#"href="/collections/{collection}">Lakes</a>"#)),
+        "{html}"
+    );
     assert!(html.contains("Cycling"), "{html}");
     assert!(
         html.contains(r#"<div id="track-map" class="track-map"></div>"#),
@@ -136,7 +140,7 @@ async fn us86_a_track_that_no_longer_exists_says_so() {
 
 #[test]
 fn us86_deleting_a_track_is_offered_but_not_armed() {
-    let html = render(|| rsx! { DeleteCollectionTrack { id: 1 } });
+    let html = render(|| rsx! { DeleteCollectionTrack { id: 1, collection_id: 2 } });
 
     assert!(html.contains("Delete track"), "{html}");
     assert!(!html.contains("cannot be undone"), "{html}");

@@ -1,10 +1,12 @@
-//! The map a share's recipient lands on (US-53): every shared trip's track as
-//! a line, fitted to them all. Which lines there are is decided in Rust
+//! The map a share's recipient lands on (US-53), and a guide book's
+//! collection page (US-86): every track as a line, fitted to them all. Which lines there are is decided in Rust
 //! (`shared::overview_lines`); this only draws them and reports which one
 //! was clicked.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use super::waypoints::{with_waypoints, MapWaypoint};
 
 /// Draws into `#overview-map`, over OSM tiles, one line per trip in the
 /// color it is given, and sends
@@ -63,6 +65,9 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
       drawn.set(line.id, path);
       bounds.extend(path.getBounds());
     }
+    // A guide book's waypoints (US-86); none on a share's or a summary's.
+    const waypoints = drawWaypoints(map, view.waypoints);
+    if (waypoints.getLayers().length > 0) bounds.extend(waypoints.getBounds());
     if (bounds.isValid()) {
       map.fitBounds(bounds, { maxZoom: 15, padding: [16, 16] });
     }
@@ -116,16 +121,17 @@ enum OverviewMessage {
     Highlight(Option<i64>),
 }
 
-/// Start the overview map. The handle is the channel, read for the map's
-/// whole life: every click on a line and every hover arrives on it as an
-/// [`OverviewEvent`].
-pub fn start_overview_map(lines: Vec<OverviewLine>) -> document::Eval {
+/// Start the overview map, with a guide book's `waypoints` among its lines
+/// (US-86). The handle is the channel, read for the map's whole life: every
+/// click on a line and every hover arrives on it as an [`OverviewEvent`].
+pub fn start_overview_map(lines: Vec<OverviewLine>, waypoints: Vec<MapWaypoint>) -> document::Eval {
     #[derive(Serialize)]
     struct View {
         lines: Vec<OverviewLine>,
+        waypoints: Vec<MapWaypoint>,
     }
-    let eval = document::eval(OVERVIEW_MAP_SCRIPT);
-    if let Err(err) = eval.send(View { lines }) {
+    let eval = document::eval(&with_waypoints(OVERVIEW_MAP_SCRIPT));
+    if let Err(err) = eval.send(View { lines, waypoints }) {
         dioxus::logger::tracing::error!("could not draw the overview map: {err}");
     }
     eval
