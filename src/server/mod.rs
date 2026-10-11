@@ -44,4 +44,5 @@ pub mod tags;
 pub mod thumbnail;
 pub mod timezone;
 pub mod track_boxes;
+pub mod track_files;
 pub mod tracks;
