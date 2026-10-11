@@ -126,6 +126,14 @@ pub enum ImportError {
     /// US-86: a guide book's file with nothing to collect.
     #[error("GPX file contains neither a track nor a waypoint")]
     Empty,
+
+    /// US-88: one of several files was refused, named so the owner knows
+    /// which.
+    #[error("{file}: {reason}")]
+    InFile {
+        file: String,
+        reason: Box<ImportError>,
+    },
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

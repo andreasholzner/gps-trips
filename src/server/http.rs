@@ -16,7 +16,7 @@ use crate::models::{
     TripSummary,
 };
 use crate::server::{
-    access_log, auth, backup, collections, delete,
+    access_log, auth, backup, collection_import, collections, delete,
     edit::{handle_bulk_set_activity_type, handle_edit_trip},
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
@@ -189,6 +189,8 @@ pub fn router(state: AppState) -> Router {
         // files and an unknown name is one a deploy replaced.
         // US-86: guide-book collections, apart from trips (ADR-0028).
         .merge(collections::router())
+        // US-88: adding files to a collection, reviewed first (ADR-0029).
+        .merge(collection_import::router())
         .merge(share::router())
         // Whatever no route answers, in the same JSON as every refusal
         // (ADR-0008) — so an unknown path under a live share reads exactly

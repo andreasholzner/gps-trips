@@ -6,6 +6,7 @@ pub mod backup;
 pub mod climb_api;
 pub mod climbs;
 pub mod collection_gpx;
+pub mod collection_import;
 pub mod collection_match;
 pub mod collections;
 pub mod db;

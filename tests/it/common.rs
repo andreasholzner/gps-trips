@@ -352,6 +352,24 @@ pub fn collection_request(
     multipart_request(uri, body)
 }
 
+/// A `multipart/form-data` POST of several `(file name, bytes)` GPX files,
+/// plus text fields, to `uri` — `/api/collection-imports` (US-88).
+pub fn collection_files_request(
+    uri: &str,
+    files: &[(&str, &[u8])],
+    fields: &[(&str, &str)],
+) -> Request<Body> {
+    let mut body = Vec::new();
+    for (file_name, gpx) in files {
+        append_file_part(&mut body, "gpx", file_name, "application/gpx+xml", gpx);
+    }
+    for (field, value) in fields {
+        append_text_part(&mut body, field, value);
+    }
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+    multipart_request(uri, body)
+}
+
 /// Import a guide book's file as a new collection and return its id.
 pub async fn import_collection(app: &Router, gpx: &[u8], fields: &[(&str, &str)]) -> i64 {
     let request = collection_request("/api/collections", gpx, "book.gpx", fields);

@@ -20,6 +20,7 @@ use crate::models::{
 };
 use crate::server::{
     collection_gpx::{parse_collection, track_name, ParsedCollection},
+    collection_import::file_name_of,
     error::AppError,
     filter::parse_optional_bbox,
     geojson::build_track_geojson,
@@ -89,7 +90,7 @@ async fn read_upload(mut multipart: Multipart) -> Result<Upload, AppError> {
     while let Some(field) = multipart.next_field().await.map_err(bad)? {
         match field.name() {
             Some("gpx") => {
-                upload.file_name = field.file_name().unwrap_or_default().to_string();
+                upload.file_name = file_name_of(field.file_name());
                 upload.gpx = field.bytes().await.map_err(bad)?.to_vec();
                 has_gpx = true;
             }
@@ -107,7 +108,7 @@ async fn read_upload(mut multipart: Multipart) -> Result<Upload, AppError> {
 
 /// An activity field as a collection or a collection track stores it: blank
 /// or `unknown` is none at all.
-fn optional_activity(value: Option<String>) -> Result<Option<ActivityType>, AppError> {
+pub(crate) fn optional_activity(value: Option<String>) -> Result<Option<ActivityType>, AppError> {
     Ok(Some(resolve_activity_type(value)?).filter(|activity| *activity != ActivityType::Unknown))
 }
 
@@ -202,7 +203,7 @@ async fn handle_create(
 
 /// The name a collection gets when the owner gave none and the file
 /// suggests none either.
-fn fallback_name(parsed: &ParsedCollection, file_name: &str) -> String {
+pub(crate) fn fallback_name(parsed: &ParsedCollection, file_name: &str) -> String {
     let suggested = parsed.suggested_name(file_name);
     if suggested.is_empty() {
         "Guide book".to_string()
