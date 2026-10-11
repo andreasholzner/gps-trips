@@ -16,7 +16,7 @@ use crate::models::{
     TripSummary,
 };
 use crate::server::{
-    access_log, auth, backup, delete,
+    access_log, auth, backup, collections, delete,
     edit::{handle_bulk_set_activity_type, handle_edit_trip},
     error::AppError,
     filter::{parse_filter, TripFilterQuery},
@@ -187,6 +187,8 @@ pub fn router(state: AppState) -> Router {
         // app shell, so the SPA's own routes survive a reload or a shared
         // link — except under `assets/`, where `dx` puts its content-hashed
         // files and an unknown name is one a deploy replaced.
+        // US-86: guide-book collections, apart from trips (ADR-0028).
+        .merge(collections::router())
         .merge(share::router())
         // Whatever no route answers, in the same JSON as every refusal
         // (ADR-0008) — so an unknown path under a live share reads exactly

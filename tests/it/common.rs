@@ -64,6 +64,14 @@ pub const LATE_EVENING_GPX: &[u8] = include_bytes!("../fixtures/late_evening.gpx
 /// US-14 region filter can be tested on a list holding trips in two places.
 pub const REGION_ALPS_GPX: &[u8] = include_bytes!("../fixtures/region_alps.gpx");
 
+/// A guide book's file (US-86): three tracks — one without a name — and two
+/// waypoints carrying categories, under the file's own name and description.
+pub const GUIDE_BOOK_GPX: &[u8] = include_bytes!("../fixtures/guide_book.gpx");
+/// A guide book's single tour, whose two waypoints belong to its one track.
+pub const GUIDE_SINGLE_GPX: &[u8] = include_bytes!("../fixtures/guide_single.gpx");
+/// A guide book's waypoints without a single track.
+pub const WAYPOINTS_ONLY_GPX: &[u8] = include_bytes!("../fixtures/waypoints_only.gpx");
+
 /// Where [`test_app`] and its siblings keep the photo blobs, under their `TempDir`.
 pub const TEST_BLOBS_SUBDIR: &str = "blobs";
 
@@ -325,6 +333,35 @@ pub fn import_request_with_fields(
     append_photo_parts(&mut body, photos);
     body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
     multipart_request("/api/import", body)
+}
+
+/// A `multipart/form-data` POST of a guide book's file named `file_name`,
+/// plus text fields, to `uri` — `/api/collections` or its preview (US-86).
+pub fn collection_request(
+    uri: &str,
+    gpx: &[u8],
+    file_name: &str,
+    fields: &[(&str, &str)],
+) -> Request<Body> {
+    let mut body = Vec::new();
+    append_file_part(&mut body, "gpx", file_name, "application/gpx+xml", gpx);
+    for (field, value) in fields {
+        append_text_part(&mut body, field, value);
+    }
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+    multipart_request(uri, body)
+}
+
+/// Import a guide book's file as a new collection and return its id.
+pub async fn import_collection(app: &Router, gpx: &[u8], fields: &[(&str, &str)]) -> i64 {
+    let request = collection_request("/api/collections", gpx, "book.gpx", fields);
+    let response = send(app, request).await;
+    let status = response.status();
+    let body = body_string(response).await;
+    assert_eq!(status, StatusCode::CREATED, "import failed: {body}");
+    serde_json::from_str::<trip_archive::models::CreatedCollection>(&body)
+        .expect("created collection JSON")
+        .id
 }
 
 /// A `multipart/form-data` POST to `/api/import/staged` carrying the `gpx`
