@@ -36,7 +36,10 @@ pub fn lines_within(a: &[Position], b: &[Position], tolerance_m: f64) -> bool {
 pub fn centre(line: &[Position]) -> Option<Position> {
     let first = *line.first()?;
     let (min, max) = line.iter().fold((first, first), |(min, max), &(lat, lon)| {
-        ((min.0.min(lat), min.1.min(lon)), (max.0.max(lat), max.1.max(lon)))
+        (
+            (min.0.min(lat), min.1.min(lon)),
+            (max.0.max(lat), max.1.max(lon)),
+        )
     });
     Some(((min.0 + max.0) / 2.0, (min.1 + max.1) / 2.0))
 }

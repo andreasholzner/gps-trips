@@ -334,7 +334,10 @@ pub fn match_files(held: &Held, files: &[ParsedCollection], decisions: &Decision
         )
     };
     let removed = |ids: &[i64], remove: &HashSet<i64>| -> Vec<i64> {
-        ids.iter().copied().filter(|id| remove.contains(id)).collect()
+        ids.iter()
+            .copied()
+            .filter(|id| remove.contains(id))
+            .collect()
     };
     let remove_tracks = removed(&unmatched_tracks, &decisions.remove_tracks);
     let remove_waypoints = removed(&unmatched_waypoints, &decisions.remove_waypoints);

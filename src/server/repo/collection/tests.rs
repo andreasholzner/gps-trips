@@ -50,7 +50,10 @@ async fn insert(
             name: "Alpencross",
             description: "Bruckmann",
             activity_type: activity,
-            gpx: SAMPLE_GPX,
+            files: &[NewCollectionFile {
+                file_name: "sample.gpx",
+                gpx: SAMPLE_GPX,
+            }],
             tracks: &tracks,
             waypoints,
         },

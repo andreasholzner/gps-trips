@@ -81,7 +81,10 @@ use ImportAction::{Add, Replace, Skip};
 #[test]
 fn us88_a_track_the_collection_holds_is_skipped_also_when_slightly_shifted() {
     let held = Held {
-        tracks: vec![held_track(1, "Stage 1", 46.5), held_track(2, "Stage 2", 46.6)],
+        tracks: vec![
+            held_track(1, "Stage 1", 46.5),
+            held_track(2, "Stage 2", 46.6),
+        ],
         ..Held::default()
     };
     let files = [file(
@@ -105,7 +108,10 @@ fn us88_a_track_of_the_same_name_that_differs_is_replaced() {
         tracks: vec![held_track(1, "Stage 1", 46.5)],
         ..Held::default()
     };
-    let files = [file(vec![file_track(Some("Stage 1"), 46.5 + SHIFT)], vec![])];
+    let files = [file(
+        vec![file_track(Some("Stage 1"), 46.5 + SHIFT)],
+        vec![],
+    )];
 
     let matching = match_files(&held, &files, &Decisions::default());
 
@@ -195,7 +201,10 @@ fn us88_the_owner_decides_and_a_choice_that_is_not_offered_takes_the_proposal() 
         ..Held::default()
     };
     let files = [file(
-        vec![file_track(Some("Stage 1"), 46.5), file_track(Some("New"), 47.0)],
+        vec![
+            file_track(Some("Stage 1"), 46.5),
+            file_track(Some("New"), 47.0),
+        ],
         vec![],
     )];
     let decisions = Decisions {

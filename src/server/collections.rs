@@ -188,7 +188,10 @@ async fn handle_create(
             name: &name,
             description: &description,
             activity_type,
-            gpx: &upload.gpx,
+            files: &[repo::NewCollectionFile {
+                file_name: &upload.file_name,
+                gpx: &upload.gpx,
+            }],
             tracks: &tracks,
             waypoints: &waypoints,
         },

@@ -2,7 +2,7 @@
 //! of their own, apart from trips (ADR-0028). Deleting a collection deletes
 //! everything it owns through the schema's cascades (migration 0024).
 
-use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
 use crate::models::{
@@ -24,8 +24,8 @@ pub struct NewCollection<'a> {
     pub name: &'a str,
     pub description: &'a str,
     pub activity_type: Option<ActivityType>,
-    /// The file as it was uploaded.
-    pub gpx: &'a [u8],
+    /// The files as they were uploaded (US-88), in the order they came.
+    pub files: &'a [NewCollectionFile<'a>],
     /// In file order; a track's position is its place here.
     pub tracks: &'a [NewCollectionTrack<'a>],
     pub waypoints: &'a [NewWaypoint<'a>],
@@ -59,70 +59,98 @@ pub async fn insert_collection(
     collection: &NewCollection<'_>,
 ) -> Result<i64, sqlx::Error> {
     let mut tx = db::begin_write(pool).await?;
+    let id = insert_collection_in_tx(&mut tx, collection).await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
+/// [`insert_collection`] on the caller's transaction.
+pub async fn insert_collection_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    collection: &NewCollection<'_>,
+) -> Result<i64, sqlx::Error> {
     let id = sqlx::query(
-        "INSERT INTO collection (name, description, activity_type, created_at, gpx) \
-         VALUES (?,?,?,?,?)",
+        "INSERT INTO collection (name, description, activity_type, created_at) VALUES (?,?,?,?)",
     )
     .bind(collection.name)
     .bind(collection.description)
     .bind(collection.activity_type)
     .bind(to_rfc3339(OffsetDateTime::now_utc()))
-    .bind(collection.gpx)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?
     .last_insert_rowid();
 
+    insert_files(tx, id, collection.files).await?;
     let mut track_ids = Vec::with_capacity(collection.tracks.len());
-    for (index, track) in collection.tracks.iter().enumerate() {
-        let track_id = sqlx::query(
-            "INSERT INTO collection_track \
-                 (collection_id, position, name, distance_m, ascent_m, descent_m, \
-                  min_lat, min_lon, max_lat, max_lon, geojson, gpx) \
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        )
-        .bind(id)
-        .bind(index as i64 + 1)
-        .bind(track.name)
-        .bind(track.stats.distance_m)
-        .bind(track.stats.ascent_m)
-        .bind(track.stats.descent_m)
-        .bind(track.stats.min_lat)
-        .bind(track.stats.min_lon)
-        .bind(track.stats.max_lat)
-        .bind(track.stats.max_lon)
-        .bind(track.geojson)
-        .bind(track.gpx)
-        .execute(&mut *tx)
-        .await?
-        .last_insert_rowid();
-        track_ids.push(track_id);
+    for track in collection.tracks {
+        track_ids.push(insert_track(tx, id, track).await?);
     }
-
-    for (index, waypoint) in collection.waypoints.iter().enumerate() {
+    for waypoint in collection.waypoints {
         let track_id = waypoint
             .track
             .and_then(|track| track_ids.get(track).copied());
-        sqlx::query(
-            "INSERT INTO waypoint \
-                 (collection_id, collection_track_id, position, name, description, lat, lon, ele, \
-                  symbol) \
-             VALUES (?,?,?,?,?,?,?,?,?)",
-        )
-        .bind(id)
-        .bind(track_id)
-        .bind(index as i64 + 1)
-        .bind(waypoint.name)
-        .bind(waypoint.description)
-        .bind(waypoint.lat)
-        .bind(waypoint.lon)
-        .bind(waypoint.ele)
-        .bind(waypoint.symbol)
-        .execute(&mut *tx)
-        .await?;
+        insert_waypoint(tx, id, waypoint, track_id).await?;
     }
-
-    tx.commit().await?;
     Ok(id)
+}
+
+/// Add a track after the collection's last one; returns its id.
+pub(super) async fn insert_track(
+    tx: &mut Transaction<'_, Sqlite>,
+    collection_id: i64,
+    track: &NewCollectionTrack<'_>,
+) -> Result<i64, sqlx::Error> {
+    let id = sqlx::query(
+        "INSERT INTO collection_track \
+             (collection_id, position, name, distance_m, ascent_m, descent_m, \
+              min_lat, min_lon, max_lat, max_lon, geojson, gpx) \
+         VALUES (?1, (SELECT COALESCE(MAX(position), 0) + 1 FROM collection_track \
+                      WHERE collection_id = ?1), \
+                 ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+    )
+    .bind(collection_id)
+    .bind(track.name)
+    .bind(track.stats.distance_m)
+    .bind(track.stats.ascent_m)
+    .bind(track.stats.descent_m)
+    .bind(track.stats.min_lat)
+    .bind(track.stats.min_lon)
+    .bind(track.stats.max_lat)
+    .bind(track.stats.max_lon)
+    .bind(track.geojson)
+    .bind(track.gpx)
+    .execute(&mut **tx)
+    .await?
+    .last_insert_rowid();
+    Ok(id)
+}
+
+/// Add a waypoint after the collection's last one.
+pub(super) async fn insert_waypoint(
+    tx: &mut Transaction<'_, Sqlite>,
+    collection_id: i64,
+    waypoint: &NewWaypoint<'_>,
+    track_id: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO waypoint \
+             (collection_id, collection_track_id, position, name, description, lat, lon, ele, \
+              symbol) \
+         VALUES (?1, ?2, (SELECT COALESCE(MAX(position), 0) + 1 FROM waypoint \
+                          WHERE collection_id = ?1), \
+                 ?3, ?4, ?5, ?6, ?7, ?8)",
+    )
+    .bind(collection_id)
+    .bind(track_id)
+    .bind(waypoint.name)
+    .bind(waypoint.description)
+    .bind(waypoint.lat)
+    .bind(waypoint.lon)
+    .bind(waypoint.ele)
+    .bind(waypoint.symbol)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 /// A collection with its tracks in file order, or `None` if there is none.
@@ -375,7 +403,16 @@ pub async fn get_collection_track_gpx(
         .await
 }
 
+mod files;
+mod import;
 mod list;
+use files::insert_files;
+pub use files::{get_collection_file, list_collection_files, NewCollectionFile};
+pub use import::{
+    apply_collection_import, delete_collection_import, get_collection_import,
+    insert_collection_import, load_held, sweep_collection_imports, take_collection_import_in_tx,
+    CollectionImportPlan, PlannedTrack, PlannedWaypoint, StagedCollectionImport, TrackRef,
+};
 pub use list::{count_collections, list_collection_tracks_by_id, list_collections};
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
