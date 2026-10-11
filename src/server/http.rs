@@ -12,8 +12,8 @@ use tower_http::set_header::{SetResponseHeader, SetResponseHeaderLayer};
 
 use crate::config;
 use crate::models::{
-    AppVersion, ExportTrip, SyncCandidates, SyncPhase, SyncRequest, SyncResponse, TripDetail,
-    TripSummary,
+    AppVersion, ExportCollection, ExportTrip, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
+    TripDetail, TripSummary,
 };
 use crate::server::{
     access_log, auth, backup, collection_import, collections, delete,
@@ -161,6 +161,8 @@ pub fn router(state: AppState) -> Router {
         // US-51: every trip, unfiltered, for the laptop's `qmapshack_export`;
         // the geometry of the trips it writes comes from `track.geojson`.
         .route("/api/export/trips", get(export_trips_api))
+        // US-89: every collection, unfiltered, beside the trips.
+        .route("/api/export/collections", get(export_collections_api))
         // US-77: what the statistics screen adds up.
         .route("/api/stats/trips", get(handle_stats_trips))
         // US-78: what the tag summary adds up.
@@ -303,6 +305,15 @@ async fn export_trips_api(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ExportTrip>>, AppError> {
     Ok(Json(repo::list_export_trips(&state.pool).await?))
+}
+
+/// GET `/api/export/collections` — every collection with its tracks and
+/// waypoints, for the QMapShack exporter (US-89, ADR-0022's 2026-10-11
+/// amendment). Unfiltered for the reason `/api/export/trips` is.
+async fn export_collections_api(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ExportCollection>>, AppError> {
+    Ok(Json(repo::list_export_collections(&state.pool).await?))
 }
 
 /// GET `/api/version` (US-68).

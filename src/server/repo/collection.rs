@@ -17,7 +17,7 @@ use super::{to_rfc3339, trip::track_positions, GpxDownload};
 /// The activity a collection track goes by: its own, else its collection's,
 /// else `unknown` — worked out where it is read, so changing the
 /// collection's changes every track without one of its own.
-const TRACK_ACTIVITY: &str = "COALESCE(k.activity_type, c.activity_type, 'unknown')";
+pub(super) const TRACK_ACTIVITY: &str = "COALESCE(k.activity_type, c.activity_type, 'unknown')";
 
 /// A collection with everything it holds, ready to be stored in one go.
 pub struct NewCollection<'a> {

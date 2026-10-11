@@ -31,7 +31,7 @@ pub use collection::{
     CollectionTrackChange, NewCollection, NewCollectionFile, NewCollectionTrack, NewWaypoint,
     PlannedTrack, PlannedWaypoint, StagedCollectionImport, TrackRef,
 };
-pub use export::list_export_trips;
+pub use export::{list_export_collections, list_export_trips};
 pub use moving_time::backfill_moving_secs;
 pub use photo::{
     count_photos, insert_photo, list_photos, list_photos_without_taken_at, place_photo,

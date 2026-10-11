@@ -21,6 +21,7 @@ mod climb;
 mod collection;
 mod collection_import;
 mod error_response;
+mod export_collection;
 mod export_trip;
 mod komoot_link;
 mod komoot_privacy;
@@ -54,6 +55,7 @@ pub use collection_import::{
     ImportDecisions, ItemDecision, ReviewItem, ReviewMatch,
 };
 pub use error_response::ErrorResponse;
+pub use export_collection::{ExportCollection, ExportCollectionTrack, ExportWaypoint};
 pub use export_trip::ExportTrip;
 pub use komoot_link::KomootLink;
 pub use komoot_privacy::KomootPrivacy;

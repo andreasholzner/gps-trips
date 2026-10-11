@@ -338,6 +338,7 @@ const OWNER_ROUTES: &[(Method, &str)] = &[
     (Method::POST, "/api/komoot/sync"),
     (Method::GET, "/api/backup/database"),
     (Method::GET, "/api/export/trips"),
+    (Method::GET, "/api/export/collections"),
     (Method::GET, "/api/version"),
 ];
 

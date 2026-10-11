@@ -4,13 +4,16 @@
 //! list is one consistent state of the archive however the server commits
 //! meanwhile — the exporter's change detection and removal pass both rely on
 //! it. The geometry is not part of it: the exporter fetches that per trip,
-//! only for the trips it writes.
+//! only for the trips it writes. The guide-book collections come likewise,
+//! for `GET /api/export/collections` (US-89, the 2026-10-11 amendment).
 
 use std::collections::HashMap;
 
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 
-use crate::models::{ExportTrip, Tag};
+use crate::models::{ExportCollection, ExportCollectionTrack, ExportTrip, ExportWaypoint, Tag};
+
+use super::collection::TRACK_ACTIVITY;
 
 /// Every trip in the archive, in id order, each with its tags in name order.
 /// Full-library by design (ADR-0022): there is deliberately no filter.
@@ -55,6 +58,79 @@ pub async fn list_export_trips(pool: &SqlitePool) -> Result<Vec<ExportTrip>, sql
     .await?;
     tx.commit().await?;
     Ok(trips)
+}
+
+/// Every collection, in id order, each with its tracks and waypoints in
+/// file order — read in one transaction, and unfiltered, as the trips are.
+pub async fn list_export_collections(
+    pool: &SqlitePool,
+) -> Result<Vec<ExportCollection>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut tracks: HashMap<i64, Vec<ExportCollectionTrack>> = HashMap::new();
+    let rows = sqlx::query(&format!(
+        "SELECT k.collection_id, k.id, k.name, {TRACK_ACTIVITY} AS activity_type, \
+                k.distance_m, k.ascent_m, k.descent_m, k.min_lat, k.min_lon, k.max_lat, k.max_lon \
+         FROM collection_track k JOIN collection c ON c.id = k.collection_id \
+         ORDER BY k.position"
+    ))
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in rows {
+        tracks
+            .entry(row.get("collection_id"))
+            .or_default()
+            .push(ExportCollectionTrack {
+                id: row.get("id"),
+                name: row.get("name"),
+                activity_type: row.get("activity_type"),
+                distance_m: row.get("distance_m"),
+                ascent_m: row.get("ascent_m"),
+                descent_m: row.get("descent_m"),
+                min_lat: row.get("min_lat"),
+                min_lon: row.get("min_lon"),
+                max_lat: row.get("max_lat"),
+                max_lon: row.get("max_lon"),
+            });
+    }
+    let mut waypoints: HashMap<i64, Vec<ExportWaypoint>> = HashMap::new();
+    let rows = sqlx::query(
+        "SELECT collection_id, id, position, name, description, lat, lon, ele, symbol \
+         FROM waypoint ORDER BY position",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in rows {
+        waypoints
+            .entry(row.get("collection_id"))
+            .or_default()
+            .push(ExportWaypoint {
+                id: row.get("id"),
+                position: row.get("position"),
+                name: row.get("name"),
+                description: row.get("description"),
+                lat: row.get("lat"),
+                lon: row.get("lon"),
+                ele: row.get("ele"),
+                symbol: row.get("symbol"),
+            });
+    }
+    let collections =
+        sqlx::query("SELECT id, name, description, created_at FROM collection ORDER BY id")
+            .map(|row: SqliteRow| {
+                let id = row.get("id");
+                ExportCollection {
+                    id,
+                    name: row.get("name"),
+                    description: row.get("description"),
+                    created_at: row.get("created_at"),
+                    tracks: tracks.remove(&id).unwrap_or_default(),
+                    waypoints: waypoints.remove(&id).unwrap_or_default(),
+                }
+            })
+            .fetch_all(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(collections)
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -153,5 +229,159 @@ mod tests {
             |i: usize| -> Vec<&str> { trips[i].tags.iter().map(|t| t.name.as_str()).collect() };
         assert_eq!(names(0), ["fjell", "telt"]);
         assert_eq!(names(1), ["bre"]);
+    }
+
+    mod collections {
+        use super::super::*;
+        use crate::models::ActivityType;
+        use crate::server::db::testing::TestDb;
+        use crate::server::geojson::build_track_geojson;
+        use crate::server::gpx::{compute_stats, TrackPoint};
+        use crate::server::repo::{
+            insert_collection, update_collection_track, CollectionTrackChange, NewCollection,
+            NewCollectionFile, NewCollectionTrack, NewWaypoint,
+        };
+
+        fn points(lat: f64) -> [TrackPoint; 2] {
+            [
+                TrackPoint {
+                    lat,
+                    lon: 8.6,
+                    ele: Some(1000.0),
+                    time: None,
+                },
+                TrackPoint {
+                    lat: lat + 0.01,
+                    lon: 8.62,
+                    ele: Some(1100.0),
+                    time: None,
+                },
+            ]
+        }
+
+        fn waypoint<'a>(name: Option<&'a str>, symbol: Option<&'a str>) -> NewWaypoint<'a> {
+            NewWaypoint {
+                name,
+                description: Some("DNT"),
+                lat: 61.48,
+                lon: 8.62,
+                ele: None,
+                symbol,
+                track: None,
+            }
+        }
+
+        async fn insert(
+            pool: &SqlitePool,
+            name: &str,
+            activity: Option<ActivityType>,
+            track_names: &[&str],
+            waypoints: &[NewWaypoint<'_>],
+        ) -> i64 {
+            let pts = points(61.4);
+            let stats = compute_stats(&pts);
+            let geojson = build_track_geojson(&pts);
+            let tracks: Vec<NewCollectionTrack> = track_names
+                .iter()
+                .map(|name| NewCollectionTrack {
+                    name,
+                    stats: &stats,
+                    geojson: &geojson,
+                    gpx: b"<gpx/>",
+                })
+                .collect();
+            insert_collection(
+                pool,
+                &NewCollection {
+                    name,
+                    description: "50 Touren",
+                    activity_type: activity,
+                    files: &[NewCollectionFile {
+                        file_name: "book.gpx",
+                        gpx: b"<gpx/>",
+                    }],
+                    tracks: &tracks,
+                    waypoints,
+                },
+            )
+            .await
+            .expect("insert collection")
+        }
+
+        #[tokio::test]
+        async fn us89_lists_every_collection_with_its_tracks_and_waypoints_in_file_order() {
+            let db = TestDb::new().await;
+            let book = insert(
+                &db.pool,
+                "Jotunheimen",
+                Some(ActivityType::Hiking),
+                &["Besseggen", "Galdhøpiggen"],
+                &[
+                    waypoint(Some("Gjendebu"), Some("Lodge")),
+                    waypoint(None, None),
+                ],
+            )
+            .await;
+            let empty = insert(&db.pool, "Empty", None, &[], &[]).await;
+
+            let collections = list_export_collections(&db.pool).await.unwrap();
+
+            assert_eq!(collections.len(), 2);
+            let first = &collections[0];
+            assert_eq!(first.id, book);
+            assert_eq!(first.name, "Jotunheimen");
+            assert_eq!(first.description, "50 Touren");
+            assert!(first.created_at.ends_with('Z'), "{}", first.created_at);
+            let names: Vec<&str> = first.tracks.iter().map(|t| t.name.as_str()).collect();
+            assert_eq!(names, ["Besseggen", "Galdhøpiggen"]);
+            let track = &first.tracks[0];
+            assert_eq!(track.activity_type, ActivityType::Hiking);
+            assert!(track.distance_m > 0.0);
+            assert_eq!((track.min_lat, track.max_lat), (61.4, 61.41));
+            assert_eq!((track.min_lon, track.max_lon), (8.6, 8.62));
+            assert_eq!(first.waypoints.len(), 2);
+            let gjendebu = &first.waypoints[0];
+            assert_eq!(gjendebu.position, 1);
+            assert_eq!(gjendebu.name.as_deref(), Some("Gjendebu"));
+            assert_eq!(gjendebu.description.as_deref(), Some("DNT"));
+            assert_eq!(gjendebu.symbol.as_deref(), Some("Lodge"));
+            assert_eq!(
+                (gjendebu.lat, gjendebu.lon, gjendebu.ele),
+                (61.48, 8.62, None)
+            );
+            assert_eq!(first.waypoints[1].position, 2);
+            assert_eq!(first.waypoints[1].name, None);
+            assert_eq!(first.waypoints[1].symbol, None);
+
+            assert_eq!(collections[1].id, empty);
+            assert!(collections[1].tracks.is_empty());
+            assert!(collections[1].waypoints.is_empty());
+        }
+
+        #[tokio::test]
+        async fn us89_a_track_goes_by_its_own_activity_else_its_collections_else_unknown() {
+            let db = TestDb::new().await;
+            insert(&db.pool, "Book", None, &["Plain", "Own"], &[]).await;
+            let collections = list_export_collections(&db.pool).await.unwrap();
+            let own = collections[0].tracks[1].id;
+            update_collection_track(
+                &db.pool,
+                own,
+                &CollectionTrackChange {
+                    name: None,
+                    activity_type: Some(Some(ActivityType::Cycling)),
+                },
+            )
+            .await
+            .unwrap();
+
+            let collections = list_export_collections(&db.pool).await.unwrap();
+            let activities: Vec<ActivityType> = collections[0]
+                .tracks
+                .iter()
+                .map(|t| t.activity_type)
+                .collect();
+            assert_eq!(activities, [ActivityType::Unknown, ActivityType::Cycling]);
+        }
     }
 }

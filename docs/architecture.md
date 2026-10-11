@@ -45,7 +45,7 @@ C4Context
 
     System_Ext(komoot, "komoot", "External SaaS used for recording, route planning and discovery. Source of exported GPX files and of synced tours + photos; receives pushed name/activity/privacy edits and deletes.")
     System_Ext(osm, "OpenStreetMap tile servers", "Public raster map tiles.")
-    System_Ext(qms, "QMapShack", "Owner's desktop GPS application. Reads a SQLite trip database that the exporter maintains.")
+    System_Ext(qms, "QMapShack", "Owner's desktop GPS application. Reads a SQLite trip database that the exporter maintains, guide-book collections included.")
     System_Ext(owncloud, "ownCloud [planned]", "Owner's private file storage for photo blobs.")
     System_Ext(garmin, "Garmin Connect [planned]", "Alternate source of recorded activities.")
 
@@ -68,7 +68,7 @@ C4Context
   with their photos, and pushes the owner's name/activity edits and deletes back
   ([ADR-0021](./adr/0021-reverse-engineered-komoot-client.md)).
 - The QMapShack export is one-way and runs outside the web app, as a CLI the owner invokes
-  manually or from cron (US-36/US-37, [ADR-0022](./adr/0022-qmapshack-export.md)).
+  manually or from cron (US-36/US-37/US-89, [ADR-0022](./adr/0022-qmapshack-export.md)).
 - Map tiles come from OpenStreetMap directly (no API key) — see
   [ADR-0005](./adr/0005-leaflet-osm-via-wasm-interop.md).
 
@@ -91,7 +91,7 @@ C4Container
         Container(server, "Application Server", "Rust (Axum), single binary", "Serves the JSON API and the SPA bundle as static files, and nothing else — no server-rendered pages since US-44. Handles GPX/photo import, stats, filtering, tagging, edit/delete, and the komoot 'Sync now' push/pull.")
         ContainerDb(db, "Database", "SQLite (single local file)", "trip metadata + stats, track (GeoJSON blob), photo metadata, tags, komoot links, shares. Always on local disk.")
         Container(blobs, "Photo Store", "Local filesystem via BlobStore trait", "Photo originals + generated thumbnails. Swappable backend.")
-        Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "Runs on the laptop: one-way reconcile of every trip into a QMapShack database, reading the archive through the JSON API; run manually or from cron, never from inside the app. TOML config for archive URL, target path + folder mapping; rolling backups; version gate.")
+        Container(qmsexport, "qmapshack_export CLI", "Rust binary, same crate", "Runs on the laptop: one-way reconcile of every trip and guide-book collection into a QMapShack database, reading the archive through the JSON API; run manually or from cron, never from inside the app. TOML config for archive URL, target path + folder mappings; rolling backups; version gate.")
         Container(backfill, "komoot_backfill CLI", "Rust binary, same crate", "Bulk-imports all historical komoot tours + photos not yet linked, through the same sync pipeline (US-23). Runs inside the deployed instance, against its volume.")
         Container(takenat, "photo_taken_at_backfill CLI", "Rust binary, same crate", "One-off: gives photos stored before US-62 the capture time their stored copy's EXIF names. Runs inside the deployed instance, against its volume.")
         Container(check, "komoot_check CLI", "Rust binary, same crate", "Standalone probe that the reverse-engineered komoot API still works (US-27). No DB or blob store.")
@@ -112,7 +112,7 @@ C4Container
     Rel(server, blobs, "Stores originals/thumbnails; serves files", "file IO / ServeDir")
     Rel(server, komoot, "Pulls tours + photos; pushes edits/deletes", "HTTPS")
     Rel(spa, osm, "Fetches map tiles", "HTTPS")
-    Rel(qmsexport, server, "Fetches the trip list, then geometry of new/changed trips only", "HTTPS / JSON")
+    Rel(qmsexport, server, "Fetches the trip and collection lists, then geometry of new/changed tracks only", "HTTPS / JSON")
     Rel(qmsexport, qms, "Inserts/updates/trashes items in its database", "SQLite file IO")
     Rel(backfill, komoot, "Lists + downloads tours and photos", "HTTPS")
     Rel(backfill, db, "Imports tours transactionally", "sqlx (SQL)")
