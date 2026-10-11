@@ -61,6 +61,28 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
     assert!(html.contains(r#"id="delete-collection""#), "{html}");
 }
 
+// US-88: the files it came from, as uploaded.
+#[tokio::test]
+async fn us88_the_page_lists_the_files_to_download() {
+    let (archive, _dir) = serve_test_archive().await;
+    let (id, _) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+    let files = api::list_collection_files(&archive, id).await.unwrap();
+
+    let html = render_against_archive(
+        &archive,
+        move || rsx! { Collection { id } },
+        |html| html.contains("collection-files"),
+    )
+    .await;
+
+    assert!(html.contains(r#"id="collection-files""#), "{html}");
+    assert!(
+        html.contains(&format!("/api/collection-files/{}/gpx", files[0].id)),
+        "{html}"
+    );
+    assert!(html.contains(">book.gpx</a>"), "{html}");
+}
+
 #[tokio::test]
 async fn us86_a_collection_that_no_longer_exists_says_so() {
     let (archive, _dir) = serve_test_archive().await;

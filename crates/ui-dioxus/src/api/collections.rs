@@ -9,6 +9,12 @@ use trip_archive_types::{
 use super::{get_json, ok_or_error, ApiClient, ApiError};
 use crate::track::Track;
 
+mod imports;
+pub use imports::{
+    cancel_collection_import, collection_file_url, confirm_collection_import,
+    list_collection_files, review_collection_import, upload_collection_files,
+};
+
 /// A guide book's file as a multipart part.
 fn gpx_part(file_name: &str, bytes: Vec<u8>) -> Result<reqwest::multipart::Part, ApiError> {
     reqwest::multipart::Part::bytes(bytes)

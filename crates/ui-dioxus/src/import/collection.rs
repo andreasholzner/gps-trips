@@ -1,16 +1,18 @@
-//! Importing a guide book's file as a collection (US-86): the third choice
-//! on the import screen beside Recorded and Planned. Once the file is
-//! chosen, the archive reads what it holds and suggests the collection's
-//! name and description; the owner confirms or changes them, picks an
-//! activity or none, and the import ends on the new collection's page.
+//! Importing a guide book's file as a new collection (US-86): the third
+//! choice on the import screen beside Recorded and Planned, *Collection*
+//! (US-88). Once the file is chosen, the archive reads what it holds and
+//! suggests the collection's name and description; the owner confirms or
+//! changes them, picks an activity or none, and the import ends on the new
+//! collection's page. Several files, or files for an existing collection,
+//! are reviewed first (`review`).
 
 use dioxus::prelude::*;
 use trip_archive_types::CollectionPreview;
 
 use crate::collection::{counts, CollectionFields, CollectionForm};
 
-/// The import's choice for a guide book, beside the trip kinds' wire values.
-pub const GUIDE_BOOK: &str = "guide_book";
+/// The import's choice for a collection, beside the trip kinds' wire values.
+pub const COLLECTION: &str = "collection";
 
 /// A guide book's file, read by the archive and waiting to be confirmed.
 /// Nothing is created yet, so the bytes stay here to be sent again.
@@ -57,7 +59,7 @@ pub fn ConfirmGuideBookStep(
                 id: "import-confirm",
                 r#type: "submit",
                 disabled: submitting,
-                if submitting { "Importing…" } else { "Import guide book" }
+                if submitting { "Importing…" } else { "Import collection" }
             }
             button {
                 id: "import-start-over",
@@ -117,5 +119,36 @@ mod tests {
         assert!(html.contains(r#"id="import-start-over""#), "{html}");
         // A guide book's tracks carry no photos (US-86).
         assert!(!html.contains("import-photos"), "{html}");
+    }
+
+    #[test]
+    fn us88_a_collections_files_are_several_and_may_go_to_an_existing_one() {
+        let html = render(|| {
+            rsx! {
+                super::super::steps::ChooseGpx {
+                    reading: false,
+                    kind: COLLECTION.to_string(),
+                    collections: vec![(4, "Lakes".to_string()), (7, "Passes".to_string())],
+                    target: Some(7),
+                    on_choose: move |_| {},
+                }
+            }
+        });
+
+        assert!(html.contains(r#"id="import-target""#), "{html}");
+        assert!(html.contains("A new collection"), "{html}");
+        assert!(html.contains(r#"value="7" selected"#), "{html}");
+        assert!(html.contains("Lakes"), "{html}");
+        assert!(html.contains("multiple"), "{html}");
+    }
+
+    #[test]
+    fn us88_a_trip_takes_one_file_and_no_collection() {
+        let html = render(|| {
+            rsx! { super::super::steps::ChooseGpx { reading: false, on_choose: move |_| {} } }
+        });
+
+        assert!(!html.contains(r#"id="import-target""#), "{html}");
+        assert!(!html.contains("multiple"), "{html}");
     }
 }

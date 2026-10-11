@@ -10,11 +10,12 @@
 //! so a large import has something to watch (ADR-0004's 2026-09-01
 //! amendment).
 //!
-//! A guide book's file takes the third choice beside Recorded and Planned
-//! (US-86, `guide_book`): step one then asks the archive what the file
+//! A guide book's file takes the third choice beside Recorded and Planned,
+//! *Collection* (US-86, US-88): step one then asks the archive what the file
 //! holds, and step two creates a collection rather than a trip. The choice
 //! is made before the file is read, because a book of waypoints alone is no
-//! trip the archive could stage.
+//! trip the archive could stage. Several files, or files for an existing
+//! collection, are parked and reviewed instead (US-88, `review`).
 //!
 //! The rules worth checking without a browser are kept out of the component:
 //! [`ConfirmForm`] decides what the fields start as and what is sent, and
@@ -22,17 +23,19 @@
 //! is sequencing.
 
 use dioxus::prelude::*;
-use trip_archive_types::{ConfirmImport, StagedImport, TripKind};
+use trip_archive_types::{CollectionImportReview, ConfirmImport, StagedImport, TripKind};
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
 use crate::collection::CollectionForm;
 use crate::photos::{upload_in_batches, PartialUpload};
 use crate::Route;
 
-mod guide_book;
+mod collection;
+mod review;
 mod steps;
 
-use guide_book::{ChosenBook, ConfirmGuideBookStep, GUIDE_BOOK};
+use collection::{ChosenBook, ConfirmGuideBookStep, COLLECTION};
+use review::ReviewFlow;
 use steps::{ChooseGpx, ConfirmImportStep, PartialOutcome, UploadProgress};
 
 /// Photos per request. Small enough that the count moves often on a big
@@ -147,10 +150,26 @@ pub fn ImportTrip() -> Element {
     // owner to find the file again.
     let mut gpx = use_signal(|| None::<(String, Vec<u8>)>);
     let mut staged = use_signal(|| None::<StagedImport>);
-    // A trip kind's wire value, or `GUIDE_BOOK` (US-86): Recorded until the
+    // A trip kind's wire value, or `COLLECTION` (US-86): Recorded until the
     // owner says otherwise, the default the import has always had (US-31).
     let mut kind = use_signal(|| TripKind::Recorded.as_str().to_string());
     let mut book = use_signal(|| None::<ChosenBook>);
+    // US-88: the collection the files are added to, `None` for a new one,
+    // and the upload parked for review.
+    let mut target = use_signal(|| None::<i64>);
+    let mut upload = use_signal(|| None::<CollectionImportReview>);
+    let collections = use_resource(move || async move {
+        if kind() != COLLECTION {
+            return Vec::new();
+        }
+        match api::list_collections(&archive(), String::new()).await {
+            Ok(listed) => listed.into_iter().map(|c| (c.id, c.name)).collect(),
+            Err(err) => {
+                dioxus::logger::tracing::error!("could not list the collections: {err}");
+                Vec::new()
+            }
+        }
+    });
     let mut reading = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut progress = use_signal(|| None::<Progress>);
@@ -172,6 +191,29 @@ pub fn ImportTrip() -> Element {
     // previous parse to hand back here — `start_over` below is what does
     // that, and what makes it reachable at all.
     let choose = move |event: FormEvent| async move {
+        // US-88: several files, or files for an existing collection, are
+        // parked and reviewed; a single one for a new collection is US-86's.
+        if kind() == COLLECTION && (event.files().len() > 1 || target().is_some()) {
+            reading.set(true);
+            error.set(None);
+            let mut files = Vec::new();
+            for file in event.files() {
+                match file.read_bytes().await {
+                    Ok(bytes) => files.push((file.name(), bytes.to_vec())),
+                    Err(err) => {
+                        reading.set(false);
+                        error.set(Some(format!("Could not read {}: {err}", file.name())));
+                        return;
+                    }
+                }
+            }
+            match api::upload_collection_files(&archive(), files, target()).await {
+                Ok(review) => upload.set(Some(review)),
+                Err(err) => error.set(Some(format!("Could not read those GPX files: {err}"))),
+            }
+            reading.set(false);
+            return;
+        }
         let Some(file) = event.files().into_iter().next() else {
             return;
         };
@@ -187,7 +229,7 @@ pub fn ImportTrip() -> Element {
                 return;
             }
         };
-        if kind() == GUIDE_BOOK {
+        if kind() == COLLECTION {
             match api::preview_collection(&archive(), &name, bytes.clone()).await {
                 Ok(preview) => book.set(Some(ChosenBook {
                     file_name: name,
@@ -280,7 +322,7 @@ pub fn ImportTrip() -> Element {
             Ok(id) => {
                 navigator().push(Route::Collection { id });
             }
-            Err(err) => error.set(Some(format!("Could not import this guide book: {err}"))),
+            Err(err) => error.set(Some(format!("Could not import this collection: {err}"))),
         }
     };
 
@@ -299,9 +341,18 @@ pub fn ImportTrip() -> Element {
     rsx! {
         h1 { "Import a trip" }
 
+        if let Some(review) = upload() {
+            ReviewFlow {
+                key: "{review.staging_id}",
+                initial: review,
+                on_leave: move |message| {
+                    upload.set(None);
+                    error.set(message);
+                },
+            }
         // Only the preview: the file itself is megabytes for a whole book,
         // and this runs on every keystroke in the form.
-        if let Some(preview) = book.read().as_ref().map(|chosen| chosen.preview.clone()) {
+        } else if let Some(preview) = book.read().as_ref().map(|chosen| chosen.preview.clone()) {
             ConfirmGuideBookStep {
                 preview,
                 error: error(),
@@ -321,6 +372,9 @@ pub fn ImportTrip() -> Element {
                         error: error(),
                         kind: kind(),
                         on_kind: move |chosen| kind.set(chosen),
+                        collections: collections().unwrap_or_default(),
+                        target: target(),
+                        on_target: move |chosen| target.set(chosen),
                         on_choose: choose,
                     }
                 },

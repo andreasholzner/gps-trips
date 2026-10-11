@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::{StagedImport, TripKind};
 
-use super::guide_book::GUIDE_BOOK;
+use super::collection::COLLECTION;
 use super::{ConfirmForm, PartialImport, Progress};
 use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::PhotoUpload;
@@ -12,19 +12,28 @@ use crate::suggested::MapCredits;
 use crate::Route;
 
 /// Step one: what the file is — a trip recorded or planned (US-31), or a
-/// guide book (US-86) — and the file itself.
+/// collection's (US-86) — and the file itself; for a collection, several
+/// files and the collection they are added to, if any (US-88).
 #[component]
 pub(super) fn ChooseGpx(
     reading: bool,
     #[props(default)] error: Option<String>,
     #[props(default = TripKind::Recorded.as_str().to_string())] kind: String,
     #[props(default)] on_kind: EventHandler<String>,
+    /// The collections files can be added to, as `(id, name)` (US-88).
+    #[props(default)]
+    collections: Vec<(i64, String)>,
+    /// The one chosen; `None` for a new collection.
+    #[props(default)]
+    target: Option<i64>,
+    #[props(default)] on_target: EventHandler<Option<i64>>,
     on_choose: EventHandler<FormEvent>,
 ) -> Element {
+    let for_collection = kind == COLLECTION;
     let options = TripKind::ALL
         .iter()
         .map(|kind| (kind.as_str(), kind.label()))
-        .chain([(GUIDE_BOOK, "Guide book")]);
+        .chain([(COLLECTION, "Collection")]);
     rsx! {
         fieldset {
             legend { "Import as" }
@@ -42,11 +51,28 @@ pub(super) fn ChooseGpx(
                 }
             }
         }
-        p { "Choose the GPX file to import. You can name it in the next step." }
+        if for_collection {
+            p {
+                label { r#for: "import-target", "Add to" }
+                select {
+                    id: "import-target",
+                    disabled: reading,
+                    onchange: move |event| on_target.call(event.value().parse().ok()),
+                    option { value: "", selected: target.is_none(), "A new collection" }
+                    for (id, name) in collections {
+                        option { key: "{id}", value: "{id}", selected: target == Some(id), "{name}" }
+                    }
+                }
+            }
+            p { "Choose one or more GPX files to import. You can review them in the next step." }
+        } else {
+            p { "Choose the GPX file to import. You can name it in the next step." }
+        }
         input {
             id: "import-gpx",
             r#type: "file",
             accept: ".gpx,application/gpx+xml",
+            multiple: for_collection,
             disabled: reading,
             onchange: move |event| on_choose.call(event),
         }

@@ -46,7 +46,7 @@ fn the_name_starts_as_the_archives_suggestion() {
 
 #[test]
 fn the_kind_is_the_one_chosen_with_the_file() {
-    // US-31, chosen in step one beside the guide book (US-86).
+    // US-31, chosen in step one beside a collection (US-86, US-88).
     let form = ConfirmForm::of(&a_suggestion("2024-06-01 "), "planned");
 
     assert_eq!(form.to_confirm().kind.as_deref(), Some("planned"));
@@ -247,7 +247,7 @@ fn the_confirm_step_offers_a_way_back_to_the_picker() {
 fn the_first_step_asks_what_the_file_is_and_for_the_file() {
     // Nothing to name yet: the archive has not read the track, so it has no
     // date to suggest — which is the whole reason this step exists. What the
-    // file is comes first: a guide book (US-86) is read differently, and a
+    // file is comes first: a collection (US-86) is read differently, and a
     // book of waypoints alone is no trip the archive could stage.
     let html = render(|| rsx! { ChooseGpx { reading: false, on_choose: move |_| {} } });
 
@@ -259,8 +259,10 @@ fn the_first_step_asks_what_the_file_is_and_for_the_file() {
         .skip(1)
         .filter_map(|rest| rest.split('"').next())
         .collect();
-    assert_eq!(kinds, ["recorded", "planned", "guide_book"], "{html}");
-    assert!(html.contains("Guide book"), "{html}");
+    assert_eq!(kinds, ["recorded", "planned", "collection"], "{html}");
+    // US-88: the choice US-86 called "Guide book".
+    assert!(html.contains("Collection"), "{html}");
+    assert!(!html.contains("Guide book"), "{html}");
 }
 
 #[test]
