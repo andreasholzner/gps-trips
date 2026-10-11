@@ -484,3 +484,20 @@ async fn an_expired_upload_with_no_bytes_in_hand_says_what_to_do() {
 
     assert!(err.to_string().contains("choose the file again"), "{err}");
 }
+
+// ── Which way the chosen files go (US-88) ────────────────────────────────────
+
+#[test]
+fn us88_several_files_or_an_existing_collection_go_to_the_review() {
+    assert_eq!(path_of(COLLECTION, 2, None), Some(Path::Review));
+    assert_eq!(path_of(COLLECTION, 1, Some(4)), Some(Path::Review));
+    assert_eq!(path_of(COLLECTION, 1, None), Some(Path::Single));
+    assert_eq!(path_of("recorded", 1, Some(4)), Some(Path::Single));
+}
+
+#[test]
+fn us88_a_picker_closed_without_a_file_uploads_nothing() {
+    assert_eq!(path_of(COLLECTION, 0, Some(4)), None);
+    assert_eq!(path_of(COLLECTION, 0, None), None);
+    assert_eq!(path_of("recorded", 0, None), None);
+}

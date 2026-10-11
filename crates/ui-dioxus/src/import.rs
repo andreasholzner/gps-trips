@@ -119,6 +119,25 @@ impl ConfirmForm {
     }
 }
 
+/// Which way chosen files go.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Path {
+    /// One file, read as a trip or as US-86's new collection.
+    Single,
+    /// Parked and reviewed first (US-88).
+    Review,
+}
+
+/// Several files, or files for an existing collection, are reviewed; any
+/// other file goes the single way; a picker closed without one, nowhere.
+fn path_of(kind: &str, files: usize, target: Option<i64>) -> Option<Path> {
+    match files {
+        0 => None,
+        _ if kind == COLLECTION && (files > 1 || target.is_some()) => Some(Path::Review),
+        _ => Some(Path::Single),
+    }
+}
+
 /// How far the photos have got, once the trip itself exists.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Progress {
@@ -191,9 +210,12 @@ pub fn ImportTrip() -> Element {
     // previous parse to hand back here — `start_over` below is what does
     // that, and what makes it reachable at all.
     let choose = move |event: FormEvent| async move {
+        let Some(path) = path_of(&kind(), event.files().len(), target()) else {
+            return;
+        };
         // US-88: several files, or files for an existing collection, are
         // parked and reviewed; a single one for a new collection is US-86's.
-        if kind() == COLLECTION && (event.files().len() > 1 || target().is_some()) {
+        if path == Path::Review {
             reading.set(true);
             error.set(None);
             let mut files = Vec::new();
