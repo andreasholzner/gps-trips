@@ -30,6 +30,8 @@ pub struct ParsedCollection {
 
 #[derive(Debug)]
 pub struct ParsedCollectionTrack {
+    /// 1-based, counting every track in the file — those left out too.
+    pub position: usize,
     pub name: Option<String>,
     /// Without times.
     pub points: Vec<TrackPoint>,
@@ -67,17 +69,19 @@ pub fn parse_collection(data: &[u8]) -> Result<ParsedCollection, ImportError> {
         })
         .collect();
 
-    let drawable: Vec<&gpx::Track> = gpx
+    let drawable: Vec<(usize, &gpx::Track)> = gpx
         .tracks
         .iter()
-        .filter(|track| track.segments.iter().any(|seg| !seg.points.is_empty()))
+        .enumerate()
+        .filter(|(_, track)| track.segments.iter().any(|seg| !seg.points.is_empty()))
         .collect();
     let alone = drawable.len() == 1;
     let tracks = drawable
         .into_iter()
-        .map(|track| {
+        .map(|(index, track)| {
             let shared_waypoints = if alone { &gpx.waypoints[..] } else { &[] };
             Ok(ParsedCollectionTrack {
+                position: index + 1,
                 name: non_blank(track.name.as_deref()),
                 points: untimed_points(track),
                 gpx: track_gpx(track, shared_waypoints)?,
@@ -133,7 +137,7 @@ impl ParsedCollection {
 }
 
 /// A collection track's name: the file's, else the collection's and the
-/// track's 1-based position in the file.
+/// track's position in the file.
 pub fn track_name(own: Option<&str>, collection: &str, position: usize) -> String {
     own.map_or_else(|| format!("{collection} {position}"), str::to_string)
 }

@@ -141,10 +141,9 @@ async fn handle_create(
     let derived: Vec<_> = parsed
         .tracks
         .iter()
-        .enumerate()
-        .map(|(index, track)| {
+        .map(|track| {
             (
-                track_name(track.name.as_deref(), &name, index + 1),
+                track_name(track.name.as_deref(), &name, track.position),
                 compute_stats(&track.points),
                 build_track_geojson(&track.points),
             )

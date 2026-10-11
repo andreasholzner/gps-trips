@@ -139,6 +139,24 @@ async fn us86_details_left_out_take_what_the_file_suggests() {
 }
 
 #[tokio::test]
+async fn us86_an_unnamed_track_is_numbered_by_its_place_in_the_file() {
+    // A track without a single point is no track to keep, but it still has
+    // its place in the file.
+    let (app, _dir) = test_app().await;
+    let book = r#"<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Empty</name></trk><trk><name>Stage 2</name><trkseg><trkpt lat="46.0" lon="9.0"/><trkpt lat="46.0" lon="9.01"/></trkseg></trk><trk><trkseg><trkpt lat="46.1" lon="9.0"/><trkpt lat="46.1" lon="9.01"/></trkseg></trk></gpx>"#;
+
+    let id = import_collection(&app, book.as_bytes(), &[("name", "Book")]).await;
+
+    let names: Vec<String> = collection(&app, id)
+        .await
+        .tracks
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, ["Stage 2", "Book 3"]);
+}
+
+#[tokio::test]
 async fn us86_a_whole_book_imports_in_one_go() {
     // The size of `data/collections/Alpencross-light-Baukasten.gpx`: 125
     // tracks and 46 waypoints.
