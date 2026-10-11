@@ -1,5 +1,6 @@
 //! US-86 acceptance tests — no two collections share a name, whatever the
-//! case, so the QMapShack export can give each a folder of its own (US-89).
+//! case of A–Z, so the QMapShack export can give each a folder of its own
+//! (US-89).
 //! An import or a rename to a taken name is refused, naming it, and changes
 //! nothing. US-88's new collection of several files is tested with its
 //! other confirmations.

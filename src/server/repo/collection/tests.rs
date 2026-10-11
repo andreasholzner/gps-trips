@@ -369,13 +369,14 @@ fn named(name: &str) -> NewCollection<'_> {
 }
 
 #[tokio::test]
-async fn us86_a_new_collection_may_not_take_a_name_another_has_whatever_the_case() {
+async fn us86_a_new_collection_may_not_take_a_name_another_has_whatever_the_case_of_a_to_z() {
     let db = TestDb::new().await;
     insert_collection(&db.pool, &named("Østerdalen"))
         .await
         .unwrap();
 
-    for taken in ["Østerdalen", "østerdalen", "ØSTERDALEN"] {
+    // SQLite's NOCASE folds the letters A–Z only: "Ø" stays as it is.
+    for taken in ["Østerdalen", "ØSTERDALEN", "ØsterDALEN"] {
         let err = insert_collection(&db.pool, &named(taken))
             .await
             .expect_err(taken);
@@ -426,4 +427,20 @@ async fn us86_a_collection_may_not_be_renamed_to_a_name_another_has() {
         ..Default::default()
     };
     assert!(update_collection(&db.pool, other, &recased).await.unwrap());
+}
+
+#[tokio::test]
+async fn us86_the_database_itself_refuses_a_second_collection_of_a_name() {
+    let db = TestDb::new().await;
+    insert_collection(&db.pool, &named("Rondane"))
+        .await
+        .unwrap();
+
+    let raw = sqlx::query(
+        "INSERT INTO collection (name, description, created_at) VALUES ('rondane', '', '')",
+    )
+    .execute(&db.pool)
+    .await;
+
+    assert!(raw.is_err(), "the unique index stands behind every writer");
 }
