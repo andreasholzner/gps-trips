@@ -206,6 +206,18 @@ async fn whether_a_collection_exists_is_answered_without_reading_it() {
 }
 
 #[tokio::test]
+async fn us88_a_collections_name_is_read_without_its_tracks() {
+    let db = TestDb::new().await;
+    let id = insert(&db.pool, None, &["Day 1"], &[]).await;
+
+    assert_eq!(
+        collection_name(&db.pool, id).await.unwrap().as_deref(),
+        Some("Alpencross")
+    );
+    assert_eq!(collection_name(&db.pool, id + 1).await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn editing_or_deleting_what_does_not_exist_says_so() {
     let db = TestDb::new().await;
     let change = CollectionChange {

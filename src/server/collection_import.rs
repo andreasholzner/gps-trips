@@ -269,10 +269,9 @@ async fn prepare(
 
     let (name, description) = match staged.collection_id {
         Some(id) => {
-            let name = repo::get_collection(&state.pool, id)
+            let name = repo::collection_name(&state.pool, id)
                 .await?
-                .ok_or(AppError::NotFound)?
-                .name;
+                .ok_or(AppError::NotFound)?;
             (name, String::new())
         }
         None => {

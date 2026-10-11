@@ -20,9 +20,9 @@ mod trip;
 pub use access::insert_access_records;
 pub use bulk_edit::set_activity_type;
 pub use collection::{
-    apply_collection_import, collection_exists, count_collections, delete_collection,
-    delete_collection_import, delete_collection_track, get_collection, get_collection_file,
-    get_collection_import, get_collection_track, get_collection_track_geojson,
+    apply_collection_import, collection_exists, collection_name, count_collections,
+    delete_collection, delete_collection_import, delete_collection_track, get_collection,
+    get_collection_file, get_collection_import, get_collection_track, get_collection_track_geojson,
     get_collection_track_gpx, insert_collection, insert_collection_import, insert_collection_in_tx,
     list_collection_files, list_collection_track_positions, list_collection_track_waypoints,
     list_collection_tracks_by_id, list_collection_waypoints, list_collections, load_held,

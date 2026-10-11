@@ -207,6 +207,14 @@ pub async fn collection_exists(pool: &SqlitePool, id: i64) -> Result<bool, sqlx:
         .await
 }
 
+/// A collection's name alone, or `None` if there is no such collection.
+pub async fn collection_name(pool: &SqlitePool, id: i64) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT name FROM collection WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+}
+
 /// A change to a collection's details; `None` leaves a field as it is.
 #[derive(Default)]
 pub struct CollectionChange<'a> {
