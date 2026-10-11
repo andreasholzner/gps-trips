@@ -1,4 +1,4 @@
-//! US-36/US-37/US-51: one-off CLI reconciling the whole trip archive into a
+//! US-36/US-37/US-51/US-89: one-off CLI reconciling the whole trip archive into a
 //! QMapShack database (ADR-0022), run manually or from the owner's own
 //! scheduler (cron), never from inside the app (ADR-0014). It reads the
 //! archive over its HTTP API, never a database file. All logic lives in
@@ -13,8 +13,11 @@
 //! and the folder mapping come from the config file — by default
 //! `~/.config/trip-archive/qmapshack_export.toml`; see
 //! `server/qmapshack/config.rs` for its shape. Without a password command the
-//! password is asked for, unechoed.
+//! password is asked for, unechoed. A collection template that can share a
+//! top folder with the trips' is warned about first; in a terminal the owner
+//! is asked whether to go on, from cron the run goes on (US-89).
 
+use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -53,6 +56,17 @@ fn load_config(path: Option<PathBuf>) -> Result<ExportConfig, String> {
     ExportConfig::load(&path).map_err(|e| format!("FAILED to load config {}: {e}", path.display()))
 }
 
+/// Ask a yes/no question on the terminal; anything but "y"/"yes" is no.
+fn confirm(question: &str) -> bool {
+    eprint!("{question}");
+    let _ = std::io::stderr().flush();
+    let mut answer = String::new();
+    if std::io::stdin().lock().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args = match parse_args() {
@@ -84,6 +98,13 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(warning) = cfg.collection_folder_overlap() {
+        eprintln!("WARNING: {warning}.");
+        if std::io::stdin().is_terminal() && !confirm("Export anyway? [y/N] ") {
+            eprintln!("Nothing exported.");
+            return ExitCode::FAILURE;
+        }
+    }
     let password = match archive_client::read_password(cfg.password_command.as_deref()) {
         Ok(password) => password,
         Err(e) => {

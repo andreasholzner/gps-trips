@@ -1,10 +1,11 @@
-//! US-36/US-39: parsing and validating the export config.
+//! US-36/US-39/US-89: parsing and validating the export config.
 
 use super::*;
 use crate::server::archive_client::config::ArchiveConfigError;
 
-const MINIMAL: &str =
-    "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{year}/{activity_type}\"\n";
+const MINIMAL: &str = "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\n\
+     folder_template = \"Trips/{year}/{activity_type}\"\n\
+     collection_folder_template = \"Guidebooks/{collection}\"\n";
 
 /// `[activity_type_names]`/`[trip_type_names]` tables covering every
 /// `ActivityType` (incl. `Unknown`) and `TripKind` variant. US-39 makes
@@ -140,6 +141,7 @@ fn name_tables_override_activity_and_trip_type_spellings() {
     let toml = format!(
         "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\n\
          folder_template = \"{{trip_type}}/{{activity_type}}\"\n\
+         collection_folder_template = \"{{collection}}\"\n\
          {}",
         FULL_NAME_TABLES
             .replace("ski_touring = \"Ski touring\"", "ski_touring = \"Skitour\"")
@@ -160,7 +162,8 @@ fn name_tables_override_activity_and_trip_type_spellings() {
 #[test]
 fn segments_may_mix_literals_and_placeholders() {
     let toml = format!(
-        "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Archiv {{year}}-{{trip_type}}\"\n{FULL_NAME_TABLES}"
+        "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Archiv {{year}}-{{trip_type}}\"\n\
+         collection_folder_template = \"{{collection}}\"\n{FULL_NAME_TABLES}"
     );
     let cfg = config(&toml);
     assert_eq!(
@@ -197,7 +200,7 @@ fn empty_or_slash_delimited_templates_are_rejected() {
         assert!(
             matches!(
                 err,
-                ConfigError::EmptyTemplate | ConfigError::EmptySegment(_)
+                ConfigError::EmptyTemplate(_) | ConfigError::EmptySegment { .. }
             ),
             "{template:?} → {err}"
         );
@@ -209,7 +212,7 @@ fn unknown_placeholders_are_rejected_and_named() {
     let toml = "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\nfolder_template = \"Trips/{month}\"\n";
     let err = ExportConfig::from_toml_str(toml).expect_err("unknown placeholder");
     assert!(
-        matches!(&err, ConfigError::UnknownPlaceholder { found } if found == "month"),
+        matches!(&err, ConfigError::UnknownPlaceholder { found, .. } if found == "month"),
         "{err}"
     );
     assert!(err.to_string().contains("{year}"), "lists supported set");
@@ -223,7 +226,7 @@ fn unmatched_braces_are_rejected() {
         assert!(
             matches!(
                 err,
-                ConfigError::UnmatchedBrace(_) | ConfigError::UnknownPlaceholder { .. }
+                ConfigError::UnmatchedBrace { .. } | ConfigError::UnknownPlaceholder { .. }
             ),
             "{template:?} → {err}"
         );
@@ -299,4 +302,120 @@ fn us51_an_empty_password_command_is_rejected() {
         ),
         "{err}"
     );
+}
+
+// ── US-89: the collections' folder template ──────────────────────────────────
+
+/// A complete config whose two templates are the given ones.
+fn with_templates(trips: &str, collections: &str) -> ExportConfig {
+    config(&format!(
+        "url = \"https://archive.test\"\ntarget_db = \"/tmp/t.db\"\n\
+         folder_template = {trips:?}\ncollection_folder_template = {collections:?}\n\
+         {FULL_NAME_TABLES}"
+    ))
+}
+
+#[test]
+fn us89_a_collection_resolves_to_a_folder_of_its_own() {
+    let cfg = config(&complete(""));
+    assert_eq!(
+        cfg.resolve_collection_folder_path("Rother: Jotunheimen"),
+        ["Guidebooks", "Rother: Jotunheimen"]
+    );
+    let cfg = with_templates("Trips/{year}", "Books/Guide {collection}");
+    assert_eq!(
+        cfg.resolve_collection_folder_path("Lofoten"),
+        ["Books", "Guide Lofoten"]
+    );
+}
+
+#[test]
+fn us89_a_missing_collection_template_is_listed_with_the_other_missing_entries() {
+    let toml = format!(
+        "{}[activity_type_names]\nhiking = \"Hiking\"\n",
+        MINIMAL.replace(
+            "collection_folder_template = \"Guidebooks/{collection}\"\n",
+            ""
+        )
+    );
+    let err = ExportConfig::from_toml_str(&toml).expect_err("no collection template");
+    match &err {
+        ConfigError::IncompleteMapping(msg) => {
+            assert!(msg.contains("collection_folder_template"), "{msg}");
+            assert!(msg.contains("activity_type_names"), "{msg}");
+            assert!(msg.contains("trip_type_names"), "{msg}");
+        }
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+fn us89_the_collection_template_must_name_the_collection() {
+    let toml = complete("").replace("Guidebooks/{collection}", "Guidebooks");
+    let err = ExportConfig::from_toml_str(&toml).expect_err("one folder for every collection");
+    assert!(matches!(err, ConfigError::NoCollectionPlaceholder), "{err}");
+}
+
+#[test]
+fn us89_each_template_takes_only_its_own_placeholders() {
+    let toml = complete("").replace("Guidebooks/{collection}", "Guidebooks/{year}/{collection}");
+    let err = ExportConfig::from_toml_str(&toml).expect_err("a trip placeholder");
+    assert!(
+        matches!(&err, ConfigError::UnknownPlaceholder { key, found, .. }
+            if *key == "collection_folder_template" && found == "year"),
+        "{err}"
+    );
+    assert!(
+        err.to_string().contains("{collection}"),
+        "lists its own: {err}"
+    );
+
+    let toml = complete("").replace("Trips/{year}/{activity_type}", "Trips/{collection}");
+    let err = ExportConfig::from_toml_str(&toml).expect_err("a collection placeholder");
+    assert!(
+        matches!(&err, ConfigError::UnknownPlaceholder { key, found, .. }
+            if *key == "folder_template" && found == "collection"),
+        "{err}"
+    );
+}
+
+#[test]
+fn us89_collections_under_a_top_folder_of_their_own_are_not_warned_about() {
+    assert_eq!(config(&complete("")).collection_folder_overlap(), None);
+    // A trips' top folder by year can only be four digits or the undated
+    // name; by activity, only a configured name.
+    assert_eq!(
+        with_templates("{year}/{activity_type}", "Guidebooks/{collection}")
+            .collection_folder_overlap(),
+        None
+    );
+    assert_eq!(
+        with_templates("{activity_type}", "Guidebooks/{collection}").collection_folder_overlap(),
+        None
+    );
+}
+
+#[test]
+fn us89_a_top_folder_the_trips_can_have_too_is_warned_about() {
+    for (trips, collections) in [
+        ("Trips/{year}", "Trips/Guides/{collection}"),
+        ("{activity_type}/{year}", "Hiking/{collection}"),
+        ("Archiv {year}", "Archiv 2024/{collection}"),
+        ("{year}", "undated/{collection}"),
+        (
+            "{trip_type}-{activity_type}",
+            "Planned-Cycling/{collection}",
+        ),
+    ] {
+        let warning = with_templates(trips, collections).collection_folder_overlap();
+        assert!(warning.is_some(), "{trips} vs {collections}");
+    }
+}
+
+#[test]
+fn us89_a_top_folder_named_after_each_collection_is_warned_about() {
+    // A collection may be called anything, "Trips" too.
+    let warning = with_templates("Trips/{year}", "{collection}").collection_folder_overlap();
+    let warning = warning.expect("named after the collection");
+    assert!(warning.contains("collection_folder_template"), "{warning}");
 }

@@ -87,6 +87,7 @@ fn config_for(dir: &tempfile::TempDir, target_name: &str) -> ExportConfig {
     let toml = format!(
         "url = \"https://archive.test\"\n\
          target_db = {:?}\nfolder_template = \"Trips/{{year}}/{{activity_type}}\"\n\
+         collection_folder_template = \"Guidebooks/{{collection}}\"\n\
          [activity_type_names]\n\
          unknown = \"Unspecified\"\n\
          hiking = \"Hiking\"\n\

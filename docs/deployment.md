@@ -466,7 +466,8 @@ photo whose stored copy it could not read, and exits non-zero if there was one.
 
 ### QMapShack export
 
-`qmapshack_export` reconciles the whole archive into a QMapShack database (US-36/US-37). It runs
+`qmapshack_export` reconciles the whole archive — trips and guide-book collections — into a
+QMapShack database (US-36/US-37/US-89). It runs
 on the laptop, where QMapShack is, and reads the deployed archive over HTTPS (US-51). Once,
 configure it in `~/.config/trip-archive/qmapshack_export.toml` (or under `$XDG_CONFIG_HOME`),
 beside `backup.toml`:
@@ -476,6 +477,7 @@ url = "https://<the app name>.fly.dev"
 password_command = "kwallet-query -r trip-archive kdewallet"      # optional
 target_db = "/home/you/qms/Touren.db"
 folder_template = "Trips/{year}/{activity_type}"
+collection_folder_template = "Guidebooks/{collection}"           # required
 
 [activity_type_names]      # required: every activity type, see server/qmapshack/config.rs
 # …
@@ -495,7 +497,11 @@ target/release/qmapshack_export                   # or: --config <path>; --debug
   it opens the target. If it cannot — the archive is unreachable, the password is refused, the
   answer is an error or cut off — it fails with nothing written and no backup taken, so no
   exported track is ever trashed for a trip that merely did not arrive.
-- **Cheap to rerun.** Only new or changed trips have their track downloaded; unchanged ones are
-  skipped.
+- **Cheap to rerun.** Only new or changed trips and collection tracks have their track downloaded;
+  unchanged ones are skipped.
+- **Collections keep out of the trips' folders.** If the collections' top folder can also be one
+  of the trips' — the same name, or one named after each collection — the run warns before
+  anything is written. In a terminal it asks whether to go on; from cron it goes on and the warning
+  stays in the log.
 - **Failures show in the exit code.** It is non-zero whenever any trip failed, for cron to alert
   on; the log says which, and the next run retries them.
