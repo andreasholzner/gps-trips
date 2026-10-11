@@ -67,27 +67,29 @@ impl Projection {
 
 type Flat = (f64, f64);
 
+type Cell = (i64, i64);
+
+fn cell_of((x, y): Flat, cell: f64) -> Cell {
+    ((x / cell).floor() as i64, (y / cell).floor() as i64)
+}
+
 /// Whether every point lies within `tolerance` of `line`. The line's
-/// segments are filed in a grid of `tolerance`-sized cells, so each point
-/// looks only at the segments in its own and the neighbouring cells.
+/// segments are filed in a grid of `tolerance`-sized cells, each in the
+/// cells it passes through, so each point looks only at the segments in its
+/// own and the neighbouring cells: the closest point of a segment within
+/// the tolerance lies in one of them.
 fn covered(points: &[Flat], line: &[Flat], tolerance: f64) -> bool {
     let cell = tolerance.max(1.0);
-    let key = |(x, y): Flat| ((x / cell).floor() as i64, (y / cell).floor() as i64);
+    let key = |point: Flat| cell_of(point, cell);
     let segments: Vec<(Flat, Flat)> = if line.len() == 1 {
         vec![(line[0], line[0])]
     } else {
         line.windows(2).map(|pair| (pair[0], pair[1])).collect()
     };
-    let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    let mut grid: HashMap<Cell, Vec<usize>> = HashMap::new();
     for (index, &(start, end)) in segments.iter().enumerate() {
-        let (x0, y0) = key((start.0.min(end.0), start.1.min(end.1)));
-        let (x1, y1) = key((start.0.max(end.0), start.1.max(end.1)));
-        // A segment much longer than the tolerance spans many cells; filing
-        // it in each keeps the lookup local.
-        for x in x0..=x1 {
-            for y in y0..=y1 {
-                grid.entry((x, y)).or_default().push(index);
-            }
+        for filed in segment_cells(start, end, cell) {
+            grid.entry(filed).or_default().push(index);
         }
     }
     points.iter().all(|&point| {
@@ -103,6 +105,53 @@ fn covered(points: &[Flat], line: &[Flat], tolerance: f64) -> bool {
             })
         })
     })
+}
+
+/// The cells a segment passes through, walked from its start to its end one
+/// cell boundary at a time (Amanatides and Woo) — as many as it crosses, not
+/// the whole rectangle around it.
+fn segment_cells(start: Flat, end: Flat, cell: f64) -> Vec<Cell> {
+    let (mut x, mut y) = cell_of(start, cell);
+    let last = cell_of(end, cell);
+    let (dx, dy) = (end.0 - start.0, end.1 - start.1);
+    // Per axis: which way the walk steps, how far along the segment (0 to 1)
+    // the next boundary is, and how far apart the boundaries are.
+    let axis = |d: f64, from: f64, at: i64| -> (i64, f64, f64) {
+        if d == 0.0 {
+            return (0, f64::INFINITY, f64::INFINITY);
+        }
+        let step = if d > 0.0 { 1 } else { -1 };
+        let boundary = (at + i64::from(d > 0.0)) as f64 * cell;
+        (step, (boundary - from) / d, cell / d.abs())
+    };
+    let (step_x, mut next_x, delta_x) = axis(dx, start.0, x);
+    let (step_y, mut next_y, delta_y) = axis(dy, start.1, y);
+
+    // The walk ends after as many steps as there are boundaries between the
+    // two cells, whatever rounding does to the comparisons on the way.
+    let steps = (last.0 - x).abs() + (last.1 - y).abs();
+    let mut cells = Vec::with_capacity(steps as usize + 2);
+    cells.push((x, y));
+    for _ in 0..steps {
+        // Through a corner: both cells beside it are touched too, and a point
+        // near the corner may look only that far.
+        if (next_x - next_y).abs() <= 1e-9 {
+            cells.push((x + step_x, y));
+            cells.push((x, y + step_y));
+        }
+        if next_x < next_y {
+            x += step_x;
+            next_x += delta_x;
+        } else {
+            y += step_y;
+            next_y += delta_y;
+        }
+        cells.push((x, y));
+    }
+    if cells.last() != Some(&last) {
+        cells.push(last);
+    }
+    cells
 }
 
 fn to_segment(p: Flat, a: Flat, b: Flat) -> f64 {
@@ -161,6 +210,37 @@ mod tests {
         assert!(lines_within(&[(46.5, 9.2)], &[(46.5 + STEP, 9.2)], 30.0));
         assert!(!lines_within(&[(46.5, 9.2)], &[], 30.0));
     }
+
+    #[test]
+    fn us88_a_long_segment_is_filed_in_the_cells_along_it_only() {
+        // A sparse route's 20 km diagonal leg, at a 30 m tolerance: along it
+        // are some 1,300 cells, around it some 440,000.
+        let (start, end) = ((0.0, 0.0), (20_000.0, 14_000.0));
+
+        let cells = segment_cells(start, end, 30.0);
+
+        assert!(cells.len() < 1_500, "{}", cells.len());
+        let key = |(x, y): Flat| ((x / 30.0_f64).floor() as i64, (y / 30.0_f64).floor() as i64);
+        for i in 0..=10_000 {
+            let t = f64::from(i) / 10_000.0;
+            let on = (
+                start.0 + t * (end.0 - start.0),
+                start.1 + t * (end.1 - start.1),
+            );
+            assert!(cells.contains(&key(on)), "{on:?} is on the segment");
+        }
+    }
+
+    #[test]
+    fn us88_long_diagonal_lines_compare_as_short_ones_do() {
+        let diagonal = |shift: f64| vec![(46.0 + shift, 9.0), (46.2 + shift, 9.2)];
+
+        assert!(lines_within(&diagonal(0.0), &diagonal(NUDGE_DEG), 30.0));
+        assert!(!lines_within(&diagonal(0.0), &diagonal(0.001), 30.0));
+    }
+
+    /// About 11 m of latitude.
+    const NUDGE_DEG: f64 = 0.0001;
 
     #[test]
     fn us88_distances_are_metres() {
