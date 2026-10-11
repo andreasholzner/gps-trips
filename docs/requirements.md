@@ -28,7 +28,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-88, US-89, US-90, US-93, US-94, US-95 | Each builds only on US-86/87, not on each other, so their order is free; US-95 best comes early, so fewer waypoints are stored without their symbols. |
+| 1    | US-88, US-89, US-90, US-93, US-94        | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
 
 ## Story index
 
@@ -137,7 +137,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 | [US-93](#us-93--tag-collections-and-their-tracks)             | 📋     | Tag collections and their tracks             | [Tags](#tags)                                                       |
 | [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
-| [US-95](#us-95--waypoint-symbols)                             | 📋     | Waypoint symbols                             | [Collections](#collections)                                         |
+| [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 
 ### Maintaining this file
 
@@ -1370,7 +1370,7 @@ tolerance — and that the server only proposes while the owner decides), ADR-00
 
 ### US-95 — Waypoint symbols
 
-**Planned 📋** — As the owner, a guide book's waypoints keep the symbols their file gives them, on
+**Done ✅** — As the owner, a guide book's waypoints keep the symbols their file gives them, on
 the map and in the QMapShack export, so a pass, a hut and a viewpoint look the way the book marks
 them.
 

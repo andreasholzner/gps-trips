@@ -48,6 +48,8 @@ pub struct ParsedWaypoint {
     pub lat: f64,
     pub lon: f64,
     pub ele: Option<f64>,
+    /// The waypoint's `<sym>`, as the file names it.
+    pub symbol: Option<String>,
 }
 
 /// Read every track and waypoint of a guide book's file. Refused when it is
@@ -66,6 +68,7 @@ pub fn parse_collection(data: &[u8]) -> Result<ParsedCollection, ImportError> {
             lat: wp.point().y(),
             lon: wp.point().x(),
             ele: wp.elevation,
+            symbol: non_blank(wp.symbol.as_deref()),
         })
         .collect();
 
@@ -262,8 +265,28 @@ mod tests {
                 lat: 46.4958,
                 lon: 9.1705,
                 ele: Some(2065.0),
+                symbol: Some("Triangle, Blue".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn us95_a_waypoint_keeps_its_symbol_as_the_file_names_it() {
+        let gpx = br#"<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="46.5" lon="9.2"><sym>flag,red</sym></wpt>
+  <wpt lat="46.6" lon="9.3"><sym>  </sym></wpt>
+  <wpt lat="46.7" lon="9.4"></wpt>
+</gpx>"#;
+
+        let symbols: Vec<Option<String>> = parse_collection(gpx)
+            .unwrap()
+            .waypoints
+            .into_iter()
+            .map(|wp| wp.symbol)
+            .collect();
+
+        assert_eq!(symbols, [Some("flag,red".to_string()), None, None]);
     }
 
     #[test]
@@ -306,6 +329,14 @@ mod tests {
         assert_eq!(own.tracks[0].name.as_deref(), Some("Stage 3: Albula"));
         // Another track's file does not carry the book's waypoints.
         assert!(own.waypoints.is_empty());
+    }
+
+    #[test]
+    fn us95_a_single_tours_gpx_keeps_its_waypoints_symbols() {
+        let parsed = parse_collection(GUIDE_SINGLE).unwrap();
+
+        let own = parse_collection(&parsed.tracks[0].gpx).unwrap();
+        assert_eq!(own.waypoints[0].symbol.as_deref(), Some("Parking Area"));
     }
 
     #[test]

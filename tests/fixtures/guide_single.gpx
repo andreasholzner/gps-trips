@@ -7,6 +7,7 @@
     <ele>574</ele>
     <name>Start</name>
     <cmt>Car park by the station</cmt>
+    <sym>Parking Area</sym>
   </wpt>
   <wpt lat="47.3000" lon="11.4200">
     <ele>1900</ele>

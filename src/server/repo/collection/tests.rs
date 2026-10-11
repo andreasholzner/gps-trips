@@ -22,6 +22,7 @@ fn a_waypoint(name: &str, track: Option<usize>) -> NewWaypoint<'_> {
         lat: 46.5,
         lon: 9.2,
         ele: Some(2065.0),
+        symbol: None,
         track,
     }
 }
@@ -240,6 +241,28 @@ async fn a_waypoint_may_belong_to_a_track_as_well() {
         .unwrap();
     assert_eq!(on_track.len(), 1);
     assert_eq!(on_track[0].name.as_deref(), Some("Summit"));
+}
+
+#[tokio::test]
+async fn us95_a_waypoint_keeps_its_symbol_on_both_lists() {
+    let db = TestDb::new().await;
+    let waypoints = [
+        NewWaypoint {
+            symbol: Some("Triangle, Blue"),
+            ..a_waypoint("Summit", Some(0))
+        },
+        a_waypoint("Hut", None),
+    ];
+    let id = insert(&db.pool, None, &["Tour"], &waypoints).await;
+    let track_id = get_collection(&db.pool, id).await.unwrap().unwrap().tracks[0].id;
+
+    let all = list_collection_waypoints(&db.pool, id).await.unwrap();
+    assert_eq!(all[0].symbol.as_deref(), Some("Triangle, Blue"));
+    assert_eq!(all[1].symbol, None);
+    let on_track = list_collection_track_waypoints(&db.pool, track_id)
+        .await
+        .unwrap();
+    assert_eq!(on_track[0].symbol.as_deref(), Some("Triangle, Blue"));
 }
 
 #[tokio::test]

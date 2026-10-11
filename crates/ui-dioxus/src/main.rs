@@ -51,6 +51,7 @@ mod trip_lines;
 mod trip_table;
 mod trip_tags;
 mod viewer;
+mod waypoint_icon;
 
 use api::ApiClient;
 use collection::Collection;

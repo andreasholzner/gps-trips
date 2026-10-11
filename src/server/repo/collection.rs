@@ -45,6 +45,8 @@ pub struct NewWaypoint<'a> {
     pub lat: f64,
     pub lon: f64,
     pub ele: Option<f64>,
+    /// The `<sym>`, as the file names it.
+    pub symbol: Option<&'a str>,
     /// The index into [`NewCollection::tracks`] of the track it also
     /// belongs to, if any.
     pub track: Option<usize>,
@@ -102,8 +104,9 @@ pub async fn insert_collection(
             .and_then(|track| track_ids.get(track).copied());
         sqlx::query(
             "INSERT INTO waypoint \
-                 (collection_id, collection_track_id, position, name, description, lat, lon, ele) \
-             VALUES (?,?,?,?,?,?,?,?)",
+                 (collection_id, collection_track_id, position, name, description, lat, lon, ele, \
+                  symbol) \
+             VALUES (?,?,?,?,?,?,?,?,?)",
         )
         .bind(id)
         .bind(track_id)
@@ -113,6 +116,7 @@ pub async fn insert_collection(
         .bind(waypoint.lat)
         .bind(waypoint.lon)
         .bind(waypoint.ele)
+        .bind(waypoint.symbol)
         .execute(&mut *tx)
         .await?;
     }
@@ -222,7 +226,7 @@ pub async fn list_collection_waypoints(
     collection_id: i64,
 ) -> Result<Vec<Waypoint>, sqlx::Error> {
     sqlx::query(
-        "SELECT id, collection_track_id, name, description, lat, lon, ele FROM waypoint \
+        "SELECT id, collection_track_id, name, description, lat, lon, ele, symbol FROM waypoint \
          WHERE collection_id = ? ORDER BY position",
     )
     .bind(collection_id)
@@ -237,7 +241,7 @@ pub async fn list_collection_track_waypoints(
     track_id: i64,
 ) -> Result<Vec<Waypoint>, sqlx::Error> {
     sqlx::query(
-        "SELECT id, collection_track_id, name, description, lat, lon, ele FROM waypoint \
+        "SELECT id, collection_track_id, name, description, lat, lon, ele, symbol FROM waypoint \
          WHERE collection_track_id = ? ORDER BY position",
     )
     .bind(track_id)
@@ -255,6 +259,7 @@ fn waypoint(row: SqliteRow) -> Waypoint {
         lat: row.get("lat"),
         lon: row.get("lon"),
         ele: row.get("ele"),
+        symbol: row.get("symbol"),
     }
 }
 

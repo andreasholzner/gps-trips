@@ -7,8 +7,9 @@
 // delete. **JS-interop rendering** — the collection's map and a track's map
 // are Leaflet's. What the screens render is asserted in
 // `crates/ui-dioxus/src/collection/tests.rs`, `collection_track/tests.rs`
-// and `import/guide_book.rs`, and what the archive stores in
-// `tests/it/us86_collections.rs`.
+// and `import/guide_book.rs`, which icon a symbol gets in
+// `waypoint_icon.rs` (US-95), and what the archive stores in
+// `tests/it/us86_collections.rs` and `us95_waypoint_symbols.rs`.
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -17,12 +18,16 @@ import { chooseActivity } from "./trips.mjs";
 const fixture = (name) =>
   readFileSync(fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url)));
 
-/// Three tracks — one without a name — and two waypoints, under the file's
-/// own name and description.
+/// Three tracks — one without a name — and two waypoints, the first with a
+/// symbol (`Triangle, Blue`), under the file's own name and description.
 const GUIDE_BOOK_GPX = fixture("guide_book.gpx");
 
-/// One tour, whose two waypoints belong to its track.
+/// One tour, whose two waypoints belong to its track; the first, with the
+/// symbol `Parking Area`.
 const GUIDE_SINGLE_GPX = fixture("guide_single.gpx");
+
+/// A waypoint's marker, whether its symbol's icon (US-95) or the plain one.
+const waypointsOn = (page, map) => page.locator(`${map} .waypoint-mark, ${map} .waypoint-symbol`);
 
 /// Every collection these tests create, taken away again afterwards: the
 /// suite shares one archive.
@@ -85,7 +90,7 @@ test("a guide book's file is imported as a collection and lands on its page (US-
 
   // Every track a line, every waypoint a marker of its own, on one map.
   await expect(page.locator("#overview-map path.leaflet-interactive")).toHaveCount(3);
-  await expect(page.locator("#overview-map .waypoint-mark")).toHaveCount(2);
+  await expect(waypointsOn(page, "#overview-map")).toHaveCount(2);
 
   const stored = await (await request.get(`/api/collections/${id}`)).json();
   expect(stored.activity_type).toBe("cycling");
@@ -98,7 +103,7 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
   const id = await importCollection(request, GUIDE_BOOK_GPX);
 
   await page.goto(`/app/collections/${id}`);
-  const waypoints = page.locator("#overview-map .waypoint-mark");
+  const waypoints = waypointsOn(page, "#overview-map");
   await expect(waypoints).toHaveCount(2);
   await waypoints.first().hover();
   await expect(page.locator(".leaflet-tooltip")).toHaveText("San Bernardino Pass");
@@ -109,7 +114,7 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
   await expect(page.locator("#trip-name")).toHaveText("Stage 1: Splügen");
   await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
   // A track of a book with several has no waypoints of its own.
-  await expect(page.locator("#track-map .waypoint-mark")).toHaveCount(0);
+  await expect(waypointsOn(page, "#track-map")).toHaveCount(0);
 
   // And the way back.
   await page.locator("#collection-of-track a").click();
@@ -122,8 +127,41 @@ test("a single tour's waypoints show on its track's map (US-86)", async ({ page,
 
   await page.goto(`/app/collection-tracks/${track.id}`);
 
-  await expect(page.locator("#track-map .waypoint-mark")).toHaveCount(2);
+  await expect(waypointsOn(page, "#track-map")).toHaveCount(2);
   await expect(page.locator("#track-map path.leaflet-interactive")).toHaveCount(1);
+});
+
+test("a waypoint with a symbol shows its icon, named on hover; one without keeps the marker (US-95)", async ({
+  page,
+  request,
+}) => {
+  const id = await importCollection(request, GUIDE_BOOK_GPX);
+
+  await page.goto(`/app/collections/${id}`);
+  // `Triangle, Blue`: the shape in Garmin's blue.
+  const symbol = page.locator("#overview-map .waypoint-symbol");
+  await expect(symbol).toHaveCount(1);
+  await expect(symbol.locator("path.shape")).toHaveAttribute("fill", "#1f7fe0");
+  await expect(page.locator("#overview-map .waypoint-mark")).toHaveCount(1);
+  await symbol.hover();
+  await expect(page.locator(".leaflet-tooltip")).toHaveText("San Bernardino Pass");
+});
+
+test("a collection track's map shows its waypoints' icons too (US-95)", async ({
+  page,
+  request,
+}) => {
+  const id = await importCollection(request, GUIDE_SINGLE_GPX);
+  const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
+
+  await page.goto(`/app/collection-tracks/${track.id}`);
+
+  // `Parking Area`: a glyph on a badge.
+  const symbol = page.locator("#track-map .waypoint-symbol");
+  await expect(symbol).toHaveCount(1);
+  await expect(symbol.locator("circle.badge")).toHaveCount(1);
+  await expect(symbol.locator("path.glyph")).toHaveCount(1);
+  await expect(page.locator("#track-map .waypoint-mark")).toHaveCount(1);
 });
 
 test("a track's own activity overrides the collection's (US-86)", async ({ page, request }) => {

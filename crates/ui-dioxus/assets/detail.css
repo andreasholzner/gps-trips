@@ -171,6 +171,32 @@
   rotate: 45deg;
 }
 
+/* A waypoint whose symbol has an icon (US-95): its shape in its color, or a
+   white glyph on the diamond's slate, outlined in white against the tiles. */
+.leaflet-container .waypoint-symbol svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.55));
+}
+
+.leaflet-container .waypoint-symbol .shape,
+.leaflet-container .waypoint-symbol .badge {
+  stroke: #ffffff;
+  stroke-width: 1.6px;
+  paint-order: stroke;
+  vector-effect: non-scaling-stroke;
+}
+
+.leaflet-container .waypoint-symbol .badge {
+  fill: #37474f;
+}
+
+.leaflet-container .waypoint-symbol .glyph {
+  fill: #ffffff;
+}
+
 /* A guide book's description (US-86) keeps the paragraphs its file gave. */
 .collection-description {
   white-space: pre-line;

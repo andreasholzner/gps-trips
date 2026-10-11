@@ -97,6 +97,9 @@ pub struct Waypoint {
     pub lat: f64,
     pub lon: f64,
     pub ele: Option<f64>,
+    /// The GPX `<sym>`, as the file names it — `None` also for a waypoint
+    /// imported before symbols were kept (US-95).
+    pub symbol: Option<String>,
 }
 
 /// What `POST /api/collections/preview` answers with: what the import

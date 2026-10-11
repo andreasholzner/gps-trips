@@ -172,6 +172,7 @@ fn us86_waypoints_that_cannot_be_read_cost_the_markers_not_the_map() {
         lat: 46.58,
         lon: 9.84,
         ele: None,
+        symbol: None,
     };
     assert_eq!(
         drawn_waypoints(Ok(vec![read.clone()])),

@@ -177,6 +177,7 @@ async fn handle_create(
             lat: wp.lat,
             lon: wp.lon,
             ele: wp.ele,
+            symbol: wp.symbol.as_deref(),
             track: on_track,
         })
         .collect();
