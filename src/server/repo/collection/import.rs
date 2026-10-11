@@ -20,23 +20,28 @@ pub struct StagedCollectionImport {
     pub files: Vec<(String, Vec<u8>)>,
 }
 
-/// Park an upload and return its handle. `now` is passed in, as for the
-/// trip import's parse (`insert_staged_import`).
+/// Park an upload and return its handle, or `None` if the collection it is
+/// for is gone — deleted since it was looked up. `now` is passed in, as for
+/// the trip import's parse (`insert_staged_import`).
 pub async fn insert_collection_import(
     pool: &SqlitePool,
     collection_id: Option<i64>,
     files: &[NewCollectionFile<'_>],
     now: OffsetDateTime,
-) -> Result<i64, sqlx::Error> {
+) -> Result<Option<i64>, sqlx::Error> {
     let mut tx = crate::server::db::begin_write(pool).await?;
-    let id = sqlx::query(
-        "INSERT INTO collection_import_staging (created_at, collection_id) VALUES (?,?)",
+    let inserted = sqlx::query(
+        "INSERT INTO collection_import_staging (created_at, collection_id) \
+         SELECT ?1, ?2 WHERE ?2 IS NULL OR EXISTS (SELECT 1 FROM collection WHERE id = ?2)",
     )
     .bind(to_rfc3339(now))
     .bind(collection_id)
     .execute(&mut *tx)
-    .await?
-    .last_insert_rowid();
+    .await?;
+    if inserted.rows_affected() == 0 {
+        return Ok(None);
+    }
+    let id = inserted.last_insert_rowid();
     for (position, file) in files.iter().enumerate() {
         sqlx::query(
             "INSERT INTO collection_import_staging_file (staging_id, position, file_name, gpx) \
@@ -50,7 +55,7 @@ pub async fn insert_collection_import(
         .await?;
     }
     tx.commit().await?;
-    Ok(id)
+    Ok(Some(id))
 }
 
 /// A parked upload, or `None` once spent, swept or cancelled.

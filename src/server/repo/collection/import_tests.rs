@@ -107,7 +107,8 @@ async fn us88_a_parked_upload_comes_back_in_order_and_is_spent_once_taken() {
     ];
     let id = insert_collection_import(&db.pool, None, &files, NOW)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("parked");
 
     let staged = get_collection_import(&db.pool, id).await.unwrap().unwrap();
     assert_eq!(staged.collection_id, None);
@@ -137,13 +138,16 @@ async fn us88_an_upload_is_cancelled_or_swept_and_goes_with_its_collection() {
     let collection = a_collection(&db.pool).await;
     let old = insert_collection_import(&db.pool, None, &[], NOW - time::Duration::hours(48))
         .await
-        .unwrap();
+        .unwrap()
+        .expect("parked");
     let current = insert_collection_import(&db.pool, None, &[], NOW)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("parked");
     let for_collection = insert_collection_import(&db.pool, Some(collection), &[], NOW)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("parked");
 
     assert_eq!(
         sweep_collection_imports(&db.pool, NOW - time::Duration::hours(24))
@@ -164,6 +168,19 @@ async fn us88_an_upload_is_cancelled_or_swept_and_goes_with_its_collection() {
         .await
         .unwrap()
         .is_none());
+}
+
+#[tokio::test]
+async fn us88_an_upload_for_a_collection_deleted_meanwhile_is_not_parked() {
+    let db = TestDb::new().await;
+    let id = a_collection(&db.pool).await;
+    crate::server::repo::delete_collection(&db.pool, id)
+        .await
+        .unwrap();
+
+    let parked = insert_collection_import(&db.pool, Some(id), &[], NOW).await;
+
+    assert_eq!(parked.unwrap(), None);
 }
 
 // ── What the collection holds ────────────────────────────────────────────────

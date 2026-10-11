@@ -175,7 +175,9 @@ async fn handle_upload(
         .iter()
         .map(|(file_name, gpx)| NewCollectionFile { file_name, gpx })
         .collect();
-    let staging_id = repo::insert_collection_import(&state.pool, collection_id, &kept, now).await?;
+    let staging_id = repo::insert_collection_import(&state.pool, collection_id, &kept, now)
+        .await?
+        .ok_or(AppError::NotFound)?;
 
     Ok(Json(review_of(
         staging_id,

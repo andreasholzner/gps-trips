@@ -50,7 +50,8 @@ async fn us88_the_files_are_matched_without_holding_the_write_lock() {
     let staging_id =
         repo::insert_collection_import(&state.pool, None, &files, OffsetDateTime::now_utc())
             .await
-            .unwrap();
+            .unwrap()
+            .expect("parked");
     let confirm = ConfirmCollectionImport {
         held_digest: Held::default().digest(),
         ..ConfirmCollectionImport::default()
@@ -102,7 +103,8 @@ async fn us88_a_collection_changed_while_the_files_were_matched_is_refused() {
         OffsetDateTime::now_utc(),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .expect("parked");
     let confirm = ConfirmCollectionImport {
         held_digest: Held::default().digest(),
         ..ConfirmCollectionImport::default()
