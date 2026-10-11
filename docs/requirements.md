@@ -1378,9 +1378,16 @@ each track and waypoint with the file it comes from, and *replace the whole coll
 contents of all the files. The owner confirms once for all the files, and then all of them are
 imported or none. A file that is refused as in US-86 is named with its reason, and nothing changes.
 
-**Decisions:** US-88 → the ADR on matching tracks and waypoints on re-import (to be proposed; it
-must settle what counts as the same, a changed and a new track or waypoint — by name, geometry and
-tolerance — and that the server only proposes while the owner decides), ADR-0028
+**The original files:** every file a collection was imported from or added from is kept as it was
+uploaded, under its file name; a file whose every item was skipped is kept too. *Replace the whole
+collection* replaces the kept files with the new ones. The collection page lists the kept files in
+the order they were added, and each downloads byte-for-byte with `Content-Type:
+application/gpx+xml` under its file name (as US-21 for a trip). Collections imported before this
+story list the one file they were imported from.
+
+**Decisions:** US-88 → ADR-0029 (matching tracks and waypoints on re-import within a tolerance;
+the server proposes, the owner decides; a replaced item keeps its identity), ADR-0028, ADR-0004
+(the files are parked between review and confirmation, as US-12's are)
 
 ### US-95 — Waypoint symbols
 
