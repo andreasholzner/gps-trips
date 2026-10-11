@@ -26,11 +26,11 @@ covers and why it comes where it does. Only what is not yet done is listed: a st
 table when its stories ship. Each story's own state is recorded with the story and in the
 [story index](#story-index) below.
 
-| Step | Stories             | Why it sits here                                                                                                                            |
-|:-----|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-86               | Everything else rests on it: it brings collections, their tracks and waypoints into the archive, and the collection page an import ends on. |
-| 2    | US-87               | The way back to a collection once its import is over; needs US-86's collections.                                                            |
-| 3    | US-88, US-89, US-90 | Each builds only on US-86/87, not on each other, so their order is free.                                                                    |
+| Step | Stories                           | Why it sits here                                                                                                                            |
+|:-----|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| 1    | US-86                             | Everything else rests on it: it brings collections, their tracks and waypoints into the archive, and the collection page an import ends on. |
+| 2    | US-87                             | The way back to a collection once its import is over; needs US-86's collections.                                                            |
+| 3    | US-88, US-89, US-90, US-93, US-94 | Each builds only on US-86/87, not on each other, so their order is free.                                                                    |
 
 ## Story index
 
@@ -137,6 +137,8 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
+| [US-93](#us-93--tag-collections-and-their-tracks)             | 📋     | Tag collections and their tracks             | [Tags](#tags)                                                       |
+| [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 
 ### Maintaining this file
 
@@ -1250,6 +1252,22 @@ name — on the trip page, in the trip list, its tag filter and the tag suggesti
 on the Summary screen (US-78). A summary share (US-82) that names the tag keeps working and shows
 the new name. The table shows the renamed tag at once, in its new alphabetical place.
 
+### US-93 — Tag collections and their tracks
+
+**Planned 📋** — As the owner, I tag collections and their tracks, so I organize guide books the way
+I organize my trips.
+
+**Acceptance criteria:** A collection's page (US-86) and a collection track's page tag it as a
+trip's page tags a trip (US-33): the same suggestions, normalization and confirmation of a new tag.
+A collection's tags are its own and do not pass to its tracks, nor a track's to its collection. The
+Tags screen (US-83) counts the collections and collection tracks carrying a tag beside its trips;
+renaming a tag (US-85) renames it on them too, and deleting one takes it off them as well, which its
+confirmation says. Tags stay apart from what is about trips: the trip list's tag filter (US-38), the
+tag summaries (US-78) and summary shares (US-82) reach trips only.
+
+**Decisions:** US-93 → ADR-0028 (tags reach collections and their tracks through links of their
+own), ADR-0008 (the screens read and change the tags through the JSON API)
+
 ## Collections
 
 Guide books come with GPX files of their tours, sometimes one file for a whole book, sometimes a
@@ -1300,10 +1318,8 @@ waypoints.
 (US-78), and listed in neither the Recorded nor the Planned tab (US-32). A file that is not valid
 GPX, or holds neither a track nor a waypoint, is refused with the reason, and nothing is created.
 
-**Decisions:** US-86 → the ADR on the collection data model (to be proposed; it must settle
-whether a collection track is a trip of a new kind or a record of its own, how waypoints are
-stored and tied to a collection and a track, and that deleting a collection deletes everything it
-holds), ADR-0004 (the import pipeline), ADR-0003 (track storage), ADR-0008 (the screens use the
+**Decisions:** US-86 → ADR-0028 (collections, their tracks and waypoints are records of their
+own, apart from trips; deleting a collection deletes everything it owns), ADR-0004 (the import pipeline), ADR-0003 (track storage), ADR-0008 (the screens use the
 JSON API)
 
 ### US-87 — Collections tab
@@ -1321,7 +1337,7 @@ the trip list does (US-63). The trip-list map shows the listed collections' trac
 other tabs show their trips, as marks or, zoomed in, as lines (US-63/73); a click on a line opens
 that track's trip page.
 
-**Decisions:** US-87 → US-86's ADR on the collection data model, ADR-0008 (the tab reads the
+**Decisions:** US-87 → ADR-0028, ADR-0008 (the tab reads the
 collections from the JSON API), ADR-0025 (Rust decides what the map draws)
 
 ### US-88 — Add a file to a collection
@@ -1349,8 +1365,7 @@ that is not valid GPX, or holds neither a track nor a waypoint, is refused as in
 
 **Decisions:** US-88 → the ADR on matching tracks and waypoints on re-import (to be proposed; it
 must settle what counts as the same, a changed and a new track or waypoint — by name, geometry and
-tolerance — and that the server only proposes while the owner decides), US-86's ADR on the
-collection data model
+tolerance — and that the server only proposes while the owner decides), ADR-0028
 
 ## Maps
 
@@ -1533,6 +1548,34 @@ share's.
 figures up and decides the lines, the script draws them), ADR-0008 (the screen reads its trips from
 the JSON API)
 
+### US-94 — Share collections and their tracks
+
+**Planned 📋** — As the owner, I share a whole collection or some of its tracks by link, so someone
+I plan to travel with can look at the guide book's suggestions.
+
+**Acceptance criteria:** The owner shares a whole collection from its page (US-86), a selection of
+its tracks from the page's track list, or a single track from its own page, with the label and
+expiry a trip share has (US-53). **A shared collection** reaches its page, every track and every
+waypoint it holds whenever the link is opened, so a track added later (US-88) appears to the
+recipient and one deleted disappears. **Shared tracks** reach those tracks and the waypoints that
+belong to them, but neither the collection's page nor its other tracks. Everything else about the
+link is US-53's: unguessable, read-only, no account, the token in the path, revocable, optionally
+expiring, and an unknown, expired, stopped or emptied share — its collection or every track it
+names deleted — answering exactly like a route that does not exist.
+
+**What the recipient sees:** a shared collection's page and its tracks' pages, or the shared tracks
+on one map with a track opening its page directly when it is the only one — each with its map,
+elevation profile, figures, waypoints and GPX download, never its tags or a control that changes
+it. A summary share (US-82) never reaches a collection or its tracks.
+
+**Managing it:** the Shares screen (US-69) lists the share with the collection or the tracks it
+names, and stopping it works as stopping a trip share does. The access log (US-70) counts its link
+as that share's.
+
+**Decisions:** US-94 → ADR-0028 (shares reach collections and their tracks through links of their
+own), ADR-0010's amendment (the share is a `Share` principal), ADR-0015 (the recipient's own
+response types), ADR-0025 (Rust decides the lines and markers, the script draws them)
+
 ## Statistics
 
 ### US-77 — Statistics
@@ -1687,7 +1730,7 @@ listed with any other missing entries (US-39).
 
 **Decisions:** US-89 → ADR-0022 (extension to be proposed; it must settle writing waypoint items
 in the format [`qmapshack-format.md`](./qmapshack-format.md) documents, and the identity of
-collection items in the exporter's namespace), US-86's ADR on the collection data model
+collection items in the exporter's namespace), ADR-0028
 
 ## Access & security
 

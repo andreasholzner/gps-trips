@@ -33,6 +33,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0025](./0025-js-widget-interop-via-eval.md)         | Vendored JS widgets driven from Rust through `document::eval`               | Accepted                      |
 | [0026](./0026-store-downscaled-photos.md)            | Store a size-bounded copy of each photo, not the original                   | Accepted                      |
 | [0027](./0027-offline-place-name-database.md)        | Offline geodata from OSM and national name registers                        | Accepted                      |
+| [0028](./0028-collections-apart-from-trips.md)       | Collections are records of their own, apart from trips                      | Accepted                      |
 
 ## Conventions
 
