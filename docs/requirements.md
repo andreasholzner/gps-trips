@@ -1384,10 +1384,9 @@ so do waypoints imported before this story, until their file is added again (US-
 QMapShack export writes collections (US-89), it writes the symbol into each waypoint item's `sym`,
 so QMapShack shows its own icon for it.
 
-**Decisions:** US-95 → the ADR on waypoint icons (to be proposed; it must settle which icon draws
-which symbol name, where the icons come from and under which licence, and that they ship with the
-app rather than being fetched — US-10), ADR-0025 (Rust decides which icon a waypoint gets, the
-script draws it), US-89's extension of ADR-0022 (waypoint items, once it exists), ADR-0028
+**Decisions:** US-95 → ADR-0025 (Rust decides which icon a waypoint gets, the script draws it;
+the icons ship with the app rather than being fetched — US-10), US-89's extension of ADR-0022
+(waypoint items, once it exists), ADR-0028
 
 ## Maps
 
