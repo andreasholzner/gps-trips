@@ -6703,6 +6703,7 @@ dependencies = [
  "dioxus",
  "dioxus-core",
  "dioxus-ssr",
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",

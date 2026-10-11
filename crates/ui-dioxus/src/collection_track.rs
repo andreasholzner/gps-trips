@@ -104,9 +104,13 @@ fn TrackFigures(track: CollectionTrackDetail) -> Element {
 fn TrackMapSection(id: i64, activity: ActivityType) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let geometry = use_resource(use_reactive!(|id| async move {
-        let track = api::get_collection_track_geometry(&archive(), id).await?;
-        let waypoints = drawn_waypoints(api::list_collection_track_waypoints(&archive(), id).await);
-        Ok::<_, api::ApiError>((track, waypoints))
+        let archive = archive();
+        let (track, waypoints) = futures_util::future::join(
+            api::get_collection_track_geometry(&archive, id),
+            api::list_collection_track_waypoints(&archive, id),
+        )
+        .await;
+        Ok::<_, api::ApiError>((track?, drawn_waypoints(waypoints)))
     }));
 
     rsx! {

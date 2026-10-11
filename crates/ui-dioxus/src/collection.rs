@@ -135,13 +135,17 @@ fn CollectionMap(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
     let _draw = use_resource(use_reactive!(|id, tracks| async move {
         // A map without lines or markers beats no map at all: the list
         // below still leads to every track.
-        let positions = api::list_collection_tracks(&archive(), id)
-            .await
-            .unwrap_or_else(|err| {
-                dioxus::logger::tracing::error!("could not read the tracks: {err}");
-                Vec::new()
-            });
-        let waypoints = drawn_waypoints(api::list_collection_waypoints(&archive(), id).await);
+        let archive = archive();
+        let (positions, waypoints) = futures_util::future::join(
+            api::list_collection_tracks(&archive, id),
+            api::list_collection_waypoints(&archive, id),
+        )
+        .await;
+        let positions = positions.unwrap_or_else(|err| {
+            dioxus::logger::tracing::error!("could not read the tracks: {err}");
+            Vec::new()
+        });
+        let waypoints = drawn_waypoints(waypoints);
         let mut map = interop::start_overview_map(collection_lines(&tracks, &positions), waypoints);
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {

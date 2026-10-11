@@ -29,6 +29,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "mul
 # Reading an instant in the offset it was in (US-62). The offsets come from
 # the archive, which owns the timezone lookups (ADR-0019) — no tzdata here.
 time = { version = "0.3", features = ["parsing", "macros"] }
+# Two independent reads awaited together (US-86's collection map), on both
+# targets — already in the graph through the HTTP stack.
+futures-util = { version = "0.3", default-features = false }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # TLS is a native-only concern; the browser provides its own.
