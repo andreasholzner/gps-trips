@@ -446,7 +446,12 @@ pub(crate) async fn gpx_response(state: &AppState, id: i64) -> Result<Response, 
     let gpx = repo::get_original_gpx(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
+    Ok(gpx_download(gpx))
+}
 
+/// A GPX file as a download named after what it holds — a trip, or anything
+/// else that keeps its track's GPX.
+pub(crate) fn gpx_download(gpx: repo::GpxDownload) -> Response {
     let headers = [
         (header::CONTENT_TYPE, "application/gpx+xml".to_string()),
         (
@@ -454,7 +459,7 @@ pub(crate) async fn gpx_response(state: &AppState, id: i64) -> Result<Response, 
             gpx_content_disposition(&gpx.name),
         ),
     ];
-    Ok((headers, gpx.bytes).into_response())
+    (headers, gpx.bytes).into_response()
 }
 
 /// GET `/api/trips/:id/track.geojson` — the track geometry as GeoJSON (US-7).
@@ -474,8 +479,14 @@ pub(crate) async fn track_response(state: &AppState, id: i64) -> Result<Response
     let geojson = repo::get_track_geojson(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
+    Ok(geojson_track(&geojson))
+}
+
+/// A stored track (ADR-0003) as the detail screens read it, whichever record
+/// keeps it.
+pub(crate) fn geojson_track(geojson: &str) -> Response {
     let headers = [(header::CONTENT_TYPE, "application/geo+json")];
-    Ok((headers, geojson::with_utc_offsets(&geojson)).into_response())
+    (headers, geojson::with_utc_offsets(geojson)).into_response()
 }
 
 /// DELETE `/api/trips/:id` — delete a trip and its photo blobs (US-9, the v1
