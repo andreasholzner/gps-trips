@@ -6,6 +6,7 @@
 
 mod access;
 mod bulk_edit;
+mod collection;
 mod export;
 pub mod komoot;
 mod moving_time;
@@ -18,6 +19,13 @@ mod trip;
 
 pub use access::insert_access_records;
 pub use bulk_edit::set_activity_type;
+pub use collection::{
+    delete_collection, delete_collection_track, get_collection, get_collection_track,
+    get_collection_track_geojson, get_collection_track_gpx, insert_collection,
+    list_collection_track_positions, list_collection_track_waypoints, list_collection_waypoints,
+    update_collection, update_collection_track, CollectionChange, CollectionTrackChange,
+    NewCollection, NewCollectionTrack, NewWaypoint,
+};
 pub use export::list_export_trips;
 pub use moving_time::backfill_moving_secs;
 pub use photo::{

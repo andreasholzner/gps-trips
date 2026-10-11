@@ -406,19 +406,23 @@ pub async fn list_track_positions(
     .await?;
     rows.into_iter()
         .filter_map(|(id, positions)| Some((id, positions?)))
-        .map(|(id, positions)| {
-            let positions: Vec<Vec<f64>> = serde_json::from_str(&positions)
-                .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
-            let coordinates = positions
-                .into_iter()
-                .filter_map(|position| match position[..] {
-                    [lon, lat, ..] => Some([lon, lat]),
-                    _ => None,
-                })
-                .collect();
-            Ok(TripTrack { id, coordinates })
-        })
+        .map(|(id, positions)| track_positions(id, &positions))
         .collect()
+}
+
+/// A stored track's GeoJSON coordinates, as `json_extract` reads them, cut
+/// down to `[lon, lat]` — whichever record the track belongs to.
+pub(super) fn track_positions(id: i64, positions: &str) -> Result<TripTrack, sqlx::Error> {
+    let positions: Vec<Vec<f64>> =
+        serde_json::from_str(positions).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+    let coordinates = positions
+        .into_iter()
+        .filter_map(|position| match position[..] {
+            [lon, lat, ..] => Some([lon, lat]),
+            _ => None,
+        })
+        .collect();
+    Ok(TripTrack { id, coordinates })
 }
 
 /// Delete a trip by id (US-9). `track`/`photo` are declared `ON DELETE CASCADE`
