@@ -178,6 +178,20 @@ only the trkpt-level extensions hash is).
 the top-level payload for a waypoint item) is `[lat, lon, ele, time, magvar, geoidheight, name,
 cmt, desc, src, links, sym, type, fix, sat, hdop, vdop, pdop, ageofdgpsdata, dgpsid]`.
 
+A **waypoint item**'s chunk (`QMWpt`, `VER_WPT = 4`; `CGisItemWpt::operator>>`, verified
+against all 2791 waypoints of the owner's `Touren.db` with zero bytes left — the strict decoder is
+`src/server/qmapshack/decode/waypoint.rs`) wraps, inside the same history and `qCompress`:
+
+```
+key.item (QString), flags (quint32, 0), proximity (f64, NOFLOAT = none), wpt_t (as above),
+geocache (u8 VER_GC_T=3, u8 hasData — 0, nothing follows), images (QList, empty),
+offsetBubble (QPoint: qint32 x, y — default -320, -150), widthBubble (quint32, default 300),
+rating (f64), keywords (QSet<QString>)
+```
+
+The waypoint's GPX symbol is `wpt_t.sym` (e.g. `Flag, Blue`); QMapShack draws the map icon from it.
+`items.icon` is only what the item tree shows — real databases hold one PNG per symbol there.
+
 Exact source locations for implementation: `serialization.cpp` lines ~324-400 (segment/point),
 ~492-620 (track), ~60-100 (waypoint base fields), ~124-165 (history).
 

@@ -1,7 +1,8 @@
 //! Per-activity track color and item icon (US-36). Colors are names from
 //! QMapShack's own color table (`IGisItem::init()`); the PNGs under `icons/`
 //! were extracted from real QMapShack-written items of the matching color
-//! (ADR-0022: reuse real icons rather than generating new artwork).
+//! (ADR-0022: reuse real icons rather than generating new artwork), the
+//! waypoint one (US-89) from items QMapShack wrote for its `Waypoint` symbol.
 
 use crate::models::ActivityType;
 
@@ -34,6 +35,13 @@ pub fn icon_png(activity: ActivityType) -> &'static [u8] {
         ActivityType::CrossCountrySkiing => include_bytes!("icons/track_Magenta.png"),
         ActivityType::SnowShoe => include_bytes!("icons/track_DarkGreen.png"),
     }
+}
+
+/// The `items.icon` PNG bytes for every waypoint item (US-89): QMapShack's
+/// own `Waypoint` icon. The tree shows it; the map draws the icon for the
+/// waypoint's `sym` itself.
+pub fn waypoint_icon_png() -> &'static [u8] {
+    include_bytes!("icons/wpt_Waypoint.png")
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -110,5 +118,10 @@ mod tests {
             icon_png(ActivityType::Hiking),
             icon_png(ActivityType::Cycling)
         );
+    }
+
+    #[test]
+    fn us89_the_waypoint_icon_is_png_bytes() {
+        assert_eq!(&waypoint_icon_png()[..4], b"\x89PNG");
     }
 }

@@ -1,4 +1,5 @@
-//! Test-only decoder for QMapShack `items.data` track blobs: golden tests
+//! Test-only decoder for QMapShack `items.data` track blobs (and, in
+//! [`waypoint`], waypoint blobs — US-89): golden tests
 //! decode the reference `format_test.db` items, and the US-36 acceptance
 //! tests decode what the exporter wrote. Exposed to `tests/` via the
 //! `test-support` feature (same pattern as `location::fixtures`). Never used
@@ -17,6 +18,10 @@ use time::OffsetDateTime;
 
 use super::blob::{MAGIC_SIZE, MAGIC_TRK, NOINT};
 use super::VER_TRK;
+
+mod waypoint;
+
+pub use waypoint::{decode_waypoint_item, DecodedWaypoint};
 
 /// One decoded track point (the subset of `trkpt_t` the archive round-trips).
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +54,24 @@ pub struct DecodedTrack {
 /// Decode a full `items.data` blob (history_t → current event → `QMTrk`
 /// chunk). Fails on any structural surprise, including leftover bytes.
 pub fn decode_track_item(data: &[u8]) -> Result<DecodedTrack> {
+    let current = decode_history(data)?;
+    let mut track = decode_track_chunk(&current.chunk)?;
+    track.chunk_md5 = lowercase_md5(&current.chunk);
+    track.hash = current.hash;
+    track.who = current.who;
+    Ok(track)
+}
+
+/// The current event of a `history_t` blob.
+struct CurrentEvent {
+    chunk: Vec<u8>,
+    hash: String,
+    who: Option<String>,
+}
+
+/// Decode a `history_t` blob down to its current event, accounting for
+/// every byte.
+fn decode_history(data: &[u8]) -> Result<CurrentEvent> {
     let mut r = QtReader::new(data);
 
     let ver_hist = r.u8().context("VER_HIST")?;
@@ -61,7 +84,7 @@ pub fn decode_track_item(data: &[u8]) -> Result<DecodedTrack> {
         "histIdxCurrent {idx_current} out of range for {n_events} events"
     );
 
-    let mut current: Option<(Vec<u8>, String, Option<String>)> = None;
+    let mut current = None;
     for i in 0..n_events {
         let ver_evt = r.u8().with_context(|| format!("event {i} version"))?;
         ensure!(ver_evt == 3, "unsupported VER_HIST_EVT {ver_evt}");
@@ -74,7 +97,7 @@ pub fn decode_track_item(data: &[u8]) -> Result<DecodedTrack> {
             .with_context(|| format!("event {i} has a null hash"))?;
         let who = r.qstring()?;
         if i == idx_current as u32 {
-            current = Some((chunk, hash, who));
+            current = Some(CurrentEvent { chunk, hash, who });
         }
     }
     ensure!(
@@ -83,13 +106,7 @@ pub fn decode_track_item(data: &[u8]) -> Result<DecodedTrack> {
         r.remaining()
     );
 
-    let (chunk, hash, who) = current.expect("current index validated against event count");
-    let chunk_md5 = lowercase_md5(&chunk);
-    let mut track = decode_track_chunk(&chunk)?;
-    track.hash = hash;
-    track.who = who;
-    track.chunk_md5 = chunk_md5;
-    Ok(track)
+    Ok(current.expect("current index validated against event count"))
 }
 
 /// Decode the `QMTrk` chunk of one history event (`CGisItemTrk::operator>>`'s
@@ -190,6 +207,14 @@ fn quncompress(framed: &[u8]) -> Result<Vec<u8>> {
         out.len()
     );
     Ok(out)
+}
+
+/// The `wpt_t` fields the tests assert.
+struct WptBase {
+    point: DecodedPoint,
+    name: Option<String>,
+    desc: Option<String>,
+    sym: Option<String>,
 }
 
 /// Cursor over a Qt_5_2 little-endian `QDataStream`.
@@ -371,25 +396,7 @@ impl<'a> QtReader<'a> {
         let ver = self.u8()?;
         ensure!(ver == 3, "unsupported VER_TRKPT {ver}");
         self.u32()?; // flags
-
-        let ver_wpt = self.u8()?;
-        ensure!(ver_wpt == 1, "unsupported VER_WPT_T {ver_wpt}");
-        let lat = self.f64()?;
-        let lon = self.f64()?;
-        let ele = self.i32()?;
-        let time = self.qdatetime()?;
-        self.i32()?; // magvar
-        self.i32()?; // geoidheight
-        for _ in 0..4 {
-            self.qstring()?; // name, cmt, desc, src
-        }
-        self.links()?;
-        for _ in 0..3 {
-            self.qstring()?; // sym, type, fix
-        }
-        for _ in 0..6 {
-            self.i32()?; // sat, hdop, vdop, pdop, ageofdgpsdata, dgpsid
-        }
+        let wpt = self.wpt_base()?;
 
         let n_ext = self.u32()?; // QHash<QString, QVariant> extensions
         for _ in 0..n_ext {
@@ -398,11 +405,40 @@ impl<'a> QtReader<'a> {
         }
         self.i16()?; // activity
 
-        Ok(DecodedPoint {
-            lat,
-            lon,
-            ele: (ele != NOINT).then_some(ele),
-            time,
+        Ok(wpt.point)
+    }
+
+    /// `wpt_t` (`VER_WPT_T` 1): a track point's base, a waypoint item's body.
+    fn wpt_base(&mut self) -> Result<WptBase> {
+        let ver_wpt = self.u8()?;
+        ensure!(ver_wpt == 1, "unsupported VER_WPT_T {ver_wpt}");
+        let lat = self.f64()?;
+        let lon = self.f64()?;
+        let ele = self.i32()?;
+        let time = self.qdatetime()?;
+        self.i32()?; // magvar
+        self.i32()?; // geoidheight
+        let name = self.qstring()?;
+        self.qstring()?; // cmt
+        let desc = self.qstring()?;
+        self.qstring()?; // src
+        self.links()?;
+        let sym = self.qstring()?;
+        self.qstring()?; // type
+        self.qstring()?; // fix
+        for _ in 0..6 {
+            self.i32()?; // sat, hdop, vdop, pdop, ageofdgpsdata, dgpsid
+        }
+        Ok(WptBase {
+            point: DecodedPoint {
+                lat,
+                lon,
+                ele: (ele != NOINT).then_some(ele),
+                time,
+            },
+            name,
+            desc,
+            sym,
         })
     }
 }

@@ -43,6 +43,10 @@ pub const DB_VERSION: &str = "6";
 /// `VER_TRK`, stable since 2020).
 pub const VER_TRK: u8 = 7;
 
+/// Version tag of the `QMWpt` waypoint blob this exporter writes (QMapShack
+/// `VER_WPT`, US-89).
+pub const VER_WPT: u8 = 4;
+
 /// Namespace prefix for `items.keyqms` marking rows this exporter owns
 /// (ADR-0022): reconciliation must never touch items without this prefix.
 pub const KEYQMS_PREFIX: &str = "trip-archive:trip:";

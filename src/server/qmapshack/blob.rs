@@ -1,7 +1,10 @@
 //! Builds the `items.data` blob for a QMapShack track item: a serialized
 //! `IGisItem::history_t` with one history event whose payload is the
 //! `QMTrk`-tagged, qCompress'd track chunk (`docs/qmapshack-format.md`,
-//! field list ported from QMapShack's `serialization.cpp`).
+//! field list ported from QMapShack's `serialization.cpp`). A waypoint
+//! item's blob (US-89) is built in [`waypoint`] around the same history.
+
+pub mod waypoint;
 
 use time::OffsetDateTime;
 
@@ -74,8 +77,12 @@ pub fn build_track_item(
 ) -> (Vec<u8>, String) {
     let chunk = build_track_chunk(input);
     let hash = lowercase_md5(&chunk);
+    (build_history(&chunk, &hash, event_time), hash)
+}
 
-    // history_t with exactly one event (a freshly created item).
+/// `history_t` with exactly one event (a freshly created item) carrying
+/// `chunk`, whose MD5 `hash` is.
+fn build_history(chunk: &[u8], hash: &str, event_time: OffsetDateTime) -> Vec<u8> {
     let mut w = QtWriter::new();
     w.u8(1); // VER_HIST
     w.i32(0); // histIdxInitial
@@ -85,10 +92,10 @@ pub fn build_track_item(
     w.qdatetime(Some(event_time));
     w.qstring(Some(EVENT_ICON));
     w.qstring(Some(EVENT_COMMENT));
-    w.qbytearray(&chunk);
-    w.qstring(Some(&hash));
+    w.qbytearray(chunk);
+    w.qstring(Some(hash));
     w.qstring(Some(WHO));
-    (w.into_bytes(), hash)
+    w.into_bytes()
 }
 
 /// The `QMTrk` chunk: magic + VER_TRK + qCompress'd inner field list.
@@ -188,25 +195,56 @@ fn write_energy_defaults(w: &mut QtWriter) {
 fn write_trkpt(w: &mut QtWriter, point: &TrackPointIn) {
     w.u8(3); // VER_TRKPT
     w.u32(0); // flags
+    write_wpt_base(
+        w,
+        &WptBase {
+            lat: point.lat,
+            lon: point.lon,
+            ele: point.ele,
+            time: point.time,
+            name: None,
+            desc: None,
+            src: None,
+            sym: None,
+        },
+    );
+    w.u32(0); // extensions: empty QHash
+    w.i16(0); // activity: none
+}
+
+/// The `wpt_t` fields a track point or a waypoint item carries; every other
+/// field is written unset.
+struct WptBase<'a> {
+    lat: f64,
+    lon: f64,
+    ele: Option<i32>,
+    time: Option<OffsetDateTime>,
+    name: Option<&'a str>,
+    desc: Option<&'a str>,
+    src: Option<&'a str>,
+    sym: Option<&'a str>,
+}
+
+/// `wpt_t` (`VER_WPT_T` 1) — a track point's base and a waypoint item's body.
+fn write_wpt_base(w: &mut QtWriter, wpt: &WptBase<'_>) {
     w.u8(1); // VER_WPT_T
-    w.f64(point.lat);
-    w.f64(point.lon);
-    w.i32(point.ele.unwrap_or(NOINT));
-    w.qdatetime(point.time);
+    w.f64(wpt.lat);
+    w.f64(wpt.lon);
+    w.i32(wpt.ele.unwrap_or(NOINT));
+    w.qdatetime(wpt.time);
     w.i32(NOINT); // magvar
     w.i32(NOINT); // geoidheight
-    for _ in 0..4 {
-        w.qstring(None); // name, cmt, desc, src
-    }
+    w.qstring(wpt.name);
+    w.qstring(None); // cmt
+    w.qstring(wpt.desc);
+    w.qstring(wpt.src);
     w.u32(0); // links
-    for _ in 0..3 {
-        w.qstring(None); // sym, type, fix
-    }
+    w.qstring(wpt.sym);
+    w.qstring(None); // type
+    w.qstring(None); // fix
     for _ in 0..6 {
         w.i32(NOINT); // sat, hdop, vdop, pdop, ageofdgpsdata, dgpsid
     }
-    w.u32(0); // extensions: empty QHash
-    w.i16(0); // activity: none
 }
 
 fn lowercase_md5(bytes: &[u8]) -> String {
