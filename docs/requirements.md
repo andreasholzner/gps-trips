@@ -1357,12 +1357,14 @@ in the file beside what the collection holds, each with a proposed action the ow
   activity override (US-86);
 - *keep* or *remove* — for what the collection holds but the file does not, proposed *keep*.
 
-Tracks are matched by name and geometry, waypoints by name and position, both within a tolerance,
-so a file whose points were merely rounded or shifted slightly is still the same. Instead of
-deciding item by item, the owner can choose *replace the whole collection*: everything it holds is
-removed and the file's contents imported, while its details stay. Nothing changes until the owner
-confirms, and then all of it or none of it; cancelling leaves the collection untouched. A file
-that is not valid GPX, or holds neither a track nor a waypoint, is refused as in US-86.
+Tracks are matched by name and geometry, waypoints by name and position, both within a tolerance, so
+a file whose points were merely rounded or shifted slightly is still the same. A waypoint whose
+symbol differs — also one stored without a symbol, as before US-95 — differs, so *replace* is
+proposed, and the replaced waypoint takes the file's symbol, or none if the file names none. Instead
+of deciding item by item, the owner can choose *replace the whole collection*: everything it holds
+is removed and the file's contents imported, while its details stay. Nothing changes until the owner
+confirms, and then all of it or none of it; cancelling leaves the collection untouched. A file that
+is not valid GPX, or holds neither a track nor a waypoint, is refused as in US-86.
 
 **Decisions:** US-88 → the ADR on matching tracks and waypoints on re-import (to be proposed; it
 must settle what counts as the same, a changed and a new track or waypoint — by name, geometry and
@@ -1741,13 +1743,15 @@ entries are listed in an error message.
 from my trips, so I can plan routes from a book's tracks in QMapShack.
 
 **Acceptance criteria:** The export (US-36) also writes every collection (US-86): its tracks as
-track items in their activity colors, its waypoints as waypoint items, in one folder per
-collection. A folder template of its own in the export config places those folders, e.g.
+track items in their activity colors, its waypoints as waypoint items, in one folder per collection.
+A folder template of its own in the export config places those folders, e.g.
 `Guidebooks/{collection}`, so collection tracks never land in the trips' folders. Re-running the
 export reconciles collections as US-37 does trips: added, changed and deleted collections, tracks
-and waypoints are added, updated or moved to QMapShack's trash; items the export did not create
-are untouched. A config without the collection template is refused before anything is exported,
-listed with any other missing entries (US-39).
+and waypoints are added, updated or moved to QMapShack's trash; items the export did not create are
+untouched. A waypoint item carries its waypoint's symbol (US-95) in `sym`, as the file named it, so
+QMapShack shows its own icon for it; a waypoint without one is written without. A config without the
+collection template is refused before anything is exported, listed with any other missing entries
+(US-39).
 
 **Decisions:** US-89 → ADR-0022 (extension to be proposed; it must settle writing waypoint items
 in the format [`qmapshack-format.md`](./qmapshack-format.md) documents, and the identity of
