@@ -1347,9 +1347,10 @@ collections from the JSON API), ADR-0025 (Rust decides what the map draws)
 and decide track by track what happens, so a book spread over several files, or a corrected file,
 leaves no duplicates.
 
-**Acceptance criteria:** With *Guide book* chosen, the import can target an existing collection
-instead of creating one. Before anything changes, a review screen lists every track and waypoint
-in the file beside what the collection holds, each with a proposed action the owner can change:
+**Acceptance criteria:** The import screen's third choice, US-86's *Guide book*, reads
+*Collection*. With *Collection* chosen, the import can target an existing collection instead of
+creating one. Before anything changes, a review screen lists every track and waypoint in the file
+beside what the collection holds, each with a proposed action the owner can change:
 
 - *add* — nothing in the collection matches it;
 - *skip* — the collection holds the same track or waypoint;
@@ -1365,6 +1366,17 @@ of deciding item by item, the owner can choose *replace the whole collection*: e
 is removed and the file's contents imported, while its details stay. Nothing changes until the owner
 confirms, and then all of it or none of it; cancelling leaves the collection untouched. A file that
 is not valid GPX, or holds neither a track nor a waypoint, is refused as in US-86.
+
+**Several files at once:** with *Collection* chosen, several GPX files can be uploaded in one go,
+for a new collection as for an existing one. The result is the same as uploading the first file
+alone and then adding each of the others in turn: the files are taken in the order of their names; a
+new collection's details are prefilled from the first; each later file is matched against what the
+collection holds after the files before it, so a track or waypoint in two of the files is proposed
+*skip* or *replace* the second time, not *add* twice; and *keep* or *remove* is proposed only for
+what the collection held before the upload and none of the files holds. The review screen shows
+each track and waypoint with the file it comes from, and *replace the whole collection* imports the
+contents of all the files. The owner confirms once for all the files, and then all of them are
+imported or none. A file that is refused as in US-86 is named with its reason, and nothing changes.
 
 **Decisions:** US-88 → the ADR on matching tracks and waypoints on re-import (to be proposed; it
 must settle what counts as the same, a changed and a new track or waypoint — by name, geometry and
