@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="trip-archive-test"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+  <!-- A guide book's file (US-86): several tracks, waypoints carrying
+       categories, and timestamps that are not when anyone went. -->
+  <metadata>
+    <name>Lakes &amp; Passes</name>
+    <desc>Ten tours around the lakes.</desc>
+  </metadata>
+  <wpt lat="46.4958" lon="9.1705">
+    <ele>2065</ele>
+    <time>2013-08-05T11:11:01Z</time>
+    <name>San Bernardino Pass</name>
+    <desc>Top of the first climb</desc>
+    <extensions>
+      <gpxx:WaypointExtension>
+        <gpxx:Categories>
+          <gpxx:Category>Bruckmann</gpxx:Category>
+          <gpxx:Category>Baukasten</gpxx:Category>
+        </gpxx:Categories>
+      </gpxx:WaypointExtension>
+    </extensions>
+  </wpt>
+  <wpt lat="46.5822" lon="9.8377">
+    <ele>2316.9</ele>
+    <name>Albula Pass</name>
+    <extensions>
+      <gpxx:WaypointExtension>
+        <gpxx:Categories>
+          <gpxx:Category>Bruckmann</gpxx:Category>
+        </gpxx:Categories>
+      </gpxx:WaypointExtension>
+    </extensions>
+  </wpt>
+  <trk>
+    <name>Stage 1: Splügen</name>
+    <trkseg>
+      <trkpt lat="46.5500" lon="9.3200"><ele>1450</ele><time>2013-08-05T08:00:00Z</time></trkpt>
+      <trkpt lat="46.5300" lon="9.3000"><ele>1700</ele><time>2013-08-05T09:00:00Z</time></trkpt>
+      <trkpt lat="46.4958" lon="9.1705"><ele>2065</ele><time>2013-08-05T11:00:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+  <trk>
+    <trkseg>
+      <trkpt lat="46.4958" lon="9.1705"><ele>2065</ele></trkpt>
+      <trkpt lat="46.4300" lon="9.1900"><ele>1600</ele></trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="46.4100" lon="9.2000"><ele>1500</ele></trkpt>
+      <trkpt lat="46.3500" lon="9.2200"><ele>900</ele></trkpt>
+    </trkseg>
+  </trk>
+  <trk>
+    <name>Stage 3: Albula</name>
+    <extensions>
+      <gpxx:TrackExtension>
+        <gpxx:Categories>
+          <gpxx:Category>Stage map</gpxx:Category>
+        </gpxx:Categories>
+      </gpxx:TrackExtension>
+    </extensions>
+    <trkseg>
+      <trkpt lat="46.6400" lon="9.7800"><ele>1300</ele></trkpt>
+      <trkpt lat="46.5822" lon="9.8377"><ele>2316.9</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
