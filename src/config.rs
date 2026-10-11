@@ -457,3 +457,20 @@ pub mod activity_suggestion {
     /// paddles a pond.
     pub const MIN_WATER_M2: f64 = 10_000.0;
 }
+
+/// What counts as the same track or waypoint when files are added to a
+/// collection (US-88, ADR-0029).
+pub mod collection_match {
+    /// Two tracks of the same name are the same when every point of each
+    /// lies within this many metres of the other's line — enough for a
+    /// re-export that rounds or smooths the points, short of a changed route.
+    pub const TRACK_TOLERANCE_M: f64 = 30.0;
+
+    /// Two waypoints of the same name are at the same place within this many
+    /// metres.
+    pub const WAYPOINT_TOLERANCE_M: f64 = 30.0;
+
+    /// Elevations this close, in metres, are the same: a re-export rounds
+    /// them too.
+    pub const ELEVATION_TOLERANCE_M: f64 = 1.0;
+}

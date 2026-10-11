@@ -19,6 +19,7 @@ mod app_version;
 mod bounding_box;
 mod climb;
 mod collection;
+mod collection_import;
 mod error_response;
 mod export_trip;
 mod komoot_link;
@@ -47,6 +48,10 @@ pub use collection::{
     CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview, CollectionSummary,
     CollectionTrackDetail, CollectionTrackEdit, CollectionTrackMark, CollectionTrackSummary,
     CreatedCollection, Waypoint,
+};
+pub use collection_import::{
+    CollectionFile, CollectionImportReview, ConfirmCollectionImport, HeldItem, ImportAction,
+    ImportDecisions, ItemDecision, ReviewItem, ReviewMatch,
 };
 pub use error_response::ErrorResponse;
 pub use export_trip::ExportTrip;
