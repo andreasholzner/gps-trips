@@ -125,10 +125,13 @@ mod tests {
 
     #[test]
     fn us95_a_waypoint_with_a_symbol_reaches_the_map_with_its_icon() {
-        let sent = MapWaypoint::from(&albula(Some("Circle, Blue")));
+        let sent = serde_json::to_value(MapWaypoint::from(&albula(Some("Circle, Blue")))).unwrap();
 
-        assert_eq!(sent.icon, waypoint_icon::icon("Circle, Blue"));
-        assert!(sent.icon.is_some());
+        assert_eq!(sent["icon"]["kind"], "shape");
+        assert_eq!(sent["icon"]["color"], "#1f7fe0");
+        assert!(sent["icon"]["path"]
+            .as_str()
+            .is_some_and(|path| path.starts_with('M')));
     }
 
     #[test]

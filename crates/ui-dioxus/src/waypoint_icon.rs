@@ -29,109 +29,123 @@ pub enum WaypointIcon {
 /// The icon for `symbol`, matched ignoring case and spacing; `None` keeps
 /// the plain marker.
 pub fn icon(symbol: &str) -> Option<WaypointIcon> {
-    let symbol = symbol
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
     match symbol.split_once(',') {
         Some((shape, color)) => Some(WaypointIcon::Shape {
-            path: shape_path(shape.trim())?,
-            color: color_value(color.trim())?,
+            path: look_up(SHAPES, shape)?,
+            color: look_up(COLORS, color)?,
         }),
-        None => glyph_path(&symbol).map(|path| WaypointIcon::Glyph { path }),
+        None => look_up(GLYPHS, symbol).map(|path| WaypointIcon::Glyph { path }),
+    }
+}
+
+/// The value of the entry whose name is `text`'s words, ignoring case.
+fn look_up(table: &[(&str, &'static str)], text: &str) -> Option<&'static str> {
+    table
+        .iter()
+        .find(|(name, _)| same_words(text, name))
+        .map(|&(_, value)| value)
+}
+
+/// Whether `text` holds `name`'s words, in any case and with any spacing.
+fn same_words(text: &str, name: &str) -> bool {
+    let mut words = text.split_whitespace();
+    let mut names = name.split(' ');
+    loop {
+        match (words.next(), names.next()) {
+            (Some(word), Some(name)) if word.eq_ignore_ascii_case(name) => {}
+            (None, None) => return true,
+            _ => return false,
+        }
     }
 }
 
 /// Garmin's three colors, a little deeper than pure, to hold against the
 /// map's tiles.
-fn color_value(color: &str) -> Option<&'static str> {
-    match color {
-        "red" => Some("#e0322b"),
-        "green" => Some("#2e9a3e"),
-        "blue" => Some("#1f7fe0"),
-        _ => None,
-    }
-}
+const COLORS: &[(&str, &str)] = &[
+    ("red", "#e0322b"),
+    ("green", "#2e9a3e"),
+    ("blue", "#1f7fe0"),
+];
 
-fn shape_path(shape: &str) -> Option<&'static str> {
-    Some(match shape {
-        "circle" => CIRCLE,
-        "triangle" => TRIANGLE,
-        "square" => SQUARE,
-        "diamond" => RHOMBUS,
-        "oval" => ELLIPSE,
-        "rectangle" => RECTANGLE,
-        "flag" => FLAG,
-        "pin" => MAP_MARKER,
-        "block" => SQUARE_ROUNDED,
-        "letter a" => ALPHA_A_CIRCLE,
-        "letter b" => ALPHA_B_CIRCLE,
-        "letter c" => ALPHA_C_CIRCLE,
-        "letter d" => ALPHA_D_CIRCLE,
-        "number 0" => NUMERIC0_CIRCLE,
-        "number 1" => NUMERIC1_CIRCLE,
-        "number 2" => NUMERIC2_CIRCLE,
-        "number 3" => NUMERIC3_CIRCLE,
-        "number 4" => NUMERIC4_CIRCLE,
-        "number 5" => NUMERIC5_CIRCLE,
-        "number 6" => NUMERIC6_CIRCLE,
-        "number 7" => NUMERIC7_CIRCLE,
-        "number 8" => NUMERIC8_CIRCLE,
-        "number 9" => NUMERIC9_CIRCLE,
-        _ => return None,
-    })
-}
+const SHAPES: &[(&str, &str)] = &[
+    ("circle", CIRCLE),
+    ("triangle", TRIANGLE),
+    ("square", SQUARE),
+    ("diamond", RHOMBUS),
+    ("oval", ELLIPSE),
+    ("rectangle", RECTANGLE),
+    ("flag", FLAG),
+    ("pin", MAP_MARKER),
+    ("block", SQUARE_ROUNDED),
+    ("letter a", ALPHA_A_CIRCLE),
+    ("letter b", ALPHA_B_CIRCLE),
+    ("letter c", ALPHA_C_CIRCLE),
+    ("letter d", ALPHA_D_CIRCLE),
+    ("number 0", NUMERIC0_CIRCLE),
+    ("number 1", NUMERIC1_CIRCLE),
+    ("number 2", NUMERIC2_CIRCLE),
+    ("number 3", NUMERIC3_CIRCLE),
+    ("number 4", NUMERIC4_CIRCLE),
+    ("number 5", NUMERIC5_CIRCLE),
+    ("number 6", NUMERIC6_CIRCLE),
+    ("number 7", NUMERIC7_CIRCLE),
+    ("number 8", NUMERIC8_CIRCLE),
+    ("number 9", NUMERIC9_CIRCLE),
+];
 
-fn glyph_path(symbol: &str) -> Option<&'static str> {
-    Some(match symbol {
-        "summit" => IMAGE_FILTER_HDR,
-        "lodging" | "hotel" | "lodge" => BED,
-        "residence" | "house" => HOME,
-        "campground" | "rv park" => TENT,
-        "drinking water" | "water source" => WATER,
-        "scenic area" => BINOCULARS,
-        "trail head" => SIGN_DIRECTION,
-        "parking area" => PARKING,
-        "restaurant" | "fast food" => SILVERWARE_FORK_KNIFE,
-        "bar" => BEER,
-        "information" => INFORMATION,
-        "danger area" => ALERT,
-        "church" => CHURCH,
-        "bridge" => BRIDGE,
-        "tunnel" => TUNNEL,
-        "bike trail" => BIKE,
-        "restroom" => TOILET,
-        "shower" => SHOWER,
-        "skiing area" | "ski resort" => SKI,
-        "railway" => TRAIN,
-        "funicular" => GONDOLA,
-        "ferry" => FERRY,
-        "medical facility" => HOSPITAL,
-        "ground transportation" => BUS,
-        "forest" => PINE_TREE,
-        "swimming area" => SWIM,
-        "picnic area" => TABLE_FURNITURE,
-        "museum" => BANK,
-        "post office" => EMAIL,
-        "telephone" => PHONE,
-        "gas station" => GAS_STATION,
-        "convenience store" => STORE,
-        "shopping center" => CART,
-        "pharmacy" => MEDICAL_BAG,
-        "flag" => FLAG,
-        "geocache" => TREASURE_CHEST,
-        "waterfall" => WATERFALL,
-        _ => return None,
-    })
-}
+const GLYPHS: &[(&str, &str)] = &[
+    ("summit", IMAGE_FILTER_HDR),
+    ("lodging", BED),
+    ("hotel", BED),
+    ("lodge", BED),
+    ("residence", HOME),
+    ("house", HOME),
+    ("campground", TENT),
+    ("rv park", TENT),
+    ("drinking water", WATER),
+    ("water source", WATER),
+    ("scenic area", BINOCULARS),
+    ("trail head", SIGN_DIRECTION),
+    ("parking area", PARKING),
+    ("restaurant", SILVERWARE_FORK_KNIFE),
+    ("fast food", SILVERWARE_FORK_KNIFE),
+    ("bar", BEER),
+    ("information", INFORMATION),
+    ("danger area", ALERT),
+    ("church", CHURCH),
+    ("bridge", BRIDGE),
+    ("tunnel", TUNNEL),
+    ("bike trail", BIKE),
+    ("restroom", TOILET),
+    ("shower", SHOWER),
+    ("skiing area", SKI),
+    ("ski resort", SKI),
+    ("railway", TRAIN),
+    ("funicular", GONDOLA),
+    ("ferry", FERRY),
+    ("medical facility", HOSPITAL),
+    ("ground transportation", BUS),
+    ("forest", PINE_TREE),
+    ("swimming area", SWIM),
+    ("picnic area", TABLE_FURNITURE),
+    ("museum", BANK),
+    ("post office", EMAIL),
+    ("telephone", PHONE),
+    ("gas station", GAS_STATION),
+    ("convenience store", STORE),
+    ("shopping center", CART),
+    ("pharmacy", MEDICAL_BAG),
+    ("flag", FLAG),
+    ("geocache", TREASURE_CHEST),
+    ("waterfall", WATERFALL),
+];
 
 // mdiCircle
 const CIRCLE: &str = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 // mdiTriangle
-const TRIANGLE: &str = "M1,21H23L12,2";
+const TRIANGLE: &str = "M1,21H23L12,2Z";
 // mdiSquare
-const SQUARE: &str = "M3,3V21H21V3";
+const SQUARE: &str = "M3,3V21H21V3Z";
 // mdiRhombus
 const RHOMBUS: &str = "M12 2C11.5 2 11 2.19 10.59 2.59L2.59 10.59C1.8 11.37 1.8 12.63 2.59 13.41L10.59 21.41C11.37 22.2 12.63 22.2 13.41 21.41L21.41 13.41C22.2 12.63 22.2 11.37 21.41 10.59L13.41 2.59C13 2.19 12.5 2 12 2Z";
 // mdiEllipse
@@ -265,6 +279,28 @@ mod tests {
         assert_eq!(icon("Diamond, Green"), shape(RHOMBUS, "#2e9a3e"));
         assert_eq!(icon("Letter B, Red"), shape(ALPHA_B_CIRCLE, "#e0322b"));
         assert_eq!(icon("Number 7, Blue"), shape(NUMERIC7_CIRCLE, "#1f7fe0"));
+    }
+
+    #[test]
+    fn us95_every_shape_is_closed_so_its_outline_goes_all_round() {
+        let shapes = [
+            "Circle",
+            "Triangle",
+            "Square",
+            "Diamond",
+            "Oval",
+            "Rectangle",
+            "Flag",
+            "Pin",
+        ]
+        .into_iter()
+        .chain(["Block", "Letter A", "Letter D", "Number 0", "Number 9"]);
+        for shape in shapes {
+            let Some(WaypointIcon::Shape { path, .. }) = icon(&format!("{shape}, Red")) else {
+                panic!("{shape} is not a shape");
+            };
+            assert!(path.trim_end().ends_with(['Z', 'z']), "{shape}: {path}");
+        }
     }
 
     #[test]
