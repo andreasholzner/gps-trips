@@ -4,8 +4,8 @@
 //!
 //! A guide book's timestamps, where a file has any, are not when anyone
 //! went, so they are dropped here: nothing downstream can compute a date,
-//! duration or speed from a collection track. Each track keeps its own GPX,
-//! as the file had it, for its download.
+//! duration or speed from a collection track — nor from its own GPX, which
+//! each track keeps for its download.
 
 use std::path::Path;
 
@@ -35,8 +35,8 @@ pub struct ParsedCollectionTrack {
     pub name: Option<String>,
     /// Without times.
     pub points: Vec<TrackPoint>,
-    /// This track alone as GPX — with the file's waypoints when it is the
-    /// file's only track.
+    /// This track alone as GPX, without times — with the file's waypoints
+    /// when it is the file's only track.
     pub gpx: Vec<u8>,
 }
 
@@ -163,11 +163,20 @@ fn untimed_points(track: &gpx::Track) -> Vec<TrackPoint> {
 }
 
 fn track_gpx(track: &gpx::Track, waypoints: &[gpx::Waypoint]) -> Result<Vec<u8>, ImportError> {
+    let untimed = |point: &gpx::Waypoint| {
+        let mut point = point.clone();
+        point.time = None;
+        point
+    };
+    let mut track = track.clone();
+    for segment in &mut track.segments {
+        segment.points = segment.points.iter().map(untimed).collect();
+    }
     let single = gpx::Gpx {
         version: gpx::GpxVersion::Gpx11,
         creator: Some("trip-archive".to_string()),
-        waypoints: waypoints.to_vec(),
-        tracks: vec![track.clone()],
+        waypoints: waypoints.iter().map(untimed).collect(),
+        tracks: vec![track],
         ..Default::default()
     };
     let mut bytes = Vec::new();
@@ -297,6 +306,17 @@ mod tests {
         assert_eq!(own.tracks[0].name.as_deref(), Some("Stage 3: Albula"));
         // Another track's file does not carry the book's waypoints.
         assert!(own.waypoints.is_empty());
+    }
+
+    #[test]
+    fn a_tracks_own_gpx_carries_no_timestamps() {
+        // Not when anyone went: a download imported as a trip must not
+        // bring them back.
+        let parsed = parse_collection(GUIDE_BOOK).unwrap();
+
+        let own = String::from_utf8(parsed.tracks[0].gpx.clone()).unwrap();
+        assert!(own.contains("<trkpt"), "{own}");
+        assert!(!own.contains("<time>"), "{own}");
     }
 
     #[test]
