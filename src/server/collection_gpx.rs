@@ -191,14 +191,18 @@ fn categories(data: &[u8]) -> Vec<String> {
                 text.clear();
             }
             Ok(Event::Text(t)) if inside => text.push_str(&t.xml10_content()),
-            Ok(Event::GeneralRef(r)) if inside => text.push_str(match r.as_ref() {
-                "amp" => "&",
-                "lt" => "<",
-                "gt" => ">",
-                "quot" => "\"",
-                "apos" => "'",
-                _ => "",
-            }),
+            Ok(Event::GeneralRef(r)) if inside => match r.resolve_char_ref() {
+                // `&#252;` and `&#xFC;`: a letter written by its number.
+                Ok(Some(letter)) => text.push(letter),
+                _ => text.push_str(match r.as_ref() {
+                    "amp" => "&",
+                    "lt" => "<",
+                    "gt" => ">",
+                    "quot" => "\"",
+                    "apos" => "'",
+                    _ => "",
+                }),
+            },
             Ok(Event::End(end)) if inside && end.local_name().as_ref() == "Category" => {
                 inside = false;
                 let category = text.trim();
@@ -332,6 +336,21 @@ mod tests {
             parsed.suggested_description(),
             "Ten tours around the lakes.\n\nBruckmann, Baukasten"
         );
+    }
+
+    #[test]
+    fn a_category_written_with_character_references_keeps_its_letters() {
+        let gpx = br#"<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+  <wpt lat="46.5" lon="9.2"><extensions><gpxx:WaypointExtension><gpxx:Categories>
+    <gpxx:Category>H&#252;tten &amp; P&#xE4;sse</gpxx:Category>
+  </gpxx:Categories></gpxx:WaypointExtension></extensions></wpt>
+</gpx>"#;
+
+        let parsed = parse_collection(gpx).unwrap();
+
+        assert_eq!(parsed.categories, ["Hütten & Pässe"]);
     }
 
     #[test]
