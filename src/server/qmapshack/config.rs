@@ -104,48 +104,62 @@ struct RawConfig {
     trip_type_names: Option<HashMap<String, String>>,
 }
 
-/// One piece of a folder-path segment; a segment like `"{year}-{trip_type}"`
-/// parses into `[Year, Literal("-"), TripType]`.
+/// One piece of a `folder_template` segment; a segment like
+/// `"{year}-{trip_type}"` parses into `[Year, Literal("-"), TripType]`.
 #[derive(Debug, PartialEq)]
-enum Piece {
+enum TripPiece {
     Literal(String),
     Year,
     ActivityType,
     TripType,
+}
+
+/// One piece of a `collection_folder_template` segment (US-89) — a type of
+/// its own, so a collection is never filed by a trip's year.
+#[derive(Debug, PartialEq)]
+enum CollectionPiece {
+    Literal(String),
     Collection,
 }
 
-/// Which of the two folder templates is parsed: each takes only its own
-/// placeholders, so a collection is never filed by a trip's year.
-#[derive(Clone, Copy)]
-enum Template {
-    Trips,
-    Collections,
+/// What parsing needs to know about one template's pieces.
+trait Piece: Sized {
+    /// The config key the template is given under.
+    const KEY: &'static str;
+    /// Its placeholders, for the error naming an unknown one.
+    const SUPPORTED: &'static str;
+    fn literal(text: String) -> Self;
+    fn placeholder(name: &str) -> Option<Self>;
 }
 
-impl Template {
-    fn key(self) -> &'static str {
-        match self {
-            Self::Trips => TRIP_TEMPLATE_KEY,
-            Self::Collections => COLLECTION_TEMPLATE_KEY,
-        }
+impl Piece for TripPiece {
+    const KEY: &'static str = TRIP_TEMPLATE_KEY;
+    const SUPPORTED: &'static str = "{year}, {activity_type}, {trip_type}";
+
+    fn literal(text: String) -> Self {
+        Self::Literal(text)
     }
 
-    fn supported(self) -> &'static str {
-        match self {
-            Self::Trips => "{year}, {activity_type}, {trip_type}",
-            Self::Collections => "{collection}",
-        }
-    }
-
-    fn placeholder(self, name: &str) -> Option<Piece> {
-        match (self, name) {
-            (Self::Trips, "year") => Some(Piece::Year),
-            (Self::Trips, "activity_type") => Some(Piece::ActivityType),
-            (Self::Trips, "trip_type") => Some(Piece::TripType),
-            (Self::Collections, "collection") => Some(Piece::Collection),
+    fn placeholder(name: &str) -> Option<Self> {
+        match name {
+            "year" => Some(Self::Year),
+            "activity_type" => Some(Self::ActivityType),
+            "trip_type" => Some(Self::TripType),
             _ => None,
         }
+    }
+}
+
+impl Piece for CollectionPiece {
+    const KEY: &'static str = COLLECTION_TEMPLATE_KEY;
+    const SUPPORTED: &'static str = "{collection}";
+
+    fn literal(text: String) -> Self {
+        Self::Literal(text)
+    }
+
+    fn placeholder(name: &str) -> Option<Self> {
+        (name == "collection").then_some(Self::Collection)
     }
 }
 
@@ -157,10 +171,10 @@ pub struct ExportConfig {
     /// A command printing the archive password, run by `sh`; asked for when absent.
     pub password_command: Option<String>,
     pub target_db: PathBuf,
-    /// Parsed `folder_template`: one `Vec<Piece>` per path segment.
-    template: Vec<Vec<Piece>>,
+    /// Parsed `folder_template`: one `Vec` of pieces per path segment.
+    template: Vec<Vec<TripPiece>>,
     /// Parsed `collection_folder_template`, likewise (US-89).
-    collection_template: Vec<Vec<Piece>>,
+    collection_template: Vec<Vec<CollectionPiece>>,
     undated: String,
     activity_names: HashMap<ActivityType, String>,
     trip_kind_names: HashMap<TripKind, String>,
@@ -175,17 +189,17 @@ impl ExportConfig {
         if raw.target_db.as_os_str().is_empty() {
             return Err(ConfigError::EmptyTargetDb);
         }
-        let template = parse_template(&raw.folder_template, Template::Trips)?;
+        let template = parse_template::<TripPiece>(&raw.folder_template)?;
         let collection_template = raw
             .collection_folder_template
             .as_deref()
-            .map(|t| parse_template(t, Template::Collections))
+            .map(parse_template::<CollectionPiece>)
             .transpose()?;
         if collection_template.as_ref().is_some_and(|template| {
             !template
                 .iter()
                 .flatten()
-                .any(|piece| *piece == Piece::Collection)
+                .any(|p| *p == CollectionPiece::Collection)
         }) {
             return Err(ConfigError::NoCollectionPlaceholder);
         }
@@ -279,17 +293,16 @@ impl ExportConfig {
                 segment
                     .iter()
                     .map(|piece| match piece {
-                        Piece::Literal(text) => text.clone(),
+                        TripPiece::Literal(text) => text.clone(),
                         // A date starts "YYYY-"; a malformed value falls
                         // back to the undated bucket (`get` also covers a
                         // non-char-boundary byte 4).
-                        Piece::Year => match start_date.and_then(|t| t.get(..4)) {
+                        TripPiece::Year => match start_date.and_then(|t| t.get(..4)) {
                             Some(year) => year.to_string(),
                             None => self.undated.clone(),
                         },
-                        Piece::ActivityType => self.activity_name(activity),
-                        Piece::TripType => self.trip_kind_name(kind),
-                        Piece::Collection => unreachable!("not a trip template placeholder"),
+                        TripPiece::ActivityType => self.activity_name(activity),
+                        TripPiece::TripType => self.trip_kind_name(kind),
                     })
                     .collect::<String>()
             })
@@ -305,9 +318,8 @@ impl ExportConfig {
                 segment
                     .iter()
                     .map(|piece| match piece {
-                        Piece::Literal(text) => text.as_str(),
-                        Piece::Collection => name,
-                        _ => unreachable!("not a collection template placeholder"),
+                        CollectionPiece::Literal(text) => text.as_str(),
+                        CollectionPiece::Collection => name,
                     })
                     .collect::<String>()
             })
@@ -319,20 +331,18 @@ impl ExportConfig {
     /// (US-89); `None` when the two can never meet. Only a warning: the
     /// owner decides whether the export goes on.
     pub fn collection_folder_overlap(&self) -> Option<String> {
-        let top = &self.collection_template[0];
-        if top.contains(&Piece::Collection) {
-            return Some(format!(
-                "{COLLECTION_TEMPLATE_KEY}'s top folder is named after each collection, \
-                 so a collection may share it with trips"
-            ));
+        let mut name = String::new();
+        for piece in &self.collection_template[0] {
+            match piece {
+                CollectionPiece::Literal(text) => name.push_str(text),
+                CollectionPiece::Collection => {
+                    return Some(format!(
+                        "{COLLECTION_TEMPLATE_KEY}'s top folder is named after each collection, \
+                         so a collection may share it with trips"
+                    ))
+                }
+            }
         }
-        let name: String = top
-            .iter()
-            .map(|piece| match piece {
-                Piece::Literal(text) => text.as_str(),
-                _ => unreachable!("only literals are left"),
-            })
-            .collect();
         self.can_resolve_to(&self.template[0], &name).then(|| {
             format!(
                 "{COLLECTION_TEMPLATE_KEY}'s top folder {name:?} can also be one of \
@@ -342,7 +352,7 @@ impl ExportConfig {
     }
 
     /// Whether a trip template segment can resolve to exactly `name`.
-    fn can_resolve_to(&self, pieces: &[Piece], name: &str) -> bool {
+    fn can_resolve_to(&self, pieces: &[TripPiece], name: &str) -> bool {
         let Some((first, rest)) = pieces.split_first() else {
             return name.is_empty();
         };
@@ -351,17 +361,16 @@ impl ExportConfig {
                 .is_some_and(|tail| self.can_resolve_to(rest, tail))
         };
         match first {
-            Piece::Literal(text) => rest_matches(text),
+            TripPiece::Literal(text) => rest_matches(text),
             // A year is the start date's first four characters: digits.
-            Piece::Year => {
+            TripPiece::Year => {
                 rest_matches(&self.undated)
                     || name.get(..4).is_some_and(|year| {
                         year.bytes().all(|b| b.is_ascii_digit()) && rest_matches(year)
                     })
             }
-            Piece::ActivityType => self.activity_names.values().any(|n| rest_matches(n)),
-            Piece::TripType => self.trip_kind_names.values().any(|n| rest_matches(n)),
-            Piece::Collection => unreachable!("not a trip template placeholder"),
+            TripPiece::ActivityType => self.activity_names.values().any(|n| rest_matches(n)),
+            TripPiece::TripType => self.trip_kind_names.values().any(|n| rest_matches(n)),
         }
     }
 
@@ -395,27 +404,27 @@ fn activity_type_keys() -> Vec<String> {
         .collect()
 }
 
-fn parse_template(template: &str, kind: Template) -> Result<Vec<Vec<Piece>>, ConfigError> {
+fn parse_template<P: Piece>(template: &str) -> Result<Vec<Vec<P>>, ConfigError> {
     if template.is_empty() {
-        return Err(ConfigError::EmptyTemplate(kind.key()));
+        return Err(ConfigError::EmptyTemplate(P::KEY));
     }
     let segments: Vec<&str> = template.split('/').collect();
     let mut parsed = Vec::with_capacity(segments.len());
     for segment in segments {
         if segment.is_empty() {
             return Err(ConfigError::EmptySegment {
-                key: kind.key(),
+                key: P::KEY,
                 template: template.to_string(),
             });
         }
-        parsed.push(parse_segment(segment, kind)?);
+        parsed.push(parse_segment(segment)?);
     }
     Ok(parsed)
 }
 
-fn parse_segment(segment: &str, kind: Template) -> Result<Vec<Piece>, ConfigError> {
+fn parse_segment<P: Piece>(segment: &str) -> Result<Vec<P>, ConfigError> {
     let unmatched = || ConfigError::UnmatchedBrace {
-        key: kind.key(),
+        key: P::KEY,
         segment: segment.to_string(),
     };
     let mut pieces = Vec::new();
@@ -426,7 +435,7 @@ fn parse_segment(segment: &str, kind: Template) -> Result<Vec<Piece>, ConfigErro
                 if rest.contains('}') {
                     return Err(unmatched());
                 }
-                pieces.push(Piece::Literal(rest.to_string()));
+                pieces.push(P::literal(rest.to_string()));
                 rest = "";
             }
             Some(open) => {
@@ -435,18 +444,18 @@ fn parse_segment(segment: &str, kind: Template) -> Result<Vec<Piece>, ConfigErro
                     return Err(unmatched());
                 }
                 if !literal.is_empty() {
-                    pieces.push(Piece::Literal(literal.to_string()));
+                    pieces.push(P::literal(literal.to_string()));
                 }
                 let after = &rest[open + 1..];
                 let Some(close) = after.find('}') else {
                     return Err(unmatched());
                 };
                 let name = &after[..close];
-                let Some(piece) = kind.placeholder(name) else {
+                let Some(piece) = P::placeholder(name) else {
                     return Err(ConfigError::UnknownPlaceholder {
-                        key: kind.key(),
+                        key: P::KEY,
                         found: name.to_string(),
-                        supported: kind.supported(),
+                        supported: P::SUPPORTED,
                     });
                 };
                 pieces.push(piece);

@@ -503,5 +503,6 @@ target/release/qmapshack_export                   # or: --config <path>; --debug
   of the trips' — the same name, or one named after each collection — the run warns before
   anything is written. In a terminal it asks whether to go on; from cron it stops with a non-zero
   exit code and nothing written.
-- **Failures show in the exit code.** It is non-zero whenever any trip failed, for cron to alert
-  on; the log says which, and the next run retries them.
+- **Failures show in the exit code.** It is non-zero whenever any trip, collection track or waypoint
+  failed, for cron to alert on; the log says which, and the next run retries them. A run stopped by
+  the folder warning above is non-zero too.

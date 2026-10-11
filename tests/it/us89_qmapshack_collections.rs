@@ -244,6 +244,31 @@ async fn us89_an_unchanged_collection_is_skipped_on_the_next_run() {
 }
 
 #[tokio::test]
+async fn us89_a_collection_added_since_the_last_run_is_inserted_on_the_next() {
+    let archive = archive().await;
+    import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
+    archive.export().await;
+    let added = import_collection(&archive.app, GUIDE_SINGLE_GPX, &[]).await;
+
+    let second = archive.export().await;
+
+    assert_eq!(second.inserted, 1 + 2, "its track and its waypoints");
+    assert_eq!(
+        second.skipped,
+        3 + 2,
+        "the first collection's are unchanged"
+    );
+    let target = archive.target().await;
+    let track = archive.track_ids(added).await[0];
+    let (_, name, _, folder) = item(&target, &track_keyqms(track)).await;
+    assert_eq!(name, "Nordkette");
+    assert!(
+        folder.is_some_and(|f| f.starts_with("Guidebooks/")),
+        "in a folder of its own under the collections' template"
+    );
+}
+
+#[tokio::test]
 async fn us89_changed_collections_tracks_and_waypoints_are_updated() {
     let archive = archive().await;
     let book = import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
@@ -421,4 +446,40 @@ async fn us89_a_run_without_the_complete_collection_list_writes_nothing() {
         !archive.dir.path().join("export.db").exists(),
         "the target is not even created"
     );
+}
+
+#[test]
+fn us89_a_run_nobody_watches_stops_when_collections_may_share_the_trips_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("export.db");
+    let config = dir.path().join("qmapshack_export.toml");
+    // Both top folders are "Trips"; stdin is no terminal, as under cron.
+    let toml = format!(
+        "url = \"https://archive.test\"\n\
+         target_db = {:?}\nfolder_template = \"Trips/{{year}}\"\n\
+         collection_folder_template = \"Trips/{{collection}}\"\n\
+         [activity_type_names]\n\
+         unknown = \"U\"\nhiking = \"H\"\nmountaineering = \"M\"\ncycling = \"C\"\n\
+         bikepacking = \"B\"\nkayaking = \"K\"\nski_touring = \"S\"\n\
+         cross_country_skiing = \"X\"\nsnow_shoe = \"N\"\n\
+         [trip_type_names]\nrecorded = \"R\"\nplanned = \"P\"\n",
+        target.to_str().unwrap()
+    );
+    std::fs::write(&config, toml).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_qmapshack_export"))
+        .arg("--config")
+        .arg(&config)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run the exporter");
+
+    assert!(
+        !output.status.success(),
+        "a non-zero exit for cron to alert on"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("WARNING"), "{stderr}");
+    assert!(stderr.contains("Nothing exported"), "{stderr}");
+    assert!(!target.exists(), "nothing written");
 }
