@@ -52,7 +52,6 @@ fn rendered(review: CollectionImportReview) -> String {
         rsx! {
             ReviewStep {
                 review: review.clone(),
-                decisions: ImportDecisions::default(),
                 on_decide: move |_| {},
                 on_confirm: move |_| {},
                 on_cancel: move |_| {},
@@ -91,19 +90,48 @@ fn us88_a_held_item_is_removed_and_kept_again() {
 }
 
 #[test]
+fn us88_the_decisions_are_what_the_review_shows() {
+    // A change the archive never answered leaves the review as it was, and
+    // so what a confirmation sends.
+    let mut review = a_review(Some(5));
+    review.tracks[0].action = Add;
+    review.held_tracks[0].remove = true;
+    review.replace_all = true;
+
+    let decisions = decisions_of(&review);
+
+    assert_eq!(
+        decisions,
+        ImportDecisions {
+            replace_all: true,
+            tracks: vec![ItemDecision {
+                file: 0,
+                index: 0,
+                action: Add,
+            }],
+            waypoints: vec![],
+            remove_tracks: vec![9],
+            remove_waypoints: vec![],
+        }
+    );
+    assert_eq!(decisions_of(&a_review(Some(5))), ImportDecisions::default());
+}
+
+#[test]
 fn us88_a_confirmation_sends_a_new_collections_details_only() {
     let form = CollectionForm {
         name: "  Lakes  ".to_string(),
         description: " Bruckmann ".to_string(),
         activity: "hiking".to_string(),
     };
-    let decisions = decide(&ImportDecisions::default(), Items::Tracks, 0, 0, Add);
+    let mut chosen = a_review(None);
+    chosen.tracks[0].action = Add;
 
-    let new = confirmation(&a_review(None), &decisions, &form);
-    let existing = confirmation(&a_review(Some(5)), &decisions, &form);
+    let new = confirmation(&chosen, &form);
+    let existing = confirmation(&a_review(Some(5)), &form);
 
     assert_eq!(new.held_digest, "abc");
-    assert_eq!(new.decisions, decisions);
+    assert_eq!(new.decisions, decisions_of(&chosen));
     assert_eq!(new.name.as_deref(), Some("Lakes"));
     assert_eq!(new.description.as_deref(), Some("Bruckmann"));
     assert_eq!(new.activity_type.as_deref(), Some("hiking"));
@@ -119,10 +147,7 @@ fn us88_a_blank_name_asks_for_the_archives_own() {
         activity: String::new(),
     };
 
-    assert_eq!(
-        confirmation(&a_review(None), &ImportDecisions::default(), &form).name,
-        None
-    );
+    assert_eq!(confirmation(&a_review(None), &form).name, None);
 }
 
 #[test]

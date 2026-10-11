@@ -83,17 +83,46 @@ pub fn set_removed(
     decided
 }
 
-/// What a confirmation sends: the decisions, what the collection held when
-/// the owner decided, and a new collection's details.
+/// The decisions the review shows: every action that is not the proposal,
+/// every held item to be removed. The review the archive last answered is
+/// the only record of them, so a change it never answered is no decision.
+pub fn decisions_of(review: &CollectionImportReview) -> ImportDecisions {
+    let chosen = |items: &[ReviewItem]| {
+        items
+            .iter()
+            .filter(|item| item.action != item.proposed)
+            .map(|item| ItemDecision {
+                file: item.file,
+                index: item.index,
+                action: item.action,
+            })
+            .collect()
+    };
+    let removed = |held: &[HeldItem]| {
+        held.iter()
+            .filter(|item| item.remove)
+            .map(|item| item.id)
+            .collect()
+    };
+    ImportDecisions {
+        replace_all: review.replace_all,
+        tracks: chosen(&review.tracks),
+        waypoints: chosen(&review.waypoints),
+        remove_tracks: removed(&review.held_tracks),
+        remove_waypoints: removed(&review.held_waypoints),
+    }
+}
+
+/// What a confirmation sends: the decisions the review shows, what the
+/// collection held when the owner decided, and a new collection's details.
 pub fn confirmation(
     review: &CollectionImportReview,
-    decisions: &ImportDecisions,
     form: &CollectionForm,
 ) -> ConfirmCollectionImport {
     let new = review.collection_id.is_none();
     let name = form.name.trim();
     ConfirmCollectionImport {
-        decisions: decisions.clone(),
+        decisions: decisions_of(review),
         held_digest: review.held_digest.clone(),
         name: (new && !name.is_empty()).then(|| name.to_string()),
         description: new.then(|| form.description.trim().to_string()),
@@ -142,12 +171,10 @@ pub(super) fn ReviewFlow(
 ) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut review = use_signal(|| initial.clone());
-    let mut decisions = use_signal(ImportDecisions::default);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
 
     let decide = move |decided: ImportDecisions| async move {
-        decisions.set(decided.clone());
         busy.set(true);
         error.set(None);
         let staging_id = review.read().staging_id;
@@ -166,7 +193,7 @@ pub(super) fn ReviewFlow(
         busy.set(true);
         error.set(None);
         let current = review();
-        let sent = confirmation(&current, &decisions.read(), &form);
+        let sent = confirmation(&current, &form);
         match api::confirm_collection_import(&archive(), current.staging_id, &sent).await {
             Ok(id) => {
                 navigator().push(Route::Collection { id });
@@ -174,8 +201,8 @@ pub(super) fn ReviewFlow(
             Err(err) if err.is_not_found() => on_leave.call(Some(EXPIRED.to_string())),
             // The collection changed under the review: show the new one.
             Err(err) if err.is_conflict() => {
-                let decided = decisions();
-                match api::review_collection_import(&archive(), current.staging_id, &decided).await
+                match api::review_collection_import(&archive(), current.staging_id, &sent.decisions)
+                    .await
                 {
                     Ok(proposed) => review.set(proposed),
                     Err(again) => {
@@ -199,7 +226,6 @@ pub(super) fn ReviewFlow(
     rsx! {
         ReviewStep {
             review: review(),
-            decisions: decisions(),
             error: error(),
             busy: busy(),
             on_decide: decide,
@@ -214,7 +240,6 @@ pub(super) fn ReviewFlow(
 #[component]
 pub(super) fn ReviewStep(
     review: CollectionImportReview,
-    decisions: ImportDecisions,
     #[props(default)] error: Option<String>,
     #[props(default)] busy: bool,
     on_decide: EventHandler<ImportDecisions>,
@@ -225,6 +250,7 @@ pub(super) fn ReviewStep(
     let new = review.collection_id.is_none();
     let files = review.files.join(", ");
     let replace_all = review.replace_all;
+    let decisions = decisions_of(&review);
     let decisions_for_toggle = decisions.clone();
 
     rsx! {
