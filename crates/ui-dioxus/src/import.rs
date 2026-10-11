@@ -299,9 +299,11 @@ pub fn ImportTrip() -> Element {
     rsx! {
         h1 { "Import a trip" }
 
-        if let Some(chosen) = book() {
+        // Only the preview: the file itself is megabytes for a whole book,
+        // and this runs on every keystroke in the form.
+        if let Some(preview) = book.read().as_ref().map(|chosen| chosen.preview.clone()) {
             ConfirmGuideBookStep {
-                preview: chosen.preview,
+                preview,
                 error: error(),
                 submitting: submitting(),
                 on_confirm: confirm_book,
