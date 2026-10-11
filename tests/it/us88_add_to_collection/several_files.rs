@@ -237,3 +237,30 @@ async fn us88_a_collection_with_no_name_to_go_by_is_called_collection() {
     assert_eq!(staged.suggested_name, "Collection");
     assert_eq!(staged.files, ["Collection.gpx", "Collection.gpx"]);
 }
+
+#[tokio::test]
+async fn us88_a_new_collection_with_everything_skipped_is_refused_and_the_upload_stays() {
+    let (app, _dir) = test_app().await;
+    let staged = upload(
+        &app,
+        &[("a.gpx", &part(1, 46.5)), ("b.gpx", &part(2, 46.6))],
+        None,
+    )
+    .await;
+    let skip = |file, index| json!({ "file": file, "index": index, "action": "skip" });
+    let decisions = json!({
+        "tracks": [skip(0, 0), skip(1, 0)],
+        // The second file's hut is proposed for adding once the first's is
+        // skipped.
+        "waypoints": [skip(0, 0), skip(1, 0)],
+    });
+
+    let response = confirm_response(&app, &staged, decisions, json!({})).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(error_message(response).await.contains("skipped"));
+    let listed: Vec<serde_json::Value> = read_json(&app, "/api/collections").await;
+    assert!(listed.is_empty());
+    // Another choice is still possible.
+    confirm(&app, &staged, json!({})).await;
+}

@@ -212,7 +212,7 @@ async fn handle_review(
 /// them or none, and spend the upload. 201 with the collection's id; 404 for
 /// a spent upload; 409 when the collection changed since the review the owner
 /// decided on, and the upload stays for another one; 400 for an unknown
-/// activity.
+/// activity, or a new collection with everything skipped.
 async fn handle_confirm(
     State(state): State<AppState>,
     Path(staging_id): Path<i64>,
@@ -258,6 +258,14 @@ async fn prepare(
     }
     let held_digest = confirm.held_digest.clone();
     let (files, worked) = work(staged.files, held, Decisions::from(&confirm.decisions)).await?;
+    // US-86 makes no collection of nothing; the upload stays for another choice.
+    let outcome = &worked.matching.outcome;
+    if staged.collection_id.is_none() && outcome.tracks.is_empty() && outcome.waypoints.is_empty() {
+        return Err(AppError::BadRequest(
+            "Every track and waypoint is skipped: there is nothing to make a collection of"
+                .to_string(),
+        ));
+    }
 
     let (name, description) = match staged.collection_id {
         Some(id) => {
