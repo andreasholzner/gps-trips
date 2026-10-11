@@ -219,28 +219,53 @@ async fn handle_confirm(
     Json(confirm): Json<ConfirmCollectionImport>,
 ) -> Result<Response, AppError> {
     let activity_type = optional_activity(confirm.activity_type.clone())?;
-    let mut tx = db::begin_write(&state.pool).await?;
-    let staged = repo::take_collection_import_in_tx(&mut tx, staging_id)
+    let prepared = prepare(&state, staging_id, &confirm).await?;
+    let id = store(&state, prepared, activity_type).await?;
+    Ok((StatusCode::CREATED, Json(CreatedCollection { id })).into_response())
+}
+
+const CHANGED: &str = "The collection changed since these files were reviewed; review them again";
+
+/// A confirmation worked out from the parked files before the write lock is
+/// taken: matching a whole book takes about a second, which every other
+/// writer would otherwise wait out.
+struct Prepared {
+    staging_id: i64,
+    collection_id: Option<i64>,
+    /// What the collection held when the files were matched.
+    held_digest: String,
+    files: Vec<(String, Vec<u8>)>,
+    worked: Worked,
+    /// The collection's name — for a new one, the owner's or the suggested
+    /// one — and a new one's description.
+    name: String,
+    description: String,
+}
+
+/// Read the parked files and what the collection holds, refuse if it is not
+/// what the owner reviewed, and match the files with their decisions.
+async fn prepare(
+    state: &AppState,
+    staging_id: i64,
+    confirm: &ConfirmCollectionImport,
+) -> Result<Prepared, AppError> {
+    let staged = repo::get_collection_import(&state.pool, staging_id)
         .await?
         .ok_or(AppError::NotFound)?;
-    let held = match staged.collection_id {
-        Some(id) => repo::load_held(&mut tx, id).await?,
-        None => Held::default(),
-    };
+    let held = held_now(state, staged.collection_id).await?;
     if held.digest() != confirm.held_digest {
-        return Err(AppError::Conflict(
-            "The collection changed since these files were reviewed; review them again".to_string(),
-        ));
+        return Err(AppError::Conflict(CHANGED.to_string()));
     }
+    let held_digest = confirm.held_digest.clone();
     let (files, worked) = work(staged.files, held, Decisions::from(&confirm.decisions)).await?;
 
-    let (collection_id, collection_name) = match staged.collection_id {
+    let (name, description) = match staged.collection_id {
         Some(id) => {
             let name = repo::get_collection(&state.pool, id)
                 .await?
                 .ok_or(AppError::NotFound)?
                 .name;
-            (id, name)
+            (name, String::new())
         }
         None => {
             let name = confirm
@@ -256,7 +281,61 @@ async fn handle_confirm(
                 || worked.parsed[0].suggested_description(),
                 |d| d.trim().to_string(),
             );
-            let id = repo::insert_collection_in_tx(
+            (name, description)
+        }
+    };
+    Ok(Prepared {
+        staging_id,
+        collection_id: staged.collection_id,
+        held_digest,
+        files,
+        worked,
+        name,
+        description,
+    })
+}
+
+/// Store a prepared confirmation in one transaction: spend the upload, check
+/// once more that the collection is what was matched, and apply the
+/// outcome. Returns the collection's id.
+async fn store(
+    state: &AppState,
+    prepared: Prepared,
+    activity_type: Option<crate::models::ActivityType>,
+) -> Result<i64, AppError> {
+    let Prepared {
+        staging_id,
+        collection_id,
+        held_digest,
+        files,
+        worked,
+        name,
+        description,
+    } = prepared;
+    let derived = plan::derive(&worked, &name);
+    let tracks = plan::tracks(&worked, &derived);
+    let waypoints = plan::waypoints(&worked);
+    let kept: Vec<NewCollectionFile> = files
+        .iter()
+        .map(|(file_name, gpx)| NewCollectionFile { file_name, gpx })
+        .collect();
+    let outcome = &worked.matching.outcome;
+
+    let mut tx = db::begin_write(&state.pool).await?;
+    repo::take_collection_import_in_tx(&mut tx, staging_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let id = match collection_id {
+        Some(id) => {
+            // Changed while the files were matched: rolled back, so the
+            // upload stays for another review.
+            if repo::load_held(&mut tx, id).await?.digest() != held_digest {
+                return Err(AppError::Conflict(CHANGED.to_string()));
+            }
+            id
+        }
+        None => {
+            repo::insert_collection_in_tx(
                 &mut tx,
                 &repo::NewCollection {
                     name: &name,
@@ -267,25 +346,15 @@ async fn handle_confirm(
                     waypoints: &[],
                 },
             )
-            .await?;
-            (id, name)
+            .await?
         }
     };
-
-    let derived = plan::derive(&worked, &collection_name);
-    let tracks = plan::tracks(&worked, &derived);
-    let waypoints = plan::waypoints(&worked);
-    let kept: Vec<NewCollectionFile> = files
-        .iter()
-        .map(|(file_name, gpx)| NewCollectionFile { file_name, gpx })
-        .collect();
-    let outcome = &worked.matching.outcome;
     repo::apply_collection_import(
         &mut tx,
-        collection_id,
+        id,
         &repo::CollectionImportPlan {
             // A new collection holds nothing to replace.
-            replace_all: outcome.replace_all && staged.collection_id.is_some(),
+            replace_all: outcome.replace_all && collection_id.is_some(),
             remove_tracks: &outcome.remove_tracks,
             remove_waypoints: &outcome.remove_waypoints,
             tracks: &tracks,
@@ -295,12 +364,7 @@ async fn handle_confirm(
     )
     .await?;
     tx.commit().await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(CreatedCollection { id: collection_id }),
-    )
-        .into_response())
+    Ok(id)
 }
 
 /// `DELETE /api/collection-imports/:id` — the owner cancelled; nothing
@@ -442,28 +506,4 @@ fn review_of(
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn us88_a_file_is_kept_under_its_own_name_without_a_path() {
-        assert_eq!(file_name_of(Some("Part 1.gpx")), "Part 1.gpx");
-        assert_eq!(file_name_of(Some("C:\\books\\Part 1.gpx")), "Part 1.gpx");
-        assert_eq!(file_name_of(Some("../../etc/passwd")), "passwd");
-        assert_eq!(file_name_of(Some("  ")), "collection.gpx");
-        assert_eq!(file_name_of(None), "collection.gpx");
-    }
-
-    #[test]
-    fn us88_files_are_taken_in_the_order_of_their_names() {
-        let mut files: Vec<(String, Vec<u8>)> = ["b.gpx", "A.gpx", "a.gpx", "C.gpx"]
-            .into_iter()
-            .map(|name| (name.to_string(), Vec::new()))
-            .collect();
-
-        in_name_order(&mut files);
-
-        let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(names, ["A.gpx", "a.gpx", "b.gpx", "C.gpx"]);
-    }
-}
+mod tests;
