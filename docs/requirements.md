@@ -26,11 +26,10 @@ covers and why it comes where it does. Only what is not yet done is listed: a st
 table when its stories ship. Each story's own state is recorded with the story and in the
 [story index](#story-index) below.
 
-| Step | Stories                           | Why it sits here                                                                                                                            |
-|:-----|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-87                             | The way back to a collection once its import is over; needs US-86's collections.                                                            |
-| 2    | US-88, US-89, US-90, US-93, US-94 | Each builds only on US-86/87, not on each other, so their order is free.                                                                    |
-| 3    | US-95                             | Its symbols go into US-89's waypoint items and through US-88's replaced waypoints, so it follows both.                                      |
+| Step | Stories                                  | Why it sits here                                                                                                                                      |
+|:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1    | US-87                                    | The way back to a collection once its import is over; needs US-86's collections.                                                                      |
+| 2    | US-88, US-89, US-90, US-93, US-94, US-95 | Each builds only on US-86/87, not on each other, so their order is free; US-95 best comes early, so fewer waypoints are stored without their symbols. |
 
 ## Story index
 
@@ -1374,19 +1373,20 @@ tolerance — and that the server only proposes while the owner decides), ADR-00
 the map and in the QMapShack export, so a pass, a hut and a viewpoint look the way the book marks
 them.
 
-**Acceptance criteria:** Importing a guide book (US-86) and adding a file to a collection (US-88)
-keep each waypoint's symbol — the GPX `<sym>`, such as `Summit` or `Triangle, Blue` — as the file
-names it; a replaced waypoint takes the new file's symbol, or none if the file names none. On
-every map that draws waypoints — a collection's page and a collection track's (US-86) — a
-waypoint with a symbol shows that symbol's icon, named on hover or tap as before. A waypoint
-without a symbol, or with one the archive has no icon for, keeps US-86's marker; so do waypoints
-imported before this story, until their file is added again (US-88). The QMapShack export (US-89)
-writes the symbol into the waypoint item's `sym`, so QMapShack shows its own icon for it.
+**Acceptance criteria:** Importing a guide book (US-86) keeps each waypoint's symbol — the GPX
+`<sym>`, such as `Summit` or `Triangle, Blue` — as the file names it; once a file can be added to a
+collection (US-88), so does that, and a replaced waypoint takes the new file's symbol, or none if
+the file names none. On every map that draws waypoints — a collection's page and a collection
+track's (US-86) — a waypoint with a symbol shows that symbol's icon, named on hover or tap as
+before. A waypoint without a symbol, or with one the archive has no icon for, keeps US-86's marker;
+so do waypoints imported before this story, until their file is added again (US-88). Once the
+QMapShack export writes collections (US-89), it writes the symbol into each waypoint item's `sym`,
+so QMapShack shows its own icon for it.
 
 **Decisions:** US-95 → the ADR on waypoint icons (to be proposed; it must settle which icon draws
 which symbol name, where the icons come from and under which licence, and that they ship with the
 app rather than being fetched — US-10), ADR-0025 (Rust decides which icon a waypoint gets, the
-script draws it), US-89's extension of ADR-0022 (waypoint items), ADR-0028
+script draws it), US-89's extension of ADR-0022 (waypoint items, once it exists), ADR-0028
 
 ## Maps
 
