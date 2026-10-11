@@ -29,6 +29,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1    | US-89, US-90, US-93, US-94               | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
+| 2    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
 
 ## Story index
 
@@ -138,6 +139,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-93](#us-93--tag-collections-and-their-tracks)             | 📋     | Tag collections and their tracks             | [Tags](#tags)                                                       |
 | [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
+| [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 
 ### Maintaining this file
 
@@ -1766,7 +1768,9 @@ from my trips, so I can plan routes from a book's tracks in QMapShack.
 **Acceptance criteria:** The export (US-36) also writes every collection (US-86): its tracks as
 track items in their activity colors, its waypoints as waypoint items, in one folder per collection.
 A folder template of its own in the export config places those folders, e.g.
-`Guidebooks/{collection}`, so collection tracks never land in the trips' folders. Re-running the
+`Guidebooks/{collection}`, so collection tracks do not land in the trips' folders: a template whose
+top folder can be one the trips' template gives is warned about before anything is exported, and
+the owner decides whether the export goes on. Re-running the
 export reconciles collections as US-37 does trips: added, changed and deleted collections, tracks
 and waypoints are added, updated or moved to QMapShack's trash; items the export did not create are
 untouched. A waypoint item carries its waypoint's symbol (US-95) in `sym`, as the file named it, so
@@ -1774,9 +1778,20 @@ QMapShack shows its own icon for it; a waypoint without one is written without. 
 collection template is refused before anything is exported, listed with any other missing entries
 (US-39).
 
-**Decisions:** US-89 → ADR-0022 (extension to be proposed; it must settle writing waypoint items
-in the format [`qmapshack-format.md`](./qmapshack-format.md) documents, and the identity of
-collection items in the exporter's namespace), ADR-0028
+**Decisions:** US-89 → ADR-0022 (2026-10-11 amendment: collection items, their identity and
+change detection), ADR-0028
+
+### US-96 — Tags first in the QMapShack comment
+
+**Planned 📋** — As the owner, an exported item's tags open its comment in QMapShack, so I see how I
+organized it before its figures.
+
+**Acceptance criteria:** The comment of every item the export (US-36) writes for a trip starts with
+the trip's tags; one for a collection track does so with the track's tags once US-93 gives it
+some. An item without tags starts with what followed the tags before. Changing the comment this way
+rewrites each exported item once, on the next run (US-37).
+
+**Decisions:** US-96 → ADR-0022
 
 ## Access & security
 

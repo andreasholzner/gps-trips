@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted — amended once:
+Accepted — amended twice:
 - 2026-09-19 — the exporter reads the archive through its HTTP API
   ([Amendment](#amendment-2026-09-19--the-exporter-reads-the-archive-through-its-http-api)).
+- 2026-10-11 — guide-book collections are exported too
+  ([Amendment](#amendment-2026-10-11--guide-book-collections-are-exported-too)).
 
 ## Context
 
@@ -245,3 +247,34 @@ unparsable body — aborts the run before the target is written, not even backed
   runs fetch only what changed.
 - The export tests exercise the exporter against a running test server rather than a database
   pool.
+
+## Amendment (2026-10-11) — guide-book collections are exported too
+
+US-89 puts the guide-book collections ([ADR-0028](./0028-collections-apart-from-trips.md)) into
+the same target database, apart from the trips. Everything decided above for trips holds for
+them; this records only what collections add.
+
+**Decision.**
+- **What becomes what.** A collection track is a track item, a collection's waypoint a waypoint
+  item (`QMWpt`, in the layout [`docs/qmapshack-format.md`](../qmapshack-format.md) documents).
+  A collection is a folder only, placed by a folder template of its own; it has no item.
+- **Identity.** Each kind of record has a `keyqms` sub-namespace of its own beside the trips'
+  (e.g. `trip-archive:collection-track:<id>`, `trip-archive:waypoint:<id>`). Each kind's removal
+  pass considers its own prefix only, so no pass can take another kind's item for a stale one.
+- **Reading.** The collections come in a second list of their own — every collection with its
+  tracks' cheap columns and all its waypoints — under the same rule as the trip list: complete or
+  nothing, and a run that lacks either list stops before the target is opened. A collection
+  track's geometry is fetched only when that track is written.
+- **Change detection.** A collection track is compared as a trip is: name, comment summary and
+  folder placement. A geometry replaced in place (US-88) is caught by the summary, which carries
+  the track's stats and bounds. A waypoint item has no times and is built from the list alone,
+  so it is compared by its content hash and its folder.
+- **A deleted collection** moves its items to QMapShack's trash; its folder stays, as every
+  folder the exporter created does.
+
+**Consequences.**
+- A geometry replaced with one of exactly the same stats and bounds is not rewritten. Accepted
+  over fingerprinting every track's geometry on each run: two different lines rarely agree on
+  all of them.
+- A renamed collection is a new folder: its items move there, the old folder stays empty.
+
