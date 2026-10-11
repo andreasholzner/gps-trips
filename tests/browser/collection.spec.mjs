@@ -2,12 +2,12 @@
 // as the owner drives it.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
-// **Real user events** — choosing Guide book and a file in the import
+// **Real user events** — choosing Collection and a file in the import
 // screen's picker, clicking a line, hovering a waypoint, confirming a
 // delete. **JS-interop rendering** — the collection's map and a track's map
 // are Leaflet's. What the screens render is asserted in
 // `crates/ui-dioxus/src/collection/tests.rs`, `collection_track/tests.rs`
-// and `import/guide_book.rs`, which icon a symbol gets in
+// and `import/collection.rs`, which icon a symbol gets in
 // `waypoint_icon.rs` (US-95), and what the archive stores in
 // `tests/it/us86_collections.rs` and `us95_waypoint_symbols.rs`.
 import { expect, signIn, test } from "./session.mjs";
@@ -62,7 +62,7 @@ test("a guide book's file is imported as a collection and lands on its page (US-
   request,
 }) => {
   await page.goto("/app/import");
-  await page.getByLabel("Guide book").check();
+  await page.getByLabel("Collection", { exact: true }).check();
   await page.locator("#import-gpx").setInputFiles({
     name: "Lakes.gpx",
     mimeType: "application/gpx+xml",

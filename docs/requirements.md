@@ -28,7 +28,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-88, US-89, US-90, US-93, US-94        | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
+| 1    | US-89, US-90, US-93, US-94               | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
 
 ## Story index
 
@@ -130,7 +130,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-85](#us-85--rename-a-tag)                                 | ✅     | Rename a tag                                 | [Tags](#tags)                                                       |
 | [US-86](#us-86--import-a-guide-book-collection)               | ✅     | Import a guide-book collection               | [Collections](#collections)                                         |
 | [US-87](#us-87--collections-tab)                              | ✅     | Collections tab                              | [Collections](#collections)                                         |
-| [US-88](#us-88--add-a-file-to-a-collection)                   | 📋     | Add a file to a collection                   | [Collections](#collections)                                         |
+| [US-88](#us-88--add-a-file-to-a-collection)                   | ✅     | Add a file to a collection                   | [Collections](#collections)                                         |
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
@@ -1343,7 +1343,7 @@ collections from the JSON API), ADR-0025 (Rust decides what the map draws)
 
 ### US-88 — Add a file to a collection
 
-**Planned 📋** — As the owner, I import further or corrected GPX files into an existing collection
+**Done ✅** — As the owner, I import further or corrected GPX files into an existing collection
 and decide track by track what happens, so a book spread over several files, or a corrected file,
 leaves no duplicates.
 
