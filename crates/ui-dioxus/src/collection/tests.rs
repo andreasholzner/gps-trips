@@ -159,3 +159,22 @@ fn us86_a_book_of_waypoints_alone_says_so_instead_of_an_empty_list() {
     assert!(html.contains("waypoints only"), "{html}");
     assert!(!html.contains("<table"), "{html}");
 }
+
+#[test]
+fn us86_waypoints_that_cannot_be_read_cost_the_markers_not_the_map() {
+    assert!(drawn_waypoints(Err(api::ApiError::new("unreachable"))).is_empty());
+
+    let read = trip_archive_types::Waypoint {
+        id: 1,
+        collection_track_id: None,
+        name: Some("Albula Pass".to_string()),
+        description: None,
+        lat: 46.58,
+        lon: 9.84,
+        ele: None,
+    };
+    assert_eq!(
+        drawn_waypoints(Ok(vec![read.clone()])),
+        [MapWaypoint::from(&read)]
+    );
+}

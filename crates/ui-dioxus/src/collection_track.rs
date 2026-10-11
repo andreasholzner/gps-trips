@@ -11,9 +11,9 @@ use trip_archive_types::{ActivityType, CollectionTrackDetail, CollectionTrackEdi
 use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient};
+use crate::collection::drawn_waypoints;
 use crate::detail::TrackViews;
 use crate::format;
-use crate::interop::MapWaypoint;
 use crate::overlay::Overlay;
 use crate::Route;
 
@@ -105,7 +105,7 @@ fn TrackMapSection(id: i64, activity: ActivityType) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let geometry = use_resource(use_reactive!(|id| async move {
         let track = api::get_collection_track_geometry(&archive(), id).await?;
-        let waypoints = api::list_collection_track_waypoints(&archive(), id).await?;
+        let waypoints = drawn_waypoints(api::list_collection_track_waypoints(&archive(), id).await);
         Ok::<_, api::ApiError>((track, waypoints))
     }));
 
@@ -119,7 +119,7 @@ fn TrackMapSection(id: i64, activity: ActivityType) -> Element {
                     activity,
                     climbs: Vec::new(),
                     markers: Vec::new(),
-                    waypoints: waypoints.iter().map(MapWaypoint::from).collect::<Vec<_>>(),
+                    waypoints: waypoints.clone(),
                     on_open_photos: |_| {},
                 }
             },

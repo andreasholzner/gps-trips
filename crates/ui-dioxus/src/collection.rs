@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 use trip_archive_types::{
-    ActivityType, CollectionDetail, CollectionEdit, CollectionTrackSummary, TripTrack,
+    ActivityType, CollectionDetail, CollectionEdit, CollectionTrackSummary, TripTrack, Waypoint,
 };
 
 use crate::activity_color::{self, ActivityLegend};
@@ -114,6 +114,19 @@ pub fn collection_lines(
         .collect()
 }
 
+/// Waypoints as a map draws them. Ones that could not be read cost their
+/// markers, not the map: the lines, or the track and its profile, are
+/// still worth drawing.
+pub fn drawn_waypoints(read: Result<Vec<Waypoint>, api::ApiError>) -> Vec<MapWaypoint> {
+    match read {
+        Ok(waypoints) => waypoints.iter().map(MapWaypoint::from).collect(),
+        Err(err) => {
+            dioxus::logger::tracing::error!("could not read the waypoints: {err}");
+            Vec::new()
+        }
+    }
+}
+
 /// Every track and waypoint on one map; a click on a line opens its track.
 #[component]
 fn CollectionMap(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
@@ -128,16 +141,8 @@ fn CollectionMap(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
                 dioxus::logger::tracing::error!("could not read the tracks: {err}");
                 Vec::new()
             });
-        let waypoints = api::list_collection_waypoints(&archive(), id)
-            .await
-            .unwrap_or_else(|err| {
-                dioxus::logger::tracing::error!("could not read the waypoints: {err}");
-                Vec::new()
-            });
-        let mut map = interop::start_overview_map(
-            collection_lines(&tracks, &positions),
-            waypoints.iter().map(MapWaypoint::from).collect(),
-        );
+        let waypoints = drawn_waypoints(api::list_collection_waypoints(&archive(), id).await);
+        let mut map = interop::start_overview_map(collection_lines(&tracks, &positions), waypoints);
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {
             match event {
