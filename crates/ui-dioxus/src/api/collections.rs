@@ -1,13 +1,75 @@
-//! A guide book's collection and its tracks (US-86): read, edited and
-//! deleted over the JSON API, apart from trips (ADR-0028).
+//! A guide book's collection and its tracks (US-86): imported, read, edited
+//! and deleted over the JSON API, apart from trips (ADR-0028).
 
 use trip_archive_types::{
-    CollectionDetail, CollectionEdit, CollectionTrackDetail, CollectionTrackEdit, TripTrack,
-    Waypoint,
+    CollectionDetail, CollectionEdit, CollectionPreview, CollectionTrackDetail,
+    CollectionTrackEdit, CreatedCollection, TripTrack, Waypoint,
 };
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
 use crate::track::Track;
+
+/// A guide book's file as a multipart part.
+fn gpx_part(file_name: &str, bytes: Vec<u8>) -> Result<reqwest::multipart::Part, ApiError> {
+    reqwest::multipart::Part::bytes(bytes)
+        .file_name(file_name.to_string())
+        .mime_str("application/gpx+xml")
+        .map_err(|err| ApiError::new(format!("{file_name} could not be sent: {err}")))
+}
+
+/// `POST /api/collections/preview` — what a guide book's file holds and what
+/// its details are suggested as, before anything is created. A file the
+/// archive cannot use comes back refused, in its words.
+pub async fn preview_collection(
+    archive: &ApiClient,
+    file_name: &str,
+    bytes: Vec<u8>,
+) -> Result<CollectionPreview, ApiError> {
+    let url = archive.url("/api/collections/preview");
+    let form = reqwest::multipart::Form::new().part("gpx", gpx_part(file_name, bytes)?);
+    let response = archive
+        .post(&url)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response)
+        .await?
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `POST /api/collections` — import a guide book's file as a new collection
+/// with the details the owner confirmed (an activity's wire value, or empty
+/// for none), and return its id.
+pub async fn create_collection(
+    archive: &ApiClient,
+    file_name: &str,
+    bytes: Vec<u8>,
+    name: &str,
+    description: &str,
+    activity: &str,
+) -> Result<i64, ApiError> {
+    let url = archive.url("/api/collections");
+    let form = reqwest::multipart::Form::new()
+        .part("gpx", gpx_part(file_name, bytes)?)
+        .text("name", name.to_string())
+        .text("description", description.to_string())
+        .text("activity_type", activity.to_string());
+    let response = archive
+        .post(&url)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response)
+        .await?
+        .json::<CreatedCollection>()
+        .await
+        .map(|created| created.id)
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
 
 /// `GET /api/collections/:id` — the details and the tracks in file order. A
 /// 404 travels back as such.

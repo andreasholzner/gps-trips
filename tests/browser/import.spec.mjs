@@ -90,12 +90,13 @@ test("importing a GPX with photos creates the trip and lands on it (US-43)", asy
   request,
 }) => {
   await page.goto("/app/import");
+  // What the file is, chosen with it (US-31, US-86).
+  await page.getByLabel("Planned").check();
   await chooseGpx(page, "track.gpx", SAMPLE_GPX);
 
   const name = `Imported By Hand ${Math.random().toString(36).slice(2, 8)}`;
   await page.locator("#import-name").fill(name);
   await chooseActivity(page, "import-activity", "hiking");
-  await page.getByLabel("Planned").check();
 
   // One dialog, several files — the picker the batching behind it must not
   // change.

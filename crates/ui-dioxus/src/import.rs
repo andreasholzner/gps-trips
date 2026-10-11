@@ -10,6 +10,12 @@
 //! so a large import has something to watch (ADR-0004's 2026-09-01
 //! amendment).
 //!
+//! A guide book's file takes the third choice beside Recorded and Planned
+//! (US-86, `guide_book`): step one then asks the archive what the file
+//! holds, and step two creates a collection rather than a trip. The choice
+//! is made before the file is read, because a book of waypoints alone is no
+//! trip the archive could stage.
+//!
 //! The rules worth checking without a browser are kept out of the component:
 //! [`ConfirmForm`] decides what the fields start as and what is sent, and
 //! [`batches`] decides how the photos are split. What is left in the handlers
@@ -18,11 +24,16 @@
 use dioxus::prelude::*;
 use trip_archive_types::{ConfirmImport, StagedImport, TripKind};
 
-use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
+use crate::collection::CollectionForm;
 use crate::photos::{upload_in_batches, PartialUpload};
-use crate::suggested::MapCredits;
 use crate::Route;
+
+mod guide_book;
+mod steps;
+
+use guide_book::{ChosenBook, ConfirmGuideBookStep, GUIDE_BOOK};
+use steps::{ChooseGpx, ConfirmImportStep, PartialOutcome, UploadProgress};
 
 /// Photos per request. Small enough that the count moves often on a big
 /// import, large enough that a hundred photos are not a hundred round trips.
@@ -69,8 +80,7 @@ pub struct ConfirmForm {
     pub name: String,
     /// An activity's wire value, or empty for "unspecified" (`Unknown`).
     pub activity: String,
-    /// A kind's wire value; never empty, because the radios always have one
-    /// chosen (US-31).
+    /// A kind's wire value, as chosen with the file (US-31).
     pub kind: String,
 }
 
@@ -80,15 +90,15 @@ impl ConfirmForm {
     /// The name is US-12's whole point: it arrives with the track's date
     /// already in it, so the owner types after the prefix instead of looking
     /// one up. The activity starts on the one the track looks like (US-76),
-    /// or unspecified when the archive cannot tell; kind starts on Recorded,
-    /// the same default the import has always applied (US-31).
-    pub fn of(staged: &StagedImport) -> Self {
+    /// or unspecified when the archive cannot tell; the kind is the one
+    /// chosen with the file.
+    pub fn of(staged: &StagedImport, kind: &str) -> Self {
         Self {
             name: staged.suggested_name.clone(),
             activity: staged
                 .suggested_activity
                 .map_or_else(String::new, |activity| activity.as_str().to_string()),
-            kind: TripKind::Recorded.as_str().to_string(),
+            kind: kind.to_string(),
         }
     }
 
@@ -137,6 +147,10 @@ pub fn ImportTrip() -> Element {
     // owner to find the file again.
     let mut gpx = use_signal(|| None::<(String, Vec<u8>)>);
     let mut staged = use_signal(|| None::<StagedImport>);
+    // A trip kind's wire value, or `GUIDE_BOOK` (US-86): Recorded until the
+    // owner says otherwise, the default the import has always had (US-31).
+    let mut kind = use_signal(|| TripKind::Recorded.as_str().to_string());
+    let mut book = use_signal(|| None::<ChosenBook>);
     let mut reading = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut progress = use_signal(|| None::<Progress>);
@@ -173,6 +187,18 @@ pub fn ImportTrip() -> Element {
                 return;
             }
         };
+        if kind() == GUIDE_BOOK {
+            match api::preview_collection(&archive(), &name, bytes.clone()).await {
+                Ok(preview) => book.set(Some(ChosenBook {
+                    file_name: name,
+                    bytes,
+                    preview,
+                })),
+                Err(err) => error.set(Some(format!("Could not read that GPX file: {err}"))),
+            }
+            reading.set(false);
+            return;
+        }
         match api::stage_gpx(&archive(), &name, bytes.clone()).await {
             Ok(suggestion) => {
                 gpx.set(Some((name, bytes)));
@@ -231,6 +257,33 @@ pub fn ImportTrip() -> Element {
         navigator().push(Route::TripDetail { id });
     };
 
+    // A guide book is created in one request (US-86): nothing was parked, so
+    // there is no parse to confirm or to lose.
+    let confirm_book = move |form: CollectionForm| async move {
+        if submitting() {
+            return;
+        }
+        let Some(chosen) = book() else { return };
+        submitting.set(true);
+        error.set(None);
+        let created = api::create_collection(
+            &archive(),
+            &chosen.file_name,
+            chosen.bytes,
+            form.name.trim(),
+            form.description.trim(),
+            &form.activity,
+        )
+        .await;
+        submitting.set(false);
+        match created {
+            Ok(id) => {
+                navigator().push(Route::Collection { id });
+            }
+            Err(err) => error.set(Some(format!("Could not import this guide book: {err}"))),
+        }
+    };
+
     // The only way the archive is ever told about an upload the owner thought
     // better of: picking a different file is reachable from step one alone,
     // which shows only while nothing is parked.
@@ -239,24 +292,40 @@ pub fn ImportTrip() -> Element {
             let _ = api::cancel_staged_import(&archive(), current.staging_id).await;
         }
         gpx.set(None);
+        book.set(None);
         error.set(None);
     };
 
     rsx! {
         h1 { "Import a trip" }
 
-        if let Some(progress) = progress() {
+        if let Some(chosen) = book() {
+            ConfirmGuideBookStep {
+                preview: chosen.preview,
+                error: error(),
+                submitting: submitting(),
+                on_confirm: confirm_book,
+                on_start_over: start_over,
+            }
+        } else if let Some(progress) = progress() {
             UploadProgress { progress }
         } else if let Some(partial) = partial() {
             PartialOutcome { partial }
         } else {
             match staged() {
                 None => rsx! {
-                    ChooseGpx { reading: reading(), error: error(), on_choose: choose }
+                    ChooseGpx {
+                        reading: reading(),
+                        error: error(),
+                        kind: kind(),
+                        on_kind: move |chosen| kind.set(chosen),
+                        on_choose: choose,
+                    }
                 },
                 Some(suggestion) => rsx! {
                     ConfirmImportStep {
                         staged: suggestion,
+                        kind: kind(),
                         error: error(),
                         submitting: submitting(),
                         on_confirm: confirm,
@@ -349,197 +418,6 @@ async fn restage_and_confirm(
             result: Err(err),
             parked: Some(restaged),
         },
-    }
-}
-
-/// Step one: the file, and nothing else to fill in yet.
-#[component]
-fn ChooseGpx(
-    reading: bool,
-    #[props(default)] error: Option<String>,
-    on_choose: EventHandler<FormEvent>,
-) -> Element {
-    rsx! {
-        p { "Choose the GPX file to import. You can name the trip in the next step." }
-        input {
-            id: "import-gpx",
-            r#type: "file",
-            accept: ".gpx,application/gpx+xml",
-            disabled: reading,
-            onchange: move |event| on_choose.call(event),
-        }
-        if reading {
-            p { "Reading the track…" }
-        }
-        if let Some(error) = error {
-            p { class: "error", "{error}" }
-        }
-    }
-}
-
-/// Step two: the name the archive suggested, and everything else the trip is
-/// stored with.
-///
-/// A component of its own so it can be rendered — and asserted on — with a
-/// suggestion in hand and no server behind it, the way `edit::EditTripForm`
-/// is.
-#[component]
-fn ConfirmImportStep(
-    staged: StagedImport,
-    #[props(default)] error: Option<String>,
-    /// Whether a confirmation is already on its way; the button says so and
-    /// declines to start a second.
-    #[props(default)]
-    submitting: bool,
-    on_confirm: EventHandler<(ConfirmForm, Vec<PhotoUpload>)>,
-    on_start_over: EventHandler<()>,
-) -> Element {
-    let mut form = use_signal(|| ConfirmForm::of(&staged));
-    let mut photos = use_signal(Vec::<PhotoUpload>::new);
-    let mut reading_photos = use_signal(|| false);
-    let mut photo_error = use_signal(|| None::<String>);
-
-    rsx! {
-        form {
-            id: "confirm-import",
-            onsubmit: move |event| async move {
-                event.prevent_default();
-                on_confirm.call((form.read().clone(), photos.read().clone()));
-            },
-
-            p {
-                label { r#for: "import-name", "Trip name" }
-                input {
-                    id: "import-name",
-                    r#type: "text",
-                    value: "{form.read().name}",
-                    oninput: move |event| form.write().name = event.value(),
-                }
-            }
-
-            div {
-                ActivitySelect {
-                    id: "import-activity",
-                    label: "Activity",
-                    value: form.read().activity.clone(),
-                    choices: choices(&[Choice::unspecified("")]),
-                    onchange: move |value| form.write().activity = value,
-                }
-                // US-74/US-76: the name and the activity may come from the
-                // places and the ways the track passes.
-                MapCredits {}
-            }
-
-            fieldset {
-                legend { "Trip kind" }
-                for kind in TripKind::ALL {
-                    label {
-                        input {
-                            r#type: "radio",
-                            name: "kind",
-                            value: kind.as_str(),
-                            checked: form.read().kind == kind.as_str(),
-                            oninput: move |_| form.write().kind = kind.as_str().to_string(),
-                        }
-                        {kind.label()}
-                    }
-                }
-            }
-
-            p {
-                label { r#for: "import-photos", "Photos (optional)" }
-                input {
-                    id: "import-photos",
-                    r#type: "file",
-                    accept: "image/*",
-                    multiple: true,
-                    // Read here rather than at submit, so the upload starts
-                    // the moment the owner asks for it.
-                    onchange: move |event: FormEvent| async move {
-                        // Whatever was staged belongs to the previous
-                        // selection; it must not survive a pick that then
-                        // fails to read (the rule `photos::AddPhotos`
-                        // already follows).
-                        photos.take();
-                        photo_error.set(None);
-                        reading_photos.set(true);
-                        let mut chosen = Vec::new();
-                        for file in event.files() {
-                            match file.read_bytes().await {
-                                Ok(bytes) => chosen.push(PhotoUpload {
-                                    file_name: file.name(),
-                                    content_type: file.content_type(),
-                                    bytes: bytes.to_vec(),
-                                }),
-                                Err(err) => {
-                                    photo_error
-                                        .set(Some(format!("Could not read {}: {err}", file.name())));
-                                    reading_photos.set(false);
-                                    return;
-                                }
-                            }
-                        }
-                        photos.set(chosen);
-                        reading_photos.set(false);
-                    },
-                }
-                if !photos.read().is_empty() {
-                    small { "{photos.read().len()} photo(s) will be uploaded after the trip is created." }
-                }
-            }
-
-            button {
-                id: "import-confirm",
-                r#type: "submit",
-                disabled: reading_photos() || submitting,
-                if submitting { "Importing…" } else { "Import" }
-            }
-            button {
-                id: "import-start-over",
-                r#type: "button",
-                disabled: submitting,
-                onclick: move |_| on_start_over.call(()),
-                "Choose a different file"
-            }
-        }
-
-        if let Some(message) = photo_error() {
-            p { class: "error", "{message}" }
-        }
-        if let Some(error) = error {
-            p { class: "error", "{error}" }
-        }
-    }
-}
-
-/// The photos going up, once the trip itself is safely stored.
-#[component]
-fn UploadProgress(progress: Progress) -> Element {
-    rsx! {
-        p { "Trip created. Uploading photos…" }
-        progress {
-            id: "import-progress",
-            value: "{progress.done}",
-            max: "{progress.total}",
-        }
-        p { "{progress.done} of {progress.total} photos uploaded." }
-    }
-}
-
-/// A trip that arrived without all of its photos.
-#[component]
-fn PartialOutcome(partial: PartialImport) -> Element {
-    rsx! {
-        p {
-            "The trip was created, but only {partial.uploaded} of {partial.total} photos "
-            "were uploaded: {partial.error}"
-        }
-        p { "You can add the rest from the trip itself." }
-        Link {
-            id: "partial-import-trip",
-            to: Route::TripDetail { id: partial.trip_id },
-            "Open the trip"
-        }
     }
 }
 

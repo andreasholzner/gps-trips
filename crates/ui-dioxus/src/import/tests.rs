@@ -37,20 +37,30 @@ fn a_photo(name: &str, size: usize) -> PhotoUpload {
 #[test]
 fn the_name_starts_as_the_archives_suggestion() {
     // US-12: the date is already in the field, so the owner types after it.
-    let form = ConfirmForm::of(&a_suggestion("2024-06-01 Oslo Hills Walk"));
+    let form = ConfirmForm::of(&a_suggestion("2024-06-01 Oslo Hills Walk"), "recorded");
 
     assert_eq!(form.name, "2024-06-01 Oslo Hills Walk");
-    // US-31's default, and US-11's "not said yet".
-    assert_eq!(form.kind, "recorded");
+    // US-11's "not said yet".
     assert_eq!(form.activity, "");
 }
 
 #[test]
+fn the_kind_is_the_one_chosen_with_the_file() {
+    // US-31, chosen in step one beside the guide book (US-86).
+    let form = ConfirmForm::of(&a_suggestion("2024-06-01 "), "planned");
+
+    assert_eq!(form.to_confirm().kind.as_deref(), Some("planned"));
+}
+
+#[test]
 fn us76_the_activity_starts_on_the_one_the_track_looks_like() {
-    let form = ConfirmForm::of(&StagedImport {
-        suggested_activity: Some(ActivityType::Kayaking),
-        ..a_suggestion("2024-06-01 ")
-    });
+    let form = ConfirmForm::of(
+        &StagedImport {
+            suggested_activity: Some(ActivityType::Kayaking),
+            ..a_suggestion("2024-06-01 ")
+        },
+        "recorded",
+    );
 
     assert_eq!(form.activity, "kayaking");
     // The owner can still answer otherwise: what they pick is what travels.
@@ -66,7 +76,7 @@ fn us76_the_activity_starts_on_the_one_the_track_looks_like() {
 fn a_bare_date_prefix_is_sent_without_its_trailing_space() {
     // The owner accepted the suggestion for a track with no name of its own.
     // Storing "2024-06-01 " would put the prefix's spacing in the archive.
-    let form = ConfirmForm::of(&a_suggestion("2024-06-01 "));
+    let form = ConfirmForm::of(&a_suggestion("2024-06-01 "), "recorded");
 
     assert_eq!(form.to_confirm().name.as_deref(), Some("2024-06-01"));
 }
@@ -76,7 +86,7 @@ fn a_name_wiped_out_asks_the_archive_for_its_own_fallback() {
     // Not an empty name: `resolve_name`'s precedence — the GPX track's name,
     // then a date-prefixed default — is what should decide, exactly as it
     // did for the single-step form.
-    let mut form = ConfirmForm::of(&a_suggestion("2024-06-01 Oslo Hills Walk"));
+    let mut form = ConfirmForm::of(&a_suggestion("2024-06-01 Oslo Hills Walk"), "recorded");
     form.name = "   ".to_string();
 
     assert_eq!(form.to_confirm().name, None);
@@ -84,7 +94,7 @@ fn a_name_wiped_out_asks_the_archive_for_its_own_fallback() {
 
 #[test]
 fn the_owners_answers_are_what_travel() {
-    let mut form = ConfirmForm::of(&a_suggestion("2024-06-01 "));
+    let mut form = ConfirmForm::of(&a_suggestion("2024-06-01 "), "recorded");
     form.name = "2024-06-01 Nordmarka".to_string();
     form.activity = "hiking".to_string();
     form.kind = "planned".to_string();
@@ -160,11 +170,10 @@ fn the_confirm_step_offers_every_field_the_trip_is_stored_with() {
         html.contains(r#"value="2024-06-01 Oslo Hills Walk""#),
         "{html}"
     );
-    // US-11 and US-31.
+    // US-11. The kind was chosen with the file (US-31), in step one.
     assert!(html.contains(r#"id="import-activity""#), "{html}");
     assert!(html.contains(r#"value="hiking""#), "{html}");
-    assert!(html.contains(r#"value="recorded""#), "{html}");
-    assert!(html.contains(r#"value="planned""#), "{html}");
+    assert!(!html.contains(r#"value="planned""#), "{html}");
     // US-64: no timezone to answer for — the archive reads the offsets the
     // track itself was in, so the field the guess used to be offered in is
     // gone rather than ignored.
@@ -200,17 +209,9 @@ fn us74_us76_the_confirm_step_credits_the_sources_once_under_its_suggestions() {
 }
 
 #[test]
-fn the_confirm_step_starts_on_recorded() {
+fn the_first_step_starts_on_recorded() {
     // US-31: "defaulting to Recorded".
-    let html = render(|| {
-        rsx! {
-            ConfirmImportStep {
-                staged: a_suggestion("2024-06-01 "),
-                on_confirm: move |_| {},
-                on_start_over: move |_| {},
-            }
-        }
-    });
+    let html = render(|| rsx! { ChooseGpx { reading: false, on_choose: move |_| {} } });
 
     let recorded = html
         .find(r#"value="recorded""#)
@@ -243,14 +244,23 @@ fn the_confirm_step_offers_a_way_back_to_the_picker() {
 }
 
 #[test]
-fn the_first_step_asks_for_the_file_and_nothing_else() {
+fn the_first_step_asks_what_the_file_is_and_for_the_file() {
     // Nothing to name yet: the archive has not read the track, so it has no
-    // date to suggest — which is the whole reason this step exists.
+    // date to suggest — which is the whole reason this step exists. What the
+    // file is comes first: a guide book (US-86) is read differently, and a
+    // book of waypoints alone is no trip the archive could stage.
     let html = render(|| rsx! { ChooseGpx { reading: false, on_choose: move |_| {} } });
 
     assert!(html.contains(r#"id="import-gpx""#), "{html}");
     assert!(!html.contains(r#"id="import-name""#), "{html}");
     assert!(html.contains("next step"), "{html}");
+    let kinds: Vec<&str> = html
+        .split(r#"name="kind" value=""#)
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    assert_eq!(kinds, ["recorded", "planned", "guide_book"], "{html}");
+    assert!(html.contains("Guide book"), "{html}");
 }
 
 #[test]
