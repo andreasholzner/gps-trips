@@ -7,7 +7,7 @@
 // asserted in `crates/ui-dioxus` (`trip_lines`).
 import { expect, signIn, test } from "./session.mjs";
 import { zoomBy } from "./map.mjs";
-import { ownTrips } from "./trips.mjs";
+import { ownTrips, UNTIMED_GPX } from "./trips.mjs";
 
 const ownTrip = ownTrips(test);
 
@@ -163,4 +163,68 @@ test("a change of filters redraws the lines, in shades per trip", async ({ page,
 
   await page.getByRole("searchbox").fill(first);
   await expect(lines(page)).toHaveCount(1);
+});
+
+test("a read of the tracks that fails is not asked again until the view moves", async ({
+  page,
+  request,
+}) => {
+  const id = await ownTrip(request, "Failing Walk", "hiking");
+  const asked = [];
+  await page.route("**/api/trips/tracks?*", async (route) => {
+    asked.push(route.request().url());
+    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(listOf(await nameOf(request, id)));
+  await expect.poll(() => asked.length).toBe(1);
+  await expect(page.locator("#region-map-busy")).toHaveCount(0);
+  // Nothing to wait *for* when nothing should happen: give a retry the time
+  // it would take, then count.
+  await page.waitForTimeout(500);
+  expect(asked).toHaveLength(1);
+
+  // A view that moves asks once more.
+  await zoomBy(page, "region-map", "Zoom out", 1, 12);
+  await expect.poll(() => asked.length).toBe(2);
+});
+
+test("a tab switch takes the other tab's lines off while the new ones load", async ({
+  page,
+  request,
+}) => {
+  const tag = `switch${Math.random().toString(36).slice(2, 8)}`;
+  await ownTrip(request, `${tag} Recorded`, "hiking");
+  // The same walk, planned: in view wherever the recorded one is.
+  const planned = await request.post("/api/import", {
+    maxRedirects: 0,
+    multipart: {
+      gpx: { name: "track.gpx", mimeType: "application/gpx+xml", buffer: UNTIMED_GPX },
+      name: `${tag} Planned`,
+      kind: "planned",
+    },
+  });
+  expect(planned.status()).toBe(303);
+  const plannedId = Number(planned.headers()["location"].replace("/app/trips/", ""));
+  try {
+    await page.goto(listOf(tag));
+    await expect(lines(page)).toHaveCount(1);
+    let release;
+    const held = new Promise((resolve) => (release = resolve));
+    await page.route("**/api/trips/tracks?*", async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: "Planned" }).click();
+
+    // The recorded walk's line goes; the planned one is a mark until its
+    // track arrives.
+    await expect(lines(page)).toHaveCount(0);
+    await expect(marks(page)).toHaveCount(1);
+    release();
+    await expect(lines(page)).toHaveCount(1);
+  } finally {
+    await request.delete(`/api/trips/${plannedId}`);
+  }
 });

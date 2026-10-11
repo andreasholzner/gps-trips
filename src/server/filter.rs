@@ -149,7 +149,7 @@ fn parse_flag(name: &str, s: Option<&str>) -> Result<bool, AppError> {
 /// values are rejected for the same reason `parse_optional_distance_km`
 /// rejects them: SQLite binds a `NaN` `REAL` parameter as `NULL`, which the
 /// query can't tell apart from "no filter".
-fn parse_optional_bbox(s: Option<&str>) -> Result<Option<BoundingBox>, AppError> {
+pub(crate) fn parse_optional_bbox(s: Option<&str>) -> Result<Option<BoundingBox>, AppError> {
     let raw = match s.map(str::trim) {
         None | Some("") => return Ok(None),
         Some(value) => value,

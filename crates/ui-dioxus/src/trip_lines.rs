@@ -9,12 +9,13 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use trip_archive_types::{ActivityType, TripSummary, TripTrack};
+use trip_archive_types::{ActivityType, TripTrack};
 
 use crate::activity_color;
 use crate::config::trip_map::LINES_FROM_ZOOM;
 use crate::heat::HeatMarks;
 use crate::interop::OverviewLine;
+use crate::map_items::MapItem;
 use crate::track;
 
 /// Where the map is looking once it has settled: its zoom, and the visible
@@ -44,22 +45,19 @@ pub fn shows_lines(viewport: &Viewport) -> bool {
 
 /// The trips whose stored bounding box overlaps the visible area, in list
 /// order. A trip without a box has no track to draw.
-pub fn in_view<'a>(trips: &'a [TripSummary], viewport: &Viewport) -> Vec<&'a TripSummary> {
+pub fn in_view<'a>(trips: &'a [MapItem], viewport: &Viewport) -> Vec<&'a MapItem> {
     let [west, south, east, north] = viewport.bounds;
     trips
         .iter()
-        .filter(
-            |trip| match (trip.min_lat, trip.min_lon, trip.max_lat, trip.max_lon) {
-                (Some(min_lat), Some(min_lon), Some(max_lat), Some(max_lon)) => {
-                    min_lat <= north
-                        && max_lat >= south
-                        && lon_ranges(west, east)
-                            .iter()
-                            .any(|&(from, to)| min_lon <= to && max_lon >= from)
-                }
-                _ => false,
-            },
-        )
+        .filter(|trip| {
+            trip.bbox.is_some_and(|bbox| {
+                bbox.min_lat <= north
+                    && bbox.max_lat >= south
+                    && lon_ranges(west, east)
+                        .iter()
+                        .any(|&(from, to)| bbox.min_lon <= to && bbox.max_lon >= from)
+            })
+        })
         .collect()
 }
 
@@ -132,7 +130,7 @@ pub fn to_request(missing: &[i64], pending: &HashSet<i64>) -> Vec<i64> {
 /// of its activity's color (US-72, US-75). The shades are taken over every
 /// matching trip, not only those in view, so panning recolors nothing; and
 /// `tracks` lacks those that could not be read, which shifts no other color.
-pub fn lines(trips: &[TripSummary], tracks: &[&TripTrack], marks: &HeatMarks) -> TripLines {
+pub fn lines(trips: &[MapItem], tracks: &[&TripTrack], marks: &HeatMarks) -> TripLines {
     let colors = activity_color::in_list_order(trips.iter().map(|trip| trip.activity_type));
     let lines = trips
         .iter()
@@ -149,12 +147,12 @@ pub fn lines(trips: &[TripSummary], tracks: &[&TripTrack], marks: &HeatMarks) ->
         .collect();
     TripLines {
         lines,
-        fit: marks.marks.iter().map(|mark| mark.at).collect(),
+        fit: marks.fit_points(),
     }
 }
 
 /// The activities of the trips that got a line, for the legend.
-pub fn activities(trips: &[TripSummary], lines: &TripLines) -> Vec<ActivityType> {
+pub fn activities(trips: &[MapItem], lines: &TripLines) -> Vec<ActivityType> {
     trips
         .iter()
         .filter(|trip| lines.lines.iter().any(|line| line.id == trip.id))

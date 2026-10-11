@@ -2,7 +2,9 @@
 //! US-63): the trips the filters match, drawn as a heat map — or, zoomed
 //! in, as their tracks (US-73). With "Filter to map" ticked, its visible
 //! area is the region (US-92): the list narrows to trips whose stored
-//! bounding box overlaps it, and follows every pan and zoom.
+//! bounding box overlaps it, and follows every pan and zoom. On the
+//! Collections tab (US-87) the same goes for the listed collections' tracks,
+//! and the region narrows the collections.
 //!
 //! The map itself is Leaflet, reached through `interop`; this module is the
 //! Rust half — what to hand the map, and what to do with the view it
@@ -11,35 +13,38 @@
 use std::collections::HashSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, TripSummary};
+use trip_archive_types::ActivityType;
 
 use crate::activity_color::ActivityLegend;
 use crate::api::{self, ApiClient};
-use crate::filters::Filters;
+use crate::filters::{Filters, ListTab};
 use crate::heat;
 use crate::interop::{self, RegionEvent};
+use crate::map_items::{MapItem, MapSource, Mapped};
 use crate::trip_lines::{self, TrackCache, Viewport};
 use crate::Route;
 
-/// The map and its controls, always in view (US-63). `trips` — every trip
-/// the filters match — is `None` until the list has been read, so the map
-/// is not wiped blank while a re-query is in flight.
+/// The map and its controls, always in view (US-63). `mapped` — every trip
+/// the filters match, or every listed collection's track (US-87) — is
+/// `None` until the list has been read, so the map is not wiped blank while
+/// a re-query is in flight.
 ///
 /// Being in view means an ordinary visit fetches OSM tiles, which the
 /// collapsed panel this replaced deliberately avoided: that is what having
 /// the map on screen costs, and it is paid on purpose.
 #[component]
-pub fn RegionFilter(filters: Signal<Filters>, trips: Option<Vec<TripSummary>>) -> Element {
+pub fn RegionFilter(filters: Signal<Filters>, mapped: Option<Mapped>) -> Element {
     // Where the map was last looking once it settled (US-73), and so the
     // region "Filter to map" takes (US-92).
     let viewport = use_signal(|| None::<Viewport>);
     // The activities of the lines drawn while zoomed in (US-73); `None`
     // while the map shows the marks, whose activities the legend names.
     let lined = use_signal(|| None::<Vec<ActivityType>>);
-    let shown = legend_activities(lined(), trips.as_deref());
+    let shown = legend_activities(lined(), mapped.as_ref().map(|mapped| &mapped.items[..]));
+    let fit = fit_label(filters.read().tab);
     rsx! {
         section { class: "region",
-            RegionMap { filters, trips, viewport, lined }
+            RegionMap { filters, mapped, viewport, lined }
             if let Some(shown) = shown {
                 ActivityLegend { shown }
             }
@@ -50,7 +55,7 @@ pub fn RegionFilter(filters: Signal<Filters>, trips: Option<Vec<TripSummary>>) -
                 button {
                     r#type: "button",
                     id: "region-fit",
-                    "Fit to trips"
+                    "{fit}"
                 }
             }
         }
@@ -62,9 +67,26 @@ pub fn RegionFilter(filters: Signal<Filters>, trips: Option<Vec<TripSummary>>) -
 /// has been read.
 fn legend_activities(
     lined: Option<Vec<ActivityType>>,
-    trips: Option<&[TripSummary]>,
+    trips: Option<&[MapItem]>,
 ) -> Option<Vec<ActivityType>> {
     lined.or_else(|| trips.map(|trips| heat::marks(trips).activities()))
+}
+
+/// The fit button's label: it fits the map to what the tab lists (US-87).
+fn fit_label(tab: ListTab) -> &'static str {
+    match tab {
+        ListTab::Collections => "Fit to collections",
+        ListTab::Recorded | ListTab::Planned => "Fit to trips",
+    }
+}
+
+/// The page a click on a line opens: the trip's, or the collection track's
+/// (US-87).
+fn route_for(source: MapSource, id: i64) -> Route {
+    match source {
+        MapSource::Trips => Route::TripDetail { id },
+        MapSource::CollectionTracks => Route::CollectionTrack { id },
+    }
 }
 
 /// Turns the map's view into the region filter, and back off (US-92). Ticked
@@ -116,23 +138,36 @@ fn followed(bbox: &str, view: &Viewport) -> Option<String> {
     (region != bbox).then_some(region)
 }
 
-/// The map itself: draws the matching trips — as marks, or zoomed in as
-/// lines (US-73) — and reports where it is looking, which the region
-/// follows while filtering to the map is on (US-92). A click on a line opens
-/// that trip.
+/// The map itself: draws the matching trips or collection tracks — as
+/// marks, or zoomed in as lines (US-73) — and reports where it is looking,
+/// which the region follows while filtering to the map is on (US-92). A
+/// click on a line opens that trip or collection track.
 #[component]
 fn RegionMap(
     filters: Signal<Filters>,
-    trips: Option<Vec<TripSummary>>,
+    mapped: Option<Mapped>,
     mut viewport: Signal<Option<Viewport>>,
     lined: Signal<Option<Vec<ActivityType>>>,
 ) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut handle = use_signal(|| None::<document::Eval>);
     // Every track read while the list is open (US-73), and those asked for
-    // whose answer is still on its way.
-    let cache = use_signal(TrackCache::default);
-    let mut pending = use_signal(HashSet::<i64>::new);
+    // whose answer is still on its way — one of each per source, since a
+    // trip and a collection track may share an id. Two signals, not one: the
+    // effect below redraws when tracks arrive, and only peeks at what is
+    // pending, so a request that fails is not sent again until the view or
+    // the list changes.
+    let trip_cache = use_signal(TrackCache::default);
+    let trip_pending = use_signal(HashSet::<i64>::new);
+    let collection_cache = use_signal(TrackCache::default);
+    let collection_pending = use_signal(HashSet::<i64>::new);
+    let tracks_of = move |source| match source {
+        MapSource::Trips => (trip_cache, trip_pending),
+        MapSource::CollectionTracks => (collection_cache, collection_pending),
+    };
+    // Which lines are drawn, so a click opens the right page and lines the
+    // list no longer holds are not left up while others load.
+    let mut drawn = use_signal(|| None::<DrawnLines>);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new region causes — the filters change, the list
     // re-queries — does not restart the map or drop the channel
@@ -151,7 +186,8 @@ fn RegionMap(
                     }
                 }
                 Ok(RegionEvent::Open(id)) => {
-                    navigator().push(Route::TripDetail { id });
+                    let source = drawn.peek().as_ref().map_or(MapSource::Trips, |d| d.source);
+                    navigator().push(route_for(source, id));
                 }
                 Err(err) => {
                     dioxus::logger::tracing::error!("the region map stopped reporting: {err}");
@@ -165,35 +201,54 @@ fn RegionMap(
     // re-queries — whenever the view settles, and once more when the map
     // comes up, which may be after the first rows have arrived. Zoomed in,
     // the trips in view are drawn as their tracks once every one of them is
-    // known; until then the map keeps what it shows. Tracks not asked for
+    // known; until then the map keeps what it shows, unless that is lines the
+    // list no longer holds — those give way to the marks. Tracks not asked for
     // yet are fetched in one request that runs to its end whatever the view
     // does meanwhile, and what it brings redraws the map — so zooming while
     // tracks load waits for them instead of asking again.
-    use_effect(use_reactive!(|trips| {
-        let (Some(map), Some(trips)) = (handle(), trips) else {
+    use_effect(use_reactive!(|mapped| {
+        let (Some(map), Some(mapped)) = (handle(), mapped) else {
             return;
         };
-        let marks = heat::marks(&trips);
+        let items = &mapped.items;
+        let marks = heat::marks(items).also_fitting(&mapped.also_fit);
         match viewport() {
             Some(view) if trip_lines::shows_lines(&view) => {
-                let ids: Vec<i64> = trip_lines::in_view(&trips, &view)
+                let (cache, mut pending) = tracks_of(mapped.source);
+                let ids: Vec<i64> = trip_lines::in_view(items, &view)
                     .iter()
-                    .map(|trip| trip.id)
+                    .map(|item| item.id)
                     .collect();
                 let missing = cache.read().missing(&ids);
                 if !missing.is_empty() {
                     let request = trip_lines::to_request(&missing, &pending.peek());
                     if !request.is_empty() {
                         pending.write().extend(&request);
-                        spawn(fetch_tracks(archive(), cache, pending, request));
+                        spawn(fetch_tracks(
+                            archive(),
+                            mapped.source,
+                            cache,
+                            pending,
+                            request,
+                        ));
+                    }
+                    if outlived(drawn.peek().as_ref(), &mapped) {
+                        drawn.set(None);
+                        lined.set(None);
+                        interop::draw_heat_marks(&map, &marks);
                     }
                     return;
                 }
-                let lines = trip_lines::lines(&trips, &cache.read().tracks(&ids), &marks);
-                lined.set(Some(trip_lines::activities(&trips, &lines)));
+                let lines = trip_lines::lines(items, &cache.read().tracks(&ids), &marks);
+                lined.set(Some(trip_lines::activities(items, &lines)));
+                drawn.set(Some(DrawnLines {
+                    source: mapped.source,
+                    ids: lines.lines.iter().map(|line| line.id).collect(),
+                }));
                 interop::draw_trip_lines(&map, &lines);
             }
             _ => {
+                drawn.set(None);
                 lined.set(None);
                 interop::draw_heat_marks(&map, &marks);
             }
@@ -201,8 +256,12 @@ fn RegionMap(
     }));
 
     // The sign shows while lines wait on the archive, not while marks do.
-    let busy =
-        viewport().is_some_and(|view| trip_lines::shows_lines(&view)) && !pending.read().is_empty();
+    let source = match filters.read().tab {
+        ListTab::Collections => MapSource::CollectionTracks,
+        ListTab::Recorded | ListTab::Planned => MapSource::Trips,
+    };
+    let busy = viewport().is_some_and(|view| trip_lines::shows_lines(&view))
+        && !tracks_of(source).1.read().is_empty();
 
     rsx! {
         div { class: "region-map-frame",
@@ -216,17 +275,41 @@ fn RegionMap(
     }
 }
 
-/// Fetch the tracks of `ids` into `cache` (US-73). A track that cannot be
-/// read is absent from the answer, and its line left off the map, as on a
-/// share's. A request that fails outright stores nothing, so the next view
-/// that needs those tracks asks again.
+/// The lines on the map: whose they are, and which.
+#[derive(Debug, Clone, PartialEq)]
+struct DrawnLines {
+    source: MapSource,
+    ids: Vec<i64>,
+}
+
+/// Whether the lines drawn are of something `mapped` no longer holds — the
+/// other tab's, or a trip the list has dropped — so they should not stay up
+/// while the tracks now in view load.
+fn outlived(drawn: Option<&DrawnLines>, mapped: &Mapped) -> bool {
+    drawn.is_some_and(|drawn| {
+        drawn.source != mapped.source
+            || drawn
+                .ids
+                .iter()
+                .any(|id| !mapped.items.iter().any(|item| item.id == *id))
+    })
+}
+
+/// Fetch the tracks of `ids` into `cache` (US-73), from where `source`'s
+/// are kept. A track that cannot be read is absent from the answer, and its
+/// line left off the map, as on a share's. A request that fails outright
+/// stores nothing, so the next view that needs those tracks asks again.
 async fn fetch_tracks(
     archive: ApiClient,
+    source: MapSource,
     mut cache: Signal<TrackCache>,
     mut pending: Signal<HashSet<i64>>,
     ids: Vec<i64>,
 ) {
-    let answer = api::list_tracks(&archive, &ids).await;
+    let answer = match source {
+        MapSource::Trips => api::list_tracks(&archive, &ids).await,
+        MapSource::CollectionTracks => api::list_collection_track_positions(&archive, &ids).await,
+    };
     match answer {
         Ok(answer) => cache.write().store(&ids, answer),
         Err(err) => dioxus::logger::tracing::error!("could not read the tracks in view: {err}"),
@@ -248,196 +331,6 @@ fn MapBusy() -> Element {
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
+// Split into region/tests.rs to keep this file under the repo's 500-line cap.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::render;
-    use trip_archive_types::TripKind;
-
-    /// A trip near Oslo, so it gets a mark.
-    fn a_trip(activity_type: ActivityType) -> TripSummary {
-        TripSummary {
-            id: 1,
-            name: "Trip".to_string(),
-            activity_type,
-            start_time: None,
-            start_date: None,
-            distance_m: 1_000.0,
-            ascent_m: None,
-            duration_secs: None,
-            trip_kind: TripKind::Recorded,
-            privacy_status: None,
-            min_lat: Some(59.9),
-            min_lon: Some(10.7),
-            max_lat: Some(60.0),
-            max_lon: Some(10.8),
-        }
-    }
-
-    #[test]
-    fn the_map_is_in_view_without_opening_anything() {
-        // US-63: the map is the middle of the screen, not a filter's fine
-        // print behind a disclosure.
-        let html = render(|| {
-            let filters = Signal::new(Filters::default());
-            rsx! { RegionFilter { filters, trips: None } }
-        });
-
-        assert!(html.contains("region-map"), "{html}");
-        assert!(!html.contains("<details"), "{html}");
-        for control in ["Filter to map", "Fit to trips"] {
-            assert!(html.contains(control), "{control}: {html}");
-        }
-    }
-
-    #[test]
-    fn us92_the_rectangle_and_its_buttons_are_gone() {
-        let html = render(|| {
-            let filters = Signal::new(Filters::default());
-            rsx! { RegionFilter { filters, trips: None } }
-        });
-
-        for control in ["Select area", "Cancel selection", "Clear region"] {
-            assert!(!html.contains(control), "{control}: {html}");
-        }
-    }
-
-    #[test]
-    fn us92_filtering_to_the_map_is_on_exactly_when_the_filters_hold_a_region() {
-        // The checkbox has no state of its own: a region in the URL ticks
-        // it, and "Clear filters" unticks it.
-        let off = render(|| {
-            let filters = Signal::new(Filters::default());
-            rsx! { RegionFilter { filters, trips: None } }
-        });
-        let on = render(|| {
-            let filters = Signal::new(Filters {
-                bbox: "10.75,59.91,11.25,60.12".to_string(),
-                ..Filters::default()
-            });
-            rsx! { RegionFilter { filters, trips: None } }
-        });
-
-        assert!(off.contains(r#"id="region-follow""#), "{off}");
-        assert!(!off.contains("checked"), "{off}");
-        assert!(on.contains("checked"), "{on}");
-    }
-
-    #[test]
-    fn us92_filtering_to_the_map_waits_until_the_map_says_where_it_is() {
-        // Before the first view is reported there is no region to take.
-        let html = render(|| {
-            let filters = Signal::new(Filters::default());
-            rsx! { RegionFilter { filters, trips: None } }
-        });
-
-        assert!(html.contains("disabled"), "{html}");
-    }
-
-    fn view(bounds: [f64; 4]) -> Viewport {
-        Viewport { zoom: 9.0, bounds }
-    }
-
-    #[test]
-    fn us92_the_region_is_the_visible_area() {
-        assert_eq!(
-            region_of(&view([10.5, 59.8, 11.0, 60.0])),
-            [10.5, 59.8, 11.0, 60.0]
-        );
-    }
-
-    #[test]
-    fn us92_a_view_across_the_antimeridian_covers_every_longitude() {
-        // The API rejects a region that crosses it (ADR-0011).
-        assert_eq!(
-            region_of(&view([170.0, -20.0, 190.0, -10.0])),
-            [-180.0, -20.0, 180.0, -10.0]
-        );
-    }
-
-    #[test]
-    fn us92_a_view_wider_than_the_world_covers_every_longitude() {
-        assert_eq!(
-            region_of(&view([-180.0, -60.0, 300.0, 80.0])),
-            [-180.0, -60.0, 180.0, 80.0]
-        );
-        assert_eq!(
-            region_of(&view([-250.0, -60.0, 100.0, 80.0])),
-            [-180.0, -60.0, 180.0, 80.0]
-        );
-    }
-
-    #[test]
-    fn us92_with_filtering_off_the_view_narrows_nothing() {
-        assert_eq!(followed("", &view([10.5, 59.8, 11.0, 60.0])), None);
-    }
-
-    #[test]
-    fn us92_with_filtering_on_the_region_follows_the_view() {
-        assert_eq!(
-            followed("-30,30,-20,40", &view([10.5, 59.8, 11.0, 60.0])),
-            Some("10.500000,59.800000,11.000000,60.000000".to_string())
-        );
-    }
-
-    #[test]
-    fn us92_a_view_that_did_not_move_changes_nothing() {
-        // A settle without a move must not re-query the list.
-        let bounds = [10.5, 59.8, 11.0, 60.0];
-        let held = interop::bbox_param(bounds);
-
-        assert_eq!(followed(&held, &view(bounds)), None);
-    }
-
-    #[test]
-    fn the_map_names_the_colors_of_the_activities_it_marks() {
-        // US-75.
-        let html = render(|| {
-            let filters = Signal::new(Filters::default());
-            let trips = vec![a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)];
-            rsx! { RegionFilter { filters, trips: Some(trips) } }
-        });
-
-        assert!(html.contains("map-legend"), "{html}");
-        assert!(
-            html.contains("Hiking") && html.contains("Kayaking"),
-            "{html}"
-        );
-    }
-
-    #[test]
-    fn zoomed_in_the_legend_names_the_activities_of_the_lines_drawn() {
-        // US-73: a kayak trip marked elsewhere but with no line in view is
-        // not on the map, so not in its legend.
-        let trips = [a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)];
-
-        assert_eq!(
-            legend_activities(Some(vec![ActivityType::Hiking]), Some(&trips)),
-            Some(vec![ActivityType::Hiking])
-        );
-        assert_eq!(
-            legend_activities(None, Some(&trips)),
-            Some(vec![ActivityType::Hiking, ActivityType::Kayaking])
-        );
-        assert_eq!(legend_activities(None, None), None);
-    }
-
-    #[test]
-    fn the_map_is_not_busy_before_it_asks_for_anything() {
-        let html = render(|| {
-            let filters = Signal::new(Filters::default());
-            rsx! { RegionFilter { filters, trips: None } }
-        });
-
-        assert!(!html.contains("region-map-busy"), "{html}");
-    }
-
-    #[test]
-    fn while_the_tracks_load_the_map_says_so() {
-        // US-73: switching to lines waits on the archive, and says so.
-        let html = render(|| rsx! { MapBusy {} });
-
-        assert!(html.contains(r#"role="status""#), "{html}");
-        assert!(html.contains("Loading tracks…"), "{html}");
-    }
-}
+mod tests;

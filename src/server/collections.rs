@@ -5,7 +5,7 @@
 //! (`track_files`).
 
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -14,18 +14,21 @@ use axum::{
 
 use crate::config;
 use crate::models::{
-    ActivityType, CollectionDetail, CollectionEdit, CollectionPreview, CollectionTrackDetail,
-    CollectionTrackEdit, CreatedCollection, TripTrack, Waypoint,
+    ActivityType, CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview,
+    CollectionSummary, CollectionTrackDetail, CollectionTrackEdit, CreatedCollection, TripTrack,
+    Waypoint,
 };
 use crate::server::{
     collection_gpx::{parse_collection, track_name, ParsedCollection},
     error::AppError,
+    filter::parse_optional_bbox,
     geojson::build_track_geojson,
     gpx::compute_stats,
     import::resolve_activity_type,
     repo::{self, CollectionChange, CollectionTrackChange},
     state::AppState,
     track_files::{geojson_track, gpx_download},
+    tracks::{parse_ids, TracksQuery},
 };
 
 /// The collection routes, merged into the owner's router behind its gate.
@@ -35,7 +38,11 @@ pub fn router() -> Router<AppState> {
     let upload_limit =
         axum::extract::DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT);
     Router::new()
-        .route("/api/collections", post(handle_create).layer(upload_limit))
+        .route(
+            "/api/collections",
+            get(handle_list).post(handle_create).layer(upload_limit),
+        )
+        .route("/api/collections/count", get(handle_count))
         .route(
             "/api/collections/preview",
             post(handle_preview).layer(upload_limit),
@@ -46,6 +53,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/collections/:id/tracks", get(handle_tracks))
         .route("/api/collections/:id/waypoints", get(handle_waypoints))
+        .route("/api/collection-tracks", get(handle_list_tracks))
         .route(
             "/api/collection-tracks/:id",
             get(handle_get_track)
@@ -197,6 +205,51 @@ fn fallback_name(parsed: &ParsedCollection, file_name: &str) -> String {
     } else {
         suggested
     }
+}
+
+/// The `GET /api/collections` query: the trip list's name search and region
+/// (US-87), under the trip list's own parameter names (ADR-0008).
+#[derive(serde::Deserialize)]
+struct ListQuery {
+    q: Option<String>,
+    bbox: Option<String>,
+}
+
+/// `GET /api/collections?q=…&bbox=…` — every collection matching the name
+/// search and the region, alphabetically (US-87). Blank narrows nothing; 400
+/// for a malformed region.
+async fn handle_list(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Vec<CollectionSummary>>, AppError> {
+    let region = parse_optional_bbox(query.bbox.as_deref())?;
+    let name = query.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    Ok(Json(
+        repo::list_collections(&state.pool, name, region).await?,
+    ))
+}
+
+/// `GET /api/collections/count` — how many collections there are, for the
+/// Collections tab's count line (US-87), without reading what they hold.
+async fn handle_count(State(state): State<AppState>) -> Result<Json<CollectionCount>, AppError> {
+    let count = repo::count_collections(&state.pool).await?;
+    Ok(Json(CollectionCount { count }))
+}
+
+/// `GET /api/collection-tracks?ids=…` — each requested collection track's
+/// positions, as `[lon, lat]`, for the trip list's map to draw (US-87). A
+/// track there is not is left out; 400 for ids that are not integers.
+async fn handle_list_tracks(
+    State(state): State<AppState>,
+    Query(query): Query<TracksQuery>,
+) -> Result<Json<Vec<TripTrack>>, AppError> {
+    let ids = parse_ids(query.ids())?;
+    if ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    Ok(Json(
+        repo::list_collection_tracks_by_id(&state.pool, &ids).await?,
+    ))
 }
 
 /// `GET /api/collections/:id` — the details and the tracks in file order.

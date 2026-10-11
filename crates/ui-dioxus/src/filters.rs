@@ -3,9 +3,60 @@
 //! parameter names the server-rendered list submits.
 //!
 //! Pure and Dioxus-free so it is unit-testable on the host; the components
-//! only hold it in a signal and hand it to `api::list_trips`.
+//! only hold it in a signal and hand it to `api::list_trips` — or, on the
+//! Collections tab (US-87), to `api::list_collections`.
 
 use trip_archive_types::{ActivityType, TripKind};
+
+/// The trip list's tabs: the two kinds of trip (US-32), and the guide books'
+/// collections (US-87). Not a [`TripKind`]: collections are not trips
+/// (ADR-0028), and the server's trip kinds must never hear of them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ListTab {
+    #[default]
+    Recorded,
+    Planned,
+    Collections,
+}
+
+impl ListTab {
+    /// In the order the tabs are shown.
+    pub const ALL: [ListTab; 3] = [Self::Recorded, Self::Planned, Self::Collections];
+
+    /// The `kind` parameter's value in the SPA's URL (US-52).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Recorded => "recorded",
+            Self::Planned => "planned",
+            Self::Collections => "collections",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Recorded => "Recorded",
+            Self::Planned => "Planned",
+            Self::Collections => "Collections",
+        }
+    }
+
+    /// The kind of trip the tab lists; `None` on the Collections tab.
+    pub fn trip_kind(self) -> Option<TripKind> {
+        match self {
+            Self::Recorded => Some(TripKind::Recorded),
+            Self::Planned => Some(TripKind::Planned),
+            Self::Collections => None,
+        }
+    }
+
+    /// The tab a URL's `kind` names; Recorded for anything else.
+    fn from_param(value: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|tab| tab.as_str() == value)
+            .unwrap_or_default()
+    }
+}
 
 /// Everything the list screen can narrow itself by. Every text field is kept
 /// as the raw string the input holds: blank means "don't filter on this
@@ -13,9 +64,11 @@ use trip_archive_types::{ActivityType, TripKind};
 /// value never needs a separate "is it valid yet" state here.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Filters {
-    /// Which tab is showing (US-32). Always concrete — the list is one tab's
-    /// worth of trips, never both at once.
-    pub kind: TripKind,
+    /// Which tab is showing (US-32, US-87). Always concrete — the list is one
+    /// tab's worth, never several at once. On the Collections tab only `q`
+    /// and `bbox` apply; the rest are about trips and wait, unchanged, for
+    /// the owner to switch back.
+    pub tab: ListTab,
     pub q: String,
     pub activity: Option<ActivityType>,
     pub from: String,
@@ -43,7 +96,7 @@ pub struct Filters {
 impl Default for Filters {
     fn default() -> Self {
         Self {
-            kind: TripKind::Recorded,
+            tab: ListTab::Recorded,
             q: String::new(),
             activity: None,
             from: String::new(),
@@ -66,7 +119,7 @@ impl Filters {
     /// This doubles as the SPA's own URL query (US-52), so a filtered list is
     /// bookmarkable and survives a reload — see [`Filters`]'s `Display`.
     pub fn to_query(&self) -> String {
-        let mut params = vec![("kind", self.kind.as_str().to_string())];
+        let mut params = vec![("kind", self.tab.as_str().to_string())];
         if let Some(activity) = self.activity {
             params.push(("activity", activity.as_str().to_string()));
         }
@@ -114,7 +167,7 @@ impl Filters {
         {
             let value = decode(value);
             match name {
-                "kind" => filters.kind = value.parse().unwrap_or_default(),
+                "kind" => filters.tab = ListTab::from_param(&value),
                 "activity" => filters.activity = value.parse().ok(),
                 "q" => filters.q = value,
                 "from" => filters.from = value,
@@ -137,9 +190,48 @@ impl Filters {
         filters
     }
 
+    /// The query string for `GET /api/trips`: [`Self::to_query`], or `None`
+    /// on the Collections tab, which lists no trips.
+    pub fn trip_query(&self) -> Option<String> {
+        self.tab.trip_kind().map(|_| self.to_query())
+    }
+
+    /// The query string for `GET /api/collections` (US-87): the name search
+    /// and the region, the only filters that are not about trips.
+    pub fn collection_query(&self) -> String {
+        [("q", &self.q), ("bbox", &self.bbox)]
+            .into_iter()
+            .map(|(name, value)| (name, value.trim()))
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(name, value)| format!("{name}={}", encode(value)))
+            .collect::<Vec<_>>()
+            .join("&")
+    }
+
+    /// What "Clear filters" leaves: the tab, and on the Collections tab
+    /// (US-87) the trip filters too, which it hides — only what the owner
+    /// can see there is cleared.
+    pub fn cleared(&self) -> Filters {
+        match self.tab {
+            ListTab::Collections => Filters {
+                q: String::new(),
+                bbox: String::new(),
+                ..self.clone()
+            },
+            tab => Filters {
+                tab,
+                ..Default::default()
+            },
+        }
+    }
+
     /// Whether anything beyond the tab itself is narrowing the list — the
     /// list uses it to tell "nothing imported yet" from "nothing matches".
+    /// On the Collections tab only the filters that apply there count.
     pub fn any_set(&self) -> bool {
+        if self.tab == ListTab::Collections {
+            return !self.q.trim().is_empty() || !self.bbox.trim().is_empty();
+        }
         self.activity.is_some()
             || !self.tags.is_empty()
             || self.unnamed
@@ -247,188 +339,6 @@ fn hex(byte: u8) -> Option<u8> {
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
+// Split into filters/tests.rs to keep this file under the repo's 500-line cap.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_untouched_filter_asks_only_for_its_tab() {
-        assert_eq!(Filters::default().to_query(), "kind=recorded");
-        assert!(!Filters::default().any_set());
-    }
-
-    #[test]
-    fn set_fields_become_the_servers_own_parameter_names() {
-        let filters = Filters {
-            kind: TripKind::Planned,
-            q: "oslo".to_string(),
-            activity: Some(ActivityType::Hiking),
-            from: "2026-01-01".to_string(),
-            to: "2026-12-31".to_string(),
-            min_dist: "5".to_string(),
-            max_dist: "40".to_string(),
-            tags: Vec::new(),
-            bbox: String::new(),
-            unnamed: false,
-            unplaced: false,
-        };
-
-        assert_eq!(
-            filters.to_query(),
-            "kind=planned&activity=hiking&q=oslo&from=2026-01-01&to=2026-12-31&min_dist=5&max_dist=40"
-        );
-        assert!(filters.any_set());
-    }
-
-    #[test]
-    fn blank_and_whitespace_only_fields_are_left_out() {
-        let filters = Filters {
-            q: "   ".to_string(),
-            ..Default::default()
-        };
-
-        assert_eq!(filters.to_query(), "kind=recorded");
-        assert!(!filters.any_set());
-    }
-
-    #[test]
-    fn chosen_tags_travel_as_one_comma_separated_parameter() {
-        // US-38: comma-joined is unambiguous because a tag name can never
-        // contain a comma (US-33).
-        let filters = Filters {
-            tags: vec!["alpine".to_string(), "summer".to_string()],
-            ..Default::default()
-        };
-
-        assert_eq!(filters.to_query(), "kind=recorded&tags=alpine%2Csummer");
-        assert!(filters.any_set());
-    }
-
-    #[test]
-    fn every_filter_survives_a_round_trip_through_the_query_string() {
-        // The SPA's URL is this same string (US-52), so a filtered list is
-        // bookmarkable: what goes into the address bar must come back out.
-        let filters = Filters {
-            kind: TripKind::Planned,
-            q: "oslo".to_string(),
-            activity: Some(ActivityType::SkiTouring),
-            from: "2026-01-01".to_string(),
-            to: "2026-12-31".to_string(),
-            min_dist: "5".to_string(),
-            max_dist: "40".to_string(),
-            tags: vec!["alpine".to_string(), "summer".to_string()],
-            bbox: String::new(),
-            unnamed: true,
-            unplaced: true,
-        };
-
-        assert_eq!(Filters::from_query(&filters.to_query()), filters);
-    }
-
-    #[test]
-    fn a_search_full_of_awkward_characters_round_trips_too() {
-        let filters = Filters {
-            q: "oslo & bergen? 100% + å".to_string(),
-            ..Default::default()
-        };
-
-        assert_eq!(Filters::from_query(&filters.to_query()), filters);
-    }
-
-    #[test]
-    fn a_chosen_region_travels_as_the_apis_bbox_parameter() {
-        let filters = Filters {
-            bbox: "10.75,59.91,11.25,60.12".to_string(),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            filters.to_query(),
-            "kind=recorded&bbox=10.75%2C59.91%2C11.25%2C60.12"
-        );
-        assert_eq!(Filters::from_query(&filters.to_query()), filters);
-    }
-
-    #[test]
-    fn a_chosen_region_counts_as_a_filter() {
-        // Otherwise an empty result reads "no trips yet" instead of "nothing
-        // matches your filters" (US-14).
-        let filters = Filters {
-            bbox: "10.75,59.91,11.25,60.12".to_string(),
-            ..Default::default()
-        };
-
-        assert!(filters.any_set());
-        assert!(!Filters::default().any_set());
-    }
-
-    #[test]
-    fn the_tidy_up_filters_travel_as_true_flags() {
-        // US-66: the server takes `true` or nothing.
-        let filters = Filters {
-            unnamed: true,
-            unplaced: true,
-            ..Default::default()
-        };
-
-        assert_eq!(
-            filters.to_query(),
-            "kind=recorded&unnamed=true&unplaced=true"
-        );
-        assert!(filters.any_set());
-    }
-
-    #[test]
-    fn each_tidy_up_filter_counts_as_a_filter_on_its_own() {
-        // Otherwise an empty result reads "no trips yet" instead of "nothing
-        // matches your filters" (US-66).
-        for filters in [
-            Filters {
-                unnamed: true,
-                ..Default::default()
-            },
-            Filters {
-                unplaced: true,
-                ..Default::default()
-            },
-        ] {
-            assert!(filters.any_set(), "{filters:?}");
-        }
-    }
-
-    #[test]
-    fn a_tidy_up_flag_with_another_value_is_not_applied() {
-        // A hand-edited URL yields a working list rather than the 400 the
-        // server would answer `unnamed=yes` with.
-        let filters = Filters::from_query("unnamed=yes&unplaced=true");
-
-        assert!(!filters.unnamed);
-        assert!(filters.unplaced);
-    }
-
-    #[test]
-    fn an_empty_query_is_the_default_view() {
-        assert_eq!(Filters::from_query(""), Filters::default());
-    }
-
-    #[test]
-    fn a_hand_edited_query_keeps_what_it_can() {
-        // A truncated or mistyped URL should still show a working list, the
-        // way the server's own parser treats a blank value.
-        let filters = Filters::from_query("kind=planned&activity=nonsense&q=oslo&bogus=1&novalue");
-
-        assert_eq!(filters.kind, TripKind::Planned);
-        assert_eq!(filters.activity, None);
-        assert_eq!(filters.q, "oslo");
-    }
-
-    #[test]
-    fn a_free_text_search_is_encoded_so_it_cannot_break_the_query_string() {
-        let filters = Filters {
-            q: "oslo & bergen?".to_string(),
-            ..Default::default()
-        };
-
-        assert_eq!(filters.to_query(), "kind=recorded&q=oslo+%26+bergen%3F");
-    }
-}
+mod tests;

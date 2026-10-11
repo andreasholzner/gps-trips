@@ -13,6 +13,7 @@ mod api;
 mod bulk_activity;
 mod bulk_tag;
 mod collection;
+mod collection_table;
 mod collection_track;
 mod config;
 mod delete;
@@ -28,6 +29,7 @@ mod interop;
 mod komoot;
 mod list;
 mod login;
+mod map_items;
 mod menu;
 mod overlay;
 mod pager;
@@ -382,8 +384,9 @@ fn shared_token(path: &str) -> Option<String> {
 #[cfg(test)]
 mod route_tests {
     use super::*;
+    use crate::filters::ListTab;
     use std::str::FromStr;
-    use trip_archive_types::{ActivityType, TripKind};
+    use trip_archive_types::ActivityType;
 
     /// The router owns the URL, and it percent-decodes the whole query string
     /// before handing it to `FromQuery`. That interacts with this crate's own
@@ -404,7 +407,7 @@ mod route_tests {
     #[test]
     fn a_plain_filter_round_trips_through_the_url() {
         round_trip(Filters {
-            kind: TripKind::Planned,
+            tab: ListTab::Planned,
             q: "oslo".to_string(),
             activity: Some(ActivityType::Hiking),
             tags: vec!["alpine".to_string()],

@@ -11,10 +11,10 @@
 //! write back into the one shared signal.
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, Tag, TripKind};
+use trip_archive_types::{ActivityType, Tag};
 
 use crate::activity_select::{choices, ActivitySelect, Choice};
-use crate::filters::Filters;
+use crate::filters::{Filters, ListTab};
 
 /// Everything the owner narrows the list with.
 ///
@@ -23,11 +23,16 @@ use crate::filters::Filters;
 /// visible; the dates, the distances, the tidy-up checkboxes (US-66) and
 /// the tags sit behind "More filters", so the table starts near the top of a desktop screen
 /// instead of below a stack of fieldsets (US-61).
+///
+/// On the Collections tab (US-87) only the name search is offered: the
+/// other filters are about trips, so they are not rendered there, and keep
+/// their values for when the owner switches back.
 #[component]
 pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
+    let about_trips = filters.read().tab != ListTab::Collections;
     rsx! {
         div { class: "filter-toolbar",
-            KindTabs { filters }
+            Tabs { filters }
             label {
                 "Search "
                 input {
@@ -36,14 +41,16 @@ pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                     oninput: move |event| filters.write().q = event.value(),
                 }
             }
-            ActivitySelect {
-                id: "filter-activity",
-                label: "Activity",
-                value: filters.read().activity.map_or("", |activity| activity.as_str()),
-                choices: choices(&[Choice::plain("", "— any —")]),
-                onchange: move |value: String| {
-                    filters.write().activity = value.parse::<ActivityType>().ok();
-                },
+            if about_trips {
+                ActivitySelect {
+                    id: "filter-activity",
+                    label: "Activity",
+                    value: filters.read().activity.map_or("", |activity| activity.as_str()),
+                    choices: choices(&[Choice::plain("", "— any —")]),
+                    onchange: move |value: String| {
+                        filters.write().activity = value.parse::<ActivityType>().ok();
+                    },
+                }
             }
             // Clearing is on the toolbar because it resets the filters behind
             // the disclosure too: a shared link that arrives narrowed by a
@@ -51,9 +58,8 @@ pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
             // it.
             button {
                 onclick: move |_| {
-                    // Clearing keeps the tab the owner is on.
-                    let kind = filters.read().kind;
-                    filters.set(Filters { kind, ..Default::default() });
+                    let cleared = filters.read().cleared();
+                    filters.set(cleared);
                 },
                 "Clear filters"
             }
@@ -62,26 +68,28 @@ pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
         // survives the re-render every keystroke causes (US-61 — "stays open
         // once opened"). Binding `open` to a signal that only `ontoggle` sets
         // would leave the owner unable to close it again.
-        details {
-            summary { "More filters" }
-            MoreFilters { filters, all_tags }
+        if about_trips {
+            details {
+                summary { "More filters" }
+                MoreFilters { filters, all_tags }
+            }
         }
     }
 }
 
-/// The Recorded/Planned tabs (US-32). Switching tabs writes only `kind`
-/// into the shared signal, so every other filter is kept — the same
-/// guarantee the server-rendered page's tab forms gave.
+/// The Recorded/Planned/Collections tabs (US-32, US-87). Switching tabs
+/// writes only the tab into the shared signal, so every other filter is
+/// kept — the same guarantee the server-rendered page's tab forms gave.
 #[component]
-fn KindTabs(filters: Signal<Filters>) -> Element {
+fn Tabs(filters: Signal<Filters>) -> Element {
     rsx! {
         nav { class: "tabs",
-            for kind in TripKind::ALL {
+            for tab in ListTab::ALL {
                 button {
-                    key: "{kind}",
-                    disabled: filters.read().kind == kind,
-                    onclick: move |_| filters.write().kind = kind,
-                    "{kind.label()}"
+                    key: "{tab.as_str()}",
+                    disabled: filters.read().tab == tab,
+                    onclick: move |_| filters.write().tab = tab,
+                    "{tab.label()}"
                 }
             }
         }
@@ -217,14 +225,15 @@ mod tests {
     // that switching keeps the other filters is KindTabs writing only
     // `kind` into the shared signal.
     #[test]
-    fn the_tabs_offer_recorded_and_planned_with_the_active_one_marked() {
+    fn the_tabs_offer_recorded_planned_and_collections_with_the_active_one_marked() {
         let html = render(|| {
             let filters = Signal::new(Filters::default());
-            rsx! { KindTabs { filters } }
+            rsx! { Tabs { filters } }
         });
 
         assert!(html.contains("Recorded"), "{html}");
         assert!(html.contains("Planned"), "{html}");
+        assert!(html.contains("Collections"), "US-87: {html}");
         assert!(
             html.contains("disabled"),
             "the active tab is not clickable: {html}"
@@ -250,7 +259,14 @@ mod tests {
             .split_once("<details")
             .expect("no disclosure: {html}")
             .0;
-        for expected in ["Recorded", "Planned", "Search", "Activity", "Clear filters"] {
+        for expected in [
+            "Recorded",
+            "Planned",
+            "Collections",
+            "Search",
+            "Activity",
+            "Clear filters",
+        ] {
             assert!(toolbar.contains(expected), "missing {expected}: {html}");
         }
         assert!(toolbar.contains("oslo"), "the search is prefilled: {html}");
@@ -333,6 +349,28 @@ mod tests {
                 "Unplaced photos"
             };
             assert!(ticked[0].contains(expected), "{html}");
+        }
+    }
+
+    // US-87: on the Collections tab the filters about trips are not offered,
+    // and their values wait in the signal, unrendered.
+    #[test]
+    fn us87_the_collections_tab_offers_the_name_search_alone() {
+        let html = render(|| {
+            let filters = Signal::new(Filters {
+                tab: ListTab::Collections,
+                q: "alp".to_string(),
+                from: "2026-07-01".to_string(),
+                ..Default::default()
+            });
+            rsx! { FilterBar { filters, all_tags: some_tags() } }
+        });
+
+        for expected in ["Collections", "Search", "alp", "Clear filters"] {
+            assert!(html.contains(expected), "missing {expected}: {html}");
+        }
+        for hidden in ["Activity", "More filters", "2026-07-01", "alpine"] {
+            assert!(!html.contains(hidden), "{hidden} is about trips: {html}");
         }
     }
 

@@ -28,8 +28,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-87                                    | The way back to a collection once its import is over; needs US-86's collections.                                                                      |
-| 2    | US-88, US-89, US-90, US-93, US-94, US-95 | Each builds only on US-86/87, not on each other, so their order is free; US-95 best comes early, so fewer waypoints are stored without their symbols. |
+| 1    | US-88, US-89, US-90, US-93, US-94, US-95 | Each builds only on US-86/87, not on each other, so their order is free; US-95 best comes early, so fewer waypoints are stored without their symbols. |
 
 ## Story index
 
@@ -130,7 +129,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-84](#us-84--activity-icons)                               | ✅     | Activity icons                               | [App & clients](#app--clients)                                      |
 | [US-85](#us-85--rename-a-tag)                                 | ✅     | Rename a tag                                 | [Tags](#tags)                                                       |
 | [US-86](#us-86--import-a-guide-book-collection)               | ✅     | Import a guide-book collection               | [Collections](#collections)                                         |
-| [US-87](#us-87--collections-tab)                              | 📋     | Collections tab                              | [Collections](#collections)                                         |
+| [US-87](#us-87--collections-tab)                              | ✅     | Collections tab                              | [Collections](#collections)                                         |
 | [US-88](#us-88--add-a-file-to-a-collection)                   | 📋     | Add a file to a collection                   | [Collections](#collections)                                         |
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | 📋     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
@@ -1324,18 +1323,20 @@ JSON API)
 
 ### US-87 — Collections tab
 
-**Planned 📋** — As the owner, the trip list has a Collections tab, so I find my guide books where
+**Done ✅** — As the owner, the trip list has a Collections tab, so I find my guide books where
 I find my trips.
 
 **Acceptance criteria:** A third tab after Recorded and Planned (US-32) lists every collection
 alphabetically, each with its activity icon (US-84) — none for a collection without an activity
 type — and its number of tracks and waypoints, linking to its collection page (US-86). The count
 above the list says how many collections match and how many there are (US-61). The name search
-narrows the list as on the other tabs; the other filters are about trips, so they are hidden on
-this tab and kept for when the owner switches back. The tab lives in the URL (US-52) and pages as
-the trip list does (US-63). The trip-list map shows the listed collections' tracks the way the
-other tabs show their trips, as marks or, zoomed in, as lines (US-63/73); a click on a line opens
-that track's trip page.
+narrows the list as on the other tabs, and so does the region (US-92): a collection is in it when
+one of its tracks or waypoints is. The other filters are about trips, so they are hidden on this
+tab and kept for when the owner switches back; "Clear filters" clears only the search and the
+region here. The tab lives in the URL (US-52) and pages as the trip list does (US-63). The
+trip-list map shows the listed collections' tracks the way the other tabs show their trips, as
+marks or, zoomed in, as lines (US-63/73); a click on a line opens that track's trip page. Its fit
+button reads "Fit to collections" here and takes in their tracks and waypoints.
 
 **Decisions:** US-87 → ADR-0028, ADR-0008 (the tab reads the
 collections from the JSON API), ADR-0025 (Rust decides what the map draws)

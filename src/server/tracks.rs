@@ -41,8 +41,9 @@ pub async fn handle_list_tracks(
     Ok(Json(repo::list_track_positions(&state.pool, &ids).await?))
 }
 
-/// The `ids` parameter as trip ids. Empty for an empty parameter; an empty
-/// part between commas is malformed rather than skipped.
+/// The `ids` parameter as record ids — trips, or collection tracks (US-87).
+/// Empty for an empty parameter; an empty part between commas is malformed
+/// rather than skipped.
 pub fn parse_ids(param: &str) -> Result<Vec<i64>, AppError> {
     if param.trim().is_empty() {
         return Ok(Vec::new());
@@ -52,7 +53,7 @@ pub fn parse_ids(param: &str) -> Result<Vec<i64>, AppError> {
         .map(|part| {
             part.trim().parse().map_err(|_| {
                 AppError::BadRequest(format!(
-                    "ids must be trip ids separated by commas, not {part:?}"
+                    "ids must be integers separated by commas, not {part:?}"
                 ))
             })
         })

@@ -2,8 +2,8 @@
 //! and deleted over the JSON API, apart from trips (ADR-0028).
 
 use trip_archive_types::{
-    CollectionDetail, CollectionEdit, CollectionPreview, CollectionTrackDetail,
-    CollectionTrackEdit, CreatedCollection, TripTrack, Waypoint,
+    CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview, CollectionSummary,
+    CollectionTrackDetail, CollectionTrackEdit, CreatedCollection, TripTrack, Waypoint,
 };
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
@@ -69,6 +69,45 @@ pub async fn create_collection(
         .await
         .map(|created| created.id)
         .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `GET /api/collections` — the collections the trip list's Collections tab
+/// lists (US-87), alphabetically. `query` is the name search and region as
+/// `Filters::collection_query` writes them, without a leading `?`.
+pub async fn list_collections(
+    archive: &ApiClient,
+    query: String,
+) -> Result<Vec<CollectionSummary>, ApiError> {
+    let separator = if query.is_empty() { "" } else { "?" };
+    get_json(
+        archive,
+        archive.url(&format!("/api/collections{separator}{query}")),
+    )
+    .await
+}
+
+/// `GET /api/collections/count` — how many collections there are (US-87).
+pub async fn count_collections(archive: &ApiClient) -> Result<usize, ApiError> {
+    let counted: CollectionCount = get_json(archive, archive.url("/api/collections/count")).await?;
+    Ok(usize::try_from(counted.count).unwrap_or_default())
+}
+
+/// `GET /api/collection-tracks?ids=…` — the positions of the collection
+/// tracks of `ids`, for the trip list's map to draw as lines (US-87). A track
+/// there is not is absent. No ids ask for nothing, without a request.
+pub async fn list_collection_track_positions(
+    archive: &ApiClient,
+    ids: &[i64],
+) -> Result<Vec<TripTrack>, ApiError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+    get_json(
+        archive,
+        archive.url(&format!("/api/collection-tracks?ids={ids}")),
+    )
+    .await
 }
 
 /// `GET /api/collections/:id` — the details and the tracks in file order. A
@@ -207,4 +246,55 @@ pub async fn delete_collection_track(archive: &ApiClient, id: i64) -> Result<(),
 /// original is (US-21).
 pub fn collection_track_gpx_url(archive: &ApiClient, id: i64) -> String {
     archive.url(&format!("/api/collection-tracks/{id}/gpx"))
+}
+
+// ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{import_collection, serve_test_archive, GUIDE_BOOK_GPX};
+
+    #[tokio::test]
+    async fn us87_the_collections_are_listed_narrowed_by_the_query() {
+        let (archive, _dir) = serve_test_archive().await;
+        let (lakes, _) = import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Lakes")]).await;
+        import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Passes")]).await;
+
+        let all = list_collections(&archive, String::new()).await.unwrap();
+        let narrowed = list_collections(&archive, "q=lak".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(all.len(), 2);
+        assert_eq!(narrowed.len(), 1);
+        assert_eq!(narrowed[0].id, lakes);
+        assert_eq!(narrowed[0].tracks.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn us87_the_collections_are_counted() {
+        let (archive, _dir) = serve_test_archive().await;
+        import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+        import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+
+        assert_eq!(count_collections(&archive).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn us87_the_tracks_in_view_are_read_in_one_request() {
+        let (archive, _dir) = serve_test_archive().await;
+        let (_, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+
+        let answer = list_collection_track_positions(&archive, &tracks[1..])
+            .await
+            .unwrap();
+
+        let ids: Vec<i64> = answer.iter().map(|track| track.id).collect();
+        assert_eq!(ids, tracks[1..]);
+        assert!(list_collection_track_positions(&archive, &[])
+            .await
+            .unwrap()
+            .is_empty());
+    }
 }

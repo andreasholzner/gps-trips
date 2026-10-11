@@ -44,8 +44,9 @@ pub use app_version::{AppVersion, VERSION};
 pub use bounding_box::BoundingBox;
 pub use climb::{Climb, INCLINE_WINDOW_M};
 pub use collection::{
-    CollectionDetail, CollectionEdit, CollectionPreview, CollectionTrackDetail,
-    CollectionTrackEdit, CollectionTrackSummary, CreatedCollection, Waypoint,
+    CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview, CollectionSummary,
+    CollectionTrackDetail, CollectionTrackEdit, CollectionTrackMark, CollectionTrackSummary,
+    CreatedCollection, Waypoint,
 };
 pub use error_response::ErrorResponse;
 pub use export_trip::ExportTrip;

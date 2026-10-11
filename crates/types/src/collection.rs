@@ -29,6 +29,44 @@ pub struct CollectionTrackSummary {
     pub descent_m: f64,
 }
 
+/// A collection as the trip list's Collections tab lists it (US-87), with
+/// what its map needs: where each of its tracks lies, and where its
+/// waypoints do.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollectionSummary {
+    pub id: i64,
+    pub name: String,
+    /// `None` for a book with no activity focus.
+    pub activity_type: Option<ActivityType>,
+    pub waypoint_count: i64,
+    /// In the order the file held them.
+    pub tracks: Vec<CollectionTrackMark>,
+    /// The rectangle around every waypoint, `[west, south, east, north]`;
+    /// `None` for a collection without waypoints.
+    pub waypoint_bounds: Option<[f64; 4]>,
+}
+
+/// What `GET /api/collections/count` answers with: how many collections
+/// there are, for the Collections tab's count line (US-87).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CollectionCount {
+    pub count: i64,
+}
+
+/// One of a listed collection's tracks: enough to mark it on the map, name
+/// its line and color it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollectionTrackMark {
+    pub id: i64,
+    pub name: String,
+    /// The activity the track goes by, as [`CollectionTrackSummary`]'s.
+    pub activity_type: ActivityType,
+    pub min_lat: f64,
+    pub min_lon: f64,
+    pub max_lat: f64,
+    pub max_lon: f64,
+}
+
 /// A collection track's page (US-86): only distance, ascent and descent —
 /// a guide book's timestamps are not when anyone went.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

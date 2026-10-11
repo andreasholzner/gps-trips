@@ -2,15 +2,15 @@
 
 use super::*;
 use crate::heat;
-use trip_archive_types::{TripKind, TripTrack};
+use trip_archive_types::{TripKind, TripSummary, TripTrack};
 
 /// A trip whose box is `[west, south, east, north]`, or none.
-fn trip(id: i64, activity_type: ActivityType, bbox: Option<[f64; 4]>) -> TripSummary {
+fn trip(id: i64, activity_type: ActivityType, bbox: Option<[f64; 4]>) -> MapItem {
     let [min_lon, min_lat, max_lon, max_lat] = match bbox {
         Some(corners) => corners.map(Some),
         None => [None; 4],
     };
-    TripSummary {
+    MapItem::from(&TripSummary {
         id,
         name: format!("Trip {id}"),
         activity_type,
@@ -25,10 +25,10 @@ fn trip(id: i64, activity_type: ActivityType, bbox: Option<[f64; 4]>) -> TripSum
         min_lon,
         max_lat,
         max_lon,
-    }
+    })
 }
 
-fn hike(id: i64, bbox: [f64; 4]) -> TripSummary {
+fn hike(id: i64, bbox: [f64; 4]) -> MapItem {
     trip(id, ActivityType::Hiking, Some(bbox))
 }
 
@@ -44,7 +44,7 @@ fn view(bounds: [f64; 4]) -> Viewport {
     Viewport { zoom: 12.0, bounds }
 }
 
-fn ids(trips: &[&TripSummary]) -> Vec<i64> {
+fn ids(trips: &[&MapItem]) -> Vec<i64> {
     trips.iter().map(|trip| trip.id).collect()
 }
 
@@ -229,4 +229,14 @@ fn a_track_already_asked_for_is_not_asked_for_again_while_it_loads() {
 
 fn ids_of(tracks: &[&TripTrack]) -> Vec<i64> {
     tracks.iter().map(|track| track.id).collect()
+}
+
+#[test]
+fn us87_zoomed_in_the_map_is_still_fitted_to_what_the_list_adds() {
+    let trips = [hike(1, [0.0, 0.0, 2.0, 2.0])];
+    let marks = heat::marks(&trips).also_fitting(&[[46.5, 9.2]]);
+
+    let drawn = lines(&trips, &[], &marks);
+
+    assert_eq!(drawn.fit, vec![[1.0, 1.0], [46.5, 9.2]]);
 }

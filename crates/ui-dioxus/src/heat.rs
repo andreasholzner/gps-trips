@@ -8,9 +8,10 @@
 //! handed (ADR-0025).
 
 use serde::Serialize;
-use trip_archive_types::{ActivityType, TripSummary};
+use trip_archive_types::ActivityType;
 
 use crate::activity_color;
+use crate::map_items::MapItem;
 
 /// How opaque a lone trip's mark is, and the floor no mark goes below. The
 /// floor keeps every mark visible on its own — zoomed in, where marks no
@@ -24,6 +25,10 @@ const MIN_OPACITY: f64 = 0.25;
 pub struct HeatMarks {
     pub marks: Vec<HeatMark>,
     pub opacity: f64,
+    /// `[lat, lon]` points "Fit to trips" takes in besides the marks — the
+    /// list's waypoints (US-87). The script adds the marks' own, so they are
+    /// not sent twice.
+    pub also_fit: Vec<[f64; 2]>,
 }
 
 /// One trip's mark.
@@ -42,31 +47,52 @@ impl HeatMarks {
     pub fn activities(&self) -> Vec<ActivityType> {
         self.marks.iter().map(|mark| mark.activity).collect()
     }
+
+    /// The same marks, fitted to `points` as well.
+    pub fn also_fitting(mut self, points: &[[f64; 2]]) -> Self {
+        self.also_fit.extend_from_slice(points);
+        self
+    }
+
+    /// Every point the map is fitted to: the marks', then the others.
+    pub fn fit_points(&self) -> Vec<[f64; 2]> {
+        self.marks
+            .iter()
+            .map(|mark| mark.at)
+            .chain(self.also_fit.iter().copied())
+            .collect()
+    }
 }
 
-/// One mark per trip, at the centre of its stored bounding box. The centre
+/// One mark per trip or collection track, at the centre of its stored
+/// bounding box. The centre
 /// rather than the box: a long tour's box spans hundreds of kilometres and
 /// says little about where the tour was, while its centre answers "roughly
 /// where". A trip with no box — a track without points — gets no mark.
 ///
 /// The opacity falls as `1/√n` with the number of marks, so a few trips
 /// stay clearly visible while hundreds do not merge into one solid blob.
-pub fn marks(trips: &[TripSummary]) -> HeatMarks {
-    let marks: Vec<HeatMark> = trips
+pub fn marks(items: &[MapItem]) -> HeatMarks {
+    let marks: Vec<HeatMark> = items
         .iter()
-        .filter_map(
-            |trip| match (trip.min_lat, trip.min_lon, trip.max_lat, trip.max_lon) {
-                (Some(min_lat), Some(min_lon), Some(max_lat), Some(max_lon)) => Some(HeatMark {
-                    at: [(min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0],
-                    activity: trip.activity_type,
-                    color: activity_color::color(trip.activity_type),
-                }),
-                _ => None,
-            },
-        )
+        .filter_map(|item| {
+            let bbox = item.bbox?;
+            Some(HeatMark {
+                at: [
+                    (bbox.min_lat + bbox.max_lat) / 2.0,
+                    (bbox.min_lon + bbox.max_lon) / 2.0,
+                ],
+                activity: item.activity_type,
+                color: activity_color::color(item.activity_type),
+            })
+        })
         .collect();
     let opacity = opacity_for(marks.len());
-    HeatMarks { marks, opacity }
+    HeatMarks {
+        marks,
+        opacity,
+        also_fit: Vec::new(),
+    }
 }
 
 fn opacity_for(count: usize) -> f64 {
@@ -79,18 +105,18 @@ fn opacity_for(count: usize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use trip_archive_types::{ActivityType, TripKind};
+    use trip_archive_types::{ActivityType, TripKind, TripSummary};
 
     fn positions(marks: &HeatMarks) -> Vec<[f64; 2]> {
         marks.marks.iter().map(|mark| mark.at).collect()
     }
 
-    fn a_trip(bbox: Option<[f64; 4]>) -> TripSummary {
+    fn a_trip(bbox: Option<[f64; 4]>) -> MapItem {
         let [min_lat, min_lon, max_lat, max_lon] = match bbox {
             Some(corners) => corners.map(Some),
             None => [None; 4],
         };
-        TripSummary {
+        MapItem::from(&TripSummary {
             id: 1,
             name: "Trip".to_string(),
             activity_type: ActivityType::Hiking,
@@ -105,7 +131,7 @@ mod tests {
             min_lon,
             max_lat,
             max_lon,
-        }
+        })
     }
 
     #[test]
@@ -147,6 +173,27 @@ mod tests {
     #[test]
     fn an_empty_list_draws_nothing() {
         assert!(marks(&[]).marks.is_empty());
+    }
+
+    #[test]
+    fn the_map_is_fitted_to_every_mark() {
+        let marks = marks(&[a_trip(Some([59.0, 10.0, 61.0, 12.0])), a_trip(None)]);
+
+        assert_eq!(marks.fit_points(), vec![[60.0, 11.0]]);
+        assert!(marks.also_fit.is_empty(), "the marks are not sent twice");
+    }
+
+    #[test]
+    fn us87_the_map_is_fitted_to_what_the_list_adds_too() {
+        let marks = marks(&[a_trip(Some([59.0, 10.0, 61.0, 12.0]))])
+            .also_fitting(&[[46.49, 9.17], [46.58, 9.84]]);
+
+        assert_eq!(
+            marks.fit_points(),
+            vec![[60.0, 11.0], [46.49, 9.17], [46.58, 9.84]]
+        );
+        assert_eq!(marks.also_fit, vec![[46.49, 9.17], [46.58, 9.84]]);
+        assert_eq!(marks.marks.len(), 1, "nothing more is marked");
     }
 
     #[test]

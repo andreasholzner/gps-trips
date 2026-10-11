@@ -370,6 +370,9 @@ pub async fn get_collection_track_gpx(
         .await
 }
 
+mod list;
+pub use list::{count_collections, list_collection_tracks_by_id, list_collections};
+
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]

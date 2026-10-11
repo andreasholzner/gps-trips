@@ -58,4 +58,5 @@ mod us83_tags_page;
 mod us85_rename_tag;
 mod us86_collections;
 mod us86_collections_kept_apart;
+mod us87_collections_tab;
 mod us9_delete_trip;

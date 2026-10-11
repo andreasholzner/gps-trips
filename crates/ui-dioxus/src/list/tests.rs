@@ -4,18 +4,19 @@
 //! (`tests/browser/trip_list.spec.mjs`).
 
 use super::*;
+use crate::filters::ListTab;
 use crate::test_support::{
     import_gpx, import_sample, render, render_against_archive, serve_test_archive, tag_trip,
     ALPS_GPX,
 };
-use trip_archive_types::{KomootPrivacy, TripKind};
+use trip_archive_types::KomootPrivacy;
 
 // ── US-61's counts ───────────────────────────────────────────────────
 
 #[test]
 fn the_counts_line_reports_both_numbers() {
     let html =
-        render(|| rsx! { TripCounts { shown: 1, total: 2, kind: TripKind::Recorded, page: 0 } });
+        render(|| rsx! { ListCounts { shown: 1, total: 2, tab: ListTab::Recorded, page: 0 } });
 
     assert!(html.contains("1 of 2 recorded trips"), "{html}");
 }
@@ -24,7 +25,7 @@ fn the_counts_line_reports_both_numbers() {
 fn a_list_longer_than_a_page_says_which_rows_are_shown() {
     // US-63: the owner's place, beside the counts it is part of.
     let html = render(|| {
-        rsx! { TripCounts { shown: 120, total: 312, kind: TripKind::Recorded, page: 2 } }
+        rsx! { ListCounts { shown: 120, total: 312, tab: ListTab::Recorded, page: 2 } }
     });
 
     assert!(
@@ -36,7 +37,7 @@ fn a_list_longer_than_a_page_says_which_rows_are_shown() {
 #[test]
 fn a_list_that_fits_on_a_page_needs_no_place() {
     let html = render(|| {
-        rsx! { TripCounts { shown: 50, total: 50, kind: TripKind::Recorded, page: 0 } }
+        rsx! { ListCounts { shown: 50, total: 50, tab: ListTab::Recorded, page: 0 } }
     });
 
     assert!(!html.contains("showing"), "{html}");
@@ -72,7 +73,7 @@ fn an_empty_tab_leaves_the_counts_to_the_empty_state() {
     // "0 recorded trips" would be a second, colder way of saying what
     // `EmptyState` already says in the owner's own terms.
     let html =
-        render(|| rsx! { TripCounts { shown: 0, total: 0, kind: TripKind::Recorded, page: 0 } });
+        render(|| rsx! { ListCounts { shown: 0, total: 0, tab: ListTab::Recorded, page: 0 } });
 
     assert!(!html.contains("trips"), "{html}");
 }
@@ -130,7 +131,7 @@ async fn the_counts_follow_the_selected_tab() {
     let html = render_against_archive(
         &archive,
         || {
-            rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
+            rsx! { TripList { filters: Filters { tab: ListTab::Planned, ..Default::default() } } }
         },
         |html| html.contains("planned trip"),
     )
@@ -167,7 +168,7 @@ async fn the_planned_tab_shows_only_planned_trips() {
     let html = render_against_archive(
         &archive,
         || {
-            rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
+            rsx! { TripList { filters: Filters { tab: ListTab::Planned, ..Default::default() } } }
         },
         |html| html.contains("Dream Route"),
     )
@@ -185,7 +186,7 @@ async fn an_empty_planned_tab_reports_no_planned_trips() {
     let html = render_against_archive(
         &archive,
         || {
-            rsx! { TripList { filters: Filters { kind: TripKind::Planned, ..Default::default() } } }
+            rsx! { TripList { filters: Filters { tab: ListTab::Planned, ..Default::default() } } }
         },
         |html| !html.contains("Loading"),
     )
