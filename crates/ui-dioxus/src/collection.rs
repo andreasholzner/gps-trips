@@ -235,6 +235,13 @@ pub fn changes(collection: &CollectionDetail, form: &CollectionForm) -> Collecti
 #[component]
 fn EditCollection(collection: CollectionDetail, on_saved: EventHandler<()>) -> Element {
     let mut open = use_signal(|| false);
+    // An editor left open would carry over to the next one the router shows
+    // through this same scope, aimed at its id with this one's values.
+    let id = collection.id;
+    use_effect(use_reactive!(|id| {
+        let _ = id;
+        open.set(false);
+    }));
 
     rsx! {
         button {
@@ -341,6 +348,13 @@ fn DeleteCollection(id: i64, tracks: usize, waypoints: usize) -> Element {
     let mut arming = use_signal(|| false);
     let mut deleting = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
+    // The router shows the next one through this same scope; an armed
+    // confirmation must not survive what it was armed on, as on a trip's.
+    use_effect(use_reactive!(|id| {
+        let _ = id;
+        arming.set(false);
+        error.set(None);
+    }));
 
     rsx! {
         if arming() {
