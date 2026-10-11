@@ -55,8 +55,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/collection-files/:id/gpx", get(handle_file_gpx))
 }
 
-/// The name a file is kept under: its own without any path, else a generic
-/// one.
+/// The name a file is kept under: its own without any path, else the
+/// default, so a collection named after it is called "Collection".
 pub(crate) fn file_name_of(raw: Option<&str>) -> String {
     let name = raw
         .unwrap_or_default()
@@ -65,7 +65,7 @@ pub(crate) fn file_name_of(raw: Option<&str>) -> String {
         .unwrap_or_default()
         .trim();
     if name.is_empty() {
-        "collection.gpx".to_string()
+        "Collection.gpx".to_string()
     } else {
         name.to_string()
     }

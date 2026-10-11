@@ -206,7 +206,7 @@ async fn handle_create(
 pub(crate) fn fallback_name(parsed: &ParsedCollection, file_name: &str) -> String {
     let suggested = parsed.suggested_name(file_name);
     if suggested.is_empty() {
-        "Guide book".to_string()
+        "Collection".to_string()
     } else {
         suggested
     }

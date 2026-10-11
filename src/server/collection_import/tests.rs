@@ -5,8 +5,8 @@ fn us88_a_file_is_kept_under_its_own_name_without_a_path() {
     assert_eq!(file_name_of(Some("Part 1.gpx")), "Part 1.gpx");
     assert_eq!(file_name_of(Some("C:\\books\\Part 1.gpx")), "Part 1.gpx");
     assert_eq!(file_name_of(Some("../../etc/passwd")), "passwd");
-    assert_eq!(file_name_of(Some("  ")), "collection.gpx");
-    assert_eq!(file_name_of(None), "collection.gpx");
+    assert_eq!(file_name_of(Some("  ")), "Collection.gpx");
+    assert_eq!(file_name_of(None), "Collection.gpx");
 }
 
 #[test]

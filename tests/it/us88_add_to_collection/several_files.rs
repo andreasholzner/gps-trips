@@ -218,3 +218,22 @@ async fn us88_adding_files_is_the_owners_alone() {
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
+
+// ── The default name ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn us88_a_collection_with_no_name_to_go_by_is_called_collection() {
+    let (app, _dir) = test_app().await;
+    // No name in the file, and none for the file.
+    let unnamed = book(&[(Some("Stage 1"), 46.5)], &[]);
+
+    let preview = crate::common::collection_request("/api/collections/preview", &unnamed, "", &[]);
+    let preview: trip_archive::models::CollectionPreview =
+        serde_json::from_slice(&body_bytes(crate::common::send(&app, preview).await).await)
+            .unwrap();
+    let staged = upload(&app, &[("", &unnamed), ("", &unnamed)], None).await;
+
+    assert_eq!(preview.suggested_name, "Collection");
+    assert_eq!(staged.suggested_name, "Collection");
+    assert_eq!(staged.files, ["Collection.gpx", "Collection.gpx"]);
+}
