@@ -193,6 +193,15 @@ async fn an_edit_changes_only_what_it_names() {
 }
 
 #[tokio::test]
+async fn whether_a_collection_exists_is_answered_without_reading_it() {
+    let db = TestDb::new().await;
+    let id = insert(&db.pool, None, &["Tour"], &[]).await;
+
+    assert!(collection_exists(&db.pool, id).await.unwrap());
+    assert!(!collection_exists(&db.pool, id + 1).await.unwrap());
+}
+
+#[tokio::test]
 async fn editing_or_deleting_what_does_not_exist_says_so() {
     let db = TestDb::new().await;
     let change = CollectionChange {

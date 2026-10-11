@@ -166,6 +166,15 @@ pub async fn get_collection(
     }))
 }
 
+/// Whether there is a collection `id`, for the routes that read what it
+/// holds rather than the collection itself.
+pub async fn collection_exists(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collection WHERE id = ?)")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+}
+
 /// A change to a collection's details; `None` leaves a field as it is.
 #[derive(Default)]
 pub struct CollectionChange<'a> {

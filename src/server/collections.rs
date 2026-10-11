@@ -283,10 +283,10 @@ async fn handle_waypoints(
 }
 
 async fn exists(state: &AppState, id: i64) -> Result<(), AppError> {
-    repo::get_collection(&state.pool, id)
-        .await?
-        .map(|_| ())
-        .ok_or(AppError::NotFound)
+    if !repo::collection_exists(&state.pool, id).await? {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
 }
 
 /// `GET /api/collection-tracks/:id` — one track's page.
