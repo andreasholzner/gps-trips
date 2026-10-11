@@ -100,7 +100,7 @@ async fn us88_several_files_end_where_adding_them_one_by_one_would() {
     .await;
     confirm(&app, &staged, json!({})).await;
 
-    let one_by_one = import_collection(&app, &files_in_turn[0].1, &[]).await;
+    let one_by_one = import_collection(&app, &files_in_turn[0].1, &[("name", "One by one")]).await;
     for (name, file) in &files_in_turn[1..] {
         let staged = upload(&app, &[(name, file)], Some(one_by_one)).await;
         confirm(&app, &staged, json!({})).await;
@@ -263,4 +263,19 @@ async fn us88_a_new_collection_with_everything_skipped_is_refused_and_the_upload
     assert!(listed.is_empty());
     // Another choice is still possible.
     confirm(&app, &staged, json!({})).await;
+}
+
+#[tokio::test]
+async fn us86_a_new_collection_of_several_files_may_not_take_a_name_another_has() {
+    let (app, _dir) = test_app().await;
+    import_collection(&app, &part(1, 46.5), &[("name", "Two parts")]).await;
+    let staged = upload(&app, &[("part-2.gpx", &part(2, 46.6))], None).await;
+
+    let response = confirm_response(&app, &staged, json!({}), json!({ "name": "two PARTS" })).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(error_message(response).await.contains("two PARTS"));
+
+    // Nothing was spent: the same upload confirms under a name of its own.
+    let response = confirm_response(&app, &staged, json!({}), json!({ "name": "Part two" })).await;
+    assert_eq!(response.status(), StatusCode::CREATED);
 }

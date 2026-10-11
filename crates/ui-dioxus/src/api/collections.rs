@@ -282,7 +282,7 @@ mod tests {
     async fn us87_the_collections_are_counted() {
         let (archive, _dir) = serve_test_archive().await;
         import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
-        import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+        import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Second")]).await;
 
         assert_eq!(count_collections(&archive).await.unwrap(), 2);
     }

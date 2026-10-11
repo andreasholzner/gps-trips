@@ -353,3 +353,77 @@ async fn collections_stay_out_of_the_trips() {
         .unwrap();
     assert_eq!(trips, 0);
 }
+
+// ── No two collections share a name (US-86) ─────────────────────────────────
+
+/// A collection named `name`, holding nothing.
+fn named(name: &str) -> NewCollection<'_> {
+    NewCollection {
+        name,
+        description: "",
+        activity_type: None,
+        files: &[],
+        tracks: &[],
+        waypoints: &[],
+    }
+}
+
+#[tokio::test]
+async fn us86_a_new_collection_may_not_take_a_name_another_has_whatever_the_case() {
+    let db = TestDb::new().await;
+    insert_collection(&db.pool, &named("Østerdalen"))
+        .await
+        .unwrap();
+
+    for taken in ["Østerdalen", "østerdalen", "ØSTERDALEN"] {
+        let err = insert_collection(&db.pool, &named(taken))
+            .await
+            .expect_err(taken);
+        assert!(
+            matches!(&err, CollectionError::NameTaken(name) if name == taken),
+            "{err}"
+        );
+        assert!(err.to_string().contains(taken), "names it: {err}");
+    }
+    assert_eq!(
+        count_collections(&db.pool).await.unwrap(),
+        1,
+        "nothing created"
+    );
+    insert_collection(&db.pool, &named("Østerdalen 2"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn us86_a_collection_may_not_be_renamed_to_a_name_another_has() {
+    let db = TestDb::new().await;
+    insert_collection(&db.pool, &named("Jotunheimen"))
+        .await
+        .unwrap();
+    let other = insert_collection(&db.pool, &named("Rondane"))
+        .await
+        .unwrap();
+
+    let rename = CollectionChange {
+        name: Some("jotunheimen"),
+        description: Some("changed too"),
+        ..Default::default()
+    };
+    let err = update_collection(&db.pool, other, &rename)
+        .await
+        .expect_err("a taken name");
+    assert!(matches!(err, CollectionError::NameTaken(_)), "{err}");
+    let kept = get_collection(&db.pool, other).await.unwrap().unwrap();
+    assert_eq!(
+        (kept.name.as_str(), kept.description.as_str()),
+        ("Rondane", "")
+    );
+
+    // Its own name, in another case, is no other collection's.
+    let recased = CollectionChange {
+        name: Some("RONDANE"),
+        ..Default::default()
+    };
+    assert!(update_collection(&db.pool, other, &recased).await.unwrap());
+}

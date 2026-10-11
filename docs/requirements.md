@@ -1293,7 +1293,9 @@ description are prefilled from what the file says about itself — its metadata,
 waypoints carry, its file name — and can be changed before importing and later on the collection
 page. With an activity type, every track takes it; without one, for a book with no activity focus,
 a track is `unknown` until given its own. Changing the collection's activity type changes every
-track that has none of its own.
+track that has none of its own. No two collections share a name, whatever the case: importing a
+collection under a name another one has, or renaming one to it, is refused with a message naming
+it, and nothing is created or changed.
 
 **Tracks:** a track's name is the one in the file, else the collection's name and the track's
 position in the file. On its trip page (US-7) a collection track shows its map and elevation

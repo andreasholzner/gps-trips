@@ -289,8 +289,8 @@ async fn us87_ids_that_are_not_integers_are_refused() {
 async fn us87_the_collections_are_counted_without_being_listed() {
     let (app, _dir) = test_app().await;
     let empty: CollectionCount = read_json(&app, "/api/collections/count").await;
-    for _ in 0..3 {
-        import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    for name in ["One", "Two", "Three"] {
+        import_collection(&app, GUIDE_SINGLE_GPX, &[("name", name)]).await;
     }
 
     let counted: CollectionCount = read_json(&app, "/api/collections/count").await;

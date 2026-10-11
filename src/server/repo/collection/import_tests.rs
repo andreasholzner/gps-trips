@@ -42,9 +42,14 @@ fn waypoint(name: &str) -> NewWaypoint<'_> {
     }
 }
 
-/// A collection with tracks "A" and "B" and waypoints "Hut" (on "A") and
-/// "Pass", imported from one file.
+/// A collection "Lakes" with tracks "A" and "B" and waypoints "Hut" (on
+/// "A") and "Pass", imported from one file.
 async fn a_collection(pool: &SqlitePool) -> i64 {
+    a_collection_named(pool, "Lakes").await
+}
+
+/// [`a_collection`] under another name — no two share one (US-86).
+async fn a_collection_named(pool: &SqlitePool, name: &str) -> i64 {
     let (stats, geojson) = derived(46.5);
     let track = |name| NewCollectionTrack {
         name,
@@ -57,7 +62,7 @@ async fn a_collection(pool: &SqlitePool) -> i64 {
     insert_collection(
         pool,
         &NewCollection {
-            name: "Lakes",
+            name,
             description: "",
             activity_type: None,
             files: &[NewCollectionFile {
@@ -388,7 +393,7 @@ async fn us88_replacing_the_whole_collection_keeps_only_its_details() {
 async fn us88_another_collections_items_are_never_touched() {
     let db = TestDb::new().await;
     let one = a_collection(&db.pool).await;
-    let other = a_collection(&db.pool).await;
+    let other = a_collection_named(&db.pool, "Other lakes").await;
     let others = held(&db.pool, other).await;
 
     apply(

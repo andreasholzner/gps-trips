@@ -58,6 +58,7 @@ mod us83_tags_page;
 mod us85_rename_tag;
 mod us86_collections;
 mod us86_collections_kept_apart;
+mod us86_unique_collection_names;
 mod us87_collections_tab;
 mod us88_add_to_collection;
 mod us89_export_collections_api;

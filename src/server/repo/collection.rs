@@ -19,6 +19,38 @@ use super::{to_rfc3339, trip::track_positions, GpxDownload};
 /// collection's changes every track without one of its own.
 pub(super) const TRACK_ACTIVITY: &str = "COALESCE(k.activity_type, c.activity_type, 'unknown')";
 
+/// A refused write to a collection's details.
+#[derive(Debug, thiserror::Error)]
+pub enum CollectionError {
+    /// No two collections share a name, whatever the case (US-86): the
+    /// QMapShack export gives each its own folder by name (US-89).
+    #[error("A collection named \"{0}\" exists already")]
+    NameTaken(String),
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
+}
+
+/// Refuse `name` if a collection other than `except` goes by it, whatever
+/// the case — a full Unicode case-fold, as the collection search's. Read in
+/// the write transaction, so no other write can take the name meanwhile.
+async fn check_name_free(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    except: Option<i64>,
+) -> Result<(), CollectionError> {
+    let folded = name.to_lowercase();
+    let names: Vec<(i64, String)> = sqlx::query_as("SELECT id, name FROM collection")
+        .fetch_all(&mut **tx)
+        .await?;
+    if names
+        .iter()
+        .any(|(id, other)| Some(*id) != except && other.to_lowercase() == folded)
+    {
+        return Err(CollectionError::NameTaken(name.to_string()));
+    }
+    Ok(())
+}
+
 /// A collection with everything it holds, ready to be stored in one go.
 pub struct NewCollection<'a> {
     pub name: &'a str,
@@ -53,11 +85,12 @@ pub struct NewWaypoint<'a> {
 }
 
 /// Store a collection with its tracks and waypoints in one transaction, so
-/// a failed import leaves nothing behind. Returns the new collection's id.
+/// a failed import leaves nothing behind. Returns the new collection's id;
+/// refused for a name another collection has.
 pub async fn insert_collection(
     pool: &SqlitePool,
     collection: &NewCollection<'_>,
-) -> Result<i64, sqlx::Error> {
+) -> Result<i64, CollectionError> {
     let mut tx = db::begin_write(pool).await?;
     let id = insert_collection_in_tx(&mut tx, collection).await?;
     tx.commit().await?;
@@ -68,7 +101,8 @@ pub async fn insert_collection(
 pub async fn insert_collection_in_tx(
     tx: &mut Transaction<'_, Sqlite>,
     collection: &NewCollection<'_>,
-) -> Result<i64, sqlx::Error> {
+) -> Result<i64, CollectionError> {
+    check_name_free(tx, collection.name, None).await?;
     let id = sqlx::query(
         "INSERT INTO collection (name, description, activity_type, created_at) VALUES (?,?,?,?)",
     )
@@ -238,12 +272,17 @@ pub struct CollectionChange<'a> {
     pub activity_type: Option<Option<ActivityType>>,
 }
 
-/// Change a collection's details. `false` if there is no such collection.
+/// Change a collection's details. `false` if there is no such collection;
+/// refused, changing nothing, for a name another collection has.
 pub async fn update_collection(
     pool: &SqlitePool,
     id: i64,
     change: &CollectionChange<'_>,
-) -> Result<bool, sqlx::Error> {
+) -> Result<bool, CollectionError> {
+    let mut tx = db::begin_write(pool).await?;
+    if let Some(name) = change.name {
+        check_name_free(&mut tx, name, Some(id)).await?;
+    }
     let result = sqlx::query(
         "UPDATE collection SET \
              name = COALESCE(?, name), \
@@ -256,8 +295,9 @@ pub async fn update_collection(
     .bind(change.activity_type.is_some())
     .bind(change.activity_type.flatten())
     .bind(id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(result.rows_affected() > 0)
 }
 

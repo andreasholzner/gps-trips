@@ -56,6 +56,18 @@ pub enum AppError {
     Komoot(#[from] crate::server::komoot::KomootError),
 }
 
+impl From<crate::server::repo::CollectionError> for AppError {
+    /// A taken collection name is the request's to fix (US-86) — a 400, not
+    /// a 409, which the import review reads as "the collection changed".
+    fn from(err: crate::server::repo::CollectionError) -> Self {
+        use crate::server::repo::CollectionError;
+        match err {
+            CollectionError::NameTaken(_) => AppError::BadRequest(err.to_string()),
+            CollectionError::Database(e) => AppError::Database(e),
+        }
+    }
+}
+
 impl AppError {
     /// The status this is reported as, and the archive's own account of it.
     ///

@@ -43,11 +43,14 @@ test.afterAll(async ({ request }) => {
   }
 });
 
-/// Seed a collection through the real API and return its id.
+/// Seed a collection through the real API and return its id. No two
+/// collections share a name (US-86), and every spec seeds the same files
+/// into one archive, so each gets a name of its own unless one is given.
 async function importCollection(request, gpx, fields = {}) {
   const response = await request.post("/api/collections", {
     multipart: {
       gpx: { name: "book.gpx", mimeType: "application/gpx+xml", buffer: gpx },
+      name: `Book ${Math.random().toString(36).slice(2, 8)}`,
       ...fields,
     },
   });
