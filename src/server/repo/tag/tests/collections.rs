@@ -208,3 +208,43 @@ async fn us93_renaming_or_deleting_a_tag_reaches_collections_and_tracks() {
         .is_empty());
     assert!(get_collection(&db.pool, book).await.unwrap().is_some());
 }
+
+#[tokio::test]
+async fn us93_tagging_by_name_creates_the_tag_and_links_it() {
+    let db = TestDb::new().await;
+    let (book, _) = insert_book(&db.pool, "Alpencross").await;
+
+    let tagged = add_tag_named(&db.pool, Tagged::Collection(book), "alps")
+        .await
+        .unwrap()
+        .expect("the collection exists");
+
+    assert_eq!(tagged.name, "alps");
+    assert_eq!(
+        list_tags_of(&db.pool, Tagged::Collection(book))
+            .await
+            .unwrap(),
+        vec![tagged]
+    );
+}
+
+#[tokio::test]
+async fn us93_tagging_something_gone_by_name_creates_nothing() {
+    // Checked in the same transaction as the link is made, so something
+    // deleted after a request's own check is not found rather than a
+    // foreign-key failure — and leaves no tag behind.
+    let db = TestDb::new().await;
+
+    for gone in [
+        Tagged::Trip(999),
+        Tagged::Collection(999),
+        Tagged::CollectionTrack(999),
+    ] {
+        assert_eq!(
+            add_tag_named(&db.pool, gone, "alps").await.unwrap(),
+            None,
+            "{gone:?}"
+        );
+    }
+    assert!(list_all_tags(&db.pool).await.unwrap().is_empty());
+}

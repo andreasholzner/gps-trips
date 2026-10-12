@@ -4,7 +4,7 @@
 //! separate from `trip`/`photo`, mirroring how each domain gets its own repo
 //! submodule.
 
-use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool};
 use time::OffsetDateTime;
 
 use crate::models::{Tag, TagOverview, TagShare};
@@ -47,8 +47,11 @@ impl Tagged {
     }
 }
 
-/// Whether what is to be tagged exists.
-pub async fn tagged_exists(pool: &SqlitePool, tagged: Tagged) -> Result<bool, sqlx::Error> {
+/// Whether what is to be tagged exists, on the pool or a transaction.
+pub async fn tagged_exists<'e, E>(executor: E, tagged: Tagged) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Sqlite>,
+{
     let (table, id) = match tagged {
         Tagged::Trip(id) => ("trip", id),
         Tagged::Collection(id) => ("collection", id),
@@ -58,8 +61,45 @@ pub async fn tagged_exists(pool: &SqlitePool, tagged: Tagged) -> Result<bool, sq
         "SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?)"
     ))
     .bind(id)
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await
+}
+
+/// Tag what `tagged` names with the tag `name` (already normalized by the
+/// caller), creating the tag on demand (US-33, US-93). One transaction
+/// checks that it exists, creates the tag and links it, so something
+/// deleted meanwhile is `None` — and leaves no new tag behind — rather than
+/// a foreign-key failure.
+pub async fn add_tag_named(
+    pool: &SqlitePool,
+    tagged: Tagged,
+    name: &str,
+) -> Result<Option<Tag>, sqlx::Error> {
+    let mut tx = db::begin_write(pool).await?;
+    if !tagged_exists(&mut *tx, tagged).await? {
+        return Ok(None);
+    }
+    let tag_id: i64 = sqlx::query_scalar(
+        r#"INSERT INTO tag (name) VALUES (?)
+           ON CONFLICT(name) DO UPDATE SET name = excluded.name
+           RETURNING id"#,
+    )
+    .bind(name)
+    .fetch_one(&mut *tx)
+    .await?;
+    let (table, column, id) = tagged.link();
+    sqlx::query(&format!(
+        "INSERT OR IGNORE INTO {table} ({column}, tag_id) VALUES (?, ?)"
+    ))
+    .bind(id)
+    .bind(tag_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Some(Tag {
+        id: tag_id,
+        name: name.to_string(),
+    }))
 }
 
 /// Link a tag to what it is put on. Idempotent: tagging with a tag already
@@ -228,8 +268,9 @@ pub async fn rename_tag(pool: &SqlitePool, id: i64, name: &str) -> Result<Rename
 /// Delete tag `id` (US-83), in one transaction. A share naming no other tag
 /// is stopped — its row goes, as `stop_share` would take it — whether or not
 /// it has expired; the tag's own row then goes, and the cascade takes it off
-/// every trip and out of every other share, which keeps its other tags in
-/// their order. No trip is touched. `false` if there is no such tag.
+/// every trip, collection and collection track (US-93) and out of every
+/// other share, which keeps its other tags in their order. Nothing it was on
+/// is otherwise touched. `false` if there is no such tag.
 pub async fn delete_tag(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
     let mut tx = db::begin_write(pool).await?;
     sqlx::query(
@@ -278,7 +319,7 @@ pub async fn find_tag_ids(
 /// Whether every id in `trip_ids` is an existing trip's id (US-34's
 /// all-or-nothing precondition for a bulk tag apply, checked by the caller
 /// before `bulk_add_trip_tags` — the same "check trip existence first"
-/// ordering `require_trip` already uses for the single-trip tag handlers).
+/// ordering `require` already uses for the single-item tag handlers).
 pub async fn trips_exist(pool: &SqlitePool, trip_ids: &[i64]) -> Result<bool, sqlx::Error> {
     for &trip_id in trip_ids {
         let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM trip WHERE id = ?")

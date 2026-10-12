@@ -82,9 +82,11 @@ async fn add_tag(
 ) -> Result<(StatusCode, Json<Tag>), AppError> {
     require(&state, tagged).await?;
     let name = normalize_tag_name(&body.name).map_err(AppError::BadRequest)?;
-    let tag_id = repo::get_or_create_tag(&state.pool, &name).await?;
-    repo::add_tag(&state.pool, tagged, tag_id).await?;
-    Ok((StatusCode::CREATED, Json(Tag { id: tag_id, name })))
+    // Checked again where the link is made: it may have been deleted since.
+    let tag = repo::add_tag_named(&state.pool, tagged, &name)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok((StatusCode::CREATED, Json(tag)))
 }
 
 /// `DELETE …/:id/tags/:tag_id` — untag it. The `tag` row itself is left in
@@ -170,7 +172,7 @@ pub struct BulkAddTagsRequest {
 /// POST `/api/trips/tags` — from the list page's multi-select, tag every trip
 /// in `trip_ids` with every name in `names` in one request (US-34). 400 if
 /// either list is empty. Trip existence is checked before names are
-/// validated, mirroring `handle_add_trip_tag`'s single-trip ordering: if any
+/// validated, mirroring the single-trip ordering of `add_tag` above: if any
 /// `trip_ids` entry doesn't exist, the whole request 404s and nothing is
 /// created or linked. Every name is normalized (trimmed, lowercased); the
 /// first invalid one 400s the whole request, same as the single-tag handler.
