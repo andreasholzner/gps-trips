@@ -130,9 +130,81 @@ pub async fn delete_tag(archive: &ApiClient, id: i64) -> Result<(), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::list_tags;
     use crate::test_support::{
         import_collection, import_sample, serve_test_archive, tag_trip, GUIDE_BOOK_GPX,
     };
+
+    // ── US-33: tagging a trip from its detail screen ─────────────────────
+
+    #[tokio::test]
+    async fn a_new_tag_is_created_by_using_it_and_normalized_as_it_is_stored() {
+        // "Tag names are normalized (trimmed, lowercased) so casing doesn't
+        // create duplicates."
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+
+        let created = add_tag(&archive, Tagged::Trip(id), "  Alpine  ")
+            .await
+            .expect("tag");
+        assert_eq!(created.name, "alpine");
+
+        // The same name in another casing joins the tag that exists rather
+        // than making a second one.
+        add_tag(&archive, Tagged::Trip(id), "ALPINE")
+            .await
+            .expect("tag");
+        let names: Vec<String> = list_tags(&archive)
+            .await
+            .expect("tags")
+            .into_iter()
+            .map(|tag| tag.name)
+            .collect();
+        assert_eq!(names, vec!["alpine".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn untagging_a_trip_keeps_the_tag_for_next_time() {
+        // "Untagging a trip keeps the now-unused tag row around, suggestible
+        // again later."
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+        let tag = add_tag(&archive, Tagged::Trip(id), "alpine")
+            .await
+            .expect("tag");
+
+        remove_tag(&archive, Tagged::Trip(id), tag.id)
+            .await
+            .expect("untag");
+
+        assert!(
+            list_tags_of(&archive, Tagged::Trip(id))
+                .await
+                .expect("trip tags")
+                .is_empty(),
+            "the trip is untagged"
+        );
+        assert_eq!(
+            list_tags(&archive).await.expect("tags").len(),
+            1,
+            "the tag itself outlives the trip that used it"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_name_the_archive_refuses_is_reported_in_its_own_words() {
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+
+        let err = add_tag(&archive, Tagged::Trip(id), "day trip")
+            .await
+            .expect_err("a name with a space is not a tag");
+
+        assert!(err.to_string().contains("cannot contain spaces"), "{err}");
+        assert!(list_tags(&archive).await.expect("tags").is_empty());
+    }
+
+    // ── US-93: tagging a collection and a collection track ──────────
 
     #[tokio::test]
     async fn us93_a_collection_and_its_track_are_tagged_and_counted_apart() {
