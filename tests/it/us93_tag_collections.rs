@@ -1,5 +1,5 @@
 //! US-93 — as the owner, I tag collections and their tracks, so I organize
-//! guide books the way I organize my trips.
+//! collections the way I organize my trips.
 //!
 //! Acceptance criteria, and where each is asserted below:
 //!
@@ -31,7 +31,7 @@ use trip_archive::models::{CollectionDetail, CreatedShare, ShareOverview, Tag, T
 
 use crate::common::{
     body_string, delete, get, import_collection, import_sample, json_request, send,
-    send_unauthenticated, test_app, GUIDE_BOOK_GPX,
+    send_unauthenticated, test_app, COLLECTION_GPX,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,9 +44,9 @@ async fn read_json<T: serde::de::DeserializeOwned>(app: &Router, uri: &str) -> T
     serde_json::from_str(&body).unwrap_or_else(|e| panic!("{uri}: {e}: {body}"))
 }
 
-/// A guide book named `name`: its id and its tracks' ids.
-async fn book(app: &Router, name: &str) -> (i64, Vec<i64>) {
-    let id = import_collection(app, GUIDE_BOOK_GPX, &[("name", name)]).await;
+/// A collection named `name`: its id and its tracks' ids.
+async fn a_collection(app: &Router, name: &str) -> (i64, Vec<i64>) {
+    let id = import_collection(app, COLLECTION_GPX, &[("name", name)]).await;
     let detail: CollectionDetail = read_json(app, &format!("/api/collections/{id}")).await;
     (id, detail.tracks.iter().map(|track| track.id).collect())
 }
@@ -83,7 +83,7 @@ fn on_track(id: i64) -> String {
 #[tokio::test]
 async fn us93_a_collection_and_a_track_are_tagged_and_untagged_as_a_trip_is() {
     let (app, _dir) = test_app().await;
-    let (id, tracks) = book(&app, "Lakes").await;
+    let (id, tracks) = a_collection(&app, "Lakes").await;
 
     // Normalized as a trip's tag is, and created on demand.
     let alps = tag(&app, &on_collection(id), "  Alps ").await;
@@ -108,7 +108,7 @@ async fn us93_a_collection_and_a_track_are_tagged_and_untagged_as_a_trip_is() {
 #[tokio::test]
 async fn us93_a_name_us33_refuses_is_refused_and_an_unknown_target_is_not_found() {
     let (app, _dir) = test_app().await;
-    let (id, tracks) = book(&app, "Lakes").await;
+    let (id, tracks) = a_collection(&app, "Lakes").await;
 
     for uri in [on_collection(id), on_track(tracks[0])] {
         let response = tag_response(&app, &uri, "day trip").await;
@@ -129,7 +129,7 @@ async fn us93_a_name_us33_refuses_is_refused_and_an_unknown_target_is_not_found(
 #[tokio::test]
 async fn us93_tags_do_not_pass_between_a_collection_and_its_tracks() {
     let (app, _dir) = test_app().await;
-    let (id, tracks) = book(&app, "Lakes").await;
+    let (id, tracks) = a_collection(&app, "Lakes").await;
 
     tag(&app, &on_collection(id), "book").await;
     tag(&app, &on_track(tracks[1]), "summit").await;
@@ -145,8 +145,8 @@ async fn us93_tags_do_not_pass_between_a_collection_and_its_tracks() {
 async fn us93_the_tags_screen_counts_collections_and_their_tracks() {
     let (app, _dir) = test_app().await;
     let trip = import_sample(&app).await;
-    let (tagged, tagged_tracks) = book(&app, "Lakes").await;
-    let (_, other_tracks) = book(&app, "Passes").await;
+    let (tagged, tagged_tracks) = a_collection(&app, "Lakes").await;
+    let (_, other_tracks) = a_collection(&app, "Passes").await;
     tag(&app, &format!("/api/trips/{trip}/tags"), "alps").await;
     tag(&app, &on_collection(tagged), "alps").await;
     // Counted with its collection, not again.
@@ -171,7 +171,7 @@ async fn us93_the_tags_screen_counts_collections_and_their_tracks() {
 #[tokio::test]
 async fn us93_renaming_and_deleting_a_tag_reach_collections_and_tracks() {
     let (app, _dir) = test_app().await;
-    let (id, tracks) = book(&app, "Lakes").await;
+    let (id, tracks) = a_collection(&app, "Lakes").await;
     let alps = tag(&app, &on_collection(id), "alps").await;
     tag(&app, &on_track(tracks[0]), "alps").await;
 
@@ -203,7 +203,7 @@ async fn us93_renaming_and_deleting_a_tag_reach_collections_and_tracks() {
 async fn us93_what_is_about_trips_does_not_see_collections() {
     let (app, _dir) = test_app().await;
     let trip = import_sample(&app).await;
-    let (id, tracks) = book(&app, "Lakes").await;
+    let (id, tracks) = a_collection(&app, "Lakes").await;
     tag(&app, &format!("/api/trips/{trip}/tags"), "norway").await;
     tag(&app, &on_collection(id), "alps").await;
     tag(&app, &on_track(tracks[0]), "alps").await;

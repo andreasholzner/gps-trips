@@ -1,5 +1,5 @@
-//! A guide book's track (US-86): its map, elevation profile and waypoints,
-//! drawn by the trip page's own views, and only the figures a guide book can
+//! A collection's track (US-86): its map, elevation profile and waypoints,
+//! drawn by the trip page's own views, and only the figures a collection can
 //! give — distance, ascent and descent. Its timestamps, where the file had
 //! any, are not when anyone went, so no date, duration or speed is shown.
 //! Its name and activity can be edited, an activity set here overriding the
@@ -56,7 +56,7 @@ pub fn CollectionTrack(id: i64) -> Element {
     }
 }
 
-/// The track's name, its guide book, and its figures.
+/// The track's name, its collection, and its figures.
 #[component]
 fn TrackFigures(track: CollectionTrackDetail) -> Element {
     rsx! {
@@ -68,7 +68,7 @@ fn TrackFigures(track: CollectionTrackDetail) -> Element {
                 "{track.name}"
             }
             p { id: "collection-of-track",
-                "From the guide book "
+                "From the collection "
                 Link { to: Route::Collection { id: track.collection_id }, "{track.collection_name}" }
             }
         }
@@ -77,11 +77,6 @@ fn TrackFigures(track: CollectionTrackDetail) -> Element {
                 dt { "Activity" }
                 dd { id: "trip-activity",
                     "{track.activity_type.label()}"
-                    // An activity the track only takes from its collection
-                    // changes with it; one of its own does not.
-                    if track.own_activity.is_none() && track.activity_type != ActivityType::Unknown {
-                        small { " (the guide book's)" }
-                    }
                 }
             }
             div {
@@ -133,11 +128,21 @@ fn TrackMapSection(id: i64, activity: ActivityType) -> Element {
     }
 }
 
+/// The edit form's activities: first going by the collection's, under its
+/// icon, then every activity.
+pub fn activity_choices(track: &CollectionTrackDetail) -> Vec<Choice> {
+    choices(&[Choice {
+        value: "",
+        label: "Collection",
+        icon: track.collection_activity,
+    }])
+}
+
 /// The edit form's fields, as the inputs hold them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackForm {
     pub name: String,
-    /// The track's own activity's wire value, or empty for the guide book's.
+    /// The track's own activity's wire value, or empty for the collection's.
     pub activity: String,
 }
 
@@ -241,7 +246,7 @@ fn EditCollectionTrackForm(
                 id: "edit-activity",
                 label: "Activity",
                 value: form.read().activity.clone(),
-                choices: choices(&[Choice::plain("", "The guide book's")]),
+                choices: activity_choices(&track),
                 onchange: move |value| form.write().activity = value,
             }
             button { r#type: "submit", "Save" }
@@ -254,7 +259,7 @@ fn EditCollectionTrackForm(
 }
 
 /// Deleting one track, after a confirmation; the screen goes back to its
-/// guide book.
+/// collection.
 #[component]
 fn DeleteCollectionTrack(id: i64, collection_id: i64) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -272,7 +277,7 @@ fn DeleteCollectionTrack(id: i64, collection_id: i64) -> Element {
     rsx! {
         if arming() {
             p { class: "confirm",
-                "Delete this track? Its waypoints stay with the guide book. This cannot be undone. "
+                "Delete this track? Its waypoints stay with the collection. This cannot be undone. "
                 button {
                     r#type: "button",
                     class: "danger",

@@ -1860,7 +1860,7 @@ ADR-0008 (the JSON API it consumes)
 
 **Done ✅** — As the owner, the things I do occasionally live in one menu, not on the pages.
 
-**Acceptance criteria:** "Import a trip", "Sync with Komoot", "Sign out" and a way back to "All
+**Acceptance criteria:** "Import", "Sync with Komoot", "Sign out" and a way back to "All
 trips" move into a single menu in the app's header, reachable from every screen — today the first
 two sit on the trip list (US-43/US-44), the third floats above the router, and the way home is a
 link the detail screen carries of its own. On a narrow screen the menu is a burger that opens; from

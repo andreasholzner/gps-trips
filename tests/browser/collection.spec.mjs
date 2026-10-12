@@ -1,4 +1,4 @@
-// Importing a guide book as a collection, browsing it (US-86) and tagging it
+// Importing a collection, browsing it (US-86) and tagging it
 // and its tracks (US-93), driven as the owner drives it.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
@@ -20,11 +20,11 @@ const fixture = (name) =>
 
 /// Three tracks — one without a name — and two waypoints, the first with a
 /// symbol (`Triangle, Blue`), under the file's own name and description.
-const GUIDE_BOOK_GPX = fixture("guide_book.gpx");
+const COLLECTION_GPX = fixture("collection.gpx");
 
 /// One tour, whose two waypoints belong to its track; the first, with the
 /// symbol `Parking Area`.
-const GUIDE_SINGLE_GPX = fixture("guide_single.gpx");
+const COLLECTION_SINGLE_GPX = fixture("collection_single.gpx");
 
 /// A waypoint's marker, whether its symbol's icon (US-95) or the plain one.
 const waypointsOn = (page, map) => page.locator(`${map} .waypoint-mark, ${map} .waypoint-symbol`);
@@ -54,13 +54,13 @@ async function importCollection(request, gpx, fields = {}) {
       ...fields,
     },
   });
-  expect(response.status(), "importing a guide book").toBe(201);
+  expect(response.status(), "importing a collection").toBe(201);
   const { id } = await response.json();
   created.push(id);
   return id;
 }
 
-test("a guide book's file is imported as a collection and lands on its page (US-86)", async ({
+test("a GPX file is imported as a collection and lands on its page (US-86)", async ({
   page,
   request,
 }) => {
@@ -69,11 +69,11 @@ test("a guide book's file is imported as a collection and lands on its page (US-
   await page.locator("#import-gpx").setInputFiles({
     name: "Lakes.gpx",
     mimeType: "application/gpx+xml",
-    buffer: GUIDE_BOOK_GPX,
+    buffer: COLLECTION_GPX,
   });
 
   // What the file says about itself, prefilled.
-  await expect(page.locator("#guide-book-counts")).toHaveText(
+  await expect(page.locator("#collection-counts")).toHaveText(
     "The file holds 3 tracks and 2 waypoints.",
   );
   await expect(page.locator("#collection-name-field")).toHaveValue("Lakes & Passes");
@@ -103,7 +103,7 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
   page,
   request,
 }) => {
-  const id = await importCollection(request, GUIDE_BOOK_GPX);
+  const id = await importCollection(request, COLLECTION_GPX);
 
   await page.goto(`/app/collections/${id}`);
   const waypoints = waypointsOn(page, "#overview-map");
@@ -116,7 +116,7 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
   await page.waitForURL(/\/app\/collection-tracks\/\d+$/);
   await expect(page.locator("#trip-name")).toHaveText("Stage 1: Splügen");
   await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
-  // A track of a book with several has no waypoints of its own.
+  // A track of a collection with several has no waypoints of its own.
   await expect(waypointsOn(page, "#track-map")).toHaveCount(0);
 
   // And the way back.
@@ -125,7 +125,7 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
 });
 
 test("a single tour's waypoints show on its track's map (US-86)", async ({ page, request }) => {
-  const id = await importCollection(request, GUIDE_SINGLE_GPX);
+  const id = await importCollection(request, COLLECTION_SINGLE_GPX);
   const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
 
   await page.goto(`/app/collection-tracks/${track.id}`);
@@ -138,7 +138,7 @@ test("a waypoint with a symbol shows its icon, named on hover; one without keeps
   page,
   request,
 }) => {
-  const id = await importCollection(request, GUIDE_BOOK_GPX);
+  const id = await importCollection(request, COLLECTION_GPX);
 
   await page.goto(`/app/collections/${id}`);
   // `Triangle, Blue`: the shape in Garmin's blue.
@@ -175,7 +175,7 @@ test("a navaid shows its diamond, a two-tone one split in its colors (US-95)", a
 // A marker turned in CSS was turned about the map pane's corner, Leaflet's
 // placing transform and all, and landed far to the south-west of its place.
 test("a waypoint without an icon sits where it is (US-86)", async ({ page, request }) => {
-  const id = await importCollection(request, GUIDE_BOOK_GPX);
+  const id = await importCollection(request, COLLECTION_GPX);
 
   await page.goto(`/app/collections/${id}`);
   // Albula Pass ends Stage 3, which runs down and to the right to it.
@@ -190,7 +190,7 @@ test("a collection track's map shows its waypoints' icons too (US-95)", async ({
   page,
   request,
 }) => {
-  const id = await importCollection(request, GUIDE_SINGLE_GPX);
+  const id = await importCollection(request, COLLECTION_SINGLE_GPX);
   const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
 
   await page.goto(`/app/collection-tracks/${track.id}`);
@@ -204,7 +204,7 @@ test("a collection track's map shows its waypoints' icons too (US-95)", async ({
 });
 
 test("a track's name keeps a space from its activity's icon (US-86)", async ({ page, request }) => {
-  const id = await importCollection(request, GUIDE_BOOK_GPX, { activity_type: "cycling" });
+  const id = await importCollection(request, COLLECTION_GPX, { activity_type: "cycling" });
 
   await page.goto(`/app/collections/${id}`);
   const link = page.locator("#collection-tracks tbody a").first();
@@ -222,12 +222,15 @@ test("a track's name keeps a space from its activity's icon (US-86)", async ({ p
 });
 
 test("a track's own activity overrides the collection's (US-86)", async ({ page, request }) => {
-  const id = await importCollection(request, GUIDE_SINGLE_GPX, { activity_type: "cycling" });
+  const id = await importCollection(request, COLLECTION_SINGLE_GPX, { activity_type: "cycling" });
   const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
 
   await page.goto(`/app/collection-tracks/${track.id}`);
-  await expect(page.locator("#trip-activity")).toContainText("(the guide book's)");
+  await expect(page.locator("#trip-activity")).toHaveText("Cycling");
   await page.locator("#edit-trip").click();
+  // Taken from the collection: its entry, with the collection's icon.
+  await expect(page.locator("#edit-activity")).toHaveText("Collection");
+  await expect(page.locator('#edit-activity .activity-icon[title="Cycling"]')).toHaveCount(1);
   await chooseActivity(page, "edit-activity", "hiking");
   await page.getByRole("button", { name: "Save" }).click();
 
@@ -240,7 +243,7 @@ test("a collection and its track are tagged as a trip is, each with its own tags
   page,
   request,
 }) => {
-  const id = await importCollection(request, GUIDE_BOOK_GPX);
+  const id = await importCollection(request, COLLECTION_GPX);
   const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
   const name = `book-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -270,15 +273,15 @@ test("a collection and its track are tagged as a trip is, each with its own tags
   await page.getByTitle(`Remove ${name}`).click();
   await expect(page.getByText("No tags yet.")).toBeVisible();
   expect(await (await request.get(`/api/collection-tracks/${track.id}/tags`)).json()).toEqual([]);
-  const onBook = await (await request.get(`/api/collections/${id}/tags`)).json();
-  expect(onBook.map((tag) => tag.name)).toEqual([name]);
+  const onCollection = await (await request.get(`/api/collections/${id}/tags`)).json();
+  expect(onCollection.map((tag) => tag.name)).toEqual([name]);
 });
 
 test("deleting the collection is confirmed, naming what goes with it (US-86)", async ({
   page,
   request,
 }) => {
-  const id = await importCollection(request, GUIDE_BOOK_GPX);
+  const id = await importCollection(request, COLLECTION_GPX);
 
   await page.goto(`/app/collections/${id}`);
   await page.locator("#delete-collection").click();

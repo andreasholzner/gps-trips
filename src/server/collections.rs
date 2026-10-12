@@ -1,4 +1,4 @@
-//! Guide-book collections over the JSON API (US-86, ADR-0008): importing one
+//! Collections over the JSON API (US-86, ADR-0008): importing one
 //! from a GPX file, reading, editing and deleting it and its tracks, and the
 //! waypoints and positions its page draws. Collections are records of their
 //! own, apart from trips (ADR-0028); the track files share the trips' code
@@ -33,7 +33,7 @@ use crate::server::{
 };
 
 /// The collection routes, merged into the owner's router behind its gate.
-/// The uploads take the import's body cap: a whole book's file is several
+/// The uploads take the import's body cap: a whole collection's file is several
 /// megabytes.
 pub fn router() -> Router<AppState> {
     let upload_limit =
@@ -72,7 +72,7 @@ pub fn router() -> Router<AppState> {
         )
 }
 
-/// A guide book's upload: the file, its name, and the details the owner
+/// A collection's upload: the file, its name, and the details the owner
 /// gave, each `None` when the form left it out.
 #[derive(Default)]
 struct Upload {
@@ -126,7 +126,7 @@ async fn handle_preview(multipart: Multipart) -> Result<Json<CollectionPreview>,
     }))
 }
 
-/// `POST /api/collections` — import a guide book's file as a new collection
+/// `POST /api/collections` — import a GPX file as a new collection
 /// of all its tracks and waypoints, in one transaction. A blank name falls
 /// back to the suggested one, a description left out to the suggested one,
 /// and a blank activity to none. 201 with the new collection's id; 422 for a

@@ -125,8 +125,8 @@ pub const ALPS_GPX: &[u8] = include_bytes!("../../../tests/fixtures/region_alps.
 /// A walk with one hill (US-81): 1 km up 100 m between two flats, timed.
 pub const HILL_GPX: &[u8] = include_bytes!("../../../tests/fixtures/hill.gpx");
 
-/// A guide book's file (US-86): three tracks and two waypoints.
-pub const GUIDE_BOOK_GPX: &[u8] = include_bytes!("../../../tests/fixtures/guide_book.gpx");
+/// A collection's file (US-86): three tracks and two waypoints.
+pub const COLLECTION_GPX: &[u8] = include_bytes!("../../../tests/fixtures/collection.gpx");
 
 const BOUNDARY: &str = "UiDioxusTestBoundary";
 

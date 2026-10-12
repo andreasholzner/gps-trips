@@ -135,7 +135,7 @@ pub enum ImportError {
     #[error("Track has no points")]
     NoPoints,
 
-    /// US-86: a guide book's file with nothing to collect.
+    /// US-86: a collection's file with nothing to collect.
     #[error("GPX file contains neither a track nor a waypoint")]
     Empty,
 

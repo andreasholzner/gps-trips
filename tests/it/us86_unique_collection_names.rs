@@ -10,7 +10,7 @@ use trip_archive::models::{CollectionCount, CollectionDetail};
 
 use crate::common::{
     body_string, collection_request, error_message, get, import_collection, json_request, send,
-    test_app, GUIDE_BOOK_GPX, GUIDE_SINGLE_GPX,
+    test_app, COLLECTION_GPX, COLLECTION_SINGLE_GPX,
 };
 
 async fn count(app: &axum::Router) -> i64 {
@@ -23,11 +23,11 @@ async fn count(app: &axum::Router) -> i64 {
 #[tokio::test]
 async fn us86_an_import_under_a_taken_name_is_refused_whatever_the_case() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[("name", "Nordkette")]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", "Nordkette")]).await;
 
     let request = collection_request(
         "/api/collections",
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         "book.gpx",
         &[("name", "NORDKETTE")],
     );
@@ -41,9 +41,9 @@ async fn us86_an_import_under_a_taken_name_is_refused_whatever_the_case() {
 #[tokio::test]
 async fn us86_an_import_under_a_suggested_name_that_is_taken_is_refused_too() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&app, COLLECTION_GPX, &[]).await;
 
-    let request = collection_request("/api/collections", GUIDE_BOOK_GPX, "book.gpx", &[]);
+    let request = collection_request("/api/collections", COLLECTION_GPX, "book.gpx", &[]);
     let response = send(&app, request).await;
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -54,8 +54,8 @@ async fn us86_an_import_under_a_suggested_name_that_is_taken_is_refused_too() {
 #[tokio::test]
 async fn us86_a_rename_to_a_taken_name_is_refused_and_changes_nothing() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
-    let other = import_collection(&app, GUIDE_SINGLE_GPX, &[("name", "Nordkette")]).await;
+    import_collection(&app, COLLECTION_GPX, &[]).await;
+    let other = import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", "Nordkette")]).await;
     let uri = format!("/api/collections/{other}");
 
     let body = r#"{"name":"lakes & passes","description":"changed too"}"#;

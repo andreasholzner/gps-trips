@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::ActivityType;
 
-/// A guide-book collection with its tracks (US-86): what its page shows.
+/// A collection with its tracks (US-86): what its page shows.
 /// Collections are records of their own, apart from trips (ADR-0028).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CollectionDetail {
     pub id: i64,
     pub name: String,
     pub description: String,
-    /// `None` for a book with no activity focus.
+    /// `None` for a collection with no activity focus.
     pub activity_type: Option<ActivityType>,
     pub waypoint_count: i64,
     /// In the order the file held them.
@@ -36,7 +36,7 @@ pub struct CollectionTrackSummary {
 pub struct CollectionSummary {
     pub id: i64,
     pub name: String,
-    /// `None` for a book with no activity focus.
+    /// `None` for a collection with no activity focus.
     pub activity_type: Option<ActivityType>,
     pub waypoint_count: i64,
     /// In the order the file held them.
@@ -68,7 +68,7 @@ pub struct CollectionTrackMark {
 }
 
 /// A collection track's page (US-86): only distance, ascent and descent —
-/// a guide book's timestamps are not when anyone went.
+/// a collection's timestamps are not when anyone went.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CollectionTrackDetail {
     pub id: i64,
@@ -80,12 +80,15 @@ pub struct CollectionTrackDetail {
     /// The track's own activity, overriding its collection's; `None` takes
     /// the collection's.
     pub own_activity: Option<ActivityType>,
+    /// The collection's activity, which a track without its own goes by;
+    /// `None` when the collection has none.
+    pub collection_activity: Option<ActivityType>,
     pub distance_m: f64,
     pub ascent_m: f64,
     pub descent_m: f64,
 }
 
-/// A waypoint from a guide book's file, as the file gave it.
+/// A waypoint from a collection's file, as the file gave it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Waypoint {
     pub id: i64,
@@ -103,7 +106,7 @@ pub struct Waypoint {
 }
 
 /// What `POST /api/collections/preview` answers with: what the import
-/// screen's guide-book form starts as, read from the file before anything is
+/// screen's collection form starts as, read from the file before anything is
 /// created.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CollectionPreview {

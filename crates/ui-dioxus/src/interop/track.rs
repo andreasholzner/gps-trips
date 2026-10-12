@@ -66,7 +66,7 @@ const TRACK_MAP_SCRIPT: &str = r##"
     }
     map.trackLine = null;
     map.photoMarkers = null;
-    // A guide book's waypoints on the track (US-86); none on a trip's.
+    // A collection's waypoints on the track (US-86); none on a trip's.
     map.waypointMarkers = drawWaypoints(map, view.waypoints);
     // A mark for a chart that is being replaced points at a track that is
     // no longer drawn.
@@ -403,7 +403,7 @@ const ELEVATION_SCRIPT: &str = r##"
 
 /// What the map shows: the track as `[lat, lon]` pairs in its activity's
 /// color (US-75), a marker per group of photos taken at the same place
-/// (US-3/US-4, grouped by US-57), and a guide book's waypoints on the track
+/// (US-3/US-4, grouped by US-57), and a collection's waypoints on the track
 /// (US-86). Sent as one value because it is one picture — a redraw with new
 /// markers must not lose the line.
 #[derive(Serialize)]

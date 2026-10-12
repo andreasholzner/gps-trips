@@ -100,7 +100,7 @@ pub fn AppMenu() -> Element {
                 Link {
                     to: Route::ImportTrip {},
                     onclick: move |_| open.set(false),
-                    "Import a trip"
+                    "Import"
                 }
                 Link {
                     to: Route::KomootSync {},
@@ -151,7 +151,7 @@ mod tests {
         let html = render(|| rsx! { AppMenu {} });
 
         assert!(html.contains("All trips"), "{html}");
-        assert!(html.contains("Import a trip"), "{html}");
+        assert!(html.contains(">Import<"), "{html}");
         assert!(html.contains("Sync with Komoot"), "{html}");
         // Each is a link to its screen, so the browser's own affordances —
         // middle-click, copy link — work as they do anywhere else.
@@ -167,7 +167,7 @@ mod tests {
         assert!(position("Summary") < position("Statistics"), "{html}");
         // US-83: every tag, right after the statistics.
         assert!(position("Statistics") < position("Tags"), "{html}");
-        assert!(position("Tags") < position("Import a trip"), "{html}");
+        assert!(position("Tags") < position("Import"), "{html}");
         let tags = Route::Tags {
             view: TagsView::default(),
         }

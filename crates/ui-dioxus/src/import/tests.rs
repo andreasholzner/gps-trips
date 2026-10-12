@@ -248,7 +248,7 @@ fn the_first_step_asks_what_the_file_is_and_for_the_file() {
     // Nothing to name yet: the archive has not read the track, so it has no
     // date to suggest — which is the whole reason this step exists. What the
     // file is comes first: a collection (US-86) is read differently, and a
-    // book of waypoints alone is no trip the archive could stage.
+    // collection of waypoints alone is no trip the archive could stage.
     let html = render(|| rsx! { ChooseGpx { reading: false, on_choose: move |_| {} } });
 
     assert!(html.contains(r#"id="import-gpx""#), "{html}");
@@ -260,9 +260,7 @@ fn the_first_step_asks_what_the_file_is_and_for_the_file() {
         .filter_map(|rest| rest.split('"').next())
         .collect();
     assert_eq!(kinds, ["recorded", "planned", "collection"], "{html}");
-    // US-88: the choice US-86 called "Guide book".
     assert!(html.contains("Collection"), "{html}");
-    assert!(!html.contains("Guide book"), "{html}");
 }
 
 #[test]

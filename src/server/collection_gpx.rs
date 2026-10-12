@@ -1,8 +1,8 @@
-//! Reading a guide book's GPX file (US-86): every track and every waypoint
+//! Reading a collection's GPX file (US-86): every track and every waypoint
 //! in it, and what the file says about itself for the collection's suggested
 //! name and description.
 //!
-//! A guide book's timestamps, where a file has any, are not when anyone
+//! A collection's timestamps, where a file has any, are not when anyone
 //! went, so they are dropped here: nothing downstream can compute a date,
 //! duration or speed from a collection track — nor from its own GPX, which
 //! each track keeps for its download.
@@ -15,7 +15,7 @@ use quick_xml::Reader;
 use crate::server::error::ImportError;
 use crate::server::gpx::TrackPoint;
 
-/// A guide book's file, read.
+/// A collection's file, read.
 #[derive(Debug)]
 pub struct ParsedCollection {
     pub name: Option<String>,
@@ -52,7 +52,7 @@ pub struct ParsedWaypoint {
     pub symbol: Option<String>,
 }
 
-/// Read every track and waypoint of a guide book's file. Refused when it is
+/// Read every track and waypoint of a collection's file. Refused when it is
 /// not GPX, or holds neither a track nor a waypoint.
 pub fn parse_collection(data: &[u8]) -> Result<ParsedCollection, ImportError> {
     let gpx: gpx::Gpx =
@@ -189,7 +189,7 @@ fn track_gpx(track: &gpx::Track, waypoints: &[gpx::Waypoint]) -> Result<Vec<u8>,
 
 /// The text of every element named `Category` inside a waypoint, whatever
 /// its namespace — Garmin writes the same list under two, and tracks carry
-/// categories of their own, which are not the book's. The `gpx` crate does
+/// categories of their own, which are not the collection's. The `gpx` crate does
 /// not read extensions, so this is a pass of its own.
 fn categories(data: &[u8]) -> Vec<String> {
     let mut reader = Reader::from_reader(data);
@@ -240,14 +240,15 @@ fn categories(data: &[u8]) -> Vec<String> {
 mod tests {
     use super::*;
 
-    const GUIDE_BOOK: &[u8] = include_bytes!("../../tests/fixtures/guide_book.gpx");
-    const GUIDE_SINGLE: &[u8] = include_bytes!("../../tests/fixtures/guide_single.gpx");
+    const COLLECTION_GPX: &[u8] = include_bytes!("../../tests/fixtures/collection.gpx");
+    const COLLECTION_SINGLE_GPX: &[u8] =
+        include_bytes!("../../tests/fixtures/collection_single.gpx");
     const WAYPOINTS_ONLY: &[u8] = include_bytes!("../../tests/fixtures/waypoints_only.gpx");
     const NO_TRACKS: &[u8] = include_bytes!("../../tests/fixtures/no_tracks.gpx");
 
     #[test]
     fn every_track_and_waypoint_of_the_file_is_read_in_file_order() {
-        let parsed = parse_collection(GUIDE_BOOK).unwrap();
+        let parsed = parse_collection(COLLECTION_GPX).unwrap();
 
         let names: Vec<Option<&str>> = parsed.tracks.iter().map(|t| t.name.as_deref()).collect();
         assert_eq!(
@@ -290,15 +291,15 @@ mod tests {
     }
 
     #[test]
-    fn a_guide_books_timestamps_are_dropped() {
-        let parsed = parse_collection(GUIDE_BOOK).unwrap();
+    fn a_collections_timestamps_are_dropped() {
+        let parsed = parse_collection(COLLECTION_GPX).unwrap();
 
         assert!(parsed.tracks[0].points.iter().all(|p| p.time.is_none()));
     }
 
     #[test]
     fn a_waypoint_without_a_description_keeps_its_comment() {
-        let parsed = parse_collection(GUIDE_SINGLE).unwrap();
+        let parsed = parse_collection(COLLECTION_SINGLE_GPX).unwrap();
 
         assert_eq!(
             parsed.waypoints[0].description.as_deref(),
@@ -310,10 +311,15 @@ mod tests {
     #[test]
     fn waypoints_belong_to_a_track_only_when_the_file_has_exactly_one() {
         assert_eq!(
-            parse_collection(GUIDE_SINGLE).unwrap().waypoint_track(),
+            parse_collection(COLLECTION_SINGLE_GPX)
+                .unwrap()
+                .waypoint_track(),
             Some(0)
         );
-        assert_eq!(parse_collection(GUIDE_BOOK).unwrap().waypoint_track(), None);
+        assert_eq!(
+            parse_collection(COLLECTION_GPX).unwrap().waypoint_track(),
+            None
+        );
         assert_eq!(
             parse_collection(WAYPOINTS_ONLY).unwrap().waypoint_track(),
             None
@@ -322,18 +328,18 @@ mod tests {
 
     #[test]
     fn each_track_keeps_a_gpx_of_its_own() {
-        let parsed = parse_collection(GUIDE_BOOK).unwrap();
+        let parsed = parse_collection(COLLECTION_GPX).unwrap();
 
         let own = parse_collection(&parsed.tracks[2].gpx).unwrap();
         assert_eq!(own.tracks.len(), 1);
         assert_eq!(own.tracks[0].name.as_deref(), Some("Stage 3: Albula"));
-        // Another track's file does not carry the book's waypoints.
+        // Another track's file does not carry the collection's waypoints.
         assert!(own.waypoints.is_empty());
     }
 
     #[test]
     fn us95_a_single_tours_gpx_keeps_its_waypoints_symbols() {
-        let parsed = parse_collection(GUIDE_SINGLE).unwrap();
+        let parsed = parse_collection(COLLECTION_SINGLE_GPX).unwrap();
 
         let own = parse_collection(&parsed.tracks[0].gpx).unwrap();
         assert_eq!(own.waypoints[0].symbol.as_deref(), Some("Parking Area"));
@@ -343,7 +349,7 @@ mod tests {
     fn a_tracks_own_gpx_carries_no_timestamps() {
         // Not when anyone went: a download imported as a trip must not
         // bring them back.
-        let parsed = parse_collection(GUIDE_BOOK).unwrap();
+        let parsed = parse_collection(COLLECTION_GPX).unwrap();
 
         let own = String::from_utf8(parsed.tracks[0].gpx.clone()).unwrap();
         assert!(own.contains("<trkpt"), "{own}");
@@ -352,7 +358,7 @@ mod tests {
 
     #[test]
     fn a_single_tours_gpx_carries_its_waypoints() {
-        let parsed = parse_collection(GUIDE_SINGLE).unwrap();
+        let parsed = parse_collection(COLLECTION_SINGLE_GPX).unwrap();
 
         let own = parse_collection(&parsed.tracks[0].gpx).unwrap();
         assert_eq!(own.waypoints.len(), 2);
@@ -384,7 +390,7 @@ mod tests {
 
     #[test]
     fn the_name_and_description_come_from_the_files_metadata_and_categories() {
-        let parsed = parse_collection(GUIDE_BOOK).unwrap();
+        let parsed = parse_collection(COLLECTION_GPX).unwrap();
 
         assert_eq!(parsed.suggested_name("book.gpx"), "Lakes & Passes");
         assert_eq!(
@@ -410,7 +416,7 @@ mod tests {
 
     #[test]
     fn without_metadata_the_name_is_the_file_name() {
-        let parsed = parse_collection(GUIDE_SINGLE).unwrap();
+        let parsed = parse_collection(COLLECTION_SINGLE_GPX).unwrap();
 
         assert_eq!(
             parsed.suggested_name("Alpencross-light-Baukasten.gpx"),

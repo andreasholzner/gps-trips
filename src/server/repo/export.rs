@@ -4,7 +4,7 @@
 //! list is one consistent state of the archive however the server commits
 //! meanwhile — the exporter's change detection and removal pass both rely on
 //! it. The geometry is not part of it: the exporter fetches that per trip,
-//! only for the trips it writes. The guide-book collections come likewise,
+//! only for the trips it writes. The collections come likewise,
 //! for `GET /api/export/collections` (US-89, the 2026-10-11 amendment).
 
 use std::collections::HashMap;
@@ -299,7 +299,7 @@ mod tests {
                     description: "50 Touren",
                     activity_type: activity,
                     files: &[NewCollectionFile {
-                        file_name: "book.gpx",
+                        file_name: "collection.gpx",
                         gpx: b"<gpx/>",
                     }],
                     tracks: &tracks,
@@ -313,7 +313,7 @@ mod tests {
         #[tokio::test]
         async fn us89_lists_every_collection_with_its_tracks_and_waypoints_in_file_order() {
             let db = TestDb::new().await;
-            let book = insert(
+            let collection = insert(
                 &db.pool,
                 "Jotunheimen",
                 Some(ActivityType::Hiking),
@@ -330,7 +330,7 @@ mod tests {
 
             assert_eq!(collections.len(), 2);
             let first = &collections[0];
-            assert_eq!(first.id, book);
+            assert_eq!(first.id, collection);
             assert_eq!(first.name, "Jotunheimen");
             assert_eq!(first.description, "50 Touren");
             assert!(first.created_at.ends_with('Z'), "{}", first.created_at);

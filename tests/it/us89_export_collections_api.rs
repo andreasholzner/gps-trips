@@ -5,7 +5,7 @@
 //! never paged, never filtered. That it needs a session is part of US-19's
 //! table of routes.
 
-use crate::common::{body_string, delete, get, import_collection, test_app, GUIDE_BOOK_GPX};
+use crate::common::{body_string, delete, get, import_collection, test_app, COLLECTION_GPX};
 use axum::http::StatusCode;
 use trip_archive::models::{ActivityType, ExportCollection};
 
@@ -18,14 +18,14 @@ async fn export_list(app: &axum::Router) -> Vec<ExportCollection> {
 #[tokio::test]
 async fn us89_the_export_list_holds_every_collection_with_its_tracks_and_waypoints() {
     let (app, _dir) = test_app().await;
-    let book = import_collection(&app, GUIDE_BOOK_GPX, &[("activity_type", "cycling")]).await;
-    let other = import_collection(&app, GUIDE_BOOK_GPX, &[("name", "Other")]).await;
+    let collection = import_collection(&app, COLLECTION_GPX, &[("activity_type", "cycling")]).await;
+    let other = import_collection(&app, COLLECTION_GPX, &[("name", "Other")]).await;
 
     let collections = export_list(&app).await;
 
     assert_eq!(
         collections.iter().map(|c| c.id).collect::<Vec<_>>(),
-        [book, other]
+        [collection, other]
     );
     let first = &collections[0];
     assert_eq!(first.name, "Lakes & Passes");
@@ -45,9 +45,9 @@ async fn us89_the_export_list_holds_every_collection_with_its_tracks_and_waypoin
 #[tokio::test]
 async fn us89_a_deleted_collection_leaves_the_export_list() {
     let (app, _dir) = test_app().await;
-    let book = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let collection = import_collection(&app, COLLECTION_GPX, &[]).await;
     assert_eq!(
-        delete(&app, &format!("/api/collections/{book}"))
+        delete(&app, &format!("/api/collections/{collection}"))
             .await
             .status(),
         StatusCode::NO_CONTENT

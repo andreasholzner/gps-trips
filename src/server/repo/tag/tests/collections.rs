@@ -13,7 +13,7 @@ fn noon() -> OffsetDateTime {
 }
 
 /// A collection named `name` with two tracks; its id and its tracks' ids.
-async fn insert_book(pool: &SqlitePool, name: &str) -> (i64, Vec<i64>) {
+async fn a_collection(pool: &SqlitePool, name: &str) -> (i64, Vec<i64>) {
     let track = parse_gpx(SAMPLE_GPX).unwrap();
     let stats = compute_stats(&track.points);
     let geojson = build_track_geojson(&track.points);
@@ -64,13 +64,16 @@ async fn names(pool: &SqlitePool, tagged: Tagged) -> Vec<String> {
 #[tokio::test]
 async fn us93_a_collections_tags_and_its_tracks_tags_are_their_own() {
     let db = TestDb::new().await;
-    let (book, tracks) = insert_book(&db.pool, "Alpencross").await;
+    let (collection, tracks) = a_collection(&db.pool, "Alpencross").await;
     let trip = insert_sample_trip(&db.pool).await;
-    tag(&db.pool, Tagged::Collection(book), "alps").await;
+    tag(&db.pool, Tagged::Collection(collection), "alps").await;
     tag(&db.pool, Tagged::CollectionTrack(tracks[0]), "summit").await;
     tag(&db.pool, Tagged::CollectionTrack(tracks[0]), "hut").await;
 
-    assert_eq!(names(&db.pool, Tagged::Collection(book)).await, ["alps"]);
+    assert_eq!(
+        names(&db.pool, Tagged::Collection(collection)).await,
+        ["alps"]
+    );
     assert_eq!(
         names(&db.pool, Tagged::CollectionTrack(tracks[0])).await,
         ["hut", "summit"]
@@ -80,16 +83,16 @@ async fn us93_a_collections_tags_and_its_tracks_tags_are_their_own() {
         .is_empty());
     // The ids are the same numbers in different tables: a trip with a
     // collection's id carries none of its tags.
-    assert_eq!(trip, book);
+    assert_eq!(trip, collection);
     assert!(names(&db.pool, Tagged::Trip(trip)).await.is_empty());
 }
 
 #[tokio::test]
 async fn us93_tagging_twice_is_a_no_op_and_untagging_keeps_the_tag() {
     let db = TestDb::new().await;
-    let (book, tracks) = insert_book(&db.pool, "Alpencross").await;
-    let alps = tag(&db.pool, Tagged::Collection(book), "alps").await;
-    add_tag(&db.pool, Tagged::Collection(book), alps)
+    let (collection, tracks) = a_collection(&db.pool, "Alpencross").await;
+    let alps = tag(&db.pool, Tagged::Collection(collection), "alps").await;
+    add_tag(&db.pool, Tagged::Collection(collection), alps)
         .await
         .unwrap();
     tag(&db.pool, Tagged::CollectionTrack(tracks[0]), "alps").await;
@@ -105,7 +108,10 @@ async fn us93_tagging_twice_is_a_no_op_and_untagging_keeps_the_tag() {
             .unwrap()
     );
 
-    assert_eq!(names(&db.pool, Tagged::Collection(book)).await, ["alps"]);
+    assert_eq!(
+        names(&db.pool, Tagged::Collection(collection)).await,
+        ["alps"]
+    );
     assert!(names(&db.pool, Tagged::CollectionTrack(tracks[0]))
         .await
         .is_empty());
@@ -116,14 +122,14 @@ async fn us93_tagging_twice_is_a_no_op_and_untagging_keeps_the_tag() {
 async fn us93_the_overview_counts_collections_and_tracks_whose_collection_lacks_the_tag() {
     let db = TestDb::new().await;
     let trip = insert_sample_trip(&db.pool).await;
-    let (tagged_book, tagged_book_tracks) = insert_book(&db.pool, "Alpencross").await;
-    let (_, other_tracks) = insert_book(&db.pool, "Dolomites").await;
+    let (tagged_collection, tagged_collection_tracks) = a_collection(&db.pool, "Alpencross").await;
+    let (_, other_tracks) = a_collection(&db.pool, "Dolomites").await;
     let alps = tag(&db.pool, Tagged::Trip(trip), "alps").await;
-    tag(&db.pool, Tagged::Collection(tagged_book), "alps").await;
+    tag(&db.pool, Tagged::Collection(tagged_collection), "alps").await;
     // Its collection carries the tag already: not counted again.
     tag(
         &db.pool,
-        Tagged::CollectionTrack(tagged_book_tracks[0]),
+        Tagged::CollectionTrack(tagged_collection_tracks[0]),
         "alps",
     )
     .await;
@@ -160,8 +166,8 @@ async fn us93_the_overview_counts_collections_and_tracks_whose_collection_lacks_
 #[tokio::test]
 async fn us93_deleting_a_collection_or_a_track_takes_its_links_and_keeps_the_tag() {
     let db = TestDb::new().await;
-    let (book, tracks) = insert_book(&db.pool, "Alpencross").await;
-    tag(&db.pool, Tagged::Collection(book), "alps").await;
+    let (collection, tracks) = a_collection(&db.pool, "Alpencross").await;
+    tag(&db.pool, Tagged::Collection(collection), "alps").await;
     tag(&db.pool, Tagged::CollectionTrack(tracks[0]), "alps").await;
     tag(&db.pool, Tagged::CollectionTrack(tracks[1]), "alps").await;
 
@@ -175,7 +181,7 @@ async fn us93_deleting_a_collection_or_a_track_takes_its_links_and_keeps_the_tag
         (1, 0)
     );
 
-    delete_collection(&db.pool, book).await.unwrap();
+    delete_collection(&db.pool, collection).await.unwrap();
     let links: i64 = sqlx::query_scalar(
         "SELECT (SELECT COUNT(*) FROM collection_tag) \
               + (SELECT COUNT(*) FROM collection_track_tag)",
@@ -190,38 +196,46 @@ async fn us93_deleting_a_collection_or_a_track_takes_its_links_and_keeps_the_tag
 #[tokio::test]
 async fn us93_renaming_or_deleting_a_tag_reaches_collections_and_tracks() {
     let db = TestDb::new().await;
-    let (book, tracks) = insert_book(&db.pool, "Alpencross").await;
-    let alps = tag(&db.pool, Tagged::Collection(book), "alps").await;
+    let (collection, tracks) = a_collection(&db.pool, "Alpencross").await;
+    let alps = tag(&db.pool, Tagged::Collection(collection), "alps").await;
     tag(&db.pool, Tagged::CollectionTrack(tracks[0]), "alps").await;
 
     rename_tag(&db.pool, alps, "alpen").await.unwrap();
-    assert_eq!(names(&db.pool, Tagged::Collection(book)).await, ["alpen"]);
+    assert_eq!(
+        names(&db.pool, Tagged::Collection(collection)).await,
+        ["alpen"]
+    );
     assert_eq!(
         names(&db.pool, Tagged::CollectionTrack(tracks[0])).await,
         ["alpen"]
     );
 
     assert!(delete_tag(&db.pool, alps).await.unwrap());
-    assert!(names(&db.pool, Tagged::Collection(book)).await.is_empty());
+    assert!(names(&db.pool, Tagged::Collection(collection))
+        .await
+        .is_empty());
     assert!(names(&db.pool, Tagged::CollectionTrack(tracks[0]))
         .await
         .is_empty());
-    assert!(get_collection(&db.pool, book).await.unwrap().is_some());
+    assert!(get_collection(&db.pool, collection)
+        .await
+        .unwrap()
+        .is_some());
 }
 
 #[tokio::test]
 async fn us93_tagging_by_name_creates_the_tag_and_links_it() {
     let db = TestDb::new().await;
-    let (book, _) = insert_book(&db.pool, "Alpencross").await;
+    let (collection, _) = a_collection(&db.pool, "Alpencross").await;
 
-    let tagged = add_tag_named(&db.pool, Tagged::Collection(book), "alps")
+    let tagged = add_tag_named(&db.pool, Tagged::Collection(collection), "alps")
         .await
         .unwrap()
         .expect("the collection exists");
 
     assert_eq!(tagged.name, "alps");
     assert_eq!(
-        list_tags_of(&db.pool, Tagged::Collection(book))
+        list_tags_of(&db.pool, Tagged::Collection(collection))
             .await
             .unwrap(),
         vec![tagged]

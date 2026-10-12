@@ -8,7 +8,7 @@
 // once a browser has laid the page out at a given width.
 import { expect, signIn, test } from "./session.mjs";
 
-const items = ["All trips", "Import a trip", "Sync with Komoot", "Sign out"];
+const items = ["All trips", "Import", "Sync with Komoot", "Sign out"];
 const burger = (page) => page.locator("#app-menu-button");
 const item = (page, name) => page.locator("#app-menu").getByText(name, { exact: true });
 
@@ -94,8 +94,8 @@ test("on a wide screen the items are in the header, with no burger (US-60)", asy
   await page.evaluate(() => {
     window.__stillTheSameDocument = true;
   });
-  await item(page, "Import a trip").click();
-  await expect(page.getByRole("heading", { name: "Import a trip" })).toBeVisible();
+  await item(page, "Import").click();
+  await expect(page.getByRole("heading", { name: "Import", exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__stillTheSameDocument)).toBe(true);
 });
 
@@ -108,7 +108,7 @@ test.describe("on a phone", () => {
     // Closed to begin with: the burger is the only way in, and it says so.
     await expect(burger(page)).toBeVisible();
     await expect(burger(page)).toHaveAttribute("aria-expanded", "false");
-    await expect(item(page, "Import a trip")).toBeHidden();
+    await expect(item(page, "Import")).toBeHidden();
 
     // And it can actually be seen: Pico sets `--pico-color` on a button to
     // the inverse it uses for text on a filled background, so a glyph that
@@ -130,13 +130,13 @@ test.describe("on a phone", () => {
     // a map or a chart, which swallow their own pointer events, count as
     // "elsewhere".
     await page.locator(".menu-backdrop").click({ position: { x: 10, y: 400 } });
-    await expect(item(page, "Import a trip")).toBeHidden();
+    await expect(item(page, "Import")).toBeHidden();
 
     // So does Escape, for a menu opened from the keyboard.
     await burger(page).click();
-    await expect(item(page, "Import a trip")).toBeVisible();
+    await expect(item(page, "Import")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(item(page, "Import a trip")).toBeHidden();
+    await expect(item(page, "Import")).toBeHidden();
 
     // And choosing an item both navigates and closes it: a panel left open
     // over the screen it just went to would cover the answer.

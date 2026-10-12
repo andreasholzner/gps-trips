@@ -1,5 +1,5 @@
 //! US-36/US-37/US-89 (ADR-0022): one-way export of the whole trip archive —
-//! trips and guide-book collections (see `collections`) — into a
+//! trips and collections (see `collections`) — into a
 //! QMapShack-compatible SQLite database, run by the `qmapshack_export` CLI
 //! binary. Each run reconciles the target to the archive's current state:
 //! new trips are inserted, edited trips updated/re-linked, deleted trips

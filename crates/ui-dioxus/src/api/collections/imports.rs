@@ -123,17 +123,17 @@ pub fn collection_file_url(archive: &ApiClient, file_id: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{import_collection, serve_test_archive, GUIDE_BOOK_GPX};
+    use crate::test_support::{import_collection, serve_test_archive, COLLECTION_GPX};
     use trip_archive_types::ImportAction;
 
     #[tokio::test]
     async fn us88_files_go_up_for_review_and_come_in_once_confirmed() {
         let (archive, _dir) = serve_test_archive().await;
-        let (id, _) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+        let (id, _) = import_collection(&archive, COLLECTION_GPX, &[]).await;
 
         let review = upload_collection_files(
             &archive,
-            vec![("again.gpx".to_string(), GUIDE_BOOK_GPX.to_vec())],
+            vec![("again.gpx".to_string(), COLLECTION_GPX.to_vec())],
             Some(id),
         )
         .await
@@ -178,8 +178,8 @@ mod tests {
         let review = upload_collection_files(
             &archive,
             vec![
-                ("a.gpx".to_string(), GUIDE_BOOK_GPX.to_vec()),
-                ("b.gpx".to_string(), GUIDE_BOOK_GPX.to_vec()),
+                ("a.gpx".to_string(), COLLECTION_GPX.to_vec()),
+                ("b.gpx".to_string(), COLLECTION_GPX.to_vec()),
             ],
             None,
         )

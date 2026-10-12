@@ -1,4 +1,4 @@
-//! Importing a guide book's file as a new collection (US-86): the third
+//! Importing a GPX file as a new collection (US-86): the third
 //! choice on the import screen beside Recorded and Planned, *Collection*
 //! (US-88). Once the file is chosen, the archive reads what it holds and
 //! suggests the collection's name and description; the owner confirms or
@@ -14,16 +14,16 @@ use crate::collection::{counts, CollectionFields, CollectionForm};
 /// The import's choice for a collection, beside the trip kinds' wire values.
 pub const COLLECTION: &str = "collection";
 
-/// A guide book's file, read by the archive and waiting to be confirmed.
+/// A collection's file, read by the archive and waiting to be confirmed.
 /// Nothing is created yet, so the bytes stay here to be sent again.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ChosenBook {
+pub struct ChosenCollection {
     pub file_name: String,
     pub bytes: Vec<u8>,
     pub preview: CollectionPreview,
 }
 
-/// The form as the file's suggestions fill it in. No activity: a book with
+/// The form as the file's suggestions fill it in. No activity: a collection with
 /// no activity focus is the one case the owner cannot be asked to undo.
 pub fn form_of(preview: &CollectionPreview) -> CollectionForm {
     CollectionForm {
@@ -33,10 +33,10 @@ pub fn form_of(preview: &CollectionPreview) -> CollectionForm {
     }
 }
 
-/// Step two for a guide book: the details, what the file holds, and the
+/// Step two for a collection: the details, what the file holds, and the
 /// way back to the picker.
 #[component]
-pub fn ConfirmGuideBookStep(
+pub fn ConfirmCollectionStep(
     preview: CollectionPreview,
     #[props(default)] error: Option<String>,
     #[props(default)] submitting: bool,
@@ -48,12 +48,12 @@ pub fn ConfirmGuideBookStep(
 
     rsx! {
         form {
-            id: "confirm-guide-book",
+            id: "confirm-collection",
             onsubmit: move |event| {
                 event.prevent_default();
                 on_confirm.call(form.read().clone());
             },
-            p { id: "guide-book-counts", "The file holds {held}." }
+            p { id: "collection-counts", "The file holds {held}." }
             CollectionFields { form }
             button {
                 id: "import-confirm",
@@ -104,7 +104,7 @@ mod tests {
     fn us86_the_step_offers_the_details_and_says_what_the_file_holds() {
         let html = render(|| {
             rsx! {
-                ConfirmGuideBookStep {
+                ConfirmCollectionStep {
                     preview: a_preview(),
                     on_confirm: move |_| {},
                     on_start_over: move |_| {},
@@ -117,7 +117,7 @@ mod tests {
         assert!(html.contains("Bruckmann, Baukasten"), "{html}");
         assert!(html.contains(r#"id="collection-activity""#), "{html}");
         assert!(html.contains(r#"id="import-start-over""#), "{html}");
-        // A guide book's tracks carry no photos (US-86).
+        // A collection's tracks carry no photos (US-86).
         assert!(!html.contains("import-photos"), "{html}");
     }
 

@@ -1,4 +1,4 @@
-//! A guide book's collection and its tracks (US-86): imported, read, edited
+//! A collection and its tracks (US-86): imported, read, edited
 //! and deleted over the JSON API, apart from trips (ADR-0028).
 
 use trip_archive_types::{
@@ -15,7 +15,7 @@ pub use imports::{
     list_collection_files, review_collection_import, upload_collection_files,
 };
 
-/// A guide book's file as a multipart part.
+/// A collection's file as a multipart part.
 fn gpx_part(file_name: &str, bytes: Vec<u8>) -> Result<reqwest::multipart::Part, ApiError> {
     reqwest::multipart::Part::bytes(bytes)
         .file_name(file_name.to_string())
@@ -23,7 +23,7 @@ fn gpx_part(file_name: &str, bytes: Vec<u8>) -> Result<reqwest::multipart::Part,
         .map_err(|err| ApiError::new(format!("{file_name} could not be sent: {err}")))
 }
 
-/// `POST /api/collections/preview` — what a guide book's file holds and what
+/// `POST /api/collections/preview` — what a collection's file holds and what
 /// its details are suggested as, before anything is created. A file the
 /// archive cannot use comes back refused, in its words.
 pub async fn preview_collection(
@@ -46,7 +46,7 @@ pub async fn preview_collection(
         .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
 }
 
-/// `POST /api/collections` — import a guide book's file as a new collection
+/// `POST /api/collections` — import a GPX file as a new collection
 /// with the details the owner confirmed (an activity's wire value, or empty
 /// for none), and return its id.
 pub async fn create_collection(
@@ -259,13 +259,13 @@ pub fn collection_track_gpx_url(archive: &ApiClient, id: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{import_collection, serve_test_archive, GUIDE_BOOK_GPX};
+    use crate::test_support::{import_collection, serve_test_archive, COLLECTION_GPX};
 
     #[tokio::test]
     async fn us87_the_collections_are_listed_narrowed_by_the_query() {
         let (archive, _dir) = serve_test_archive().await;
-        let (lakes, _) = import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Lakes")]).await;
-        import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Passes")]).await;
+        let (lakes, _) = import_collection(&archive, COLLECTION_GPX, &[("name", "Lakes")]).await;
+        import_collection(&archive, COLLECTION_GPX, &[("name", "Passes")]).await;
 
         let all = list_collections(&archive, String::new()).await.unwrap();
         let narrowed = list_collections(&archive, "q=lak".to_string())
@@ -281,8 +281,8 @@ mod tests {
     #[tokio::test]
     async fn us87_the_collections_are_counted() {
         let (archive, _dir) = serve_test_archive().await;
-        import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
-        import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Second")]).await;
+        import_collection(&archive, COLLECTION_GPX, &[]).await;
+        import_collection(&archive, COLLECTION_GPX, &[("name", "Second")]).await;
 
         assert_eq!(count_collections(&archive).await.unwrap(), 2);
     }
@@ -290,7 +290,7 @@ mod tests {
     #[tokio::test]
     async fn us87_the_tracks_in_view_are_read_in_one_request() {
         let (archive, _dir) = serve_test_archive().await;
-        let (_, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+        let (_, tracks) = import_collection(&archive, COLLECTION_GPX, &[]).await;
 
         let answer = list_collection_track_positions(&archive, &tracks[1..])
             .await

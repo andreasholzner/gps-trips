@@ -1,4 +1,4 @@
-//! The Collections tab's table (US-87): one row per guide-book collection,
+//! The Collections tab's table (US-87): one row per collection,
 //! linking to its page (US-86).
 
 use dioxus::prelude::*;
@@ -7,7 +7,7 @@ use trip_archive_types::CollectionSummary;
 use crate::activity_icon::ActivityIcon;
 use crate::Route;
 
-/// One row per collection: its name, its activity icon — none for a book
+/// One row per collection: its name, its activity icon — none for a collection
 /// with no activity focus — and how many tracks and waypoints it holds.
 #[component]
 pub fn CollectionTable(collections: Vec<CollectionSummary>) -> Element {

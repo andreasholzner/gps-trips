@@ -1,4 +1,4 @@
-//! A guide book's waypoints on a map (US-86): markers in a style no track
+//! A collection's waypoints on a map (US-86): markers in a style no track
 //! uses, named on hover or tap — the icon of their symbol where there is one
 //! (US-95). Shared by the maps that draw them — a
 //! collection's, and a collection track's — as a function their scripts

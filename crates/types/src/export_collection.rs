@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ActivityType;
 
-/// One guide-book collection as the QMapShack exporter reads it (US-89,
+/// One collection as the QMapShack exporter reads it (US-89,
 /// ADR-0022's 2026-10-11 amendment): what its change detection compares for
 /// each track, and every waypoint whole — never a track's geometry, which it
 /// fetches per track, only for the tracks it writes.

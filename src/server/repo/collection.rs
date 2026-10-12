@@ -1,4 +1,4 @@
-//! Guide-book collections, their tracks and their waypoints (US-86) — records
+//! Collections, their tracks and their waypoints (US-86) — records
 //! of their own, apart from trips (ADR-0028). Deleting a collection deletes
 //! everything it owns through the schema's cascades (migration 0024).
 
@@ -368,7 +368,7 @@ pub async fn get_collection_track(
     sqlx::query(&format!(
         "SELECT k.id, k.collection_id, c.name AS collection_name, k.name, \
                 {TRACK_ACTIVITY} AS activity_type, k.activity_type AS own_activity, \
-                k.distance_m, k.ascent_m, k.descent_m \
+                c.activity_type AS collection_activity, k.distance_m, k.ascent_m, k.descent_m \
          FROM collection_track k JOIN collection c ON c.id = k.collection_id \
          WHERE k.id = ?"
     ))
@@ -380,6 +380,7 @@ pub async fn get_collection_track(
         name: row.get("name"),
         activity_type: row.get("activity_type"),
         own_activity: row.get("own_activity"),
+        collection_activity: row.get("collection_activity"),
         distance_m: row.get("distance_m"),
         ascent_m: row.get("ascent_m"),
         descent_m: row.get("descent_m"),

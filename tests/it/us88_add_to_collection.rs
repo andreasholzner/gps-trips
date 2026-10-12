@@ -20,9 +20,12 @@ use crate::common::{
 
 use ImportAction::{Add, Replace, Skip};
 
-/// A guide book's file: each track a line eastwards along its latitude,
+/// A collection's file: each track a line eastwards along its latitude,
 /// each waypoint at its latitude with its symbol.
-fn book(tracks: &[(Option<&str>, f64)], waypoints: &[(&str, f64, Option<&str>)]) -> Vec<u8> {
+fn collection_gpx(
+    tracks: &[(Option<&str>, f64)],
+    waypoints: &[(&str, f64, Option<&str>)],
+) -> Vec<u8> {
     let mut gpx = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
@@ -58,7 +61,7 @@ const NUDGE: f64 = 0.0001;
 
 /// Three stages and two waypoints, imported as US-86 does.
 fn first_edition() -> Vec<u8> {
-    book(
+    collection_gpx(
         &[
             (Some("Stage 1"), 46.5),
             (Some("Stage 2"), 46.6),
@@ -71,7 +74,7 @@ fn first_edition() -> Vec<u8> {
 /// Stage 1 merely shifted, Stage 2 changed, Stage 3 gone, Stage 4 new; the
 /// hut the same, the pass without its symbol.
 fn corrected_edition() -> Vec<u8> {
-    book(
+    collection_gpx(
         &[
             (Some("Stage 1"), 46.5 + NUDGE),
             (Some("Stage 2"), 46.61),
@@ -293,7 +296,7 @@ async fn us88_a_replaced_track_takes_the_files_line_and_keeps_its_activity_overr
 #[tokio::test]
 async fn us88_an_added_unnamed_track_is_numbered_after_the_collections_tracks() {
     let (app, _dir) = test_app().await;
-    let first = book(&[(Some("Stage 1"), 46.5), (None, 46.6)], &[]);
+    let first = collection_gpx(&[(Some("Stage 1"), 46.5), (None, 46.6)], &[]);
     let id = import_collection(&app, &first, &[("name", "Alps")]).await;
     assert_eq!(
         track_names(&collection(&app, id).await),
@@ -303,8 +306,8 @@ async fn us88_an_added_unnamed_track_is_numbered_after_the_collections_tracks() 
     let staged = upload(
         &app,
         &[
-            ("a.gpx", &book(&[(None, 46.8)], &[])),
-            ("b.gpx", &book(&[(None, 46.9)], &[])),
+            ("a.gpx", &collection_gpx(&[(None, 46.8)], &[])),
+            ("b.gpx", &collection_gpx(&[(None, 46.9)], &[])),
         ],
         Some(id),
     )
@@ -433,7 +436,7 @@ async fn us88_a_file_with_nothing_to_collect_is_refused_as_in_us86() {
 
     let not_gpx = upload_response(&app, &[("notes.gpx", b"not xml")], Some(id)).await;
     assert_eq!(not_gpx.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let empty = upload_response(&app, &[("empty.gpx", &book(&[], &[]))], Some(id)).await;
+    let empty = upload_response(&app, &[("empty.gpx", &collection_gpx(&[], &[]))], Some(id)).await;
     assert_eq!(empty.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert!(error_message(empty).await.contains("empty.gpx"));
 }

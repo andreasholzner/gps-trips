@@ -1,4 +1,4 @@
-//! A guide book's collection page (US-86), where its import ends: the
+//! A collection page (US-86), where its import ends: the
 //! details, every track in its activity's color and every waypoint on one
 //! map, the tracks as a list leading to their own pages, and the files it
 //! came from to download (US-88). The details are edited and the collection
@@ -38,10 +38,10 @@ pub fn Collection(id: i64) -> Element {
             None => rsx! { p { "Loading…" } },
             Some((read_for, _)) if *read_for != id => rsx! { p { "Loading…" } },
             Some((_, Err(err))) if err.is_not_found() => rsx! {
-                p { class: "error", "There is no such guide book — it may have been deleted." }
+                p { class: "error", "There is no such collection — it may have been deleted." }
             },
             Some((_, Err(err))) => rsx! {
-                p { class: "error", "Could not load this guide book: {err}" }
+                p { class: "error", "Could not load this collection: {err}" }
             },
             Some((_, Ok(detail))) => rsx! {
                 CollectionHeader { collection: detail.clone() }
@@ -180,7 +180,7 @@ fn CollectionMap(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
 #[component]
 fn TrackList(tracks: Vec<CollectionTrackSummary>) -> Element {
     if tracks.is_empty() {
-        return rsx! { p { "This guide book holds waypoints only." } };
+        return rsx! { p { "This collection holds waypoints only." } };
     }
     rsx! {
         div { class: "table-scroll",
@@ -268,7 +268,7 @@ fn EditCollection(collection: CollectionDetail, on_saved: EventHandler<()>) -> E
             "Edit details"
         }
         if open() {
-            Overlay { label: "Edit guide book", on_close: move |_| open.set(false),
+            Overlay { label: "Edit collection", on_close: move |_| open.set(false),
                 div { class: "panel",
                     EditCollectionForm {
                         collection,
@@ -405,11 +405,11 @@ fn DeleteCollection(id: i64, tracks: usize, waypoints: usize) -> Element {
                     error.set(None);
                     arming.set(true);
                 },
-                "Delete guide book"
+                "Delete collection"
             }
         }
         if let Some(message) = error() {
-            p { class: "error", "Could not delete this guide book: {message}" }
+            p { class: "error", "Could not delete this collection: {message}" }
         }
     }
 }
@@ -425,7 +425,7 @@ fn ConfirmDeleteCollection(
     let held = counts(tracks, waypoints, " and ");
     rsx! {
         p { class: "confirm",
-            "Delete this guide book with its {held}? This cannot be undone. "
+            "Delete this collection with its {held}? This cannot be undone. "
             button {
                 r#type: "button",
                 class: "danger",

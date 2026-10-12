@@ -7,7 +7,7 @@ use trip_archive::models::{
 };
 
 use super::{
-    book, collection, confirm, confirm_response, corrected_edition, files, first_edition,
+    collection, collection_gpx, confirm, confirm_response, corrected_edition, files, first_edition,
     proposals, read_json, track_names, upload, upload_response, waypoints,
 };
 use crate::common::{
@@ -21,7 +21,7 @@ use ImportAction::{Add, Skip};
 
 fn part(stage: u8, lat: f64) -> Vec<u8> {
     let name = format!("Stage {stage}");
-    book(
+    collection_gpx(
         &[(Some(name.as_str()), lat)],
         &[("Hut", 46.5, Some("Lodge"))],
     )
@@ -225,7 +225,7 @@ async fn us88_adding_files_is_the_owners_alone() {
 async fn us88_a_collection_with_no_name_to_go_by_is_called_collection() {
     let (app, _dir) = test_app().await;
     // No name in the file, and none for the file.
-    let unnamed = book(&[(Some("Stage 1"), 46.5)], &[]);
+    let unnamed = collection_gpx(&[(Some("Stage 1"), 46.5)], &[]);
 
     let preview = crate::common::collection_request("/api/collections/preview", &unnamed, "", &[]);
     let preview: trip_archive::models::CollectionPreview =

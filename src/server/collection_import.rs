@@ -36,7 +36,7 @@ use crate::server::{
 mod plan;
 
 /// The routes, merged into the owner's router behind its gate. The upload
-/// takes the import's body cap: a whole book's file is several megabytes.
+/// takes the import's body cap: a whole collection's file is several megabytes.
 pub fn router() -> Router<AppState> {
     let upload_limit =
         axum::extract::DefaultBodyLimit::max(config::server::PHOTO_IMPORT_BODY_LIMIT);
@@ -229,7 +229,7 @@ async fn handle_confirm(
 const CHANGED: &str = "The collection changed since these files were reviewed; review them again";
 
 /// A confirmation worked out from the parked files before the write lock is
-/// taken: matching a whole book takes about a second, which every other
+/// taken: matching a whole collection takes about a second, which every other
 /// writer would otherwise wait out.
 struct Prepared {
     staging_id: i64,

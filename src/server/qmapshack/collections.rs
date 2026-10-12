@@ -1,4 +1,4 @@
-//! US-89 (ADR-0022's 2026-10-11 amendment): the guide-book collections in
+//! US-89 (ADR-0022's 2026-10-11 amendment): the collections in
 //! the QMapShack export. Each collection is a folder placed by its own
 //! template; its tracks become track items in their activity colors, its
 //! waypoints waypoint items carrying their symbols. They are reconciled as
@@ -116,7 +116,7 @@ async fn reconcile_track(
         let id = track.id.to_string();
         let path = ["api", "collection-tracks", &id, "track.geojson"];
         let mut points = fetch_points(archive, &path).await?;
-        // A guide book's timestamps are not when anyone went (US-86).
+        // A collection's timestamps are not when anyone went (US-86).
         for point in &mut points {
             point.time = None;
         }

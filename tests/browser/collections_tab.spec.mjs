@@ -15,7 +15,7 @@ const fixture = (name) =>
   readFileSync(fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url)));
 
 /// One short tour near Innsbruck, whose two waypoints belong to its track.
-const GUIDE_SINGLE_GPX = fixture("guide_single.gpx");
+const COLLECTION_SINGLE_GPX = fixture("collection_single.gpx");
 
 /// Two waypoints, the San Bernardino and Albula passes, and no track.
 const WAYPOINTS_ONLY_GPX = fixture("waypoints_only.gpx");
@@ -48,7 +48,7 @@ async function importCollection(request, gpx, fields = {}) {
       ...fields,
     },
   });
-  expect(response.status(), "importing a guide book").toBe(201);
+  expect(response.status(), "importing a collection").toBe(201);
   const { id } = await response.json();
   created.push(id);
   return id;
@@ -80,7 +80,7 @@ test("the tab lives in the URL, its search narrows it, and the trip filters wait
   page,
   request,
 }) => {
-  const tour = await importCollection(request, GUIDE_SINGLE_GPX, {
+  const tour = await importCollection(request, COLLECTION_SINGLE_GPX, {
     name: `${TAG} Nordkette`,
     activity_type: "hiking",
   });
@@ -122,7 +122,7 @@ test("zoomed in, a collection's tracks are lines, and a click opens the track", 
   page,
   request,
 }) => {
-  const id = await importCollection(request, GUIDE_SINGLE_GPX, { name: `${TAG} Lines` });
+  const id = await importCollection(request, COLLECTION_SINGLE_GPX, { name: `${TAG} Lines` });
   const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
   await page.goto(`/app/?kind=collections&q=${encodeURIComponent(`${TAG} Lines`)}`);
 

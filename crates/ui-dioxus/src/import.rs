@@ -10,10 +10,10 @@
 //! so a large import has something to watch (ADR-0004's 2026-09-01
 //! amendment).
 //!
-//! A guide book's file takes the third choice beside Recorded and Planned,
+//! A collection's file takes the third choice beside Recorded and Planned,
 //! *Collection* (US-86, US-88): step one then asks the archive what the file
 //! holds, and step two creates a collection rather than a trip. The choice
-//! is made before the file is read, because a book of waypoints alone is no
+//! is made before the file is read, because a collection of waypoints alone is no
 //! trip the archive could stage. Several files, or files for an existing
 //! collection, are parked and reviewed instead (US-88, `review`).
 //!
@@ -34,7 +34,7 @@ mod collection;
 mod review;
 mod steps;
 
-use collection::{ChosenBook, ConfirmGuideBookStep, COLLECTION};
+use collection::{ChosenCollection, ConfirmCollectionStep, COLLECTION};
 use review::ReviewFlow;
 use steps::{ChooseGpx, ConfirmImportStep, PartialOutcome, UploadProgress};
 
@@ -172,7 +172,7 @@ pub fn ImportTrip() -> Element {
     // A trip kind's wire value, or `COLLECTION` (US-86): Recorded until the
     // owner says otherwise, the default the import has always had (US-31).
     let mut kind = use_signal(|| TripKind::Recorded.as_str().to_string());
-    let mut book = use_signal(|| None::<ChosenBook>);
+    let mut chosen_collection = use_signal(|| None::<ChosenCollection>);
     // US-88: the collection the files are added to, `None` for a new one,
     // and the upload parked for review.
     let mut target = use_signal(|| None::<i64>);
@@ -253,7 +253,7 @@ pub fn ImportTrip() -> Element {
         };
         if kind() == COLLECTION {
             match api::preview_collection(&archive(), &name, bytes.clone()).await {
-                Ok(preview) => book.set(Some(ChosenBook {
+                Ok(preview) => chosen_collection.set(Some(ChosenCollection {
                     file_name: name,
                     bytes,
                     preview,
@@ -321,13 +321,15 @@ pub fn ImportTrip() -> Element {
         navigator().push(Route::TripDetail { id });
     };
 
-    // A guide book is created in one request (US-86): nothing was parked, so
+    // A collection is created in one request (US-86): nothing was parked, so
     // there is no parse to confirm or to lose.
-    let confirm_book = move |form: CollectionForm| async move {
+    let confirm_collection = move |form: CollectionForm| async move {
         if submitting() {
             return;
         }
-        let Some(chosen) = book() else { return };
+        let Some(chosen) = chosen_collection() else {
+            return;
+        };
         submitting.set(true);
         error.set(None);
         let created = api::create_collection(
@@ -356,12 +358,12 @@ pub fn ImportTrip() -> Element {
             let _ = api::cancel_staged_import(&archive(), current.staging_id).await;
         }
         gpx.set(None);
-        book.set(None);
+        chosen_collection.set(None);
         error.set(None);
     };
 
     rsx! {
-        h1 { "Import a trip" }
+        h1 { "Import" }
 
         if let Some(review) = upload() {
             ReviewFlow {
@@ -372,14 +374,14 @@ pub fn ImportTrip() -> Element {
                     error.set(message);
                 },
             }
-        // Only the preview: the file itself is megabytes for a whole book,
+        // Only the preview: the file itself is megabytes for a whole collection,
         // and this runs on every keystroke in the form.
-        } else if let Some(preview) = book.read().as_ref().map(|chosen| chosen.preview.clone()) {
-            ConfirmGuideBookStep {
+        } else if let Some(preview) = chosen_collection.read().as_ref().map(|chosen| chosen.preview.clone()) {
+            ConfirmCollectionStep {
                 preview,
                 error: error(),
                 submitting: submitting(),
-                on_confirm: confirm_book,
+                on_confirm: confirm_collection,
                 on_start_over: start_over,
             }
         } else if let Some(progress) = progress() {

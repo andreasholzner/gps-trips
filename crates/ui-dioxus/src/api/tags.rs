@@ -132,7 +132,7 @@ mod tests {
     use super::*;
     use crate::api::list_tags;
     use crate::test_support::{
-        import_collection, import_sample, serve_test_archive, tag_trip, GUIDE_BOOK_GPX,
+        import_collection, import_sample, serve_test_archive, tag_trip, COLLECTION_GPX,
     };
 
     // ── US-33: tagging a trip from its detail screen ─────────────────────
@@ -209,7 +209,7 @@ mod tests {
     #[tokio::test]
     async fn us93_a_collection_and_its_track_are_tagged_and_counted_apart() {
         let (archive, _dir) = serve_test_archive().await;
-        let (id, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+        let (id, tracks) = import_collection(&archive, COLLECTION_GPX, &[]).await;
 
         let alps = add_tag(&archive, Tagged::Collection(id), " Alps")
             .await
@@ -220,8 +220,8 @@ mod tests {
             .expect("tag the track");
 
         let names = |tags: Vec<Tag>| tags.into_iter().map(|tag| tag.name).collect::<Vec<_>>();
-        let on_book = list_tags_of(&archive, Tagged::Collection(id)).await;
-        assert_eq!(names(on_book.expect("collection tags")), ["alps"]);
+        let on_collection = list_tags_of(&archive, Tagged::Collection(id)).await;
+        assert_eq!(names(on_collection.expect("collection tags")), ["alps"]);
         let on_track = list_tags_of(&archive, Tagged::CollectionTrack(tracks[0])).await;
         assert_eq!(names(on_track.expect("track tags")), ["pass"]);
         let listed = tag_overview(&archive).await.expect("overview");
@@ -234,8 +234,8 @@ mod tests {
         remove_tag(&archive, Tagged::Collection(id), alps.id)
             .await
             .expect("untag");
-        let on_book = list_tags_of(&archive, Tagged::Collection(id)).await;
-        assert!(on_book.expect("collection tags").is_empty());
+        let on_collection = list_tags_of(&archive, Tagged::Collection(id)).await;
+        assert!(on_collection.expect("collection tags").is_empty());
     }
 
     #[tokio::test]

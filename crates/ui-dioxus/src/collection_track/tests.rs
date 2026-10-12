@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_support::{
-    import_collection, render, render_against_archive, serve_test_archive, GUIDE_BOOK_GPX,
+    import_collection, render, render_against_archive, serve_test_archive, COLLECTION_GPX,
 };
 
 fn a_track(own_activity: Option<ActivityType>) -> CollectionTrackDetail {
@@ -11,6 +11,7 @@ fn a_track(own_activity: Option<ActivityType>) -> CollectionTrackDetail {
         name: "Stage 1".to_string(),
         activity_type: own_activity.unwrap_or(ActivityType::Cycling),
         own_activity,
+        collection_activity: Some(ActivityType::Cycling),
         distance_m: 12_345.0,
         ascent_m: 615.0,
         descent_m: 20.0,
@@ -19,11 +20,11 @@ fn a_track(own_activity: Option<ActivityType>) -> CollectionTrackDetail {
 
 // US-86: the screen against a real archive, nothing mocked (ADR-0012).
 #[tokio::test]
-async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
+async fn us86_the_screen_shows_the_track_its_collection_and_its_figures() {
     let (archive, _dir) = serve_test_archive().await;
     let (collection, tracks) = import_collection(
         &archive,
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         &[("name", "Lakes"), ("activity_type", "cycling")],
     )
     .await;
@@ -36,7 +37,7 @@ async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
     )
     .await;
 
-    assert!(html.contains("From the guide book "), "{html}");
+    assert!(html.contains("From the collection "), "{html}");
     assert!(
         html.contains(&format!(r#"href="/collections/{collection}">Lakes</a>"#)),
         "{html}"
@@ -61,7 +62,7 @@ async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
 #[tokio::test]
 async fn us93_the_screen_shows_the_tracks_own_tags() {
     let (archive, _dir) = serve_test_archive().await;
-    let (collection, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+    let (collection, tracks) = import_collection(&archive, COLLECTION_GPX, &[]).await;
     let id = tracks[0];
     api::add_tag(&archive, api::Tagged::Collection(collection), "lakes")
         .await
@@ -87,7 +88,7 @@ async fn us93_the_screen_shows_the_tracks_own_tags() {
 
 #[test]
 fn us86_only_distance_ascent_and_descent_are_shown() {
-    // A guide book's timestamps are not when anyone went.
+    // A collection's timestamps are not when anyone went.
     let track = a_track(None);
 
     let html = render(move || rsx! { TrackFigures { track: track.clone() } });
@@ -104,19 +105,38 @@ fn us86_only_distance_ascent_and_descent_are_shown() {
 }
 
 #[test]
-fn us86_an_activity_taken_from_the_guide_book_says_so() {
+fn us86_an_activity_taken_from_the_collection_is_shown_as_any_other() {
     let taken = a_track(None);
-    let own = a_track(Some(ActivityType::Hiking));
 
     let taken = render(move || rsx! { TrackFigures { track: taken.clone() } });
-    let own = render(move || rsx! { TrackFigures { track: own.clone() } });
 
-    assert!(taken.contains("(the guide book&#39;s)"), "{taken}");
-    assert!(!own.contains("(the guide book"), "{own}");
+    assert!(
+        taken.contains(r#"id="trip-activity">Cycling</dd>"#),
+        "{taken}"
+    );
 }
 
 #[test]
-fn us86_the_form_starts_on_the_tracks_own_activity_or_the_guide_books() {
+fn us86_the_collections_activity_is_offered_first_with_its_icon() {
+    let first = activity_choices(&a_track(Some(ActivityType::Hiking)))[0];
+
+    assert_eq!(first.value, "");
+    assert_eq!(first.label, "Collection");
+    assert_eq!(first.icon, Some(ActivityType::Cycling));
+}
+
+#[test]
+fn us86_a_collection_without_an_activity_is_offered_without_an_icon() {
+    let track = CollectionTrackDetail {
+        collection_activity: None,
+        ..a_track(None)
+    };
+
+    assert_eq!(activity_choices(&track)[0].icon, None);
+}
+
+#[test]
+fn us86_the_form_starts_on_the_tracks_own_activity_or_the_collections() {
     assert_eq!(TrackForm::of(&a_track(None)).activity, "");
     assert_eq!(
         TrackForm::of(&a_track(Some(ActivityType::Hiking))).activity,
@@ -142,7 +162,7 @@ fn us86_only_what_changed_is_sent() {
 }
 
 #[test]
-fn us86_an_own_activity_can_be_given_back_to_the_guide_book() {
+fn us86_an_own_activity_can_be_given_back_to_the_collection() {
     let track = a_track(Some(ActivityType::Hiking));
     let form = TrackForm {
         activity: String::new(),

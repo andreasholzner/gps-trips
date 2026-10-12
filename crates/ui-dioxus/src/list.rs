@@ -1,5 +1,5 @@
 //! The trip-list screen (US-41): browse, filter and tag trips — and, on its
-//! Collections tab, find the guide books (US-87). Each feature slice moves
+//! Collections tab, find the collections (US-87). Each feature slice moves
 //! its story's acceptance assertions over from the server-rendered page
 //! (ADR-0012's migration rule).
 
@@ -175,7 +175,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     }
 }
 
-/// What a tab lists: trips, or guide-book collections (US-87).
+/// What a tab lists: trips, or collections (US-87).
 enum Listed {
     Trips(Vec<TripSummary>),
     Collections(Vec<CollectionSummary>),
@@ -296,7 +296,7 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
     match (filters.tab, filters.any_set()) {
         (ListTab::Collections, true) => rsx! { p { "No collections match your filters." } },
         (ListTab::Collections, false) => {
-            rsx! { p { "No collections yet. Import a guide book's GPX file." } }
+            rsx! { p { "No collections yet. Import a GPX file as a collection." } }
         }
         (_, true) => rsx! { p { "No trips match your filters." } },
         (ListTab::Planned, false) => rsx! { p { "No planned trips yet." } },

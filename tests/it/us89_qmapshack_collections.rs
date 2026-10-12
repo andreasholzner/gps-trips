@@ -1,5 +1,5 @@
 //! US-89 acceptance tests, exporter half (ADR-0022's 2026-10-11 amendment):
-//! the export writes every guide-book collection beside the trips — its
+//! the export writes every collection beside the trips — its
 //! tracks as track items in their activity colors, its waypoints as
 //! waypoint items carrying their symbols, one folder per collection under
 //! the collections' own template — and re-runs reconcile them as US-37 does
@@ -7,8 +7,8 @@
 //! running test server, as the exporter reaches the archive (US-51).
 
 use crate::common::{
-    self, delete, import_collection, import_sample, json_request, send, GUIDE_BOOK_GPX,
-    GUIDE_SINGLE_GPX, TEST_PASSWORD,
+    self, delete, import_collection, import_sample, json_request, send, COLLECTION_GPX,
+    COLLECTION_SINGLE_GPX, TEST_PASSWORD,
 };
 
 use axum::http::{Method, Request, StatusCode};
@@ -150,14 +150,19 @@ async fn trashed(target: &SqlitePool, keyqms: &str) -> bool {
 async fn us89_collections_are_exported_beside_the_trips_in_folders_of_their_own() {
     let archive = archive().await;
     let trip = import_sample(&archive.app).await;
-    let book = import_collection(
+    let collection = import_collection(
         &archive.app,
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         &[("activity_type", "cycling")],
     )
     .await;
-    let single = import_collection(&archive.app, GUIDE_SINGLE_GPX, &[("name", "Nordkette")]).await;
-    let tracks = archive.track_ids(book).await;
+    let single = import_collection(
+        &archive.app,
+        COLLECTION_SINGLE_GPX,
+        &[("name", "Nordkette")],
+    )
+    .await;
+    let tracks = archive.track_ids(collection).await;
     archive
         .patch(
             &format!("/api/collection-tracks/{}", tracks[2]),
@@ -196,7 +201,7 @@ async fn us89_collections_are_exported_beside_the_trips_in_folders_of_their_own(
     assert!(!decoded.points.is_empty());
     assert!(
         decoded.points.iter().all(|p| p.time.is_none()),
-        "a guide book's times are not when anyone went"
+        "a collection's times are not when anyone went"
     );
     let (_, _, data, _) = item(&target, &track_keyqms(tracks[2])).await;
     let decoded = decode::decode_track_item(&data).unwrap();
@@ -206,7 +211,7 @@ async fn us89_collections_are_exported_beside_the_trips_in_folders_of_their_own(
         "its own activity's color"
     );
 
-    let waypoints = archive.waypoint_ids(book).await;
+    let waypoints = archive.waypoint_ids(collection).await;
     let (item_type, name, data, folder) = item(&target, &waypoint_keyqms(waypoints[0])).await;
     assert_eq!(item_type, 1, "a waypoint item");
     assert_eq!(name, "San Bernardino Pass");
@@ -233,7 +238,7 @@ async fn us89_collections_are_exported_beside_the_trips_in_folders_of_their_own(
 #[tokio::test]
 async fn us89_an_unchanged_collection_is_skipped_on_the_next_run() {
     let archive = archive().await;
-    import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&archive.app, COLLECTION_GPX, &[]).await;
     archive.export().await;
 
     let second = archive.export().await;
@@ -246,9 +251,9 @@ async fn us89_an_unchanged_collection_is_skipped_on_the_next_run() {
 #[tokio::test]
 async fn us89_a_collection_added_since_the_last_run_is_inserted_on_the_next() {
     let archive = archive().await;
-    import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&archive.app, COLLECTION_GPX, &[]).await;
     archive.export().await;
-    let added = import_collection(&archive.app, GUIDE_SINGLE_GPX, &[]).await;
+    let added = import_collection(&archive.app, COLLECTION_SINGLE_GPX, &[]).await;
 
     let second = archive.export().await;
 
@@ -271,9 +276,9 @@ async fn us89_a_collection_added_since_the_last_run_is_inserted_on_the_next() {
 #[tokio::test]
 async fn us89_changed_collections_tracks_and_waypoints_are_updated() {
     let archive = archive().await;
-    let book = import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
-    let tracks = archive.track_ids(book).await;
-    let waypoints = archive.waypoint_ids(book).await;
+    let collection = import_collection(&archive.app, COLLECTION_GPX, &[]).await;
+    let tracks = archive.track_ids(collection).await;
+    let waypoints = archive.waypoint_ids(collection).await;
     archive.export().await;
 
     archive
@@ -329,7 +334,7 @@ async fn us89_changed_collections_tracks_and_waypoints_are_updated() {
     // A renamed collection is a folder of its new name, every item moved.
     archive
         .patch(
-            &format!("/api/collections/{book}"),
+            &format!("/api/collections/{collection}"),
             r#"{"name":"Seen und Pässe"}"#,
         )
         .await;
@@ -352,10 +357,10 @@ async fn us89_changed_collections_tracks_and_waypoints_are_updated() {
 #[tokio::test]
 async fn us89_deleted_collections_tracks_and_waypoints_go_to_the_trash() {
     let archive = archive().await;
-    let book = import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
-    let single = import_collection(&archive.app, GUIDE_SINGLE_GPX, &[]).await;
-    let tracks = archive.track_ids(book).await;
-    let waypoints = archive.waypoint_ids(book).await;
+    let collection = import_collection(&archive.app, COLLECTION_GPX, &[]).await;
+    let single = import_collection(&archive.app, COLLECTION_SINGLE_GPX, &[]).await;
+    let tracks = archive.track_ids(collection).await;
+    let waypoints = archive.waypoint_ids(collection).await;
     let single_track = archive.track_ids(single).await[0];
     let single_waypoints = archive.waypoint_ids(single).await;
     archive.export().await;
@@ -395,7 +400,7 @@ async fn us89_deleted_collections_tracks_and_waypoints_go_to_the_trash() {
 #[tokio::test]
 async fn us89_items_the_export_did_not_create_are_untouched() {
     let archive = archive().await;
-    import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&archive.app, COLLECTION_GPX, &[]).await;
     archive.export().await;
     let target = archive.target().await;
     // The owner's own waypoint, filed in the collection's folder.
@@ -427,7 +432,7 @@ async fn us89_items_the_export_did_not_create_are_untouched() {
 #[tokio::test]
 async fn us89_a_run_without_the_complete_collection_list_writes_nothing() {
     let archive = archive().await;
-    import_collection(&archive.app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&archive.app, COLLECTION_GPX, &[]).await;
     let failing = archive.app.clone().layer(middleware::from_fn(
         |request: Request<axum::body::Body>, next: Next| async move {
             if request.uri().path() == "/api/export/collections" {

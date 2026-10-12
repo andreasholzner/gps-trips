@@ -187,7 +187,7 @@ pub fn router(state: AppState) -> Router {
         // app shell, so the SPA's own routes survive a reload or a shared
         // link — except under `assets/`, where `dx` puts its content-hashed
         // files and an unknown name is one a deploy replaced.
-        // US-86: guide-book collections, apart from trips (ADR-0028).
+        // US-86: collections, apart from trips (ADR-0028).
         .merge(collections::router())
         // US-88: adding files to a collection, reviewed first (ADR-0029).
         .merge(collection_import::router())

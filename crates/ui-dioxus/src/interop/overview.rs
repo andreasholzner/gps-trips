@@ -1,4 +1,4 @@
-//! The map a share's recipient lands on (US-53), and a guide book's
+//! The map a share's recipient lands on (US-53), and a collection's
 //! collection page (US-86): every track as a line, fitted to them all. Which lines there are is decided in Rust
 //! (`shared::overview_lines`); this only draws them and reports which one
 //! was clicked.
@@ -65,7 +65,7 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
       drawn.set(line.id, path);
       bounds.extend(path.getBounds());
     }
-    // A guide book's waypoints (US-86); none on a share's or a summary's.
+    // A collection's waypoints (US-86); none on a share's or a summary's.
     const waypoints = drawWaypoints(map, view.waypoints);
     if (waypoints.getLayers().length > 0) bounds.extend(waypoints.getBounds());
     if (bounds.isValid()) {
@@ -121,7 +121,7 @@ enum OverviewMessage {
     Highlight(Option<i64>),
 }
 
-/// Start the overview map, with a guide book's `waypoints` among its lines
+/// Start the overview map, with a collection's `waypoints` among its lines
 /// (US-86). The handle is the channel, read for the map's whole life: every
 /// click on a line and every hover arrives on it as an [`OverviewEvent`].
 pub fn start_overview_map(lines: Vec<OverviewLine>, waypoints: Vec<MapWaypoint>) -> document::Eval {

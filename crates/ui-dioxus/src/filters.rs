@@ -8,7 +8,7 @@
 
 use trip_archive_types::{ActivityType, TripKind};
 
-/// The trip list's tabs: the two kinds of trip (US-32), and the guide books'
+/// The trip list's tabs: the two kinds of trip (US-32), and the collections'
 /// collections (US-87). Not a [`TripKind`]: collections are not trips
 /// (ADR-0028), and the server's trip kinds must never hear of them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

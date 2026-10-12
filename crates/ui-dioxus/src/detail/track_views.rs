@@ -62,7 +62,7 @@ pub fn TrackSection(
 /// The two widgets themselves, once there is a track to draw. Split from the
 /// fetch above so each starts its script exactly once, when it mounts with
 /// the values it draws — never on a re-render of the screen around it — and
-/// so a track that is not a trip's, a guide book's (US-86), is drawn by the
+/// so a track that is not a trip's, a collection's (US-86), is drawn by the
 /// same views, with its `waypoints` on the map.
 ///
 /// This is also where the hover (US-59) turns around: the chart reports the

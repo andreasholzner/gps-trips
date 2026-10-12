@@ -1,13 +1,13 @@
 //! US-95 acceptance tests — "waypoint symbols".
 //!
-//! A guide book's waypoints keep the symbol their file gives them, for the
+//! A collection's waypoints keep the symbol their file gives them, for the
 //! maps to draw (ADR-0025: the UI decides which icon). Driven through the
 //! real router against a real temporary database (ADR-0012).
 
 use axum::http::StatusCode;
 use trip_archive::models::{CollectionDetail, Waypoint};
 
-use crate::common::{body_string, get, import_collection, GUIDE_BOOK_GPX, GUIDE_SINGLE_GPX};
+use crate::common::{body_string, get, import_collection, COLLECTION_GPX, COLLECTION_SINGLE_GPX};
 
 async fn read_json<T: serde::de::DeserializeOwned>(app: &axum::Router, uri: &str) -> T {
     let response = get(app, uri).await;
@@ -20,7 +20,7 @@ async fn read_json<T: serde::de::DeserializeOwned>(app: &axum::Router, uri: &str
 #[tokio::test]
 async fn us95_a_collections_waypoints_keep_their_symbols_as_the_file_names_them() {
     let (app, _dir) = crate::common::test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
 
     let waypoints: Vec<Waypoint> =
         read_json(&app, &format!("/api/collections/{id}/waypoints")).await;
@@ -33,7 +33,7 @@ async fn us95_a_collections_waypoints_keep_their_symbols_as_the_file_names_them(
 #[tokio::test]
 async fn us95_a_collection_tracks_waypoints_keep_their_symbols() {
     let (app, _dir) = crate::common::test_app().await;
-    let id = import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
     let collection: CollectionDetail = read_json(&app, &format!("/api/collections/{id}")).await;
     let only = collection.tracks[0].id;
 

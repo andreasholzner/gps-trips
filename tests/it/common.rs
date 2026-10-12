@@ -64,12 +64,12 @@ pub const LATE_EVENING_GPX: &[u8] = include_bytes!("../fixtures/late_evening.gpx
 /// US-14 region filter can be tested on a list holding trips in two places.
 pub const REGION_ALPS_GPX: &[u8] = include_bytes!("../fixtures/region_alps.gpx");
 
-/// A guide book's file (US-86): three tracks — one without a name — and two
+/// A collection's file (US-86): three tracks — one without a name — and two
 /// waypoints carrying categories, under the file's own name and description.
-pub const GUIDE_BOOK_GPX: &[u8] = include_bytes!("../fixtures/guide_book.gpx");
-/// A guide book's single tour, whose two waypoints belong to its one track.
-pub const GUIDE_SINGLE_GPX: &[u8] = include_bytes!("../fixtures/guide_single.gpx");
-/// A guide book's waypoints without a single track.
+pub const COLLECTION_GPX: &[u8] = include_bytes!("../fixtures/collection.gpx");
+/// A collection's single tour, whose two waypoints belong to its one track.
+pub const COLLECTION_SINGLE_GPX: &[u8] = include_bytes!("../fixtures/collection_single.gpx");
+/// A collection's waypoints without a single track.
 pub const WAYPOINTS_ONLY_GPX: &[u8] = include_bytes!("../fixtures/waypoints_only.gpx");
 
 /// Where [`test_app`] and its siblings keep the photo blobs, under their `TempDir`.
@@ -335,7 +335,7 @@ pub fn import_request_with_fields(
     multipart_request("/api/import", body)
 }
 
-/// A `multipart/form-data` POST of a guide book's file named `file_name`,
+/// A `multipart/form-data` POST of a collection's file named `file_name`,
 /// plus text fields, to `uri` — `/api/collections` or its preview (US-86).
 pub fn collection_request(
     uri: &str,
@@ -370,7 +370,7 @@ pub fn collection_files_request(
     multipart_request(uri, body)
 }
 
-/// Import a guide book's file as a new collection and return its id.
+/// Import a GPX file as a new collection and return its id.
 pub async fn import_collection(app: &Router, gpx: &[u8], fields: &[(&str, &str)]) -> i64 {
     let request = collection_request("/api/collections", gpx, "book.gpx", fields);
     let response = send(app, request).await;

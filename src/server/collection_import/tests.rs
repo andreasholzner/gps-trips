@@ -24,7 +24,7 @@ fn us88_files_are_taken_in_the_order_of_their_names() {
 
 // ── The write lock (review finding: held only to store the outcome) ─────────
 
-const GUIDE_BOOK: &[u8] = include_bytes!("../../../tests/fixtures/guide_book.gpx");
+const COLLECTION_GPX: &[u8] = include_bytes!("../../../tests/fixtures/collection.gpx");
 
 async fn a_state() -> (
     AppState,
@@ -45,7 +45,7 @@ async fn us88_the_files_are_matched_without_holding_the_write_lock() {
     let (state, _db, _dir) = a_state().await;
     let files = [NewCollectionFile {
         file_name: "book.gpx",
-        gpx: GUIDE_BOOK,
+        gpx: COLLECTION_GPX,
     }];
     let staging_id =
         repo::insert_collection_import(&state.pool, None, &files, OffsetDateTime::now_utc())
@@ -81,7 +81,7 @@ async fn us88_a_collection_changed_while_the_files_were_matched_is_refused() {
     let (state, _db, _dir) = a_state().await;
     let files = [NewCollectionFile {
         file_name: "book.gpx",
-        gpx: GUIDE_BOOK,
+        gpx: COLLECTION_GPX,
     }];
     let target = repo::insert_collection(
         &state.pool,

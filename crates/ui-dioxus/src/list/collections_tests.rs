@@ -5,7 +5,7 @@
 use super::*;
 use crate::test_support::{
     import_collection, import_sample, render, render_against_archive, serve_test_archive,
-    GUIDE_BOOK_GPX,
+    COLLECTION_GPX,
 };
 
 fn on_the_collections_tab(q: &str) -> Filters {
@@ -21,7 +21,7 @@ async fn us87_the_tab_lists_every_collection_alphabetically_and_no_trips() {
     let (archive, _dir) = serve_test_archive().await;
     import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
     for name in ["Lakes", "alpencross"] {
-        import_collection(&archive, GUIDE_BOOK_GPX, &[("name", name)]).await;
+        import_collection(&archive, COLLECTION_GPX, &[("name", name)]).await;
     }
 
     let html = render_against_archive(
@@ -43,7 +43,7 @@ async fn us87_the_tab_lists_every_collection_alphabetically_and_no_trips() {
 async fn us87_the_counts_say_how_many_match_and_how_many_there_are() {
     let (archive, _dir) = serve_test_archive().await;
     for name in ["Lakes", "Passes", "Lakes North"] {
-        import_collection(&archive, GUIDE_BOOK_GPX, &[("name", name)]).await;
+        import_collection(&archive, COLLECTION_GPX, &[("name", name)]).await;
     }
 
     let html = render_against_archive(
@@ -70,12 +70,16 @@ async fn us87_an_archive_without_collections_says_so() {
     .await;
 
     assert!(html.contains("No collections yet."), "{html}");
+    assert!(
+        html.contains("Import a GPX file as a collection."),
+        "{html}"
+    );
 }
 
 #[tokio::test]
 async fn us87_a_search_matching_no_collection_says_so() {
     let (archive, _dir) = serve_test_archive().await;
-    import_collection(&archive, GUIDE_BOOK_GPX, &[("name", "Lakes")]).await;
+    import_collection(&archive, COLLECTION_GPX, &[("name", "Lakes")]).await;
 
     let html = render_against_archive(
         &archive,
@@ -105,7 +109,7 @@ async fn us87_a_long_list_of_collections_is_shown_a_page_at_a_time() {
     for n in 0..51 {
         import_collection(
             &archive,
-            GUIDE_BOOK_GPX,
+            COLLECTION_GPX,
             &[("name", &format!("Book {n:02}"))],
         )
         .await;

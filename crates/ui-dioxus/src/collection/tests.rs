@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_support::{
-    import_collection, render, render_against_archive, serve_test_archive, GUIDE_BOOK_GPX,
+    import_collection, render, render_against_archive, serve_test_archive, COLLECTION_GPX,
 };
 
 fn a_track(id: i64, name: &str, activity: ActivityType) -> CollectionTrackSummary {
@@ -31,7 +31,7 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
     let (archive, _dir) = serve_test_archive().await;
     let (id, tracks) = import_collection(
         &archive,
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         &[("name", "Lakes"), ("activity_type", "cycling")],
     )
     .await;
@@ -65,7 +65,7 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
 #[tokio::test]
 async fn us93_the_page_shows_the_collections_own_tags() {
     let (archive, _dir) = serve_test_archive().await;
-    let (id, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+    let (id, tracks) = import_collection(&archive, COLLECTION_GPX, &[]).await;
     api::add_tag(&archive, api::Tagged::Collection(id), "lakes")
         .await
         .unwrap();
@@ -89,7 +89,7 @@ async fn us93_the_page_shows_the_collections_own_tags() {
 #[tokio::test]
 async fn us88_the_page_lists_the_files_to_download() {
     let (archive, _dir) = serve_test_archive().await;
-    let (id, _) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+    let (id, _) = import_collection(&archive, COLLECTION_GPX, &[]).await;
     let files = api::list_collection_files(&archive, id).await.unwrap();
 
     let html = render_against_archive(
@@ -118,7 +118,7 @@ async fn us86_a_collection_that_no_longer_exists_says_so() {
     )
     .await;
 
-    assert!(html.contains("no such guide book"), "{html}");
+    assert!(html.contains("no such collection"), "{html}");
 }
 
 #[test]

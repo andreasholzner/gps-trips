@@ -159,7 +159,7 @@
   line-height: 1;
 }
 
-/* A guide book's waypoint (US-86): a slate diamond, a shape no line, photo
+/* A collection's waypoint (US-86): a slate diamond, a shape no line, photo
    circle or hover ring has; one whose symbol has an icon (US-95): its shape
    in its color, or a white glyph on the diamond's slate. Each outlined in
    white against the tiles, and qualified by the container for the same two
@@ -192,7 +192,7 @@
   fill: #ffffff;
 }
 
-/* A guide book's description (US-86) keeps the paragraphs its file gave. */
+/* A collection's description (US-86) keeps the paragraphs its file gave. */
 .collection-description {
   white-space: pre-line;
 }

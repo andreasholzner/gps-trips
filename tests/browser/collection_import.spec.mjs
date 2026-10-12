@@ -8,8 +8,8 @@
 // archive matches and stores in `tests/it/us88_add_to_collection.rs`.
 import { expect, signIn, test } from "./session.mjs";
 
-/// A guide book's file: each track a line eastwards along its latitude.
-function book(tracks, waypoints = []) {
+/// A collection's file: each track a line eastwards along its latitude.
+function collectionGpx(tracks, waypoints = []) {
   const wpts = waypoints
     .map(([name, lat]) => `<wpt lat="${lat}" lon="9.2"><name>${name}</name></wpt>`)
     .join("\n");
@@ -59,8 +59,8 @@ test("several files make one collection, a hut in both added once (US-88)", asyn
   await page
     .locator("#import-gpx")
     .setInputFiles([
-      gpxFile("part-2.gpx", book([["Stage 2", 46.6]], [["Hut", 46.5]])),
-      gpxFile("part-1.gpx", book([["Stage 1", 46.5]], [["Hut", 46.5]])),
+      gpxFile("part-2.gpx", collectionGpx([["Stage 2", 46.6]], [["Hut", 46.5]])),
+      gpxFile("part-1.gpx", collectionGpx([["Stage 1", 46.5]], [["Hut", 46.5]])),
     ]);
 
   await expect(page.locator("#review-files")).toHaveText("From part-1.gpx, part-2.gpx.");
@@ -93,7 +93,7 @@ test("a corrected file is reviewed and the owner's choice is proposed again (US-
     multipart: {
       gpx: gpxFile(
         "first.gpx",
-        book([
+        collectionGpx([
           ["Stage 1", 46.5],
           ["Stage 2", 46.6],
           ["Stage 3", 46.7],
@@ -113,7 +113,7 @@ test("a corrected file is reviewed and the owner's choice is proposed again (US-
   await page.locator("#import-gpx").setInputFiles([
     gpxFile(
       "corrected.gpx",
-      book([
+      collectionGpx([
         ["Stage 1", 46.5],
         ["Stage 2", 46.61],
         ["Stage 4", 46.8],
@@ -143,7 +143,7 @@ test("a corrected file is reviewed and the owner's choice is proposed again (US-
 test("cancelling a review changes nothing (US-88)", async ({ page, request }) => {
   const name = `Lakes ${Math.random().toString(36).slice(2, 8)}`;
   const response = await request.post("/api/collections", {
-    multipart: { gpx: gpxFile("first.gpx", book([["Stage 1", 46.5]])), name },
+    multipart: { gpx: gpxFile("first.gpx", collectionGpx([["Stage 1", 46.5]])), name },
   });
   const { id } = await response.json();
   created.push(id);
@@ -151,7 +151,9 @@ test("cancelling a review changes nothing (US-88)", async ({ page, request }) =>
   await page.goto("/app/import");
   await page.getByLabel("Collection", { exact: true }).check();
   await page.locator("#import-target").selectOption({ label: name });
-  await page.locator("#import-gpx").setInputFiles([gpxFile("more.gpx", book([["Stage 9", 47]]))]);
+  await page
+    .locator("#import-gpx")
+    .setInputFiles([gpxFile("more.gpx", collectionGpx([["Stage 9", 47]]))]);
   await expect(page.locator("#track-0-0")).toHaveValue("add");
   await page.locator("#import-cancel").click();
 

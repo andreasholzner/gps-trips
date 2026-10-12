@@ -1,4 +1,4 @@
-//! Which icon a guide book's waypoint gets on a map (US-95), from the GPX
+//! Which icon a collection's waypoint gets on a map (US-95), from the GPX
 //! `<sym>` its file names; the script only draws it (ADR-0025).
 //!
 //! GPX leaves `<sym>` free text. The names are Garmin's, which its devices,
@@ -6,7 +6,7 @@
 //! them. A colored one is a shape and a color, `Triangle, Blue`, drawn as
 //! that shape in that color; a navaid has more colors than the other shapes,
 //! and some in two tones, `Navaid, Green/Red`, drawn as a diamond split down
-//! the middle. Of the others, those a walking or riding book uses get a glyph
+//! the middle. Of the others, those a walking or riding collection uses get a glyph
 //! on a badge. Every other name keeps US-86's marker.
 //!
 //! The shapes and glyphs are Material Design Icons (Pictogrammers,

@@ -146,10 +146,10 @@ enum Route {
     /// The filter lives in the query string, as the list's filters do.
     #[route("/tags?:..view")]
     Tags { view: TagsView },
-    /// A guide book's collection (US-86), where its import ends.
+    /// A collection (US-86), where its import ends.
     #[route("/collections/:id")]
     Collection { id: i64 },
-    /// One track of a guide book's collection (US-86).
+    /// One track of a collection (US-86).
     #[route("/collection-tracks/:id")]
     CollectionTrack { id: i64 },
     #[end_layout]

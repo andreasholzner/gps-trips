@@ -1,4 +1,4 @@
-//! US-86 acceptance tests — "import a guide-book collection".
+//! US-86 acceptance tests — "import a collection".
 //!
 //! One GPX file creates a collection holding every track and waypoint in it,
 //! kept apart from the owner's trips (ADR-0028). Driven through the real
@@ -11,7 +11,7 @@ use trip_archive::models::{
 
 use crate::common::{
     body_bytes, body_string, collection_request, delete, error_message, get, import_collection,
-    json_request, send, test_app, GUIDE_BOOK_GPX, GUIDE_SINGLE_GPX, NO_TRACKS_GPX,
+    json_request, send, test_app, COLLECTION_GPX, COLLECTION_SINGLE_GPX, NO_TRACKS_GPX,
     WAYPOINTS_ONLY_GPX,
 };
 
@@ -43,7 +43,7 @@ async fn patch(app: &axum::Router, uri: &str, body: &str) -> StatusCode {
 async fn us86_the_preview_suggests_the_details_and_counts_what_the_file_holds() {
     let (app, _dir) = test_app().await;
 
-    let request = collection_request("/api/collections/preview", GUIDE_BOOK_GPX, "x.gpx", &[]);
+    let request = collection_request("/api/collections/preview", COLLECTION_GPX, "x.gpx", &[]);
     let response = send(&app, request).await;
     assert_eq!(response.status(), StatusCode::OK);
     let preview: CollectionPreview = serde_json::from_slice(&body_bytes(response).await).unwrap();
@@ -66,7 +66,7 @@ async fn us86_without_metadata_the_file_name_is_suggested() {
 
     let request = collection_request(
         "/api/collections/preview",
-        GUIDE_SINGLE_GPX,
+        COLLECTION_SINGLE_GPX,
         "Nordkette-Touren.gpx",
         &[],
     );
@@ -80,7 +80,7 @@ async fn us86_without_metadata_the_file_name_is_suggested() {
 async fn us86_the_preview_creates_nothing() {
     let (app, _dir) = test_app().await;
 
-    let request = collection_request("/api/collections/preview", GUIDE_BOOK_GPX, "x.gpx", &[]);
+    let request = collection_request("/api/collections/preview", COLLECTION_GPX, "x.gpx", &[]);
     send(&app, request).await;
 
     let response = get(&app, "/api/collections/1").await;
@@ -95,7 +95,7 @@ async fn us86_one_file_creates_a_collection_of_all_its_tracks_and_waypoints() {
 
     let id = import_collection(
         &app,
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         &[
             ("name", "Alpencross"),
             ("description", "Bruckmann's book"),
@@ -125,7 +125,7 @@ async fn us86_one_file_creates_a_collection_of_all_its_tracks_and_waypoints() {
 async fn us86_details_left_out_take_what_the_file_suggests() {
     let (app, _dir) = test_app().await;
 
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[("name", "  ")]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[("name", "  ")]).await;
 
     let collection = collection(&app, id).await;
     assert_eq!(collection.name, "Lakes & Passes");
@@ -133,7 +133,7 @@ async fn us86_details_left_out_take_what_the_file_suggests() {
         collection.description,
         "Ten tours around the lakes.\n\nBruckmann, Baukasten"
     );
-    // A book with no activity focus: its tracks are unknown.
+    // A collection with no activity focus: its tracks are unknown.
     assert_eq!(collection.activity_type, None);
     assert_eq!(collection.tracks[0].activity_type, ActivityType::Unknown);
 }
@@ -143,9 +143,9 @@ async fn us86_an_unnamed_track_is_numbered_by_its_place_in_the_file() {
     // A track without a single point is no track to keep, but it still has
     // its place in the file.
     let (app, _dir) = test_app().await;
-    let book = r#"<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Empty</name></trk><trk><name>Stage 2</name><trkseg><trkpt lat="46.0" lon="9.0"/><trkpt lat="46.0" lon="9.01"/></trkseg></trk><trk><trkseg><trkpt lat="46.1" lon="9.0"/><trkpt lat="46.1" lon="9.01"/></trkseg></trk></gpx>"#;
+    let gpx = r#"<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Empty</name></trk><trk><name>Stage 2</name><trkseg><trkpt lat="46.0" lon="9.0"/><trkpt lat="46.0" lon="9.01"/></trkseg></trk><trk><trkseg><trkpt lat="46.1" lon="9.0"/><trkpt lat="46.1" lon="9.01"/></trkseg></trk></gpx>"#;
 
-    let id = import_collection(&app, book.as_bytes(), &[("name", "Book")]).await;
+    let id = import_collection(&app, gpx.as_bytes(), &[("name", "Book")]).await;
 
     let names: Vec<String> = collection(&app, id)
         .await
@@ -161,17 +161,17 @@ async fn us86_a_whole_book_imports_in_one_go() {
     // The size of `data/collections/Alpencross-light-Baukasten.gpx`: 125
     // tracks and 46 waypoints.
     let (app, _dir) = test_app().await;
-    let book = a_book(125, 46);
+    let gpx = a_collection_gpx(125, 46);
 
-    let id = import_collection(&app, book.as_bytes(), &[("name", "Alpencross")]).await;
+    let id = import_collection(&app, gpx.as_bytes(), &[("name", "Alpencross")]).await;
 
     let collection = collection(&app, id).await;
     assert_eq!(collection.tracks.len(), 125);
     assert_eq!(collection.waypoint_count, 46);
 }
 
-/// A generated guide book of `tracks` short tracks and `waypoints` waypoints.
-fn a_book(tracks: usize, waypoints: usize) -> String {
+/// A generated collection of `tracks` short tracks and `waypoints` waypoints.
+fn a_collection_gpx(tracks: usize, waypoints: usize) -> String {
     let mut gpx = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">"#,
     );
@@ -225,7 +225,7 @@ async fn us86_an_unknown_activity_is_refused() {
 
     let request = collection_request(
         "/api/collections",
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         "x.gpx",
         &[("activity_type", "flying")],
     );
@@ -239,7 +239,7 @@ async fn us86_an_unknown_activity_is_refused() {
 #[tokio::test]
 async fn us86_a_tracks_stats_are_distance_ascent_and_descent() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[("name", "Lakes")]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[("name", "Lakes")]).await;
     let first = collection(&app, id).await.tracks[0].id;
 
     let track = track(&app, first).await;
@@ -269,7 +269,7 @@ async fn us86_a_tracks_stats_are_distance_ascent_and_descent() {
 #[tokio::test]
 async fn us86_a_tracks_gpx_downloads_under_its_name() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
     let last = collection(&app, id).await.tracks[2].id;
 
     let response = get(&app, &format!("/api/collection-tracks/{last}/gpx")).await;
@@ -288,7 +288,7 @@ async fn us86_a_tracks_gpx_downloads_under_its_name() {
 #[tokio::test]
 async fn us86_a_tracks_name_and_activity_can_be_edited_and_override_the_collections() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[("activity_type", "cycling")]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[("activity_type", "cycling")]).await;
     let tracks = collection(&app, id).await.tracks;
     let uri = format!("/api/collection-tracks/{}", tracks[0].id);
 
@@ -304,6 +304,8 @@ async fn us86_a_tracks_name_and_activity_can_be_edited_and_override_the_collecti
     assert_eq!(edited.name, "Day one");
     assert_eq!(edited.activity_type, ActivityType::Hiking);
     assert_eq!(edited.own_activity, Some(ActivityType::Hiking));
+    // What the edit form offers to go back to.
+    assert_eq!(edited.collection_activity, Some(ActivityType::Cycling));
 
     // The collection's activity changes every track without one of its own.
     let status = patch(
@@ -328,7 +330,7 @@ async fn us86_a_tracks_name_and_activity_can_be_edited_and_override_the_collecti
 #[tokio::test]
 async fn us86_an_edit_is_validated() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
     let first = collection(&app, id).await.tracks[0].id;
 
     let track_uri = format!("/api/collection-tracks/{first}");
@@ -358,7 +360,7 @@ async fn us86_an_edit_is_validated() {
 #[tokio::test]
 async fn us86_a_single_track_can_be_deleted() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
     let first = collection(&app, id).await.tracks[0].id;
 
     let response = delete(&app, &format!("/api/collection-tracks/{first}")).await;
@@ -376,7 +378,7 @@ async fn us86_a_single_track_can_be_deleted() {
 #[tokio::test]
 async fn us86_waypoints_keep_their_name_position_elevation_and_description() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
 
     let waypoints: Vec<Waypoint> =
         read_json(&app, &format!("/api/collections/{id}/waypoints")).await;
@@ -396,7 +398,7 @@ async fn us86_waypoints_keep_their_name_position_elevation_and_description() {
 #[tokio::test]
 async fn us86_a_single_tours_waypoints_belong_to_its_track_too() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
     let only = collection(&app, id).await.tracks[0].id;
 
     let on_track: Vec<Waypoint> =
@@ -411,7 +413,7 @@ async fn us86_a_single_tours_waypoints_belong_to_its_track_too() {
 #[tokio::test]
 async fn us86_the_collections_tracks_come_as_positions_in_one_request() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
     let ids: Vec<i64> = collection(&app, id)
         .await
         .tracks
@@ -430,7 +432,7 @@ async fn us86_the_collections_tracks_come_as_positions_in_one_request() {
 #[tokio::test]
 async fn us86_the_details_can_be_changed() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[("activity_type", "cycling")]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[("activity_type", "cycling")]).await;
 
     let status = patch(
         &app,
@@ -450,7 +452,7 @@ async fn us86_the_details_can_be_changed() {
 #[tokio::test]
 async fn us86_deleting_the_collection_deletes_its_tracks_and_waypoints() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
     let only = collection(&app, id).await.tracks[0].id;
 
     let response = delete(&app, &format!("/api/collections/{id}")).await;
@@ -475,7 +477,7 @@ async fn us86_deleting_the_collection_deletes_its_tracks_and_waypoints() {
 #[tokio::test]
 async fn us86_collections_are_the_owners_alone() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
 
     let request = axum::http::Request::builder()
         .uri(format!("/api/collections/{id}"))

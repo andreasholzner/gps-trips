@@ -18,7 +18,7 @@ use trip_archive::models::{
 
 use crate::common::{
     body_string, error_message, get, import_collection, send_unauthenticated, test_app,
-    GUIDE_BOOK_GPX, GUIDE_SINGLE_GPX, WAYPOINTS_ONLY_GPX,
+    COLLECTION_GPX, COLLECTION_SINGLE_GPX, WAYPOINTS_ONLY_GPX,
 };
 
 async fn read_json<T: serde::de::DeserializeOwned>(app: &axum::Router, uri: &str) -> T {
@@ -43,7 +43,7 @@ fn names(listed: &[CollectionSummary]) -> Vec<&str> {
 async fn us87_every_collection_is_listed_alphabetically_whatever_its_case() {
     let (app, _dir) = test_app().await;
     for name in ["bergtouren", "Comer See", "Alpencross"] {
-        import_collection(&app, GUIDE_SINGLE_GPX, &[("name", name)]).await;
+        import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", name)]).await;
     }
 
     let listed = collections(&app, "").await;
@@ -63,7 +63,7 @@ async fn us87_a_collection_comes_with_its_activity_and_its_counts() {
     let (app, _dir) = test_app().await;
     let id = import_collection(
         &app,
-        GUIDE_BOOK_GPX,
+        COLLECTION_GPX,
         &[("name", "Lakes"), ("activity_type", "cycling")],
     )
     .await;
@@ -85,7 +85,7 @@ async fn us87_a_collection_comes_with_its_activity_and_its_counts() {
 #[tokio::test]
 async fn us87_each_track_comes_with_its_name_activity_and_bounding_box() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[("activity_type", "cycling")]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[("activity_type", "cycling")]).await;
     let detail: CollectionDetail = read_json(&app, &format!("/api/collections/{id}")).await;
 
     let listed = collections(&app, "").await;
@@ -114,7 +114,7 @@ async fn us87_each_track_comes_with_its_name_activity_and_bounding_box() {
 #[tokio::test]
 async fn us87_a_track_without_an_activity_of_its_own_goes_by_unknown() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
 
     let listed = collections(&app, "").await;
 
@@ -125,7 +125,7 @@ async fn us87_a_track_without_an_activity_of_its_own_goes_by_unknown() {
 async fn us87_the_waypoints_bounds_span_every_waypoint() {
     let (app, _dir) = test_app().await;
     import_collection(&app, WAYPOINTS_ONLY_GPX, &[("name", "A")]).await;
-    let mut without = GUIDE_SINGLE_GPX.to_vec();
+    let mut without = COLLECTION_SINGLE_GPX.to_vec();
     // The same tour, its waypoints cut out.
     let text = String::from_utf8(without.clone()).unwrap();
     let start = text.find("<wpt").unwrap();
@@ -150,7 +150,7 @@ async fn us87_the_waypoints_bounds_span_every_waypoint() {
 async fn us87_the_name_search_narrows_the_list_whatever_the_case() {
     let (app, _dir) = test_app().await;
     for name in ["Rund um Tromsø", "Lofoten", "Tromsø Nord"] {
-        import_collection(&app, GUIDE_SINGLE_GPX, &[("name", name)]).await;
+        import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", name)]).await;
     }
 
     let listed = collections(&app, "?q=TROMSØ").await;
@@ -161,7 +161,7 @@ async fn us87_the_name_search_narrows_the_list_whatever_the_case() {
 #[tokio::test]
 async fn us87_a_blank_search_narrows_nothing() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
 
     assert_eq!(collections(&app, "?q=&bbox=").await.len(), 1);
 }
@@ -169,8 +169,8 @@ async fn us87_a_blank_search_narrows_nothing() {
 #[tokio::test]
 async fn us87_a_region_lists_the_collections_with_a_track_in_it() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_BOOK_GPX, &[("name", "Lakes")]).await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[("name", "Nordkette")]).await;
+    import_collection(&app, COLLECTION_GPX, &[("name", "Lakes")]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", "Nordkette")]).await;
 
     // Around Innsbruck: the Nordkette tour only.
     let listed = collections(&app, "?bbox=11.3,47.2,11.5,47.4").await;
@@ -182,7 +182,7 @@ async fn us87_a_region_lists_the_collections_with_a_track_in_it() {
 async fn us87_a_region_lists_the_collections_with_a_waypoint_in_it() {
     let (app, _dir) = test_app().await;
     import_collection(&app, WAYPOINTS_ONLY_GPX, &[("name", "Passes")]).await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[("name", "Nordkette")]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", "Nordkette")]).await;
 
     // Around the San Bernardino Pass: no track, one waypoint.
     let listed = collections(&app, "?bbox=9.16,46.49,9.18,46.50").await;
@@ -195,7 +195,7 @@ async fn us87_a_listed_collection_keeps_its_tracks_outside_the_region() {
     // A listed collection is shown whole on the map, as a listed trip's
     // whole line is.
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&app, COLLECTION_GPX, &[]).await;
 
     // Around the Albula Pass: only stage 3 reaches it.
     let listed = collections(&app, "?bbox=9.83,46.58,9.84,46.59").await;
@@ -207,7 +207,7 @@ async fn us87_a_listed_collection_keeps_its_tracks_outside_the_region() {
 #[tokio::test]
 async fn us87_a_region_with_nothing_in_it_lists_nothing() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    import_collection(&app, COLLECTION_GPX, &[]).await;
 
     assert!(collections(&app, "?bbox=0,0,1,1").await.is_empty());
 }
@@ -215,9 +215,9 @@ async fn us87_a_region_with_nothing_in_it_lists_nothing() {
 #[tokio::test]
 async fn us87_search_and_region_narrow_together() {
     let (app, _dir) = test_app().await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[("name", "Nordkette")]).await;
-    import_collection(&app, GUIDE_SINGLE_GPX, &[("name", "Patscherkofel")]).await;
-    import_collection(&app, GUIDE_BOOK_GPX, &[("name", "Nord-Passes")]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", "Nordkette")]).await;
+    import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", "Patscherkofel")]).await;
+    import_collection(&app, COLLECTION_GPX, &[("name", "Nord-Passes")]).await;
 
     let listed = collections(&app, "?q=nord&bbox=11.3,47.2,11.5,47.4").await;
 
@@ -246,7 +246,7 @@ async fn tracks(app: &axum::Router, query: &str) -> Vec<TripTrack> {
 #[tokio::test]
 async fn us87_each_requested_track_comes_with_its_positions() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_BOOK_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
     let all: Vec<TripTrack> = read_json(&app, &format!("/api/collections/{id}/tracks")).await;
     let (first, third) = (&all[0], &all[2]);
 
@@ -259,7 +259,7 @@ async fn us87_each_requested_track_comes_with_its_positions() {
 #[tokio::test]
 async fn us87_an_unknown_track_is_left_out_and_no_ids_ask_for_nothing() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
     let all: Vec<TripTrack> = read_json(&app, &format!("/api/collections/{id}/tracks")).await;
 
     let answer = tracks(&app, &format!("?ids={},9999", all[0].id)).await;
@@ -290,7 +290,7 @@ async fn us87_the_collections_are_counted_without_being_listed() {
     let (app, _dir) = test_app().await;
     let empty: CollectionCount = read_json(&app, "/api/collections/count").await;
     for name in ["One", "Two", "Three"] {
-        import_collection(&app, GUIDE_SINGLE_GPX, &[("name", name)]).await;
+        import_collection(&app, COLLECTION_SINGLE_GPX, &[("name", name)]).await;
     }
 
     let counted: CollectionCount = read_json(&app, "/api/collections/count").await;
@@ -304,7 +304,7 @@ async fn us87_the_collections_are_counted_without_being_listed() {
 #[tokio::test]
 async fn us87_the_collections_and_their_tracks_are_the_owners_alone() {
     let (app, _dir) = test_app().await;
-    let id = import_collection(&app, GUIDE_SINGLE_GPX, &[]).await;
+    let id = import_collection(&app, COLLECTION_SINGLE_GPX, &[]).await;
     let all: Vec<TripTrack> = read_json(&app, &format!("/api/collections/{id}/tracks")).await;
 
     for uri in [
