@@ -16,39 +16,50 @@ use crate::waypoint_icon::{self, WaypointIcon};
 /// A diamond, as a `divIcon`: markup rather than Leaflet's default pin,
 /// whose image the bundle does not ship (the photo markers' reason too), and
 /// a shape no line, photo circle or hover ring has (`detail.css`). A
-/// waypoint with an icon gets it instead, as an SVG built node by node —
-/// the path comes from Rust, but markup would still be HTML put in.
+/// waypoint with an icon gets it instead. Either is an SVG built node by
+/// node — an icon's path comes from Rust, but markup would still be HTML put
+/// in. The diamond is drawn as one, not turned in CSS: a `rotate` on the
+/// marker turns Leaflet's placing transform with it, about the map pane's
+/// corner.
 const WAYPOINTS_JS: &str = r##"
-    function waypointSymbol(icon) {
+    const WAYPOINT_MARK = "M12,1L23,12L12,23L1,12Z";
+
+    function waypointIcon(icon) {
       const ns = "http://www.w3.org/2000/svg";
       const svg = document.createElementNS(ns, "svg");
       svg.setAttribute("viewBox", "0 0 24 24");
       const path = document.createElementNS(ns, "path");
-      path.setAttribute("d", icon.path);
-      if (icon.kind === "glyph") {
+      if (!icon) {
+        path.setAttribute("d", WAYPOINT_MARK);
+        path.setAttribute("class", "mark");
+      } else if (icon.kind === "glyph") {
         const badge = document.createElementNS(ns, "circle");
         badge.setAttribute("class", "badge");
         badge.setAttribute("cx", "12");
         badge.setAttribute("cy", "12");
         badge.setAttribute("r", "12");
         svg.appendChild(badge);
+        path.setAttribute("d", icon.path);
         path.setAttribute("class", "glyph");
         path.setAttribute("transform", "translate(12 12) scale(0.62) translate(-12 -12)");
       } else {
+        path.setAttribute("d", icon.path);
         path.setAttribute("class", "shape");
         path.setAttribute("fill", icon.color);
       }
       svg.appendChild(path);
-      return L.divIcon({ className: "waypoint-symbol", html: svg, iconSize: [16, 16] });
+      return L.divIcon({
+        className: icon ? "waypoint-symbol" : "waypoint-mark",
+        html: svg,
+        iconSize: [16, 16],
+      });
     }
 
     function drawWaypoints(map, waypoints) {
       return L.featureGroup(
         (waypoints || []).map((waypoint) => {
           const marker = L.marker([waypoint.lat, waypoint.lon], {
-            icon: waypoint.icon
-              ? waypointSymbol(waypoint.icon)
-              : L.divIcon({ className: "waypoint-mark", iconSize: [12, 12] }),
+            icon: waypointIcon(waypoint.icon),
             keyboard: false,
           });
           if (waypoint.name) {
@@ -56,7 +67,7 @@ const WAYPOINTS_JS: &str = r##"
             // HTML, and the name comes from someone else's file.
             marker.bindTooltip(document.createTextNode(waypoint.name), {
               direction: "top",
-              offset: [0, waypoint.icon ? -8 : -6],
+              offset: [0, -8],
             });
             // A finger does not hover: a tap names it.
             marker.on("click", () => marker.openTooltip());
@@ -148,6 +159,14 @@ mod tests {
         assert!(WAYPOINTS_JS.contains("createElementNS"));
         assert!(!WAYPOINTS_JS.contains("innerHTML"));
         assert!(WAYPOINTS_JS.contains("html: svg"));
+    }
+
+    #[test]
+    fn us86_the_plain_marker_is_a_drawn_diamond_never_a_turned_box() {
+        // A CSS `rotate` on the marker turns Leaflet's placing transform
+        // too, and the marker lands away from its place.
+        assert!(WAYPOINTS_JS.contains(r#"path.setAttribute("d", WAYPOINT_MARK)"#));
+        assert!(!include_str!("../../assets/detail.css").contains("rotate:"));
     }
 
     #[test]

@@ -150,6 +150,20 @@ test("a waypoint with a symbol shows its icon, named on hover; one without keeps
   await expect(page.locator(".leaflet-tooltip")).toHaveText("San Bernardino Pass");
 });
 
+// A marker turned in CSS was turned about the map pane's corner, Leaflet's
+// placing transform and all, and landed far to the south-west of its place.
+test("a waypoint without an icon sits where it is (US-86)", async ({ page, request }) => {
+  const id = await importCollection(request, GUIDE_BOOK_GPX);
+
+  await page.goto(`/app/collections/${id}`);
+  // Albula Pass ends Stage 3, which runs down and to the right to it.
+  const mark = await page.locator("#overview-map .waypoint-mark").boundingBox();
+  const stage3 = await page.locator("#overview-map path.leaflet-interactive").nth(2).boundingBox();
+
+  expect(Math.abs(mark.x + mark.width / 2 - (stage3.x + stage3.width))).toBeLessThan(3);
+  expect(Math.abs(mark.y + mark.height / 2 - (stage3.y + stage3.height))).toBeLessThan(3);
+});
+
 test("a collection track's map shows its waypoints' icons too (US-95)", async ({
   page,
   request,

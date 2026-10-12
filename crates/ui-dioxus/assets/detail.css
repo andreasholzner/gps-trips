@@ -159,20 +159,13 @@
   line-height: 1;
 }
 
-/* A guide book's waypoint (US-86): a diamond, a shape no line, photo circle
-   or hover ring has. Qualified by the container for the same two reasons as
-   the photo group's marker above. */
-.leaflet-container .waypoint-mark {
-  background: #37474f;
-  border: 2px solid #ffffff;
-  border-radius: 2px;
-  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
-  transform-origin: center;
-  rotate: 45deg;
-}
-
-/* A waypoint whose symbol has an icon (US-95): its shape in its color, or a
-   white glyph on the diamond's slate, outlined in white against the tiles. */
+/* A guide book's waypoint (US-86): a slate diamond, a shape no line, photo
+   circle or hover ring has; one whose symbol has an icon (US-95): its shape
+   in its color, or a white glyph on the diamond's slate. Each outlined in
+   white against the tiles, and qualified by the container for the same two
+   reasons as the photo group's marker above. The diamond is drawn, never
+   turned: a CSS rotate turns Leaflet's placing transform too. */
+.leaflet-container .waypoint-mark svg,
 .leaflet-container .waypoint-symbol svg {
   display: block;
   width: 100%;
@@ -181,6 +174,7 @@
   filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.55));
 }
 
+.leaflet-container .waypoint-mark .mark,
 .leaflet-container .waypoint-symbol .shape,
 .leaflet-container .waypoint-symbol .badge {
   stroke: #ffffff;
@@ -189,6 +183,7 @@
   vector-effect: non-scaling-stroke;
 }
 
+.leaflet-container .waypoint-mark .mark,
 .leaflet-container .waypoint-symbol .badge {
   fill: #37474f;
 }
