@@ -142,6 +142,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
+| [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -1021,6 +1022,36 @@ shared trip's stats and elevation profile (US-53) and on a shared summary (US-82
 
 **Decisions:** US-81 → ADR-0025 (Rust finds the climbs and works out the rates, the script draws the
 charts and the marked stretches), ADR-0008 (the screens read their figures from the JSON API)
+
+### US-99 — Link what I did to what I planned
+
+**Backlog ⏳** — As the owner, I link a recorded trip to what it followed — a planned trip (US-31),
+a collection's track (US-86), the collection's waypoints it passed — so I see which of my plans and
+which stages of a guide book I have already done.
+
+**Notes:** Rough. **Suggested, not decided:** the archive proposes the links itself, from the
+geometry — a recorded track that runs along a planned trip's or a collection track's line within a
+tolerance, a waypoint the track passes within a distance — and the owner confirms or dismisses each,
+as re-adding a file proposes and the owner decides (ADR-0029). Suggestions are made when a trip is
+imported or synced and once over the trips already archived; a dismissed one is not proposed
+again. The owner can also link and unlink by hand.
+
+**Not one to one:** a day may cover two stages, a stage may take two days, a trip may follow part of
+a stage or leave it for a detour; a planned trip may be done more than once. How much of a line must
+be covered to count as done — all of it, most of it, or a share shown as such — is open.
+
+**Where it shows:** a recorded trip's page names what it followed; a planned trip's and a collection
+track's page name the trips that did it, with their dates; a collection's page and the Collections
+page (US-97) count what is done ("12 of 125 tracks"); the planned tab and the collection's list mark
+what is done, and can be narrowed to what is not; a passed waypoint is marked visited.
+
+**Open:** whether done-ness is only ever a confirmed link or also an unconfirmed match; whether a
+planned trip that was done stays on the Planned tab; how links travel into the QMapShack export
+(US-89) and shares (US-94); what direction of travel, if any, matters.
+
+**Decisions:** likely an ADR on matching a recorded track against a planned line — related to, but
+not the same as, ADR-0029's matching of a file against a collection; links of their own between
+trips and collection items, as ADR-0028 has for tags and shares.
 
 ## Photos
 
