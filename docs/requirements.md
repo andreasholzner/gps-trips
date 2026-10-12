@@ -28,7 +28,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-90, US-93, US-94                      | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
+| 1    | US-90, US-94                             | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
 | 2    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
 
 ## Story index
@@ -136,7 +136,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
-| [US-93](#us-93--tag-collections-and-their-tracks)             | 📋     | Tag collections and their tracks             | [Tags](#tags)                                                       |
+| [US-93](#us-93--tag-collections-and-their-tracks)             | ✅     | Tag collections and their tracks             | [Tags](#tags)                                                       |
 | [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
@@ -1255,7 +1255,7 @@ the new name. The table shows the renamed tag at once, in its new alphabetical p
 
 ### US-93 — Tag collections and their tracks
 
-**Planned 📋** — As the owner, I tag collections and their tracks, so I organize guide books the way
+**Done ✅** — As the owner, I tag collections and their tracks, so I organize guide books the way
 I organize my trips.
 
 **Acceptance criteria:** A collection's page (US-86) and a collection track's page tag it as a
