@@ -82,7 +82,7 @@ fn PlaceWaypoint(
             current: Some([waypoint.lat, waypoint.lon]),
             error: error().map(|message| format!("Could not move the waypoint: {message}")),
             saving: saving(),
-            on_save: move |at: trip_archive_types::PhotoPlacement| async move {
+            on_save: move |[lat, lon]: [f64; 2]| async move {
                 // One request per press, as for a photo.
                 if saving() {
                     return;
@@ -90,8 +90,8 @@ fn PlaceWaypoint(
                 saving.set(true);
                 error.set(None);
                 let edit = WaypointEdit {
-                    lat: Some(at.lat),
-                    lon: Some(at.lon),
+                    lat: Some(lat),
+                    lon: Some(lon),
                     ..Default::default()
                 };
                 match api::edit_waypoint(&archive(), id, &edit).await {

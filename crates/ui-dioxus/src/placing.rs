@@ -33,7 +33,8 @@ pub fn overwrite_warning(source: LocationSource) -> Option<&'static str> {
     }
 }
 
-/// A point picked on the map, as a position the archive accepts. Leaflet
+/// A point picked on the map, `[lat, lon]`, as a position the archive
+/// accepts. Leaflet
 /// reports a longitude off the ±180° range once the map has been panned
 /// round the world, and a latitude a hair past a pole at the edge of its
 /// projection; the place meant is the same, so it is wrapped and clamped
@@ -41,16 +42,18 @@ pub fn overwrite_warning(source: LocationSource) -> Option<&'static str> {
 ///
 /// A longitude already in range is left exactly as it is: wrapping it anyway
 /// would cost it its last digits in the arithmetic.
-pub fn picked([lat, lon]: [f64; 2]) -> PhotoPlacement {
+pub fn picked([lat, lon]: [f64; 2]) -> [f64; 2] {
     let lon = if (-180.0..=180.0).contains(&lon) {
         lon
     } else {
         (lon + 180.0).rem_euclid(360.0) - 180.0
     };
-    PhotoPlacement {
-        lat: lat.clamp(-90.0, 90.0),
-        lon,
-    }
+    [lat.clamp(-90.0, 90.0), lon]
+}
+
+/// A pick as the photo's placement (US-30).
+pub fn placement([lat, lon]: [f64; 2]) -> PhotoPlacement {
+    PhotoPlacement { lat, lon }
 }
 
 /// The overlay, for `photo` of trip `id`. `on_placed` is told once the
@@ -94,7 +97,7 @@ pub fn PlacePhoto(
                 }
                 saving.set(true);
                 error.set(None);
-                match api::place_photo(&archive(), id, photo_id, at).await {
+                match api::place_photo(&archive(), id, photo_id, placement(at)).await {
                     Ok(_) => on_placed.call(()),
                     Err(err) => error.set(Some(err.to_string())),
                 }
@@ -109,8 +112,9 @@ pub fn PlacePhoto(
 /// or a waypoint (US-98). The `guide` track is drawn to find the spot by —
 /// `None` while it is read, and without it the place can still be picked on
 /// the tiles alone. `current` is where it is now; each tap moves the pick,
-/// and nothing is saved before Save, which hands the pick to `on_save`. The
-/// caller stores it and says how that went through `saving` and `error`.
+/// and nothing is saved before Save, which hands the pick, `[lat, lon]`, to
+/// `on_save`. The caller stores it and says how that went through `saving`
+/// and `error`.
 #[component]
 pub fn PlaceOnMap(
     title: String,
@@ -121,10 +125,10 @@ pub fn PlaceOnMap(
     #[props(default)] warning: Option<&'static str>,
     #[props(default)] error: Option<String>,
     saving: bool,
-    on_save: EventHandler<PhotoPlacement>,
+    on_save: EventHandler<[f64; 2]>,
     on_close: EventHandler<()>,
 ) -> Element {
-    let mut chosen = use_signal(|| None::<PhotoPlacement>);
+    let mut chosen = use_signal(|| None::<[f64; 2]>);
 
     rsx! {
         Overlay { label: "{title}", class: "placing", on_close,
@@ -252,23 +256,17 @@ mod tests {
 
     #[test]
     fn a_pick_is_kept_as_it_was_made_on_the_first_copy_of_the_world() {
-        assert_eq!(
-            picked([59.95, 10.8]),
-            PhotoPlacement {
-                lat: 59.95,
-                lon: 10.8
-            }
-        );
+        assert_eq!(picked([59.95, 10.8]), [59.95, 10.8]);
     }
 
     #[test]
     fn a_pick_on_a_map_panned_round_the_world_lands_where_it_was_meant() {
-        let at = picked([59.91, 370.75]);
-        assert!((at.lon - 10.75).abs() < 1e-9, "{at:?}");
-        let at = picked([59.91, -349.25]);
-        assert!((at.lon - 10.75).abs() < 1e-9, "{at:?}");
-        assert_eq!(picked([90.4, 0.0]).lat, 90.0);
-        assert_eq!(picked([-90.4, 0.0]).lat, -90.0);
+        let [_, lon] = picked([59.91, 370.75]);
+        assert!((lon - 10.75).abs() < 1e-9, "{lon}");
+        let [_, lon] = picked([59.91, -349.25]);
+        assert!((lon - 10.75).abs() < 1e-9, "{lon}");
+        assert_eq!(picked([90.4, 0.0])[0], 90.0);
+        assert_eq!(picked([-90.4, 0.0])[0], -90.0);
     }
 
     async fn placing(archive: &ApiClient, photo: PhotoView) -> String {
@@ -343,7 +341,7 @@ mod tests {
         .expect("upload");
         let photo = api::list_photos(&archive, id).await.expect("photos")[0].id;
 
-        let placed = api::place_photo(&archive, id, photo, picked([59.95, 10.8]))
+        let placed = api::place_photo(&archive, id, photo, placement(picked([59.95, 10.8])))
             .await
             .expect("placed");
 
@@ -358,7 +356,7 @@ mod tests {
         let (archive, _dir) = serve_test_archive().await;
         let id = import_sample(&archive, &[]).await;
 
-        let err = api::place_photo(&archive, id, 9_999, picked([59.95, 10.8]))
+        let err = api::place_photo(&archive, id, 9_999, placement(picked([59.95, 10.8])))
             .await
             .expect_err("no such photo");
 

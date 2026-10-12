@@ -41,13 +41,13 @@ async fn handle_get(
 }
 
 /// An optional text field as edited: trimmed, and blank takes it away.
-fn optional_text(value: Option<&String>) -> Option<Option<&str>> {
+fn optional_text(value: Option<&str>) -> Option<Option<&str>> {
     value.map(|text| Some(text.trim()).filter(|text| !text.is_empty()))
 }
 
 /// The elevation as the form holds it: blank takes it away, anything else
 /// must be a number of metres.
-fn edited_ele(value: Option<&String>) -> Result<Option<Option<f64>>, AppError> {
+fn edited_ele(value: Option<&str>) -> Result<Option<Option<f64>>, AppError> {
     let Some(text) = optional_text(value) else {
         return Ok(None);
     };
@@ -92,7 +92,7 @@ async fn handle_edit(
     Json(edit): Json<WaypointEdit>,
 ) -> Result<StatusCode, AppError> {
     let name = edited_name(edit.name)?;
-    let symbol = optional_text(edit.symbol.as_ref());
+    let symbol = optional_text(edit.symbol.as_deref());
     if symbol
         .flatten()
         .is_some_and(|symbol| symbol.chars().count() > MAX_SYMBOL_LEN)
@@ -103,9 +103,9 @@ async fn handle_edit(
     }
     let change = WaypointChange {
         name: name.as_deref(),
-        description: optional_text(edit.description.as_ref()),
+        description: optional_text(edit.description.as_deref()),
         symbol,
-        ele: edited_ele(edit.ele.as_ref())?,
+        ele: edited_ele(edit.ele.as_deref())?,
         position: edited_position(edit.lat, edit.lon)?,
     };
     if !repo::update_waypoint(&state.pool, id, &change).await? {

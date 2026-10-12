@@ -4,7 +4,8 @@
 //! The archive hands over every collection at once (`GET /api/collections`);
 //! the filter and the paging work over that list, as the Tags screen's do
 //! (US-83) — a collection comes with all its tracks' marks, so asking again
-//! per keystroke would read them all again.
+//! per keystroke would read them all again. For the same reason the list is
+//! taken out of the answer once, and a keystroke copies only the page shown.
 
 use dioxus::prelude::*;
 use trip_archive_types::CollectionSummary;
@@ -18,12 +19,14 @@ use crate::Route;
 /// The collections whose names contain `query`, ignoring case and the
 /// spaces around it. Unlike tags' names (US-33), collections' keep their
 /// case, so both sides are lowercased.
-pub fn matching(collections: &[CollectionSummary], query: &str) -> Vec<CollectionSummary> {
+pub fn matching<'a>(
+    collections: &'a [CollectionSummary],
+    query: &str,
+) -> Vec<&'a CollectionSummary> {
     let query = query.trim().to_lowercase();
     collections
         .iter()
         .filter(|collection| collection.name.to_lowercase().contains(&query))
-        .cloned()
         .collect()
 }
 
@@ -34,6 +37,11 @@ pub fn Collections(#[props(default)] view: NameFilter) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let collections =
         use_resource(move || async move { api::list_collections(&archive(), String::new()).await });
+    // Copied once per answer, not once per keystroke.
+    let all = use_memo(move || match &*collections.read() {
+        Some(Ok(collections)) => collections.clone(),
+        _ => Vec::new(),
+    });
 
     rsx! {
         h1 { "Collections" }
@@ -41,8 +49,8 @@ pub fn Collections(#[props(default)] view: NameFilter) -> Element {
         match &*collections.read_unchecked() {
             None => rsx! { p { "Loading…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load collections: {err}" } },
-            Some(Ok(collections)) => rsx! {
-                CollectionList { collections: matching(collections, &view.q), query: view.q.clone() }
+            Some(Ok(_)) => rsx! {
+                CollectionList { collections: all, query: view.q.clone() }
             },
         }
     }
@@ -66,17 +74,20 @@ fn CollectionFilter(query: String) -> Element {
     }
 }
 
-/// The matching collections, 50 a page. Back to the first page whenever the
-/// filter changes, as the trip list goes back when its filters do (US-63).
+/// The collections `query` matches, 50 a page. Back to the first page
+/// whenever the filter changes, as the trip list goes back when its filters
+/// do (US-63).
 #[component]
-pub fn CollectionList(collections: Vec<CollectionSummary>, query: String) -> Element {
+pub fn CollectionList(collections: ReadSignal<Vec<CollectionSummary>>, query: String) -> Element {
     let mut page = use_signal(|| 0_usize);
     use_effect(use_reactive!(|query| {
         let _ = query;
         page.set(0);
     }));
 
-    if collections.is_empty() {
+    let all = collections.read();
+    let matches = matching(&all, &query);
+    if matches.is_empty() {
         let empty = if query.trim().is_empty() {
             NO_COLLECTIONS.to_string()
         } else {
@@ -84,10 +95,14 @@ pub fn CollectionList(collections: Vec<CollectionSummary>, query: String) -> Ele
         };
         return rsx! { p { class: "muted", "{empty}" } };
     }
-    let shown = collections[pager::page_range(page(), collections.len())].to_vec();
+    let len = matches.len();
+    let shown: Vec<CollectionSummary> = matches[pager::page_range(page(), len)]
+        .iter()
+        .map(|&collection| collection.clone())
+        .collect();
     rsx! {
         CollectionTable { collections: shown }
-        Pager { page, len: collections.len() }
+        Pager { page, len }
     }
 }
 

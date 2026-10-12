@@ -3,7 +3,7 @@
 //
 // Scope rule, from the 2026-08-26b amendment: only real user events —
 // opening it from the menu, typing in the filter, reloading, clicking a
-// row. What the table, the paging and the empty states say is asserted in
+// row, paging. What the table, the paging and the empty states say is asserted in
 // `crates/ui-dioxus` (`collections`), without a browser.
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
@@ -72,4 +72,25 @@ test("the menu opens the collections, and the filter narrows them, stays in the 
     .getByRole("link", { name: `${TAG} Passes` })
     .click();
   await expect(page).toHaveURL(new RegExp(`/app/collections/${passes}$`));
+});
+
+test("changing the filter goes back to the first page (US-97)", async ({ page, request }) => {
+  const prefix = `${TAG}page`;
+  for (let n = 0; n < 51; n++) {
+    await importCollection(request, `${prefix}-${String(n).padStart(2, "0")}`);
+  }
+  await page.goto(`/app/collections?q=${prefix}`);
+  const pager = page.locator(".pager span");
+  await expect(pager).toHaveText("Page 1 of 2");
+  await page.getByRole("button", { name: "Next ›" }).click();
+  await expect(pager).toHaveText("Page 2 of 2");
+
+  // Typing on: every one still matches, and the list starts over.
+  const filter = page.locator("#collection-filter");
+  await filter.press("End");
+  await filter.pressSequentially("-");
+
+  await expect(page).toHaveURL(new RegExp(`q=${prefix}-`));
+  await expect(pager).toHaveText("Page 1 of 2");
+  await expect(rows(page).first()).toContainText(`${prefix}-00`);
 });

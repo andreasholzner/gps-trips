@@ -12,8 +12,9 @@
 //!   `us98_a_blank_name_or_a_wrong_elevation_is_refused`.
 //! * *the position is changed and saved explicitly* —
 //!   `us98_the_position_is_changed`, `us98_a_position_needs_both_halves_in_range`.
-//! * *an edit shows on the collection and in the QMapShack export* —
-//!   `us98_an_edit_shows_wherever_the_waypoint_does`.
+//! * *an edit shows on the collection, the trip-list map and in the
+//!   QMapShack export* — `us98_an_edit_shows_wherever_the_waypoint_does`,
+//!   `us98_a_moved_waypoint_moves_the_collection_on_the_trip_list_map`.
 //! * *re-adding a file treats an edited waypoint as any other* —
 //!   `us98_re_adding_the_file_proposes_to_replace_a_moved_or_resymbolled_waypoint`,
 //!   `us98_re_adding_the_file_proposes_to_add_a_renamed_waypoints_old_name`.
@@ -25,8 +26,8 @@
 
 use axum::http::{Method, StatusCode};
 use trip_archive::models::{
-    ActivityType, CollectionDetail, CollectionImportReview, ExportCollection, ImportAction,
-    Waypoint, WaypointDetail,
+    ActivityType, CollectionDetail, CollectionImportReview, CollectionSummary, ExportCollection,
+    ImportAction, Waypoint, WaypointDetail,
 };
 
 use crate::common::{
@@ -242,6 +243,28 @@ async fn us98_an_edit_shows_wherever_the_waypoint_does() {
     assert_eq!(exported.name.as_deref(), Some("Hungerburg"));
     assert_eq!(exported.symbol.as_deref(), Some("Railway"));
     assert_eq!((exported.lat, exported.lon), (47.29, 11.4));
+}
+
+#[tokio::test]
+async fn us98_a_moved_waypoint_moves_the_collection_on_the_trip_list_map() {
+    let (app, _dir) = test_app().await;
+    let collection = import_collection(&app, WAYPOINTS_ONLY_GPX, &[]).await;
+    let albula = waypoints(&app, collection).await.remove(1);
+
+    // Further east than the pass was: the rectangle the trip list's map
+    // draws the collection by (US-87) grows to it.
+    edit(
+        &app,
+        albula.id,
+        serde_json::json!({ "lat": 46.6, "lon": 10.1 }),
+    )
+    .await;
+
+    let listed: Vec<CollectionSummary> = read_json(&app, "/api/collections").await;
+    assert_eq!(
+        listed[0].waypoint_bounds,
+        Some([9.1705, 46.4958, 10.1, 46.6])
+    );
 }
 
 /// What re-adding the tour's own file proposes for each of its waypoints.
