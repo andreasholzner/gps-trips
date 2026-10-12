@@ -366,6 +366,32 @@ async fn us88_replacing_the_whole_collection_keeps_only_its_details() {
 }
 
 #[tokio::test]
+async fn us93_a_replaced_track_keeps_its_tags_and_a_removed_one_takes_them() {
+    let (app, _dir) = test_app().await;
+    let id = import_collection(&app, &first_edition(), &[]).await;
+    let tracks = collection(&app, id).await.tracks;
+    for track in &tracks {
+        let uri = format!("/api/collection-tracks/{}/tags", track.id);
+        let response = send(&app, json_request(Method::POST, &uri, r#"{"name":"alps"}"#)).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+    let tag_count = |app: axum::Router, track: i64| async move {
+        let tags: Vec<trip_archive::models::Tag> =
+            read_json(&app, &format!("/api/collection-tracks/{track}/tags")).await;
+        tags.len()
+    };
+
+    let staged = upload(&app, &[("corrected.gpx", &corrected_edition())], Some(id)).await;
+    confirm(&app, &staged, json!({ "remove_tracks": [tracks[2].id] })).await;
+
+    // Stage 2 was replaced: the same record, with its tag.
+    assert_eq!(tag_count(app.clone(), tracks[1].id).await, 1);
+    let overview: Vec<trip_archive::models::TagOverview> =
+        read_json(&app, "/api/tags/overview").await;
+    assert_eq!(overview[0].collection_track_count, 2);
+}
+
+#[tokio::test]
 async fn us88_cancelling_leaves_the_collection_untouched() {
     let (app, _dir) = test_app().await;
     let id = import_collection(&app, &first_edition(), &[]).await;

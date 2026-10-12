@@ -24,16 +24,15 @@ use crate::server::{
     komoot::KomootClient,
     komoot_sync, paths,
     photo_api::{handle_place_photo, list_trip_photos},
-    repo,
+    repo::{self, Tagged},
     session::{handle_login, handle_logout, handle_session},
     share::{self, handle_create_share, handle_list_shares, handle_stop_share},
     staged_import::{handle_cancel_staged_import, handle_confirm_import, handle_stage_import},
     state::{self, AppState},
     stats::{handle_stats_trips, handle_tag_summaries},
     tags::{
-        handle_add_trip_tag, handle_bulk_add_trip_tags, handle_create_tag, handle_delete_tag,
-        handle_list_all_tags, handle_list_trip_tags, handle_remove_trip_tag, handle_rename_tag,
-        handle_tag_overview,
+        self as tags, handle_bulk_add_trip_tags, handle_create_tag, handle_delete_tag,
+        handle_list_all_tags, handle_rename_tag, handle_tag_overview,
     },
     track_files::{geojson_track, gpx_download},
     tracks::handle_list_tracks,
@@ -118,15 +117,14 @@ pub fn router(state: AppState) -> Router {
             "/api/trips/:id/photos/:photo_id",
             axum::routing::patch(handle_place_photo),
         )
-        // US-33: tag a trip (POST/GET) and untag it (DELETE).
-        .route(
-            "/api/trips/:id/tags",
-            post(handle_add_trip_tag).get(handle_list_trip_tags),
-        )
-        .route(
-            "/api/trips/:id/tags/:tag_id",
-            axum::routing::delete(handle_remove_trip_tag),
-        )
+        // US-33: tag a trip (POST/GET) and untag it (DELETE); US-93 a
+        // collection and a collection track.
+        .merge(tags::links("/api/trips", Tagged::Trip))
+        .merge(tags::links("/api/collections", Tagged::Collection))
+        .merge(tags::links(
+            "/api/collection-tracks",
+            Tagged::CollectionTrack,
+        ))
         // US-34: bulk-tag trips selected on the list page, in one request.
         .route("/api/trips/tags", post(handle_bulk_add_trip_tags))
         // US-63: one activity type for the trips selected on the list page.

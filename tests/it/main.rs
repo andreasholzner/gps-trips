@@ -63,5 +63,6 @@ mod us87_collections_tab;
 mod us88_add_to_collection;
 mod us89_export_collections_api;
 mod us89_qmapshack_collections;
+mod us93_tag_collections;
 mod us95_waypoint_symbols;
 mod us9_delete_trip;

@@ -1,11 +1,13 @@
-//! Tagging trips (US-33) from the trip detail page. Kept separate from
+//! Tagging trips (US-33), collections and their tracks (US-93), and the Tags
+//! screen's tags (US-83/85). Kept separate from
 //! `repo.rs` (DB-only) and `http.rs`, mirroring how `delete.rs`/`edit.rs`
 //! isolate their own concerns rather than folding everything into one file.
 
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    Json,
+    routing::{delete, get},
+    Json, Router,
 };
 use serde::Deserialize;
 use time::OffsetDateTime;
@@ -17,65 +19,80 @@ use crate::server::{
     state::AppState,
 };
 
-/// The `POST /api/trips/:id/tags` request body (ADR-0008).
+/// The `POST …/:id/tags` request body (ADR-0008).
 #[derive(Deserialize)]
 pub struct AddTagRequest {
     name: String,
 }
 
-/// 404 if `id` isn't a trip; otherwise `Ok(())`. Every handler in this file
-/// checks trip existence first, before any other validation, so a request
-/// against a nonexistent trip always 404s regardless of what else is wrong
-/// with it (e.g. an invalid tag name) — shared here so the check and that
-/// ordering can't drift between handlers.
-async fn require_trip(state: &AppState, id: i64) -> Result<(), AppError> {
-    if repo::get_trip(&state.pool, id).await?.is_none() {
+/// The routes tagging what `tagged` makes of the id in `prefix/:id`: a trip
+/// (US-33), a collection or a collection track (US-93), each the same way —
+/// `GET`/`POST prefix/:id/tags` lists and adds, `DELETE
+/// prefix/:id/tags/:tag_id` removes.
+pub fn links(prefix: &str, tagged: fn(i64) -> Tagged) -> Router<AppState> {
+    Router::new()
+        .route(
+            &format!("{prefix}/:id/tags"),
+            get(move |State(state): State<AppState>, Path(id): Path<i64>| {
+                list_tags(state, tagged(id))
+            })
+            .post(
+                move |State(state): State<AppState>,
+                      Path(id): Path<i64>,
+                      Json(body): Json<AddTagRequest>| {
+                    add_tag(state, tagged(id), body)
+                },
+            ),
+        )
+        .route(
+            &format!("{prefix}/:id/tags/:tag_id"),
+            delete(
+                move |State(state): State<AppState>, Path((id, tag_id)): Path<(i64, i64)>| {
+                    remove_tag(state, tagged(id), tag_id)
+                },
+            ),
+        )
+}
+
+/// 404 if what is tagged does not exist; otherwise `Ok(())`. Every link
+/// handler checks this first, before any other validation, so a request
+/// against something that does not exist always 404s regardless of what
+/// else is wrong with it (e.g. an invalid tag name).
+async fn require(state: &AppState, tagged: Tagged) -> Result<(), AppError> {
+    if !repo::tagged_exists(&state.pool, tagged).await? {
         return Err(AppError::NotFound);
     }
     Ok(())
 }
 
-/// GET `/api/trips/:id/tags` — a trip's current tags (US-33). 404 if the
-/// trip doesn't exist.
-pub async fn handle_list_trip_tags(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Json<Vec<Tag>>, AppError> {
-    require_trip(&state, id).await?;
-    Ok(Json(
-        repo::list_tags_of(&state.pool, Tagged::Trip(id)).await?,
-    ))
+/// `GET …/:id/tags` — the tags it carries.
+async fn list_tags(state: AppState, tagged: Tagged) -> Result<Json<Vec<Tag>>, AppError> {
+    require(&state, tagged).await?;
+    Ok(Json(repo::list_tags_of(&state.pool, tagged).await?))
 }
 
-/// POST `/api/trips/:id/tags` — tag a trip (US-33). 404 if the trip doesn't
-/// exist, checked before `name` is validated so an invalid name against a
-/// nonexistent trip still 404s (matching the other two handlers below)
-/// rather than 400ing on the name first. `name` is normalized (trimmed,
-/// lowercased) and rejected with 400 if it contains whitespace or is empty
+/// `POST …/:id/tags` — tag it. `name` is normalized (trimmed, lowercased)
+/// and rejected with 400 if it contains whitespace or a comma, or is empty
 /// after trimming. The tag is created on-demand if it doesn't exist yet;
 /// tagging with an already-applied tag is a no-op, not an error.
-pub async fn handle_add_trip_tag(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-    Json(body): Json<AddTagRequest>,
+async fn add_tag(
+    state: AppState,
+    tagged: Tagged,
+    body: AddTagRequest,
 ) -> Result<(StatusCode, Json<Tag>), AppError> {
-    require_trip(&state, id).await?;
+    require(&state, tagged).await?;
     let name = normalize_tag_name(&body.name).map_err(AppError::BadRequest)?;
     let tag_id = repo::get_or_create_tag(&state.pool, &name).await?;
-    repo::add_tag(&state.pool, Tagged::Trip(id), tag_id).await?;
+    repo::add_tag(&state.pool, tagged, tag_id).await?;
     Ok((StatusCode::CREATED, Json(Tag { id: tag_id, name })))
 }
 
-/// DELETE `/api/trips/:id/tags/:tag_id` — remove a tag from a trip (US-33).
-/// The `tag` row itself is left in place for reuse/autocomplete. 404 if the
-/// trip doesn't exist; otherwise 204 whether or not the tag was actually
-/// applied (idempotent removal).
-pub async fn handle_remove_trip_tag(
-    State(state): State<AppState>,
-    Path((id, tag_id)): Path<(i64, i64)>,
-) -> Result<StatusCode, AppError> {
-    require_trip(&state, id).await?;
-    repo::remove_tag(&state.pool, Tagged::Trip(id), tag_id).await?;
+/// `DELETE …/:id/tags/:tag_id` — untag it. The `tag` row itself is left in
+/// place for reuse/autocomplete; 204 whether or not the tag was applied
+/// (idempotent removal).
+async fn remove_tag(state: AppState, tagged: Tagged, tag_id: i64) -> Result<StatusCode, AppError> {
+    require(&state, tagged).await?;
+    repo::remove_tag(&state.pool, tagged, tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

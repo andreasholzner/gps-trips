@@ -47,6 +47,21 @@ impl Tagged {
     }
 }
 
+/// Whether what is to be tagged exists.
+pub async fn tagged_exists(pool: &SqlitePool, tagged: Tagged) -> Result<bool, sqlx::Error> {
+    let (table, id) = match tagged {
+        Tagged::Trip(id) => ("trip", id),
+        Tagged::Collection(id) => ("collection", id),
+        Tagged::CollectionTrack(id) => ("collection_track", id),
+    };
+    sqlx::query_scalar(&format!(
+        "SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?)"
+    ))
+    .bind(id)
+    .fetch_one(pool)
+    .await
+}
+
 /// Link a tag to what it is put on. Idempotent: tagging with a tag already
 /// carried is a no-op, not an error.
 pub async fn add_tag(pool: &SqlitePool, tagged: Tagged, tag_id: i64) -> Result<(), sqlx::Error> {
