@@ -61,6 +61,30 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
     assert!(html.contains(r#"id="delete-collection""#), "{html}");
 }
 
+// US-93: tagged as a trip is, its tags leading nowhere.
+#[tokio::test]
+async fn us93_the_page_shows_the_collections_own_tags() {
+    let (archive, _dir) = serve_test_archive().await;
+    let (id, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+    api::add_tag(&archive, api::Tagged::Collection(id), "lakes")
+        .await
+        .unwrap();
+    api::add_tag(&archive, api::Tagged::CollectionTrack(tracks[0]), "pass")
+        .await
+        .unwrap();
+
+    let html = render_against_archive(
+        &archive,
+        move || rsx! { Collection { id } },
+        |html| html.contains("chip"),
+    )
+    .await;
+
+    assert!(html.contains(r#"<span class="chip">lakes "#), "{html}");
+    assert!(!html.contains("pass"), "a track's tag is its own: {html}");
+    assert!(html.contains(r#"id="add-tag""#), "{html}");
+}
+
 // US-88: the files it came from, as uploaded.
 #[tokio::test]
 async fn us88_the_page_lists_the_files_to_download() {

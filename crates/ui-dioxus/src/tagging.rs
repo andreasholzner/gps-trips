@@ -1,10 +1,11 @@
-//! Tagging a trip from its detail screen (US-33): the tags it carries, the
-//! ones the archive already knows, and creating a new one on demand.
+//! Tagging a trip from its detail screen (US-33), and a collection or a
+//! collection track from its own (US-93): the tags it carries, the ones the
+//! archive already knows, and creating a new one on demand.
 
 use dioxus::prelude::*;
 use trip_archive_types::{normalize_tag_name, Tag};
 
-use crate::api::{self, ApiClient};
+use crate::api::{self, ApiClient, Tagged};
 use crate::summary::SummaryView;
 use crate::Route;
 
@@ -22,19 +23,20 @@ pub fn is_new_name(known: &[Tag], typed: &str) -> bool {
     !known.iter().any(|tag| tag.name == name)
 }
 
-/// The tags section: what the trip carries, and a way to add more — on one
-/// line (US-62). The field and its suggestions appear once adding is asked
-/// for, as the edit form does, so nothing is open until it is wanted.
+/// The tags section: what the trip, collection or track carries, and a way
+/// to add more — on one line (US-62). The field and its suggestions appear
+/// once adding is asked for, as the edit form does, so nothing is open until
+/// it is wanted.
 #[component]
-pub fn TripTags(id: i64) -> Element {
+pub fn Tagging(tagged: Tagged) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
-    // The trip's id travels back with its tags: a resource keeps its last
-    // value while a new fetch is pending, so reading the id from this scope
+    // What is tagged travels back with its tags: a resource keeps its last
+    // value while a new fetch is pending, so reading it from this scope
     // instead would let one trip's tags be cached under another's.
-    let mut on_trip = use_resource(use_reactive!(|id| async move {
-        api::list_trip_tags(&archive(), id)
+    let mut carried = use_resource(use_reactive!(|tagged| async move {
+        api::list_tags_of(&archive(), tagged)
             .await
-            .map(|tags| (id, tags))
+            .map(|tags| (tagged, tags))
     }));
     // Every tag the archive knows: the suggestions, and what decides whether
     // a typed name is new. Restarted with the trip's own tags, because using
@@ -57,8 +59,8 @@ pub fn TripTags(id: i64) -> Element {
     // The router shows the next trip through this same scope, so a half-typed
     // name — or worse, a confirmation waiting to be answered — would carry
     // over and land on a trip the owner never opened it for.
-    use_effect(use_reactive!(|id| {
-        let _ = id;
+    use_effect(use_reactive!(|tagged| {
+        let _ = tagged;
         adding.set(false);
         typed.set(String::new());
         confirming.set(None);
@@ -70,12 +72,12 @@ pub fn TripTags(id: i64) -> Element {
     // click handler, which would drop a future rather than run it.
     let add = use_callback(move |name: String| {
         spawn(async move {
-            match api::add_trip_tag(&archive(), id, &name).await {
+            match api::add_tag(&archive(), tagged, &name).await {
                 Ok(_) => {
                     adding.set(false);
                     typed.set(String::new());
                     error.set(None);
-                    on_trip.restart();
+                    carried.restart();
                     known.restart();
                 }
                 Err(err) => error.set(Some(err.to_string())),
@@ -90,17 +92,17 @@ pub fn TripTags(id: i64) -> Element {
     // Nothing is cached until something has been read: seeding it with this
     // trip and an empty list would make the screen claim the trip has no tags
     // for as long as the first read takes.
-    let mut cached = use_signal(|| (None::<i64>, Vec::<Tag>::new()));
+    let mut cached = use_signal(|| (None::<Tagged>, Vec::<Tag>::new()));
     use_effect(move || {
-        if let Some(Ok((read_for, tags))) = &*on_trip.read() {
+        if let Some(Ok((read_for, tags))) = &*carried.read() {
             cached.set((Some(*read_for), tags.clone()));
         }
     });
-    let on_this_trip = match cached() {
-        (Some(cached_id), tags) if cached_id == id => Some(tags),
+    let shown = match cached() {
+        (Some(cached_for), tags) if cached_for == tagged => Some(tags),
         _ => None,
     };
-    let load_error = match &*on_trip.read_unchecked() {
+    let load_error = match &*carried.read_unchecked() {
         Some(Err(err)) => Some(err.to_string()),
         _ => None,
     };
@@ -110,16 +112,19 @@ pub fn TripTags(id: i64) -> Element {
             p { class: "error", "Could not load the tags: {message}" }
         }
         div { class: "trip-tags",
-            match on_this_trip {
+            match shown {
                 None => rsx! { span { "Loading the tags…" } },
                 Some(tags) => rsx! {
                     TagChips {
                         tags,
+                        // Summaries are about trips (US-78): a collection's
+                        // tag leads nowhere.
+                        to_summary: matches!(tagged, Tagged::Trip(_)),
                         on_remove: move |tag_id| async move {
-                            match api::remove_trip_tag(&archive(), id, tag_id).await {
+                            match api::remove_tag(&archive(), tagged, tag_id).await {
                                 Ok(()) => {
                                     error.set(None);
-                                    on_trip.restart();
+                                    carried.restart();
                                 }
                                 Err(err) => error.set(Some(err.to_string())),
                             }
@@ -174,9 +179,9 @@ pub fn TripTags(id: i64) -> Element {
 }
 
 /// One removable chip per tag, its name leading to the tag's summary
-/// (US-78).
+/// (US-78) when `to_summary`.
 #[component]
-fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
+fn TagChips(tags: Vec<Tag>, to_summary: bool, on_remove: EventHandler<i64>) -> Element {
     rsx! {
         if tags.is_empty() {
             span { class: "muted", "No tags yet." }
@@ -184,9 +189,13 @@ fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
             div { class: "chips",
                 for tag in tags {
                     span { key: "{tag.id}", class: "chip",
-                        Link {
-                            to: Route::Summary { view: SummaryView::of(&tag.name) },
-                            title: "Summary of {tag.name}",
+                        if to_summary {
+                            Link {
+                                to: Route::Summary { view: SummaryView::of(&tag.name) },
+                                title: "Summary of {tag.name}",
+                                "{tag.name}"
+                            }
+                        } else {
                             "{tag.name}"
                         }
                         " "
@@ -304,6 +313,7 @@ mod tests {
             rsx! {
                 TagChips {
                     tags: tags(&["alpine", "summer"]),
+                    to_summary: true,
                     on_remove: move |_| {},
                 }
             }
@@ -324,6 +334,7 @@ mod tests {
             rsx! {
                 TagChips {
                     tags: tags(&["alpine"]),
+                    to_summary: true,
                     on_remove: move |_| {},
                 }
             }
@@ -337,9 +348,27 @@ mod tests {
     }
 
     #[test]
+    fn us93_a_collections_tags_lead_nowhere_and_can_be_taken_off() {
+        // Summaries are about trips: there is none to lead to.
+        let html = render(move || {
+            rsx! {
+                TagChips {
+                    tags: tags(&["alpine"]),
+                    to_summary: false,
+                    on_remove: move |_| {},
+                }
+            }
+        });
+
+        assert!(html.contains("alpine"), "{html}");
+        assert!(!html.contains("href"), "{html}");
+        assert!(html.contains(r#"title="Remove alpine""#), "{html}");
+    }
+
+    #[test]
     fn a_trip_with_no_tags_says_so() {
         let html = render(|| {
-            rsx! { TagChips { tags: Vec::new(), on_remove: move |_| {} } }
+            rsx! { TagChips { tags: Vec::new(), to_summary: true, on_remove: move |_| {} } }
         });
 
         assert!(html.contains("No tags yet"), "{html}");

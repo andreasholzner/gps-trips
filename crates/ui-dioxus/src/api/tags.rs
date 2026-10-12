@@ -1,10 +1,66 @@
-//! The Tags screen's calls (US-83): every tag with its trips and shares,
-//! creating a tag, renaming one (US-85) and deleting one.
+//! Tagging a trip (US-33), a collection or a collection track (US-93), and
+//! the Tags screen's calls (US-83): every tag with what carries it and its
+//! shares, creating a tag, renaming one (US-85) and deleting one.
 
 use serde::Serialize;
 use trip_archive_types::{Tag, TagOverview};
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
+
+/// What a tag is put on: each has its own `…/:id/tags` routes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Tagged {
+    Trip(i64),
+    Collection(i64),
+    CollectionTrack(i64),
+}
+
+impl Tagged {
+    fn tags_url(self, archive: &ApiClient) -> String {
+        archive.url(&match self {
+            Tagged::Trip(id) => format!("/api/trips/{id}/tags"),
+            Tagged::Collection(id) => format!("/api/collections/{id}/tags"),
+            Tagged::CollectionTrack(id) => format!("/api/collection-tracks/{id}/tags"),
+        })
+    }
+}
+
+/// `GET …/:id/tags` — the tags it carries.
+pub async fn list_tags_of(archive: &ApiClient, tagged: Tagged) -> Result<Vec<Tag>, ApiError> {
+    get_json(archive, tagged.tags_url(archive)).await
+}
+
+/// `POST …/:id/tags` — tag it, creating the tag if this is the first use of
+/// the name. The archive's own words come back for a name it refuses (one
+/// with a space or a comma), so the owner reads the rule rather than a
+/// status code.
+pub async fn add_tag(archive: &ApiClient, tagged: Tagged, name: &str) -> Result<Tag, ApiError> {
+    let url = tagged.tags_url(archive);
+    let response = archive
+        .post(&url)
+        .json(&CreateTag { name })
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response)
+        .await?
+        .json()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
+}
+
+/// `DELETE …/:id/tags/:tag_id` — take a tag off. The tag itself stays in the
+/// archive, unused but suggestible again later.
+pub async fn remove_tag(archive: &ApiClient, tagged: Tagged, tag_id: i64) -> Result<(), ApiError> {
+    let url = format!("{}/{tag_id}", tagged.tags_url(archive));
+    let response = archive
+        .delete(&url)
+        .send()
+        .await
+        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
+    ok_or_error(archive, &url, response).await?;
+    Ok(())
+}
 
 /// `GET /api/tags/overview` — every tag, alphabetical, with how many trips
 /// carry it and the active summary shares naming it.
@@ -12,8 +68,9 @@ pub async fn tag_overview(archive: &ApiClient) -> Result<Vec<TagOverview>, ApiEr
     get_json(archive, archive.url("/api/tags/overview")).await
 }
 
-/// The `POST /api/tags` and `PATCH /api/tags/:id` body: the name as typed.
-/// The archive normalizes it as it does a trip's tag (US-33).
+/// The body of every call naming a tag — tagging something, creating a tag,
+/// renaming one: the name as typed. The archive normalizes it — trimmed and
+/// lowercased (US-33) — so casing never makes a second tag.
 #[derive(Serialize)]
 struct CreateTag<'a> {
     name: &'a str,
@@ -73,7 +130,41 @@ pub async fn delete_tag(archive: &ApiClient, id: i64) -> Result<(), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{import_sample, serve_test_archive, tag_trip};
+    use crate::test_support::{
+        import_collection, import_sample, serve_test_archive, tag_trip, GUIDE_BOOK_GPX,
+    };
+
+    #[tokio::test]
+    async fn us93_a_collection_and_its_track_are_tagged_and_counted_apart() {
+        let (archive, _dir) = serve_test_archive().await;
+        let (id, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+
+        let alps = add_tag(&archive, Tagged::Collection(id), " Alps")
+            .await
+            .expect("tag the collection");
+        assert_eq!(alps.name, "alps");
+        add_tag(&archive, Tagged::CollectionTrack(tracks[0]), "pass")
+            .await
+            .expect("tag the track");
+
+        let names = |tags: Vec<Tag>| tags.into_iter().map(|tag| tag.name).collect::<Vec<_>>();
+        let on_book = list_tags_of(&archive, Tagged::Collection(id)).await;
+        assert_eq!(names(on_book.expect("collection tags")), ["alps"]);
+        let on_track = list_tags_of(&archive, Tagged::CollectionTrack(tracks[0])).await;
+        assert_eq!(names(on_track.expect("track tags")), ["pass"]);
+        let listed = tag_overview(&archive).await.expect("overview");
+        let counts: Vec<(i64, i64)> = listed
+            .iter()
+            .map(|tag| (tag.collection_count, tag.collection_track_count))
+            .collect();
+        assert_eq!(counts, [(1, 0), (0, 1)]);
+
+        remove_tag(&archive, Tagged::Collection(id), alps.id)
+            .await
+            .expect("untag");
+        let on_book = list_tags_of(&archive, Tagged::Collection(id)).await;
+        assert!(on_book.expect("collection tags").is_empty());
+    }
 
     #[tokio::test]
     async fn us83_a_created_tag_is_listed_and_a_deleted_one_is_gone() {

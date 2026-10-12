@@ -43,13 +43,13 @@ mod shares;
 mod stats;
 mod suggested;
 mod summary;
+mod tagging;
 mod tags;
 #[cfg(test)]
 mod test_support;
 mod track;
 mod trip_lines;
 mod trip_table;
-mod trip_tags;
 mod viewer;
 mod waypoint_icon;
 

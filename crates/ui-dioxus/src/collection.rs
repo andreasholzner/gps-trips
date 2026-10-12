@@ -1,8 +1,8 @@
 //! A guide book's collection page (US-86), where its import ends: the
 //! details, every track in its activity's color and every waypoint on one
 //! map, the tracks as a list leading to their own pages, and the files it
-//! came from to download (US-88). The details are edited here, and the
-//! whole collection deleted.
+//! came from to download (US-88). The details are edited and the collection
+//! tagged (US-93) here, and the whole collection deleted.
 
 use dioxus::prelude::*;
 use trip_archive_types::{
@@ -12,11 +12,12 @@ use trip_archive_types::{
 use crate::activity_color::{self, ActivityLegend};
 use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
-use crate::api::{self, ApiClient};
+use crate::api::{self, ApiClient, Tagged};
 use crate::filters::Filters;
 use crate::format;
 use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
 use crate::overlay::Overlay;
+use crate::tagging::Tagging;
 use crate::track;
 use crate::Route;
 
@@ -44,6 +45,7 @@ pub fn Collection(id: i64) -> Element {
             },
             Some((_, Ok(detail))) => rsx! {
                 CollectionHeader { collection: detail.clone() }
+                Tagging { tagged: Tagged::Collection(id) }
                 CollectionMap { id, tracks: detail.tracks.clone() }
                 TrackList { tracks: detail.tracks.clone() }
                 CollectionFiles { id }

@@ -44,7 +44,9 @@ pub use share::{
 };
 pub use stats::{stats_trips, tag_summaries};
 pub use suggestion::trip_suggestion;
-pub use tags::{create_tag, delete_tag, rename_tag, tag_overview};
+pub use tags::{
+    add_tag, create_tag, delete_tag, list_tags_of, remove_tag, rename_tag, tag_overview, Tagged,
+};
 pub use tracks::{list_climbs, list_tracks};
 
 /// A failed API call, already reduced to what the UI shows.
@@ -377,53 +379,6 @@ pub async fn edit_trip(archive: &ApiClient, id: i64, edit: &TripEdit) -> Result<
     let response = archive
         .patch(&url)
         .json(edit)
-        .send()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
-
-    ok_or_error(archive, &url, response).await?;
-    Ok(())
-}
-
-/// `GET /api/trips/:id/tags` — the tags on one trip (US-33).
-pub async fn list_trip_tags(archive: &ApiClient, id: i64) -> Result<Vec<Tag>, ApiError> {
-    get_json(archive, archive.url(&format!("/api/trips/{id}/tags"))).await
-}
-
-/// The `POST /api/trips/:id/tags` body (US-33): the name as typed. The
-/// archive normalizes it — trimmed and lowercased — and creates the tag if it
-/// is new, so casing never makes a second one.
-#[derive(Serialize)]
-struct AddTag<'a> {
-    name: &'a str,
-}
-
-/// `POST /api/trips/:id/tags` — tag a trip, creating the tag if this is the
-/// first use of the name (US-33). The archive's own words come back for a
-/// name it refuses (one with a space or a comma), so the owner reads the rule
-/// rather than a status code.
-pub async fn add_trip_tag(archive: &ApiClient, id: i64, name: &str) -> Result<Tag, ApiError> {
-    let url = archive.url(&format!("/api/trips/{id}/tags"));
-    let response = archive
-        .post(&url)
-        .json(&AddTag { name })
-        .send()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
-
-    ok_or_error(archive, &url, response)
-        .await?
-        .json()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
-}
-
-/// `DELETE /api/trips/:id/tags/:tag_id` — take a tag off a trip (US-33). The
-/// tag itself stays in the archive, unused but suggestible again later.
-pub async fn remove_trip_tag(archive: &ApiClient, id: i64, tag_id: i64) -> Result<(), ApiError> {
-    let url = archive.url(&format!("/api/trips/{id}/tags/{tag_id}"));
-    let response = archive
-        .delete(&url)
         .send()
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;

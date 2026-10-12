@@ -57,6 +57,34 @@ async fn us86_the_screen_shows_the_track_its_guide_book_and_its_figures() {
     assert!(html.contains(r#"id="delete-trip""#), "{html}");
 }
 
+// US-93: tagged as a trip is, its tags leading nowhere.
+#[tokio::test]
+async fn us93_the_screen_shows_the_tracks_own_tags() {
+    let (archive, _dir) = serve_test_archive().await;
+    let (collection, tracks) = import_collection(&archive, GUIDE_BOOK_GPX, &[]).await;
+    let id = tracks[0];
+    api::add_tag(&archive, api::Tagged::Collection(collection), "lakes")
+        .await
+        .unwrap();
+    api::add_tag(&archive, api::Tagged::CollectionTrack(id), "pass")
+        .await
+        .unwrap();
+
+    let html = render_against_archive(
+        &archive,
+        move || rsx! { CollectionTrack { id } },
+        |html| html.contains("chip"),
+    )
+    .await;
+
+    assert!(html.contains(r#"<span class="chip">pass "#), "{html}");
+    assert!(
+        !html.contains("lakes"),
+        "the collection's tag is its own: {html}"
+    );
+    assert!(html.contains(r#"id="add-tag""#), "{html}");
+}
+
 #[test]
 fn us86_only_distance_ascent_and_descent_are_shown() {
     // A guide book's timestamps are not when anyone went.

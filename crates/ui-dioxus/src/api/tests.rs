@@ -149,12 +149,16 @@ async fn a_new_tag_is_created_by_using_it_and_normalized_as_it_is_stored() {
     let (archive, _dir) = serve_test_archive().await;
     let id = import_sample(&archive, &[]).await;
 
-    let created = add_trip_tag(&archive, id, "  Alpine  ").await.expect("tag");
+    let created = add_tag(&archive, Tagged::Trip(id), "  Alpine  ")
+        .await
+        .expect("tag");
     assert_eq!(created.name, "alpine");
 
     // The same name in another casing joins the tag that exists rather
     // than making a second one.
-    add_trip_tag(&archive, id, "ALPINE").await.expect("tag");
+    add_tag(&archive, Tagged::Trip(id), "ALPINE")
+        .await
+        .expect("tag");
     let names: Vec<String> = list_tags(&archive)
         .await
         .expect("tags")
@@ -170,12 +174,16 @@ async fn untagging_a_trip_keeps_the_tag_for_next_time() {
     // again later."
     let (archive, _dir) = serve_test_archive().await;
     let id = import_sample(&archive, &[]).await;
-    let tag = add_trip_tag(&archive, id, "alpine").await.expect("tag");
+    let tag = add_tag(&archive, Tagged::Trip(id), "alpine")
+        .await
+        .expect("tag");
 
-    remove_trip_tag(&archive, id, tag.id).await.expect("untag");
+    remove_tag(&archive, Tagged::Trip(id), tag.id)
+        .await
+        .expect("untag");
 
     assert!(
-        list_trip_tags(&archive, id)
+        list_tags_of(&archive, Tagged::Trip(id))
             .await
             .expect("trip tags")
             .is_empty(),
@@ -193,7 +201,7 @@ async fn a_name_the_archive_refuses_is_reported_in_its_own_words() {
     let (archive, _dir) = serve_test_archive().await;
     let id = import_sample(&archive, &[]).await;
 
-    let err = add_trip_tag(&archive, id, "day trip")
+    let err = add_tag(&archive, Tagged::Trip(id), "day trip")
         .await
         .expect_err("a name with a space is not a tag");
 

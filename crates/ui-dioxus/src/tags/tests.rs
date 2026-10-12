@@ -38,6 +38,46 @@ fn table(tags: Vec<TagOverview>) -> String {
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
+fn on_collections(collections: i64, tracks: i64) -> TagOverview {
+    TagOverview {
+        collection_count: collections,
+        collection_track_count: tracks,
+        ..a_tag(1, "alps", 4, 3)
+    }
+}
+
+#[test]
+fn us93_a_row_counts_trips_by_kind_and_collections_with_their_other_tracks() {
+    assert_eq!(
+        carriers(&on_collections(1, 4)),
+        "(recorded: 3, planned: 1, collections: 1 [4])"
+    );
+}
+
+#[test]
+fn us93_a_part_counting_nothing_is_left_out() {
+    assert_eq!(carriers(&a_tag(1, "a", 3, 3)), "(recorded: 3)");
+    assert_eq!(carriers(&a_tag(1, "a", 2, 0)), "(planned: 2)");
+    let only = |collections, tracks| TagOverview {
+        collection_count: collections,
+        collection_track_count: tracks,
+        ..a_tag(1, "a", 0, 0)
+    };
+    assert_eq!(carriers(&only(1, 0)), "(collections: 1)");
+    assert_eq!(carriers(&only(0, 4)), "(collections: 0 [4])");
+    assert_eq!(carriers(&only(0, 0)), "(0)");
+}
+
+#[test]
+fn us93_the_row_shows_the_counts() {
+    let html = table(vec![on_collections(1, 4)]);
+
+    assert!(
+        html.contains(">alps</a> (recorded: 3, planned: 1, collections: 1 [4])"),
+        "{html}"
+    );
+}
+
 #[test]
 fn us83_a_tag_with_a_recorded_trip_links_to_its_summary_with_its_count() {
     let html = table(vec![a_tag(1, "alps", 3, 1)]);
@@ -46,7 +86,10 @@ fn us83_a_tag_with_a_recorded_trip_links_to_its_summary_with_its_count() {
         view: SummaryView::of("alps"),
     };
     assert!(html.contains(&format!(r#"href="{summary}""#)), "{html}");
-    assert!(html.contains(">alps</a> (3)"), "{html}");
+    assert!(
+        html.contains(">alps</a> (recorded: 1, planned: 2)"),
+        "{html}"
+    );
 }
 
 #[test]
@@ -54,7 +97,7 @@ fn us83_a_tag_without_a_recorded_trip_is_plain_text() {
     let html = table(vec![a_tag(1, "plans", 2, 0), a_tag(2, "unused", 0, 0)]);
 
     assert!(!html.contains("href"), "{html}");
-    assert!(html.contains("plans (2)"), "{html}");
+    assert!(html.contains("plans (planned: 2)"), "{html}");
     assert!(html.contains("unused (0)"), "{html}");
 }
 
@@ -168,6 +211,29 @@ fn us83_the_confirmation_says_what_happens_to_each_share() {
         "{html}"
     );
     assert!(html.contains("The share alps is stopped."), "{html}");
+}
+
+#[test]
+fn us93_the_confirmation_says_it_comes_off_collections_and_their_tracks() {
+    assert!(
+        delete_question(&on_collections(1, 4)).contains(
+            "It comes off its 4 trips, its one collection and every collection track carrying it; \
+             no trip, collection or track is deleted."
+        ),
+        "{}",
+        delete_question(&on_collections(1, 4))
+    );
+    let only = |collections, tracks| TagOverview {
+        collection_count: collections,
+        collection_track_count: tracks,
+        ..a_tag(1, "a", 0, 0)
+    };
+    // No collection carries it, so every track carrying it is counted.
+    assert!(delete_question(&only(0, 1)).contains(
+        "It comes off its one collection track; no trip, collection or track is deleted."
+    ));
+    assert!(delete_question(&only(2, 0))
+        .contains("It comes off its 2 collections and every collection track carrying it;"));
 }
 
 #[test]

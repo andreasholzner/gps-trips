@@ -4,11 +4,12 @@
 
 use dioxus::prelude::*;
 
+use crate::api::Tagged;
 use crate::api::{self, ApiClient};
 use crate::gallery::PhotoGallery;
 use crate::photos::{self, PhotoView};
 use crate::placing::PlacePhoto;
-use crate::trip_tags::TripTags;
+use crate::tagging::Tagging;
 use crate::viewer::PhotoViewer;
 use trip_archive_types::PhotoResponse;
 
@@ -112,7 +113,7 @@ pub fn TripDetail(id: i64) -> Element {
             },
             Some((_, Ok(trip))) => rsx! {
                 TripStats { trip: trip.clone() }
-                TripTags { id }
+                Tagging { tagged: Tagged::Trip(id) }
                 TrackSection {
                     id,
                     activity: trip.activity_type,
@@ -355,7 +356,7 @@ mod tests {
 
         // US-62: one line — the chips and a way to add one. The field and
         // its suggestions appear once adding is asked for, not before; that
-        // they then offer every known tag is `trip_tags`' own test.
+        // they then offer every known tag is `tagging`'s own test.
         assert!(html.contains(r#"id="add-tag""#), "{html}");
         assert!(!html.contains(r#"id="tag-input""#), "{html}");
         assert!(!html.contains("<datalist"), "{html}");

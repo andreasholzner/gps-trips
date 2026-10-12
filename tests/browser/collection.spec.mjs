@@ -1,11 +1,11 @@
-// Importing a guide book as a collection, and browsing it (US-86), driven
-// as the owner drives it.
+// Importing a guide book as a collection, browsing it (US-86) and tagging it
+// and its tracks (US-93), driven as the owner drives it.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
 // **Real user events** — choosing Collection and a file in the import
 // screen's picker, clicking a line, hovering a waypoint, confirming a
-// delete. **JS-interop rendering** — the collection's map and a track's map
-// are Leaflet's. What the screens render is asserted in
+// delete or a new tag. **JS-interop rendering** — the collection's map and
+// a track's map are Leaflet's. What the screens render is asserted in
 // `crates/ui-dioxus/src/collection/tests.rs`, `collection_track/tests.rs`
 // and `import/collection.rs`, which icon a symbol gets in
 // `waypoint_icon.rs` (US-95), and what the archive stores in
@@ -178,6 +178,46 @@ test("a track's own activity overrides the collection's (US-86)", async ({ page,
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page.locator("#trip-activity")).toHaveText("Hiking");
+});
+
+// US-93: tagged as a trip is (US-33) — a new tag only after it is
+// confirmed — and a collection's tags are its own, not its tracks'.
+test("a collection and its track are tagged as a trip is, each with its own tags (US-93)", async ({
+  page,
+  request,
+}) => {
+  const id = await importCollection(request, GUIDE_BOOK_GPX);
+  const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
+  const name = `book-${Math.random().toString(36).slice(2, 8)}`;
+
+  await page.goto(`/app/collections/${id}`);
+  await expect(page.getByText("No tags yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Add tag" }).click();
+  await page.locator("#tag-input").fill(name);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText(`Create a new tag "${name}"?`)).toBeVisible();
+  expect(await (await request.get(`/api/collections/${id}/tags`)).json()).toEqual([]);
+  await page.getByRole("button", { name: "Create it" }).click();
+
+  // Summaries are about trips: the chip leads nowhere.
+  const chip = page.locator(".trip-tags .chip", { hasText: name });
+  await expect(chip).toBeVisible();
+  await expect(chip.locator("a")).toHaveCount(0);
+
+  // The track has none of its collection's; a known name needs no
+  // confirmation.
+  await page.goto(`/app/collection-tracks/${track.id}`);
+  await expect(page.getByText("No tags yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Add tag" }).click();
+  await page.locator("#tag-input").fill(name);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.locator(".trip-tags .chip", { hasText: name })).toBeVisible();
+
+  await page.getByTitle(`Remove ${name}`).click();
+  await expect(page.getByText("No tags yet.")).toBeVisible();
+  expect(await (await request.get(`/api/collection-tracks/${track.id}/tags`)).json()).toEqual([]);
+  const onBook = await (await request.get(`/api/collections/${id}/tags`)).json();
+  expect(onBook.map((tag) => tag.name)).toEqual([name]);
 });
 
 test("deleting the collection is confirmed, naming what goes with it (US-86)", async ({

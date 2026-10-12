@@ -58,16 +58,77 @@ fn consequence(share: &TagShare, tag: &str) -> String {
     }
 }
 
+/// What carries `tag`, after its name: its recorded and its planned trips,
+/// then its collections with, in brackets, the tracks carrying it whose
+/// collection does not (US-93). A part counting nothing is left out; a tag
+/// carried by nothing reads `(0)`.
+pub fn carriers(tag: &TagOverview) -> String {
+    let planned = tag.trip_count - tag.recorded_trip_count;
+    let mut parts = Vec::new();
+    if tag.recorded_trip_count > 0 {
+        parts.push(format!("recorded: {}", tag.recorded_trip_count));
+    }
+    if planned > 0 {
+        parts.push(format!("planned: {planned}"));
+    }
+    if tag.collection_count > 0 || tag.collection_track_count > 0 {
+        let mut collections = format!("collections: {}", tag.collection_count);
+        if tag.collection_track_count > 0 {
+            collections.push_str(&format!(" [{}]", tag.collection_track_count));
+        }
+        parts.push(collections);
+    }
+    if parts.is_empty() {
+        "(0)".to_string()
+    } else {
+        format!("({})", parts.join(", "))
+    }
+}
+
+/// "its one trip", "its 3 trips".
+fn its(count: i64, one: &str, many: &str) -> String {
+    match count {
+        1 => format!("its one {one}"),
+        count => format!("its {count} {many}"),
+    }
+}
+
 /// The confirmation's question: which tag, what it comes off, and that it is
-/// final.
+/// final. With a collection carrying the tag, the tracks counted beside it
+/// are not all that carry it, so they go unnumbered.
 pub fn delete_question(tag: &TagOverview) -> String {
-    let trips = match tag.trip_count {
-        0 => "No trip carries it.".to_string(),
-        1 => "It comes off its one trip; no trip is deleted.".to_string(),
-        count => format!("It comes off its {count} trips; no trip is deleted."),
+    let mut parts = Vec::new();
+    if tag.trip_count > 0 {
+        parts.push(its(tag.trip_count, "trip", "trips"));
+    }
+    if tag.collection_count > 0 {
+        parts.push(its(tag.collection_count, "collection", "collections"));
+        parts.push("every collection track carrying it".to_string());
+    } else if tag.collection_track_count > 0 {
+        parts.push(its(
+            tag.collection_track_count,
+            "collection track",
+            "collection tracks",
+        ));
+    }
+    let off = match parts.split_last() {
+        None => "No trip carries it.".to_string(),
+        Some((last, rest)) => {
+            let what = if rest.is_empty() {
+                last.clone()
+            } else {
+                format!("{} and {last}", rest.join(", "))
+            };
+            let kept = if tag.collection_count > 0 || tag.collection_track_count > 0 {
+                "no trip, collection or track is deleted"
+            } else {
+                "no trip is deleted"
+            };
+            format!("It comes off {what}; {kept}.")
+        }
     };
     format!(
-        "Delete the tag “{}”? {trips} This cannot be undone.",
+        "Delete the tag “{}”? {off} This cannot be undone.",
         tag.name
     )
 }
@@ -143,8 +204,8 @@ pub fn TagTable(tags: Vec<TagOverview>, query: String, on_changed: EventHandler<
     }
 }
 
-/// One tag: its name — linking to its summary when it has one — and its
-/// trips, the share icon when a summary share names it, renaming it in place
+/// One tag: its name — linking to its summary when it has one — and what
+/// carries it, the share icon when a summary share names it, renaming it in place
 /// (US-85) and deleting it.
 #[component]
 fn TagRow(tag: TagOverview, on_changed: EventHandler<()>) -> Element {
@@ -182,7 +243,7 @@ fn TagRow(tag: TagOverview, on_changed: EventHandler<()>) -> Element {
                     } else {
                         "{tag.name}"
                     }
-                    " ({tag.trip_count})"
+                    " {carriers(&tag)}"
                     if let Some(title) = shared {
                         " "
                         Link {

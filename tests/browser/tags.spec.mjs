@@ -80,7 +80,7 @@ test("deleting a tag is confirmed first, says what becomes of its share, and tak
 
   await page.goto(`/app/tags?q=${name}`);
   await expect(rows(page)).toHaveCount(1);
-  await expect(rows(page).first()).toContainText(`${name} (1)`);
+  await expect(rows(page).first()).toContainText(`${name} (recorded: 1)`);
   await rows(page).first().getByRole("button", { name: "Delete" }).click();
 
   const confirmation = page.locator(".confirm");
@@ -141,7 +141,7 @@ test("renaming a tag in its row shows the new name on its trips, and a refused n
   await expect(field).toHaveValue(before);
   await field.press("Escape");
   await expect(page.locator(".rename-tag")).toHaveCount(0);
-  await expect(row).toContainText(`${before} (1)`);
+  await expect(row).toContainText(`${before} (recorded: 1)`);
 
   await row.getByRole("button", { name: "Rename" }).click();
   await field.fill(taken);
@@ -154,7 +154,7 @@ test("renaming a tag in its row shows the new name on its trips, and a refused n
   await field.press("Enter");
   await expect(page.locator(".rename-tag")).toHaveCount(0);
   await expect(rows(page)).toHaveCount(2);
-  await expect(rows(page).first()).toContainText(`${after} (1)`);
+  await expect(rows(page).first()).toContainText(`${after} (recorded: 1)`);
   await expect(page.getByText(before)).toHaveCount(0);
 
   await page.goto(`/app/trips/${trip}`);
