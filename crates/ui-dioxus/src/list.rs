@@ -11,7 +11,7 @@ use trip_archive_types::{CollectionSummary, TripSummary, VERSION};
 use crate::api::{self, ApiClient};
 use crate::bulk_activity::BulkActivityPanel;
 use crate::bulk_tag::BulkTagPanel;
-use crate::collection_table::CollectionTable;
+use crate::collection_table::{CollectionTable, NO_COLLECTIONS};
 use crate::filter_bar::FilterBar;
 use crate::filters::{Filters, ListTab};
 use crate::format;
@@ -296,7 +296,7 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
     match (filters.tab, filters.any_set()) {
         (ListTab::Collections, true) => rsx! { p { "No collections match your filters." } },
         (ListTab::Collections, false) => {
-            rsx! { p { "No collections yet. Import a GPX file as a collection." } }
+            rsx! { p { "{NO_COLLECTIONS}" } }
         }
         (_, true) => rsx! { p { "No trips match your filters." } },
         (ListTab::Planned, false) => rsx! { p { "No planned trips yet." } },

@@ -1,8 +1,9 @@
-/* The Tags screen (US-83). */
+/* The Tags screen (US-83), and the Collections screen's filter (US-97). */
 
 /* The filter and the create field are short names, not prose: neither needs
    the page's whole width. */
 #tag-filter,
+#collection-filter,
 .create-tag {
   max-width: 24rem;
 }

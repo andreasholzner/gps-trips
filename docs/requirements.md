@@ -140,7 +140,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
-| [US-97](#us-97--collections-page)                             | 📋     | Collections page                             | [Collections](#collections)                                         |
+| [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | 📋     | Waypoint pages                               | [Collections](#collections)                                         |
 
 ### Maintaining this file
@@ -1420,7 +1420,7 @@ the icons ship with the app rather than being fetched — US-10), US-89's extens
 
 ### US-97 — Collections page
 
-**Planned 📋** — As the owner, I see every collection on a page of its own, reached from the menu,
+**Done ✅** — As the owner, I see every collection on a page of its own, reached from the menu,
 so I get to a collection without going through the trip list.
 
 **Acceptance criteria:** A Collections screen, reached from the header menu (US-60) right after

@@ -15,6 +15,7 @@ mod bulk_tag;
 mod collection;
 mod collection_table;
 mod collection_track;
+mod collections;
 mod config;
 mod delete;
 mod detail;
@@ -31,6 +32,7 @@ mod list;
 mod login;
 mod map_items;
 mod menu;
+mod name_filter;
 mod overlay;
 mod pager;
 mod photos;
@@ -56,6 +58,7 @@ mod waypoint_icon;
 use api::ApiClient;
 use collection::Collection;
 use collection_track::CollectionTrack;
+use collections::Collections;
 use detail::TripDetail;
 use filters::Filters;
 use import::ImportTrip;
@@ -63,11 +66,12 @@ use komoot::KomootSync;
 use list::TripList;
 use login::Login;
 use menu::{AppShell, SignOut};
+use name_filter::NameFilter;
 use shared::{Shared, SharedTripDetail};
 use shares::Shares;
 use stats::{Statistics, StatsView};
 use summary::{Summary, SummaryView};
-use tags::{Tags, TagsView};
+use tags::Tags;
 
 /// Pico's classless build (MIT, v2.1.1), vendored rather than fetched from a
 /// CDN: the archive is self-contained (US-10) and the Android app has no
@@ -145,7 +149,11 @@ enum Route {
     /// Every tag: reaching its summary, deleting it, creating one (US-83).
     /// The filter lives in the query string, as the list's filters do.
     #[route("/tags?:..view")]
-    Tags { view: TagsView },
+    Tags { view: NameFilter },
+    /// Every collection (US-97). The filter lives in the query string, as
+    /// the Tags screen's does.
+    #[route("/collections?:..view")]
+    Collections { view: NameFilter },
     /// A collection (US-86), where its import ends.
     #[route("/collections/:id")]
     Collection { id: i64 },
@@ -486,7 +494,7 @@ mod route_tests {
 
     #[test]
     fn us83_the_tags_filter_round_trips_through_the_url() {
-        let view = TagsView {
+        let view = NameFilter {
             q: "alp s&".to_string(),
         };
         let url = Route::Tags { view: view.clone() }.to_string();
@@ -496,6 +504,32 @@ mod route_tests {
             panic!("a tags URL must parse back to the screen; url was {url:?}")
         };
         assert_eq!(back, view);
+    }
+
+    #[test]
+    fn us97_the_collections_filter_round_trips_through_the_url() {
+        let view = NameFilter {
+            q: "alp s&".to_string(),
+        };
+        let url = Route::Collections { view: view.clone() }.to_string();
+
+        let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+        let Route::Collections { view: back } = parsed else {
+            panic!("a collections URL must parse back to the screen; url was {url:?}")
+        };
+        assert_eq!(back, view);
+    }
+
+    #[test]
+    fn us97_the_collections_screen_and_a_collection_have_paths_of_their_own() {
+        assert!(matches!(
+            Route::from_str("/collections"),
+            Ok(Route::Collections { .. })
+        ));
+        assert!(matches!(
+            Route::from_str("/collections/3"),
+            Ok(Route::Collection { id: 3 })
+        ));
     }
 
     #[test]

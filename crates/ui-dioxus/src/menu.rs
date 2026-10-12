@@ -12,9 +12,9 @@
 use dioxus::prelude::*;
 
 use crate::filters::Filters;
+use crate::name_filter::NameFilter;
 use crate::stats::StatsView;
 use crate::summary::SummaryView;
-use crate::tags::TagsView;
 use crate::Route;
 
 /// Signing out, as the app hands it to this menu. The action needs the
@@ -93,9 +93,14 @@ pub fn AppMenu() -> Element {
                     "Statistics"
                 }
                 Link {
-                    to: Route::Tags { view: TagsView::default() },
+                    to: Route::Tags { view: NameFilter::default() },
                     onclick: move |_| open.set(false),
                     "Tags"
+                }
+                Link {
+                    to: Route::Collections { view: NameFilter::default() },
+                    onclick: move |_| open.set(false),
+                    "Collections"
                 }
                 Link {
                     to: Route::ImportTrip {},
@@ -167,12 +172,19 @@ mod tests {
         assert!(position("Summary") < position("Statistics"), "{html}");
         // US-83: every tag, right after the statistics.
         assert!(position("Statistics") < position("Tags"), "{html}");
-        assert!(position("Tags") < position("Import"), "{html}");
+        // US-97: every collection, right after the tags.
+        assert!(position("Tags") < position("Collections"), "{html}");
+        assert!(position("Collections") < position("Import"), "{html}");
         let tags = Route::Tags {
-            view: TagsView::default(),
+            view: NameFilter::default(),
         }
         .to_string();
         assert!(html.contains(&format!(r#"href="{tags}""#)), "{html}");
+        let collections = Route::Collections {
+            view: NameFilter::default(),
+        }
+        .to_string();
+        assert!(html.contains(&format!(r#"href="{collections}""#)), "{html}");
         let summary = Route::Summary {
             view: SummaryView::default(),
         }

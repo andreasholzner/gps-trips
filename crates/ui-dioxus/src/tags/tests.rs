@@ -282,7 +282,7 @@ async fn us83_the_screen_lists_the_archives_tags_narrowed_by_the_url() {
 
     let html = render_against_archive(
         &archive,
-        || rsx! { Tags { view: TagsView { q: "o".to_string() } } },
+        || rsx! { Tags { view: NameFilter { q: "o".to_string() } } },
         |html| html.contains("norway"),
     )
     .await;

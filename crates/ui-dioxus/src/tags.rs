@@ -12,15 +12,14 @@ use dioxus::prelude::*;
 use trip_archive_types::{TagOverview, TagShare};
 
 use crate::api::{self, ApiClient};
+use crate::name_filter::NameFilter;
 use crate::pager::{self, Pager};
 use crate::summary::SummaryView;
 use crate::Route;
 
 mod rename;
-mod view;
 
 use rename::RenameTag;
-pub use view::TagsView;
 
 /// The tags whose names contain `query`, ignoring case and the spaces around
 /// it — names are stored lowercased (US-33), so lowercasing the query is all
@@ -136,7 +135,7 @@ pub fn delete_question(tag: &TagOverview) -> String {
 /// `/tags` — the screen. The filter comes from the URL's query string, and
 /// typing navigates there (US-52's mechanism).
 #[component]
-pub fn Tags(#[props(default)] view: TagsView) -> Element {
+pub fn Tags(#[props(default)] view: NameFilter) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut tags = use_resource(move || async move { api::tag_overview(&archive()).await });
     let reload = move |_| tags.restart();
@@ -167,7 +166,7 @@ fn TagFilter(query: String) -> Element {
             aria_label: "Find a tag",
             value: "{query}",
             oninput: move |event| {
-                navigator().replace(Route::Tags { view: TagsView { q: event.value() } });
+                navigator().replace(Route::Tags { view: NameFilter { q: event.value() } });
             },
         }
     }

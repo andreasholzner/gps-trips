@@ -7,6 +7,10 @@ use trip_archive_types::CollectionSummary;
 use crate::activity_icon::ActivityIcon;
 use crate::Route;
 
+/// What the Collections tab (US-87) and screen (US-97) say with no
+/// collection to list: that there are none, and where one comes from.
+pub const NO_COLLECTIONS: &str = "No collections yet. Import a GPX file as a collection.";
+
 /// One row per collection: its name, its activity icon — none for a collection
 /// with no activity focus — and how many tracks and waypoints it holds.
 #[component]
