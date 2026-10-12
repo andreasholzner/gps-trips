@@ -138,3 +138,38 @@ pub struct CollectionTrackEdit {
     pub name: Option<String>,
     pub activity_type: Option<String>,
 }
+
+/// What `GET /api/waypoints/:id` answers with: the waypoint and where it
+/// belongs, for its own page (US-98).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WaypointDetail {
+    pub waypoint: Waypoint,
+    pub collection_id: i64,
+    pub collection_name: String,
+    /// The track it belongs to as well, whose line its page draws.
+    pub track: Option<WaypointTrack>,
+}
+
+/// The track a waypoint belongs to, as its page needs it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WaypointTrack {
+    pub id: i64,
+    pub name: String,
+    /// The activity it goes by, its own or its collection's — its line's
+    /// color.
+    pub activity_type: ActivityType,
+}
+
+/// The `PATCH /api/waypoints/:id` body (US-98). An omitted field is left as
+/// it is; a blank description, symbol or elevation takes it away. The
+/// elevation is the text the form holds, in metres. A new position gives
+/// both `lat` and `lon`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WaypointEdit {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub symbol: Option<String>,
+    pub ele: Option<String>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
+}

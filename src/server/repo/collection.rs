@@ -309,7 +309,7 @@ pub async fn list_collection_waypoints(
          WHERE collection_id = ? ORDER BY position",
     )
     .bind(collection_id)
-    .map(waypoint)
+    .map(|row| waypoint(&row))
     .fetch_all(pool)
     .await
 }
@@ -324,12 +324,12 @@ pub async fn list_collection_track_waypoints(
          WHERE collection_track_id = ? ORDER BY position",
     )
     .bind(track_id)
-    .map(waypoint)
+    .map(|row| waypoint(&row))
     .fetch_all(pool)
     .await
 }
 
-fn waypoint(row: SqliteRow) -> Waypoint {
+fn waypoint(row: &SqliteRow) -> Waypoint {
     Waypoint {
         id: row.get("id"),
         collection_track_id: row.get("collection_track_id"),
@@ -458,6 +458,7 @@ pub async fn get_collection_track_gpx(
 mod files;
 mod import;
 mod list;
+mod waypoint;
 use files::insert_files;
 pub use files::{get_collection_file, list_collection_files, NewCollectionFile};
 pub use import::{
@@ -466,6 +467,7 @@ pub use import::{
     CollectionImportPlan, PlannedTrack, PlannedWaypoint, StagedCollectionImport, TrackRef,
 };
 pub use list::{count_collections, list_collection_tracks_by_id, list_collections};
+pub use waypoint::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 

@@ -27,6 +27,7 @@ mod stats;
 mod suggestion;
 mod tags;
 mod tracks;
+mod waypoints;
 
 pub use client::ApiClient;
 pub use collections::{
@@ -48,6 +49,7 @@ pub use tags::{
     add_tag, create_tag, delete_tag, list_tags_of, remove_tag, rename_tag, tag_overview, Tagged,
 };
 pub use tracks::{list_climbs, list_tracks};
+pub use waypoints::{delete_waypoint, edit_waypoint, get_waypoint};
 
 /// A failed API call, already reduced to what the UI shows.
 #[derive(Clone, Debug, PartialEq)]

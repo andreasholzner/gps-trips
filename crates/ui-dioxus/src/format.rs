@@ -54,6 +54,14 @@ pub fn date(timestamp: Option<&str>) -> String {
     }
 }
 
+/// A position as the owner reads it (US-98): degrees to five decimals —
+/// about a metre — with the hemisphere's letter, latitude first.
+pub fn position(lat: f64, lon: f64) -> String {
+    let ns = if lat < 0.0 { 'S' } else { 'N' };
+    let ew = if lon < 0.0 { 'W' } else { 'E' };
+    format!("{:.5}° {ns}, {:.5}° {ew}", lat.abs(), lon.abs())
+}
+
 /// A string shown as it is, or a dash when there is none — the readout's
 /// already-rendered time of a point the GPX gave none (US-62).
 pub fn or_dash(value: Option<&str>) -> String {
@@ -186,6 +194,12 @@ fn dash() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn us98_a_position_reads_in_degrees_with_its_hemispheres() {
+        assert_eq!(position(46.58, 9.84), "46.58000° N, 9.84000° E");
+        assert_eq!(position(-33.856784, -151.2152), "33.85678° S, 151.21520° W");
+    }
 
     #[test]
     fn us70_a_user_agent_is_named_by_its_device_and_browser() {

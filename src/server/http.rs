@@ -36,6 +36,7 @@ use crate::server::{
     },
     track_files::{geojson_track, gpx_download},
     tracks::handle_list_tracks,
+    waypoints,
 };
 
 /// Build the application router. Shared by `main` and the integration tests so
@@ -191,6 +192,8 @@ pub fn router(state: AppState) -> Router {
         .merge(collections::router())
         // US-88: adding files to a collection, reviewed first (ADR-0029).
         .merge(collection_import::router())
+        // US-98: one waypoint, read, corrected and deleted.
+        .merge(waypoints::router())
         .merge(share::router())
         // Whatever no route answers, in the same JSON as every refusal
         // (ADR-0008) — so an unknown path under a live share reads exactly

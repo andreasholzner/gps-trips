@@ -32,6 +32,7 @@ pub use collection::{
     NewCollectionTrack, NewWaypoint, PlannedTrack, PlannedWaypoint, StagedCollectionImport,
     TrackRef,
 };
+pub use collection::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};
 pub use export::{list_export_collections, list_export_trips};
 pub use moving_time::backfill_moving_secs;
 pub use photo::{

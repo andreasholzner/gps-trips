@@ -1,3 +1,4 @@
+use super::waypoints::{by_name, WaypointList};
 use super::*;
 use crate::test_support::{
     import_collection, render, render_against_archive, serve_test_archive, COLLECTION_GPX,
@@ -224,4 +225,85 @@ fn us86_waypoints_that_cannot_be_read_cost_the_markers_not_the_map() {
         drawn_waypoints(Ok(vec![read.clone()])),
         [MapWaypoint::from(&read)]
     );
+}
+
+// ── US-98: the waypoints, below the tracks ───────────────────────────────────
+
+fn a_waypoint(id: i64, name: Option<&str>, symbol: Option<&str>) -> Waypoint {
+    Waypoint {
+        id,
+        collection_track_id: None,
+        name: name.map(str::to_string),
+        description: None,
+        lat: 46.5,
+        lon: 9.2,
+        ele: Some(2065.0),
+        symbol: symbol.map(str::to_string),
+    }
+}
+
+#[test]
+fn us98_the_waypoints_are_sorted_by_name_ignoring_case_unnamed_last() {
+    let sorted = by_name(vec![
+        a_waypoint(1, None, None),
+        a_waypoint(2, Some("passo"), None),
+        a_waypoint(3, Some("Albula"), None),
+        a_waypoint(4, Some("Maloja"), None),
+    ]);
+
+    let ids: Vec<i64> = sorted.iter().map(|waypoint| waypoint.id).collect();
+    assert_eq!(ids, [3, 4, 2, 1]);
+}
+
+#[test]
+fn us98_each_waypoint_links_to_its_page_with_its_icon_and_elevation() {
+    let html = render(|| {
+        let waypoints = vec![
+            a_waypoint(7, Some("Albula"), Some("Summit")),
+            Waypoint {
+                ele: None,
+                ..a_waypoint(8, None, Some("Shipwreck"))
+            },
+        ];
+        rsx! { WaypointList { waypoints } }
+    });
+
+    let rows: Vec<&str> = html.split("<tr").skip(2).collect();
+    assert!(rows[0].contains(r#"href="/waypoints/7""#), "{html}");
+    assert!(rows[0].contains("waypoint-symbol"), "{html}");
+    assert!(rows[0].contains("2065 m"), "{html}");
+    assert!(rows[1].contains("Unnamed waypoint"), "{html}");
+    assert!(rows[1].contains("waypoint-mark"), "no icon: {html}");
+    assert!(rows[1].contains("—"), "no elevation: {html}");
+}
+
+#[test]
+fn us98_a_collection_without_waypoints_shows_no_list() {
+    let html = render(|| rsx! { WaypointList { waypoints: Vec::new() } });
+
+    assert!(html.is_empty(), "{html}");
+}
+
+#[tokio::test]
+async fn us98_the_page_lists_its_waypoints_below_its_tracks() {
+    let (archive, _dir) = serve_test_archive().await;
+    let (id, _) = import_collection(&archive, COLLECTION_GPX, &[]).await;
+    let waypoints = api::list_collection_waypoints(&archive, id).await.unwrap();
+
+    let html = render_against_archive(
+        &archive,
+        move || rsx! { Collection { id } },
+        |html| html.contains("collection-waypoints"),
+    )
+    .await;
+
+    let tracks = html.find("collection-tracks").unwrap();
+    let listed = html.find("collection-waypoints").unwrap();
+    assert!(tracks < listed, "{html}");
+    for waypoint in waypoints {
+        assert!(
+            html.contains(&format!(r#"href="/waypoints/{}""#, waypoint.id)),
+            "{html}"
+        );
+    }
 }

@@ -52,6 +52,39 @@ pub fn icon(symbol: &str) -> Option<WaypointIcon> {
     }
 }
 
+/// Every symbol the archive has an icon for, as Garmin spells it, in the
+/// groups the waypoint form offers them (US-98): the glyphs, each shape in
+/// each of its colors, and the navaids.
+pub fn symbol_groups() -> [(&'static str, Vec<String>); 3] {
+    let names = |table: &[(&str, &str)]| -> Vec<String> {
+        table.iter().map(|(name, _)| name.to_string()).collect()
+    };
+    let shapes = SHAPES
+        .iter()
+        .flat_map(|(shape, _)| {
+            COLORS
+                .iter()
+                .map(move |(color, _)| format!("{shape}, {color}"))
+        })
+        .collect();
+    let two_tone = TWO_TONE_COLORS.iter().flat_map(|(first, _)| {
+        TWO_TONE_COLORS
+            .iter()
+            .filter(move |(second, _)| second != first)
+            .map(move |(second, _)| format!("Navaid, {first}/{second}"))
+    });
+    let navaids = NAVAID_COLORS
+        .iter()
+        .map(|(color, _)| format!("Navaid, {color}"))
+        .chain(two_tone)
+        .collect();
+    [
+        ("Symbols", names(GLYPHS)),
+        ("Shapes", shapes),
+        ("Navaids", navaids),
+    ]
+}
+
 /// A navaid in one of its colors, or in two tones of red, green and white.
 fn navaid(color: &str) -> Option<WaypointIcon> {
     let (color, half) = match color.split_once('/') {
@@ -99,104 +132,104 @@ fn same_words(text: &str, name: &str) -> bool {
 /// Garmin's three colors, a little deeper than pure, to hold against the
 /// map's tiles.
 const COLORS: &[(&str, &str)] = &[
-    ("red", "#e0322b"),
-    ("green", "#2e9a3e"),
-    ("blue", "#1f7fe0"),
+    ("Red", "#e0322b"),
+    ("Green", "#2e9a3e"),
+    ("Blue", "#1f7fe0"),
 ];
 
 /// A navaid's colors: Garmin's three, and those only a navaid has.
 const NAVAID_COLORS: &[(&str, &str)] = &[
-    ("red", "#e0322b"),
-    ("green", "#2e9a3e"),
-    ("blue", "#1f7fe0"),
+    ("Red", "#e0322b"),
+    ("Green", "#2e9a3e"),
+    ("Blue", "#1f7fe0"),
     // Darker than the plain marker's slate, which means "no icon".
-    ("black", "#212121"),
-    ("amber", "#e8a317"),
-    ("orange", "#ef6c00"),
-    ("violet", "#8e44ad"),
+    ("Black", "#212121"),
+    ("Amber", "#e8a317"),
+    ("Orange", "#ef6c00"),
+    ("Violet", "#8e44ad"),
     // Off-white, so the white outline still shows its edge.
-    ("white", "#f5f5f5"),
+    ("White", "#f5f5f5"),
 ];
 
 /// The colors Garmin pairs in a two-tone navaid, `Red/White` and the like.
 const TWO_TONE_COLORS: &[(&str, &str)] = &[
-    ("red", "#e0322b"),
-    ("green", "#2e9a3e"),
-    ("white", "#f5f5f5"),
+    ("Red", "#e0322b"),
+    ("Green", "#2e9a3e"),
+    ("White", "#f5f5f5"),
 ];
 
 const SHAPES: &[(&str, &str)] = &[
-    ("circle", CIRCLE),
-    ("triangle", TRIANGLE),
-    ("square", SQUARE),
-    ("diamond", RHOMBUS),
-    ("oval", ELLIPSE),
-    ("rectangle", RECTANGLE),
-    ("flag", FLAG),
-    ("pin", MAP_MARKER),
-    ("block", SQUARE_ROUNDED),
-    ("letter a", ALPHA_A_CIRCLE),
-    ("letter b", ALPHA_B_CIRCLE),
-    ("letter c", ALPHA_C_CIRCLE),
-    ("letter d", ALPHA_D_CIRCLE),
-    ("number 0", NUMERIC0_CIRCLE),
-    ("number 1", NUMERIC1_CIRCLE),
-    ("number 2", NUMERIC2_CIRCLE),
-    ("number 3", NUMERIC3_CIRCLE),
-    ("number 4", NUMERIC4_CIRCLE),
-    ("number 5", NUMERIC5_CIRCLE),
-    ("number 6", NUMERIC6_CIRCLE),
-    ("number 7", NUMERIC7_CIRCLE),
-    ("number 8", NUMERIC8_CIRCLE),
-    ("number 9", NUMERIC9_CIRCLE),
+    ("Circle", CIRCLE),
+    ("Triangle", TRIANGLE),
+    ("Square", SQUARE),
+    ("Diamond", RHOMBUS),
+    ("Oval", ELLIPSE),
+    ("Rectangle", RECTANGLE),
+    ("Flag", FLAG),
+    ("Pin", MAP_MARKER),
+    ("Block", SQUARE_ROUNDED),
+    ("Letter A", ALPHA_A_CIRCLE),
+    ("Letter B", ALPHA_B_CIRCLE),
+    ("Letter C", ALPHA_C_CIRCLE),
+    ("Letter D", ALPHA_D_CIRCLE),
+    ("Number 0", NUMERIC0_CIRCLE),
+    ("Number 1", NUMERIC1_CIRCLE),
+    ("Number 2", NUMERIC2_CIRCLE),
+    ("Number 3", NUMERIC3_CIRCLE),
+    ("Number 4", NUMERIC4_CIRCLE),
+    ("Number 5", NUMERIC5_CIRCLE),
+    ("Number 6", NUMERIC6_CIRCLE),
+    ("Number 7", NUMERIC7_CIRCLE),
+    ("Number 8", NUMERIC8_CIRCLE),
+    ("Number 9", NUMERIC9_CIRCLE),
 ];
 
 const GLYPHS: &[(&str, &str)] = &[
-    ("summit", IMAGE_FILTER_HDR),
-    ("lodging", BED),
-    ("hotel", BED),
-    ("lodge", BED),
-    ("residence", HOME),
-    ("house", HOME),
-    ("campground", TENT),
-    ("rv park", TENT),
-    ("drinking water", WATER),
-    ("water source", WATER),
-    ("scenic area", BINOCULARS),
-    ("trail head", SIGN_DIRECTION),
-    ("parking area", PARKING),
-    ("restaurant", SILVERWARE_FORK_KNIFE),
-    ("fast food", SILVERWARE_FORK_KNIFE),
-    ("bar", BEER),
-    ("information", INFORMATION),
-    ("danger area", ALERT),
-    ("church", CHURCH),
-    ("bridge", BRIDGE),
-    ("tunnel", TUNNEL),
-    ("bike trail", BIKE),
-    ("restroom", TOILET),
-    ("shower", SHOWER),
-    ("skiing area", SKI),
-    ("ski resort", SKI),
-    ("railway", TRAIN),
-    ("funicular", GONDOLA),
-    ("ferry", FERRY),
-    ("medical facility", HOSPITAL),
-    ("ground transportation", BUS),
-    ("forest", PINE_TREE),
-    ("swimming area", SWIM),
-    ("picnic area", TABLE_FURNITURE),
-    ("museum", BANK),
-    ("post office", EMAIL),
-    ("telephone", PHONE),
-    ("gas station", GAS_STATION),
-    ("convenience store", STORE),
-    ("shopping center", CART),
-    ("pharmacy", MEDICAL_BAG),
-    ("flag", FLAG),
-    ("geocache", TREASURE_CHEST),
-    ("waterfall", WATERFALL),
-    ("circle with x", CLOSE),
+    ("Summit", IMAGE_FILTER_HDR),
+    ("Lodging", BED),
+    ("Hotel", BED),
+    ("Lodge", BED),
+    ("Residence", HOME),
+    ("House", HOME),
+    ("Campground", TENT),
+    ("RV Park", TENT),
+    ("Drinking Water", WATER),
+    ("Water Source", WATER),
+    ("Scenic Area", BINOCULARS),
+    ("Trail Head", SIGN_DIRECTION),
+    ("Parking Area", PARKING),
+    ("Restaurant", SILVERWARE_FORK_KNIFE),
+    ("Fast Food", SILVERWARE_FORK_KNIFE),
+    ("Bar", BEER),
+    ("Information", INFORMATION),
+    ("Danger Area", ALERT),
+    ("Church", CHURCH),
+    ("Bridge", BRIDGE),
+    ("Tunnel", TUNNEL),
+    ("Bike Trail", BIKE),
+    ("Restroom", TOILET),
+    ("Shower", SHOWER),
+    ("Skiing Area", SKI),
+    ("Ski Resort", SKI),
+    ("Railway", TRAIN),
+    ("Funicular", GONDOLA),
+    ("Ferry", FERRY),
+    ("Medical Facility", HOSPITAL),
+    ("Ground Transportation", BUS),
+    ("Forest", PINE_TREE),
+    ("Swimming Area", SWIM),
+    ("Picnic Area", TABLE_FURNITURE),
+    ("Museum", BANK),
+    ("Post Office", EMAIL),
+    ("Telephone", PHONE),
+    ("Gas Station", GAS_STATION),
+    ("Convenience Store", STORE),
+    ("Shopping Center", CART),
+    ("Pharmacy", MEDICAL_BAG),
+    ("Flag", FLAG),
+    ("Geocache", TREASURE_CHEST),
+    ("Waterfall", WATERFALL),
+    ("Circle with X", CLOSE),
 ];
 
 // mdiCircle
@@ -327,6 +360,9 @@ const TREASURE_CHEST: &str = "M5,4H19A3,3 0 0,1 22,7V11H15V10H9V11H2V7A3,3 0 0,1
 const WATERFALL: &str = "M20 20C18.61 20 17.22 19.53 16 18.67C13.56 20.38 10.44 20.38 8 18.67C6.78 19.53 5.39 20 4 20H2V22H4C5.37 22 6.74 21.65 8 21C10.5 22.3 13.5 22.3 16 21C17.26 21.65 18.62 22 20 22H22V20M20 16C18.61 16 17.22 15.53 16 14.67C13.56 16.38 10.44 16.38 8 14.67C6.78 15.53 5.39 16 4 16H2V18H4C5.37 18 6.74 17.65 8 17C10.5 18.3 13.5 18.3 16 17C17.26 17.65 18.62 18 20 18H22V16M22 2H2V4H6V16H18V4H22M9 4H11V10H9M13 8H15V14H13Z";
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
+
+mod view;
+pub use view::{WaypointSymbol, WAYPOINT_MARK};
 
 #[cfg(test)]
 mod tests;

@@ -141,7 +141,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
-| [US-98](#us-98--waypoint-pages)                               | 📋     | Waypoint pages                               | [Collections](#collections)                                         |
+| [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 
 ### Maintaining this file
 
@@ -1440,7 +1440,7 @@ The Collections tab on the trip list (US-87) stays as it is.
 
 ### US-98 — Waypoint pages
 
-**Planned 📋** — As the owner, I see a collection's waypoints listed on its page and each on a
+**Done ✅** — As the owner, I see a collection's waypoints listed on its page and each on a
 page of its own, where I correct it, so a pass or hut the file got wrong is right in the archive.
 
 **Acceptance criteria:** **The collection page** (US-86) lists the collection's waypoints below its
@@ -1457,20 +1457,21 @@ collection page, as a collection track's page does.
 collection track's name and activity are (US-86). The symbol is chosen from those the archive has
 an icon for, each shown with its icon, or none; a symbol from the file the archive has no icon for
 stays until another is chosen. The name is required; the description and elevation may be emptied.
-**The position** is changed on the map: the owner starts moving the waypoint, drags the marker to
-its new place — as often as needed — and saves the new position explicitly; nothing is saved when
-the marker is dropped. Cancelling puts the marker back where it was and changes nothing. No warning
-comes first: no position of a waypoint is automatic (US-30's reason for one). An edit shows at once
-on the collection's map and table, the trip-list map (US-87) and in the QMapShack export (US-89). Re-adding a file (US-88) treats an edited waypoint as any
-other: one whose name, position or symbol now differs from the file's is proposed *replace*, and
-the owner decides.
+**The position** is changed as a photo is placed (US-30): over the screen, a map with the track it
+belongs to as a guide, its current position, and a tap to say where it goes instead — as often as
+needed — saved explicitly. Cancelling changes nothing. No warning comes first: no position of a
+waypoint is automatic (US-30's reason for one). An edit shows at once on the collection's map and
+table, the trip-list map (US-87) and in the QMapShack export (US-89). Re-adding a file (US-88)
+treats an edited waypoint as any other: one whose position or symbol now differs from the file's is
+proposed *replace*; a renamed one no longer matches its entry in the file, which is proposed *add*
+(ADR-0029); the owner decides.
 
 **Deleting:** a waypoint is deleted from its page after a confirmation naming it, which cannot be
 undone, and the screen goes back to its collection page. The collection and its tracks stay.
 
 **Decisions:** US-98 → ADR-0028 (waypoints are records of their collection), ADR-0029 (an edited
 waypoint is matched as any other on re-import), ADR-0025 (Rust decides what the map draws; the
-dragged marker reports its place back over the channel US-30's placing map uses), ADR-0008 (the
+placing map reports each pick back over the channel US-30's uses), ADR-0008 (the
 screens read and change the waypoint through the JSON API)
 
 ## Maps

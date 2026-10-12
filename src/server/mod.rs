@@ -49,3 +49,4 @@ pub mod timezone;
 pub mod track_boxes;
 pub mod track_files;
 pub mod tracks;
+pub mod waypoints;

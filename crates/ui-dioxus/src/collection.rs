@@ -1,8 +1,8 @@
-//! A collection page (US-86), where its import ends: the
-//! details, every track in its activity's color and every waypoint on one
-//! map, the tracks as a list leading to their own pages, and the files it
-//! came from to download (US-88). The details are edited and the collection
-//! tagged (US-93) here, and the whole collection deleted.
+//! A collection page (US-86), where its import ends: the details, every
+//! track in its activity's color and every waypoint on one map, the tracks
+//! and the waypoints (US-98) as lists leading to their own pages, and the
+//! files it came from to download (US-88). The details are edited and the
+//! collection tagged (US-93) here, and the whole collection deleted.
 
 use dioxus::prelude::*;
 use trip_archive_types::{
@@ -22,7 +22,9 @@ use crate::track;
 use crate::Route;
 
 mod files;
+mod waypoints;
 use files::CollectionFiles;
+use waypoints::CollectionWaypoints;
 
 /// The screen. `id` comes from the route (`/collections/:id`).
 #[component]
@@ -48,6 +50,7 @@ pub fn Collection(id: i64) -> Element {
                 Tagging { tagged: Tagged::Collection(id) }
                 CollectionMap { id, tracks: detail.tracks.clone() }
                 TrackList { tracks: detail.tracks.clone() }
+                CollectionWaypoints { id }
                 CollectionFiles { id }
                 div { class: "trip-actions",
                     EditCollection { collection: detail.clone(), on_saved: move |_| collection.restart() }

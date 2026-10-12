@@ -270,7 +270,7 @@ async fn handle_get(
 
 /// A given name must not be blank: unlike at import, there is nothing to
 /// fall back to.
-fn edited_name(name: Option<String>) -> Result<Option<String>, AppError> {
+pub(crate) fn edited_name(name: Option<String>) -> Result<Option<String>, AppError> {
     match name {
         Some(name) if name.trim().is_empty() => {
             Err(AppError::BadRequest("name cannot be empty".to_string()))

@@ -7,7 +7,7 @@
 use serde::Serialize;
 use trip_archive_types::Waypoint;
 
-use crate::waypoint_icon::{self, WaypointIcon};
+use crate::waypoint_icon::{self, WaypointIcon, WAYPOINT_MARK};
 
 /// Defines `drawWaypoints(map, waypoints)`, which adds the markers to `map`
 /// and returns them as a feature group, for the caller to frame and to
@@ -22,8 +22,6 @@ use crate::waypoint_icon::{self, WaypointIcon};
 /// marker turns Leaflet's placing transform with it, about the map pane's
 /// corner.
 const WAYPOINTS_JS: &str = r##"
-    const WAYPOINT_MARK = "M12,1L23,12L12,23L1,12Z";
-
     function waypointIcon(icon) {
       const ns = "http://www.w3.org/2000/svg";
       const svg = document.createElementNS(ns, "svg");
@@ -85,9 +83,10 @@ const WAYPOINTS_JS: &str = r##"
     }
 "##;
 
-/// `script`, able to call `drawWaypoints`.
+/// `script`, able to call `drawWaypoints`. The plain marker's path is the
+/// one the pages draw (US-98), handed over rather than written twice.
 pub(super) fn with_waypoints(script: &str) -> String {
-    format!("{WAYPOINTS_JS}\n{script}")
+    format!("const WAYPOINT_MARK = {WAYPOINT_MARK:?};\n{WAYPOINTS_JS}\n{script}")
 }
 
 /// One waypoint as a map draws it.
@@ -183,6 +182,13 @@ mod tests {
         // too, and the marker lands away from its place.
         assert!(WAYPOINTS_JS.contains(r#"path.setAttribute("d", WAYPOINT_MARK)"#));
         assert!(!include_str!("../../assets/detail.css").contains("rotate:"));
+    }
+
+    #[test]
+    fn us98_the_map_draws_the_same_plain_marker_as_the_pages() {
+        let script = with_waypoints("");
+
+        assert!(script.contains(&format!(r#"const WAYPOINT_MARK = "{WAYPOINT_MARK}";"#)));
     }
 
     #[test]

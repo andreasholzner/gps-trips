@@ -1,7 +1,8 @@
 //! Placing a photo on the map by hand (US-30): over the screen, a map of the
 //! trip's track with the photo's current position on it, a tap to say where
 //! the photo goes instead, and a warning first when that overwrites a
-//! position the archive worked out itself.
+//! position the archive worked out itself. A waypoint is moved the same way
+//! (US-98), through the same [`PlaceOnMap`].
 
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, LocationSource, PhotoPlacement};
@@ -66,64 +67,105 @@ pub fn PlacePhoto(
     // Read again here rather than handed down: the detail screen's track
     // lives inside its map section, and this is opened rarely.
     let track = use_resource(move || async move { api::get_track(&archive(), id).await });
-    let mut chosen = use_signal(|| None::<PhotoPlacement>);
     let mut saving = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let photo_id = photo.id;
-    let current = photo.position;
+    let guide = track.read_unchecked().as_ref().map(|read| {
+        read.as_ref()
+            .map(track::polyline)
+            .map_err(ToString::to_string)
+    });
 
     rsx! {
-        Overlay { label: "Place {photo.name}", class: "placing", on_close,
+        PlaceOnMap {
+            title: "Place {photo.name}",
+            hint: "Tap the map where the photo was taken.",
+            guide,
+            color: activity_color::color(activity),
+            current: photo.position,
+            warning: overwrite_warning(photo.source),
+            error: error().map(|message| format!("Could not place the photo: {message}")),
+            saving: saving(),
+            on_save: move |at| async move {
+                // One request per press: a second would race the first to
+                // the same row.
+                if saving() {
+                    return;
+                }
+                saving.set(true);
+                error.set(None);
+                match api::place_photo(&archive(), id, photo_id, at).await {
+                    Ok(_) => on_placed.call(()),
+                    Err(err) => error.set(Some(err.to_string())),
+                }
+                saving.set(false);
+            },
+            on_close,
+        }
+    }
+}
+
+/// Placing something on the map by hand, over the screen: a photo (US-30)
+/// or a waypoint (US-98). The `guide` track is drawn to find the spot by —
+/// `None` while it is read, and without it the place can still be picked on
+/// the tiles alone. `current` is where it is now; each tap moves the pick,
+/// and nothing is saved before Save, which hands the pick to `on_save`. The
+/// caller stores it and says how that went through `saving` and `error`.
+#[component]
+pub fn PlaceOnMap(
+    title: String,
+    hint: String,
+    guide: Option<Result<Vec<[f64; 2]>, String>>,
+    color: &'static str,
+    current: Option<[f64; 2]>,
+    #[props(default)] warning: Option<&'static str>,
+    #[props(default)] error: Option<String>,
+    saving: bool,
+    on_save: EventHandler<PhotoPlacement>,
+    on_close: EventHandler<()>,
+) -> Element {
+    let mut chosen = use_signal(|| None::<PhotoPlacement>);
+
+    rsx! {
+        Overlay { label: "{title}", class: "placing", on_close,
             div { class: "panel",
-                h2 { "Place {photo.name}" }
-                p { "Tap the map where the photo was taken." }
-                match &*track.read_unchecked() {
+                h2 { "{title}" }
+                p { "{hint}" }
+                match guide {
                     None => rsx! { p { "Loading the track…" } },
-                    // The track is only a guide: without it the photo can
-                    // still be placed, on the tiles alone.
                     Some(Err(err)) => rsx! {
                         p { class: "error", "Could not load the track: {err}" }
                         PlaceMap {
                             points: Vec::new(),
-                            color: activity_color::color(activity),
+                            color,
                             current,
                             on_pick: move |at| chosen.set(Some(picked(at))),
                         }
                     },
-                    Some(Ok(track)) => rsx! {
+                    Some(Ok(points)) => rsx! {
                         PlaceMap {
-                            points: track::polyline(track),
-                            color: activity_color::color(activity),
+                            points,
+                            color,
                             current,
                             on_pick: move |at| chosen.set(Some(picked(at))),
                         }
                     },
                 }
-                if let Some(warning) = overwrite_warning(photo.source) {
+                if let Some(warning) = warning {
                     p { id: "place-warning", class: "warning", "{warning}" }
                 }
-                if let Some(message) = error() {
-                    p { class: "error", "Could not place the photo: {message}" }
+                if let Some(message) = error {
+                    p { class: "error", "{message}" }
                 }
                 div { class: "form-actions",
                     button {
                         id: "place-save",
                         r#type: "button",
-                        disabled: chosen().is_none() || saving(),
-                        onclick: move |_| async move {
-                            let Some(at) = chosen() else { return };
-                            // One request per press: a second would race the
-                            // first to the same row.
-                            if saving() {
-                                return;
+                        disabled: chosen().is_none() || saving,
+                        onclick: move |_| {
+                            if let Some(at) = chosen() {
+                                on_save.call(at);
                             }
-                            saving.set(true);
-                            error.set(None);
-                            match api::place_photo(&archive(), id, photo_id, at).await {
-                                Ok(_) => on_placed.call(()),
-                                Err(err) => error.set(Some(err.to_string())),
-                            }
-                            saving.set(false);
                         },
                         "Save"
                     }

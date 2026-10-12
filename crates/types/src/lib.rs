@@ -48,7 +48,7 @@ pub use climb::{Climb, INCLINE_WINDOW_M};
 pub use collection::{
     CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview, CollectionSummary,
     CollectionTrackDetail, CollectionTrackEdit, CollectionTrackMark, CollectionTrackSummary,
-    CreatedCollection, Waypoint,
+    CreatedCollection, Waypoint, WaypointDetail, WaypointEdit, WaypointTrack,
 };
 pub use collection_import::{
     CollectionFile, CollectionImportReview, ConfirmCollectionImport, HeldItem, ImportAction,

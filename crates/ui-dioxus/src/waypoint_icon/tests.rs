@@ -193,3 +193,55 @@ fn us95_an_icon_reaches_the_script_tagged_by_how_it_is_drawn() {
         serde_json::json!({ "kind": "glyph", "path": IMAGE_FILTER_HDR })
     );
 }
+
+// ── US-98: the symbols to choose from ────────────────────────────────────────
+
+fn all_symbols() -> Vec<String> {
+    symbol_groups()
+        .into_iter()
+        .flat_map(|(_, symbols)| symbols)
+        .collect()
+}
+
+#[test]
+fn us98_every_symbol_offered_has_an_icon() {
+    let symbols = all_symbols();
+
+    assert!(!symbols.is_empty());
+    for symbol in &symbols {
+        assert!(icon(symbol).is_some(), "{symbol}");
+    }
+}
+
+#[test]
+fn us98_the_symbols_are_spelled_as_garmin_spells_them() {
+    let symbols = all_symbols();
+
+    for name in [
+        "Summit",
+        "RV Park",
+        "Drinking Water",
+        "Circle with X",
+        "Triangle, Blue",
+        "Letter A, Red",
+        "Navaid, Amber",
+        "Navaid, Red/White",
+    ] {
+        assert!(symbols.iter().any(|symbol| symbol == name), "{name}");
+    }
+    // A navaid's own colors are not offered on the other shapes, nor a
+    // two-tone navaid in one color twice.
+    assert!(!symbols.iter().any(|symbol| symbol == "Circle, Amber"));
+    assert!(!symbols.iter().any(|symbol| symbol == "Navaid, Red/Red"));
+}
+
+#[test]
+fn us98_the_symbols_come_in_named_groups_each_offered_once() {
+    let groups = symbol_groups();
+    let names: Vec<&str> = groups.iter().map(|(name, _)| *name).collect();
+
+    assert_eq!(names, ["Symbols", "Shapes", "Navaids"]);
+    let symbols = all_symbols();
+    let unique: std::collections::BTreeSet<&String> = symbols.iter().collect();
+    assert_eq!(unique.len(), symbols.len());
+}
