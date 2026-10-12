@@ -2,7 +2,7 @@
 //! whenever it is asked, never a planned one.
 
 use super::*;
-use crate::server::repo::{add_trip_tag, find_tag_ids, get_or_create_tag, remove_trip_tag};
+use crate::server::repo::{add_tag, find_tag_ids, get_or_create_tag, remove_tag, Tagged};
 
 async fn a_planned_trip(pool: &SqlitePool, name: &str) -> i64 {
     let track = parse_gpx(SAMPLE_GPX).unwrap();
@@ -26,7 +26,7 @@ async fn a_planned_trip(pool: &SqlitePool, name: &str) -> i64 {
 
 async fn tag(pool: &SqlitePool, trip_id: i64, name: &str) -> i64 {
     let tag_id = get_or_create_tag(pool, name).await.unwrap();
-    add_trip_tag(pool, trip_id, tag_id).await.unwrap();
+    add_tag(pool, Tagged::Trip(trip_id), tag_id).await.unwrap();
     tag_id
 }
 
@@ -83,8 +83,12 @@ async fn us82_a_tag_share_reaches_whatever_is_tagged_when_it_is_asked() {
     assert!(share_covers_trip(&db.pool, id, second).await.unwrap());
     assert!(!share_covers_trip(&db.pool, id, elsewhere).await.unwrap());
 
-    add_trip_tag(&db.pool, elsewhere, alps).await.unwrap();
-    remove_trip_tag(&db.pool, first, alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(elsewhere), alps)
+        .await
+        .unwrap();
+    remove_tag(&db.pool, Tagged::Trip(first), alps)
+        .await
+        .unwrap();
     assert!(share_covers_trip(&db.pool, id, elsewhere).await.unwrap());
     assert!(!share_covers_trip(&db.pool, id, first).await.unwrap());
     let listed: Vec<i64> = list_shared_trips(&db.pool, id)

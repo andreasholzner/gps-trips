@@ -16,6 +16,8 @@ fn a_tag(id: i64, name: &str, trips: i64, recorded: i64) -> TagOverview {
         name: name.to_string(),
         trip_count: trips,
         recorded_trip_count: recorded,
+        collection_count: 0,
+        collection_track_count: 0,
         shares: Vec::new(),
     }
 }

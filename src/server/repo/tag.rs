@@ -1,4 +1,5 @@
-//! Tag CRUD and trip/tag associations (US-33), and the Tags screen's
+//! Tag CRUD and the links putting tags on trips (US-33), collections and
+//! their tracks (US-93), and the Tags screen's
 //! listing, creating and deleting (US-83) and renaming (US-85) of tags. Kept
 //! separate from `trip`/`photo`, mirroring how each domain gets its own repo
 //! submodule.
@@ -25,42 +26,70 @@ pub async fn get_or_create_tag(pool: &SqlitePool, name: &str) -> Result<i64, sql
     .await
 }
 
-/// Link a tag to a trip. Idempotent: tagging a trip with a tag it already
-/// carries is a no-op, not an error.
-pub async fn add_trip_tag(pool: &SqlitePool, trip_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT OR IGNORE INTO trip_tag (trip_id, tag_id) VALUES (?, ?)")
-        .bind(trip_id)
-        .bind(tag_id)
-        .execute(pool)
-        .await?;
+/// What a tag can be put on: a trip (US-33), or a collection or one of its
+/// tracks (US-93). Each has links of its own (ADR-0028), so nothing that
+/// reads a trip's tags sees a collection's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tagged {
+    Trip(i64),
+    Collection(i64),
+    CollectionTrack(i64),
+}
+
+impl Tagged {
+    /// The link table, the column naming what is tagged, and its id.
+    fn link(self) -> (&'static str, &'static str, i64) {
+        match self {
+            Tagged::Trip(id) => ("trip_tag", "trip_id", id),
+            Tagged::Collection(id) => ("collection_tag", "collection_id", id),
+            Tagged::CollectionTrack(id) => ("collection_track_tag", "collection_track_id", id),
+        }
+    }
+}
+
+/// Link a tag to what it is put on. Idempotent: tagging with a tag already
+/// carried is a no-op, not an error.
+pub async fn add_tag(pool: &SqlitePool, tagged: Tagged, tag_id: i64) -> Result<(), sqlx::Error> {
+    let (table, column, id) = tagged.link();
+    sqlx::query(&format!(
+        "INSERT OR IGNORE INTO {table} ({column}, tag_id) VALUES (?, ?)"
+    ))
+    .bind(id)
+    .bind(tag_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
-/// Unlink a tag from a trip. The `tag` row itself is left in place (kept for
-/// reuse/autocomplete, US-33) even if this was its last trip. Returns `true`
+/// Unlink a tag. The `tag` row itself is left in place (kept for
+/// reuse/autocomplete, US-33) even if this was its last link. Returns `true`
 /// if a link existed and was removed.
-pub async fn remove_trip_tag(
+pub async fn remove_tag(
     pool: &SqlitePool,
-    trip_id: i64,
+    tagged: Tagged,
     tag_id: i64,
 ) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query("DELETE FROM trip_tag WHERE trip_id = ? AND tag_id = ?")
-        .bind(trip_id)
-        .bind(tag_id)
-        .execute(pool)
-        .await?;
+    let (table, column, id) = tagged.link();
+    let result = sqlx::query(&format!(
+        "DELETE FROM {table} WHERE {column} = ? AND tag_id = ?"
+    ))
+    .bind(id)
+    .bind(tag_id)
+    .execute(pool)
+    .await?;
     Ok(result.rows_affected() > 0)
 }
 
-/// A trip's current tags, alphabetical.
-pub async fn list_trip_tags(pool: &SqlitePool, trip_id: i64) -> Result<Vec<Tag>, sqlx::Error> {
-    sqlx::query(
-        r#"SELECT tag.id, tag.name FROM tag
-           JOIN trip_tag ON trip_tag.tag_id = tag.id
-           WHERE trip_tag.trip_id = ?
-           ORDER BY tag.name"#,
-    )
-    .bind(trip_id)
+/// The tags something carries, alphabetical.
+pub async fn list_tags_of(pool: &SqlitePool, tagged: Tagged) -> Result<Vec<Tag>, sqlx::Error> {
+    let (table, column, id) = tagged.link();
+    sqlx::query(&format!(
+        "SELECT tag.id, tag.name FROM tag \
+         JOIN {table} link ON link.tag_id = tag.id \
+         WHERE link.{column} = ? \
+         ORDER BY tag.name"
+    ))
+    .bind(id)
     .map(row_to_tag)
     .fetch_all(pool)
     .await
@@ -77,18 +106,28 @@ pub async fn list_all_tags(pool: &SqlitePool) -> Result<Vec<Tag>, sqlx::Error> {
 
 /// Every tag, alphabetical, with how many trips — and how many recorded
 /// trips — carry it, and the summary shares (US-82) that still open at `now`
-/// and name it (US-83).
+/// and name it (US-83); and how many collections carry it, and how many
+/// collection tracks whose collection does not (US-93). Counted one table at
+/// a time: joining them all would count each trip once per collection.
 pub async fn list_tag_overview(
     pool: &SqlitePool,
     now: OffsetDateTime,
 ) -> Result<Vec<TagOverview>, sqlx::Error> {
     let mut tags: Vec<TagOverview> = sqlx::query(
-        r#"SELECT tag.id, tag.name, COUNT(t.id) AS trip_count,
-                  COUNT(CASE WHEN t.trip_kind = 'recorded' THEN 1 END) AS recorded_trip_count
+        r#"SELECT tag.id, tag.name,
+                  (SELECT COUNT(*) FROM trip_tag tt WHERE tt.tag_id = tag.id) AS trip_count,
+                  (SELECT COUNT(*) FROM trip_tag tt JOIN trip t ON t.id = tt.trip_id
+                   WHERE tt.tag_id = tag.id AND t.trip_kind = 'recorded') AS recorded_trip_count,
+                  (SELECT COUNT(*) FROM collection_tag ct
+                   WHERE ct.tag_id = tag.id) AS collection_count,
+                  (SELECT COUNT(*) FROM collection_track_tag ctt
+                   JOIN collection_track track ON track.id = ctt.collection_track_id
+                   WHERE ctt.tag_id = tag.id
+                     AND NOT EXISTS (SELECT 1 FROM collection_tag ct
+                                     WHERE ct.tag_id = tag.id
+                                       AND ct.collection_id = track.collection_id))
+                      AS collection_track_count
            FROM tag
-           LEFT JOIN trip_tag tt ON tt.tag_id = tag.id
-           LEFT JOIN trip t ON t.id = tt.trip_id
-           GROUP BY tag.id
            ORDER BY tag.name"#,
     )
     .map(|row: SqliteRow| TagOverview {
@@ -96,6 +135,8 @@ pub async fn list_tag_overview(
         name: row.get("name"),
         trip_count: row.get("trip_count"),
         recorded_trip_count: row.get("recorded_trip_count"),
+        collection_count: row.get("collection_count"),
+        collection_track_count: row.get("collection_track_count"),
         shares: Vec::new(),
     })
     .fetch_all(pool)
@@ -241,7 +282,7 @@ pub async fn trips_exist(pool: &SqlitePool, trip_ids: &[i64]) -> Result<bool, sq
 /// on demand — the same upsert `get_or_create_tag` uses, inlined here because
 /// it needs to run on this call's transaction, not a fresh pool connection —
 /// and linked to every trip via `INSERT OR IGNORE`, making re-application
-/// idempotent just like `add_trip_tag`. A name repeated in `tag_names` is only
+/// idempotent just like `add_tag`. A name repeated in `tag_names` is only
 /// applied once — otherwise the DB writes stay idempotent but the returned
 /// `Tag` list would contain the same tag twice. Returns the applied tags.
 pub async fn bulk_add_trip_tags(

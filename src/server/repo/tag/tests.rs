@@ -55,14 +55,16 @@ async fn get_or_create_tag_returns_the_same_id_for_an_existing_name() {
 }
 
 #[tokio::test]
-async fn add_trip_tag_links_the_tag_to_the_trip() {
+async fn add_tag_links_the_tag_to_the_trip() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
     let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
 
-    add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
 
-    let tags = list_trip_tags(&db.pool, trip_id).await.unwrap();
+    let tags = list_tags_of(&db.pool, Tagged::Trip(trip_id)).await.unwrap();
     assert_eq!(
         tags,
         vec![Tag {
@@ -73,19 +75,29 @@ async fn add_trip_tag_links_the_tag_to_the_trip() {
 }
 
 #[tokio::test]
-async fn add_trip_tag_is_idempotent() {
+async fn add_tag_is_idempotent() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
     let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
 
-    add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
-    add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
+    add_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
 
-    assert_eq!(list_trip_tags(&db.pool, trip_id).await.unwrap().len(), 1);
+    assert_eq!(
+        list_tags_of(&db.pool, Tagged::Trip(trip_id))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]
-async fn list_trip_tags_is_alphabetical_and_scoped_to_the_trip() {
+async fn list_tags_of_is_alphabetical_and_scoped_to_the_trip() {
     let db = TestDb::new().await;
     let a = insert_sample_trip(&db.pool).await;
     let b = insert_sample_trip(&db.pool).await;
@@ -93,11 +105,11 @@ async fn list_trip_tags_is_alphabetical_and_scoped_to_the_trip() {
     let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
     let other = get_or_create_tag(&db.pool, "other").await.unwrap();
 
-    add_trip_tag(&db.pool, a, hiking).await.unwrap();
-    add_trip_tag(&db.pool, a, alps).await.unwrap();
-    add_trip_tag(&db.pool, b, other).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(a), hiking).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(a), alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(b), other).await.unwrap();
 
-    let tags_a = list_trip_tags(&db.pool, a).await.unwrap();
+    let tags_a = list_tags_of(&db.pool, Tagged::Trip(a)).await.unwrap();
     assert_eq!(
         tags_a.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
         vec!["alps", "hiking"]
@@ -105,27 +117,36 @@ async fn list_trip_tags_is_alphabetical_and_scoped_to_the_trip() {
 }
 
 #[tokio::test]
-async fn remove_trip_tag_unlinks_but_keeps_the_tag_row() {
+async fn remove_tag_unlinks_but_keeps_the_tag_row() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
     let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-    add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
 
-    let removed = remove_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
+    let removed = remove_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
     assert!(removed);
 
-    assert!(list_trip_tags(&db.pool, trip_id).await.unwrap().is_empty());
+    assert!(list_tags_of(&db.pool, Tagged::Trip(trip_id))
+        .await
+        .unwrap()
+        .is_empty());
     // Orphaned tag stays around for reuse/autocomplete (US-33).
     assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
-async fn remove_trip_tag_returns_false_when_no_such_link_exists() {
+async fn remove_tag_returns_false_when_no_such_link_exists() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
     let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
 
-    let removed = remove_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
+    let removed = remove_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
     assert!(!removed);
 }
 
@@ -134,7 +155,9 @@ async fn deleting_a_trip_cascades_to_its_tag_links_but_not_the_tag() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
     let tag_id = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-    add_trip_tag(&db.pool, trip_id, tag_id).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(trip_id), tag_id)
+        .await
+        .unwrap();
 
     sqlx::query("DELETE FROM trip WHERE id = ?")
         .bind(trip_id)
@@ -173,7 +196,7 @@ async fn bulk_add_trip_tags_applies_every_tag_to_every_trip() {
     assert_eq!(applied.len(), 2);
 
     for trip_id in [a, b] {
-        let tags = list_trip_tags(&db.pool, trip_id).await.unwrap();
+        let tags = list_tags_of(&db.pool, Tagged::Trip(trip_id)).await.unwrap();
         assert_eq!(
             tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             vec!["alps", "hiking"]
@@ -219,7 +242,13 @@ async fn bulk_add_trip_tags_is_idempotent() {
         .await
         .unwrap();
 
-    assert_eq!(list_trip_tags(&db.pool, trip_id).await.unwrap().len(), 1);
+    assert_eq!(
+        list_tags_of(&db.pool, Tagged::Trip(trip_id))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -278,7 +307,7 @@ mod tags_page {
 
     async fn tag(pool: &SqlitePool, trip_id: i64, name: &str) -> i64 {
         let tag_id = get_or_create_tag(pool, name).await.unwrap();
-        add_trip_tag(pool, trip_id, tag_id).await.unwrap();
+        add_tag(pool, Tagged::Trip(trip_id), tag_id).await.unwrap();
         tag_id
     }
 
@@ -311,6 +340,8 @@ mod tags_page {
             name: name.to_string(),
             trip_count: trips,
             recorded_trip_count: recorded,
+            collection_count: 0,
+            collection_track_count: 0,
             shares: Vec::new(),
         }
     }
@@ -405,7 +436,7 @@ mod tags_page {
             .map(|tag| tag.name)
             .collect();
         assert_eq!(names, vec!["norway"]);
-        let tags = list_trip_tags(&db.pool, trip).await.unwrap();
+        let tags = list_tags_of(&db.pool, Tagged::Trip(trip)).await.unwrap();
         assert_eq!(
             tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             vec!["norway"]
@@ -481,7 +512,10 @@ mod tags_page {
             name: "alpen".to_string(),
         };
         assert_eq!(renamed, Rename::Renamed(alpen.clone()));
-        assert_eq!(list_trip_tags(&db.pool, trip).await.unwrap(), vec![alpen]);
+        assert_eq!(
+            list_tags_of(&db.pool, Tagged::Trip(trip)).await.unwrap(),
+            vec![alpen]
+        );
         assert_eq!(
             shared_tag_names(&db.pool, share).await.unwrap(),
             vec!["alpen"]
@@ -526,3 +560,7 @@ mod tags_page {
         assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
     }
 }
+
+// ── Collections and their tracks (US-93) ─────────────────────────────────────
+
+mod collections;

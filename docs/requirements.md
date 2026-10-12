@@ -1260,9 +1260,10 @@ I organize my trips.
 
 **Acceptance criteria:** A collection's page (US-86) and a collection track's page tag it as a
 trip's page tags a trip (US-33): the same suggestions, normalization and confirmation of a new tag.
-A collection's tags are its own and do not pass to its tracks, nor a track's to its collection. The
-Tags screen (US-83) counts the collections and collection tracks carrying a tag beside its trips;
-renaming a tag (US-85) renames it on them too, and deleting one takes it off them as well, which its
+A collection's tags are its own and do not pass to its tracks, nor a track's to its collection. A
+tag's name on these pages leads nowhere: its summary (US-78) is about trips. The Tags screen (US-83)
+counts a tag's recorded and planned trips apart, the collections carrying it, and the collection
+tracks carrying it whose collection does not; renaming a tag (US-85) renames it on them too, and deleting one takes it off them as well, which its
 confirmation says. Tags stay apart from what is about trips: the trip list's tag filter (US-38), the
 tag summaries (US-78) and summary shares (US-82) reach trips only.
 

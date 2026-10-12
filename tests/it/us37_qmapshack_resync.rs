@@ -18,7 +18,7 @@ use trip_archive::models::{ActivityType, TripKind};
 use trip_archive::server::gpx::{compute_stats, TrackPoint};
 use trip_archive::server::qmapshack::{self, config::ExportConfig, decode};
 use trip_archive::server::repo::{
-    add_trip_tag, delete_trip, get_or_create_tag, insert_trip, update_trip, NewTrip, TripEdit,
+    add_tag, delete_trip, get_or_create_tag, insert_trip, update_trip, NewTrip, Tagged, TripEdit,
 };
 use trip_archive::server::{db, geojson};
 
@@ -334,7 +334,9 @@ async fn us37_tag_change_updates_keywords_and_comment() {
         .expect("first run");
 
     let tag = get_or_create_tag(&archive, "fjell").await.expect("tag");
-    add_trip_tag(&archive, trip, tag).await.expect("tag trip");
+    add_tag(&archive, Tagged::Trip(trip), tag)
+        .await
+        .expect("tag trip");
 
     let second = qmapshack::run_export(&url, TEST_PASSWORD, &cfg)
         .await

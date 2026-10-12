@@ -9,7 +9,8 @@ pub struct Tag {
     pub name: String,
 }
 
-/// A row of the Tags screen (US-83): a tag, how many trips carry it, and the
+/// A row of the Tags screen (US-83): a tag, how many trips, collections and
+/// collection tracks (US-93) carry it, and the
 /// active summary shares (US-82) that name it. Its own response type rather
 /// than a grown `Tag` (ADR-0015), so the autocomplete's list stays as small
 /// as it was.
@@ -21,6 +22,10 @@ pub struct TagOverview {
     pub trip_count: i64,
     /// The recorded ones alone: only they give the tag a summary (US-78).
     pub recorded_trip_count: i64,
+    /// The collections carrying the tag (US-93).
+    pub collection_count: i64,
+    /// The collection tracks carrying the tag whose collection does not.
+    pub collection_track_count: i64,
     /// Newest first, as the Shares screen lists them.
     pub shares: Vec<TagShare>,
 }

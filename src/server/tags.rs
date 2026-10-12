@@ -11,7 +11,11 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 
 use crate::models::{normalize_tag_name, Tag, TagOverview};
-use crate::server::{error::AppError, repo, repo::Rename, state::AppState};
+use crate::server::{
+    error::AppError,
+    repo::{self, Rename, Tagged},
+    state::AppState,
+};
 
 /// The `POST /api/trips/:id/tags` request body (ADR-0008).
 #[derive(Deserialize)]
@@ -38,7 +42,9 @@ pub async fn handle_list_trip_tags(
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<Tag>>, AppError> {
     require_trip(&state, id).await?;
-    Ok(Json(repo::list_trip_tags(&state.pool, id).await?))
+    Ok(Json(
+        repo::list_tags_of(&state.pool, Tagged::Trip(id)).await?,
+    ))
 }
 
 /// POST `/api/trips/:id/tags` — tag a trip (US-33). 404 if the trip doesn't
@@ -56,7 +62,7 @@ pub async fn handle_add_trip_tag(
     require_trip(&state, id).await?;
     let name = normalize_tag_name(&body.name).map_err(AppError::BadRequest)?;
     let tag_id = repo::get_or_create_tag(&state.pool, &name).await?;
-    repo::add_trip_tag(&state.pool, id, tag_id).await?;
+    repo::add_tag(&state.pool, Tagged::Trip(id), tag_id).await?;
     Ok((StatusCode::CREATED, Json(Tag { id: tag_id, name })))
 }
 
@@ -69,7 +75,7 @@ pub async fn handle_remove_trip_tag(
     Path((id, tag_id)): Path<(i64, i64)>,
 ) -> Result<StatusCode, AppError> {
     require_trip(&state, id).await?;
-    repo::remove_trip_tag(&state.pool, id, tag_id).await?;
+    repo::remove_tag(&state.pool, Tagged::Trip(id), tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

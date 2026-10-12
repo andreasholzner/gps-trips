@@ -220,7 +220,9 @@ mod tests {
         let second = insert_trip_with(&db.pool, "Second", TripKind::Recorded, start).await;
         for (trip, name) in [(first, "telt"), (first, "fjell"), (second, "bre")] {
             let tag_id = repo::get_or_create_tag(&db.pool, name).await.unwrap();
-            repo::add_trip_tag(&db.pool, trip, tag_id).await.unwrap();
+            repo::add_tag(&db.pool, repo::Tagged::Trip(trip), tag_id)
+                .await
+                .unwrap();
         }
 
         let trips = list_export_trips(&db.pool).await.unwrap();

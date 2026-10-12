@@ -5,7 +5,7 @@
 //! repo's 500-line cap. US-14's region tests are the sibling `region.rs`.
 
 use super::*;
-use crate::server::repo::{add_trip_tag, get_or_create_tag};
+use crate::server::repo::{add_tag, get_or_create_tag, Tagged};
 
 async fn insert_trip_with(
     pool: &SqlitePool,
@@ -265,9 +265,9 @@ async fn us38_tag_filter_matches_only_trips_carrying_every_selected_tag() {
 
     let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
     let hiking = get_or_create_tag(&db.pool, "hiking").await.unwrap();
-    add_trip_tag(&db.pool, both, alps).await.unwrap();
-    add_trip_tag(&db.pool, both, hiking).await.unwrap();
-    add_trip_tag(&db.pool, one, alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(both), alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(both), hiking).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(one), alps).await.unwrap();
 
     let filter = TripFilter {
         tags: vec!["alps".to_string(), "hiking".to_string()],
@@ -290,7 +290,7 @@ async fn us38_a_single_selected_tag_matches_any_trip_carrying_it() {
     insert_trip_with(&db.pool, "Untagged", ActivityType::Hiking, 1_000.0, t).await;
 
     let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
-    add_trip_tag(&db.pool, tagged, alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(tagged), alps).await.unwrap();
 
     let filter = TripFilter {
         tags: vec!["alps".to_string()],
@@ -321,8 +321,12 @@ async fn us38_tag_filter_combines_with_other_filters_as_and() {
         insert_trip_with(&db.pool, "WrongActivity", ActivityType::Cycling, 1_000.0, t).await;
 
     let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
-    add_trip_tag(&db.pool, matching, alps).await.unwrap();
-    add_trip_tag(&db.pool, wrong_activity, alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(matching), alps)
+        .await
+        .unwrap();
+    add_tag(&db.pool, Tagged::Trip(wrong_activity), alps)
+        .await
+        .unwrap();
 
     let filter = TripFilter {
         activity_type: Some(ActivityType::Hiking),
@@ -346,7 +350,7 @@ async fn us38_a_filter_with_a_duplicate_tag_name_still_matches_correctly() {
     insert_trip_with(&db.pool, "Untagged", ActivityType::Hiking, 1_000.0, t).await;
 
     let alps = get_or_create_tag(&db.pool, "alps").await.unwrap();
-    add_trip_tag(&db.pool, tagged, alps).await.unwrap();
+    add_tag(&db.pool, Tagged::Trip(tagged), alps).await.unwrap();
 
     let filter = TripFilter {
         tags: vec!["alps".to_string(), "alps".to_string()],
