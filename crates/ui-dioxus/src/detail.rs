@@ -262,8 +262,8 @@ mod tests {
         assert!(html.contains("Edit name / activity"), "{html}");
     }
 
-    // The empty states are claims about the trip, and neither may be made
-    // while the archive is still answering. This watches every intermediate
+    // The photos' empty state is a claim about the trip, and it may not be
+    // made while the archive is still answering. This watches every intermediate
     // render, not just the last one — the defect it guards against is
     // invisible in the final HTML.
     #[tokio::test]
@@ -288,7 +288,7 @@ mod tests {
             &archive,
             move || rsx! { TripDetail { id } },
             |html| {
-                if html.contains("No tags yet") || html.contains("No photos yet") {
+                if html.contains("No photos yet") {
                     claimed_empty.set(true);
                 }
                 html.contains("alpine") && html.contains("later.jpg")

@@ -248,7 +248,7 @@ test("a collection and its track are tagged as a trip is, each with its own tags
   const name = `book-${Math.random().toString(36).slice(2, 8)}`;
 
   await page.goto(`/app/collections/${id}`);
-  await expect(page.getByText("No tags yet.")).toBeVisible();
+  await expect(page.locator(".trip-tags .chip")).toHaveCount(0);
   await page.getByRole("button", { name: "Add tag" }).click();
   await page.locator("#tag-input").fill(name);
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -264,14 +264,14 @@ test("a collection and its track are tagged as a trip is, each with its own tags
   // The track has none of its collection's; a known name needs no
   // confirmation.
   await page.goto(`/app/collection-tracks/${track.id}`);
-  await expect(page.getByText("No tags yet.")).toBeVisible();
+  await expect(page.locator(".trip-tags .chip")).toHaveCount(0);
   await page.getByRole("button", { name: "Add tag" }).click();
   await page.locator("#tag-input").fill(name);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.locator(".trip-tags .chip", { hasText: name })).toBeVisible();
 
   await page.getByTitle(`Remove ${name}`).click();
-  await expect(page.getByText("No tags yet.")).toBeVisible();
+  await expect(page.locator(".trip-tags .chip")).toHaveCount(0);
   expect(await (await request.get(`/api/collection-tracks/${track.id}/tags`)).json()).toEqual([]);
   const onCollection = await (await request.get(`/api/collections/${id}/tags`)).json();
   expect(onCollection.map((tag) => tag.name)).toEqual([name]);

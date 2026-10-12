@@ -179,13 +179,13 @@ pub fn Tagging(tagged: Tagged) -> Element {
 }
 
 /// One removable chip per tag, its name leading to the tag's summary
-/// (US-78) when `to_summary`.
+/// (US-78) when `to_summary`; nothing at all for no tags.
 #[component]
 fn TagChips(tags: Vec<Tag>, to_summary: bool, on_remove: EventHandler<i64>) -> Element {
     rsx! {
-        if tags.is_empty() {
-            span { class: "muted", "No tags yet." }
-        } else {
+        // None: nothing in their place, the "Add tag" button beside them
+        // says enough.
+        if !tags.is_empty() {
             div { class: "chips",
                 for tag in tags {
                     span { key: "{tag.id}", class: "chip",
@@ -366,12 +366,13 @@ mod tests {
     }
 
     #[test]
-    fn a_trip_with_no_tags_says_so() {
+    fn a_trip_with_no_tags_shows_nothing_in_their_place() {
+        // The "Add tag" button beside them says enough.
         let html = render(|| {
             rsx! { TagChips { tags: Vec::new(), to_summary: true, on_remove: move |_| {} } }
         });
 
-        assert!(html.contains("No tags yet"), "{html}");
+        assert!(html.is_empty(), "{html}");
     }
 
     #[test]

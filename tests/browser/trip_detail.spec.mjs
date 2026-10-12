@@ -405,7 +405,7 @@ test("a new tag is created only after it is confirmed (US-33)", async ({ page, r
   const id = await ownTrip(request, "Tagged Trip");
   const name = `winter-${Math.random().toString(36).slice(2, 8)}`;
   await page.goto(`/app/trips/${id}`);
-  await expect(page.getByText("No tags yet.")).toBeVisible();
+  await expect(page.locator(".trip-tags .chip")).toHaveCount(0);
   // US-62: the field is not there until adding is asked for.
   await expect(page.locator("#tag-input")).toHaveCount(0);
 
