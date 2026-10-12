@@ -24,7 +24,8 @@ th[scope="row"] > .activity-icon {
   height: 1.5rem;
 }
 
-h1 > .activity-icon {
+h1 > .activity-icon,
+a > .activity-icon {
   margin-inline-end: 0.35em;
 }
 

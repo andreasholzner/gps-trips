@@ -203,6 +203,24 @@ test("a collection track's map shows its waypoints' icons too (US-95)", async ({
   await expect(page.locator("#track-map .waypoint-mark")).toHaveCount(1);
 });
 
+test("a track's name keeps a space from its activity's icon (US-86)", async ({ page, request }) => {
+  const id = await importCollection(request, GUIDE_BOOK_GPX, { activity_type: "cycling" });
+
+  await page.goto(`/app/collections/${id}`);
+  const link = page.locator("#collection-tracks tbody a").first();
+  await expect(link.locator(".activity-icon")).toHaveCount(1);
+  const [iconRight, textLeft] = await link.evaluate((a) => {
+    const text = document.createRange();
+    text.selectNodeContents(a.lastChild);
+    return [
+      a.querySelector(".activity-icon").getBoundingClientRect().right,
+      text.getBoundingClientRect().left,
+    ];
+  });
+
+  expect(textLeft - iconRight).toBeGreaterThanOrEqual(4);
+});
+
 test("a track's own activity overrides the collection's (US-86)", async ({ page, request }) => {
   const id = await importCollection(request, GUIDE_SINGLE_GPX, { activity_type: "cycling" });
   const [track] = (await (await request.get(`/api/collections/${id}`)).json()).tracks;
