@@ -140,6 +140,8 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
+| [US-97](#us-97--collections-page)                             | 📋     | Collections page                             | [Collections](#collections)                                         |
+| [US-98](#us-98--waypoint-pages)                               | 📋     | Waypoint pages                               | [Collections](#collections)                                         |
 
 ### Maintaining this file
 
@@ -1415,6 +1417,61 @@ so QMapShack shows its own icon for it.
 **Decisions:** US-95 → ADR-0025 (Rust decides which icon a waypoint gets, the script draws it;
 the icons ship with the app rather than being fetched — US-10), US-89's extension of ADR-0022
 (waypoint items, once it exists), ADR-0028
+
+### US-97 — Collections page
+
+**Planned 📋** — As the owner, I see every collection on a page of its own, reached from the menu,
+so I get to a collection without going through the trip list.
+
+**Acceptance criteria:** A Collections screen, reached from the header menu (US-60) right after
+"Tags", lists every collection with exactly the Collections tab's table (US-87): alphabetically,
+each with its activity icon, its number of tracks and waypoints, and linking to its collection page
+(US-86). It has no map and none of the trip list's other filters.
+
+**Finding a collection:** a text field above the table narrows it to the collections whose names
+contain what is typed, ignoring case, as the owner types — as the Tags screen's (US-83). The filter
+lives in the URL (US-52), so it can be bookmarked and survives a reload. The table shows 50
+collections a page, with the trip list's paging (US-63); changing the filter goes back to the first
+page. With no collections, the screen says so and points to the import, as the tab does.
+
+The Collections tab on the trip list (US-87) stays as it is.
+
+**Decisions:** US-97 → ADR-0008 (the screen reads the collections from the JSON API), ADR-0028
+
+### US-98 — Waypoint pages
+
+**Planned 📋** — As the owner, I see a collection's waypoints listed on its page and each on a
+page of its own, where I correct it, so a pass or hut the file got wrong is right in the archive.
+
+**Acceptance criteria:** **The collection page** (US-86) lists the collection's waypoints below its
+tracks, when it has any: each with its symbol's icon (US-95) — the plain marker for none or one
+without an icon — its name and its elevation, sorted by name, linking to its waypoint page. A
+collection without waypoints shows no list.
+
+**The waypoint page** shows the waypoint's name, symbol, description, elevation and position, and a
+map with the waypoint as the collection page draws it (US-95), the line of the track it belongs to
+(US-86) where it belongs to one, and nothing else of the collection. It links back to its
+collection page, as a collection track's page does.
+
+**Editing:** name, description, symbol and elevation are edited in a form over the screen, as a
+collection track's name and activity are (US-86). The symbol is chosen from those the archive has
+an icon for, each shown with its icon, or none; a symbol from the file the archive has no icon for
+stays until another is chosen. The name is required; the description and elevation may be emptied.
+**The position** is changed on the map: the owner starts moving the waypoint, drags the marker to
+its new place — as often as needed — and saves the new position explicitly; nothing is saved when
+the marker is dropped. Cancelling puts the marker back where it was and changes nothing. No warning
+comes first: no position of a waypoint is automatic (US-30's reason for one). An edit shows at once
+on the collection's map and table, the trip-list map (US-87) and in the QMapShack export (US-89). Re-adding a file (US-88) treats an edited waypoint as any
+other: one whose name, position or symbol now differs from the file's is proposed *replace*, and
+the owner decides.
+
+**Deleting:** a waypoint is deleted from its page after a confirmation naming it, which cannot be
+undone, and the screen goes back to its collection page. The collection and its tracks stay.
+
+**Decisions:** US-98 → ADR-0028 (waypoints are records of their collection), ADR-0029 (an edited
+waypoint is matched as any other on re-import), ADR-0025 (Rust decides what the map draws; the
+dragged marker reports its place back over the channel US-30's placing map uses), ADR-0008 (the
+screens read and change the waypoint through the JSON API)
 
 ## Maps
 
