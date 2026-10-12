@@ -48,6 +48,13 @@ const WAYPOINTS_JS: &str = r##"
         path.setAttribute("fill", icon.color);
       }
       svg.appendChild(path);
+      if (icon && icon.half) {
+        const half = document.createElementNS(ns, "path");
+        half.setAttribute("d", icon.half.path);
+        half.setAttribute("class", "half");
+        half.setAttribute("fill", icon.half.color);
+        svg.appendChild(half);
+      }
       return L.divIcon({
         className: icon ? "waypoint-symbol" : "waypoint-mark",
         html: svg,
@@ -159,6 +166,15 @@ mod tests {
         assert!(WAYPOINTS_JS.contains("createElementNS"));
         assert!(!WAYPOINTS_JS.contains("innerHTML"));
         assert!(WAYPOINTS_JS.contains("html: svg"));
+    }
+
+    #[test]
+    fn us95_a_two_tone_icon_draws_its_half_over_the_shape() {
+        let sent =
+            serde_json::to_value(MapWaypoint::from(&albula(Some("Navaid, Green/Red")))).unwrap();
+
+        assert_eq!(sent["icon"]["half"]["color"], "#e0322b");
+        assert!(WAYPOINTS_JS.contains("icon.half"));
     }
 
     #[test]

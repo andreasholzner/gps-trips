@@ -4,8 +4,10 @@
 //! GPX leaves `<sym>` free text. The names are Garmin's, which its devices,
 //! BaseCamp and QMapShack write — GPSBabel's `garmin_icon_tables.h` lists
 //! them. A colored one is a shape and a color, `Triangle, Blue`, drawn as
-//! that shape in that color; of the others, those a walking or riding book
-//! uses get a glyph on a badge. Every other name keeps US-86's marker.
+//! that shape in that color; a navaid has more colors than the other shapes,
+//! and some in two tones, `Navaid, Green/Red`, drawn as a diamond split down
+//! the middle. Of the others, those a walking or riding book uses get a glyph
+//! on a badge. Every other name keeps US-86's marker.
 //!
 //! The shapes and glyphs are Material Design Icons (Pictogrammers,
 //! Apache-2.0, `@mdi/js` 7.4.47) on their 24 × 24 grid, as the activity
@@ -17,25 +19,60 @@ use serde::Serialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum WaypointIcon {
-    /// The shape itself, in the symbol's color.
+    /// The shape itself, in the symbol's color; a two-tone one with its
+    /// right half over it in the second.
     Shape {
         path: &'static str,
         color: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        half: Option<Half>,
     },
     /// A white glyph on a badge in the waypoint marker's slate.
     Glyph { path: &'static str },
+}
+
+/// The half of a two-tone shape drawn over it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Half {
+    path: &'static str,
+    color: &'static str,
 }
 
 /// The icon for `symbol`, matched ignoring case and spacing; `None` keeps
 /// the plain marker.
 pub fn icon(symbol: &str) -> Option<WaypointIcon> {
     match symbol.split_once(',') {
+        Some((shape, color)) if same_words(shape, "navaid") => navaid(color),
         Some((shape, color)) => Some(WaypointIcon::Shape {
             path: look_up(SHAPES, shape)?,
             color: look_up(COLORS, color)?,
+            half: None,
         }),
         None => look_up(GLYPHS, symbol).map(|path| WaypointIcon::Glyph { path }),
     }
+}
+
+/// A navaid in one of its colors, or in two tones of red, green and white.
+fn navaid(color: &str) -> Option<WaypointIcon> {
+    let (color, half) = match color.split_once('/') {
+        Some((first, second)) if !same_words(first, second.trim()) => {
+            let tone = |text| look_up(TWO_TONE_COLORS, text);
+            (
+                tone(first)?,
+                Some(Half {
+                    path: RHOMBUS_RIGHT_HALF,
+                    color: tone(second)?,
+                }),
+            )
+        }
+        Some(_) => return None,
+        None => (look_up(NAVAID_COLORS, color)?, None),
+    };
+    Some(WaypointIcon::Shape {
+        path: RHOMBUS,
+        color,
+        half,
+    })
 }
 
 /// The value of the entry whose name is `text`'s words, ignoring case.
@@ -65,6 +102,27 @@ const COLORS: &[(&str, &str)] = &[
     ("red", "#e0322b"),
     ("green", "#2e9a3e"),
     ("blue", "#1f7fe0"),
+];
+
+/// A navaid's colors: Garmin's three, and those only a navaid has.
+const NAVAID_COLORS: &[(&str, &str)] = &[
+    ("red", "#e0322b"),
+    ("green", "#2e9a3e"),
+    ("blue", "#1f7fe0"),
+    // Darker than the plain marker's slate, which means "no icon".
+    ("black", "#212121"),
+    ("amber", "#e8a317"),
+    ("orange", "#ef6c00"),
+    ("violet", "#8e44ad"),
+    // Off-white, so the white outline still shows its edge.
+    ("white", "#f5f5f5"),
+];
+
+/// The colors Garmin pairs in a two-tone navaid, `Red/White` and the like.
+const TWO_TONE_COLORS: &[(&str, &str)] = &[
+    ("red", "#e0322b"),
+    ("green", "#2e9a3e"),
+    ("white", "#f5f5f5"),
 ];
 
 const SHAPES: &[(&str, &str)] = &[
@@ -138,6 +196,7 @@ const GLYPHS: &[(&str, &str)] = &[
     ("flag", FLAG),
     ("geocache", TREASURE_CHEST),
     ("waterfall", WATERFALL),
+    ("circle with x", CLOSE),
 ];
 
 // mdiCircle
@@ -148,6 +207,8 @@ const TRIANGLE: &str = "M1,21H23L12,2Z";
 const SQUARE: &str = "M3,3V21H21V3Z";
 // mdiRhombus
 const RHOMBUS: &str = "M12 2C11.5 2 11 2.19 10.59 2.59L2.59 10.59C1.8 11.37 1.8 12.63 2.59 13.41L10.59 21.41C11.37 22.2 12.63 22.2 13.41 21.41L21.41 13.41C22.2 12.63 22.2 11.37 21.41 10.59L13.41 2.59C13 2.19 12.5 2 12 2Z";
+// mdiRhombus's right half, from its top corner round to its bottom one
+const RHOMBUS_RIGHT_HALF: &str = "M12 2C12.5 2 13 2.19 13.41 2.59L21.41 10.59C22.2 11.37 22.2 12.63 21.41 13.41L13.41 21.41C13 21.8 12.5 22 12 22Z";
 // mdiEllipse
 const ELLIPSE: &str =
     "M12,4C6.5,4 2,7.58 2,12C2,16.42 6.5,20 12,20C17.5,20 22,16.42 22,12C22,7.58 17.5,4 12,4Z";
@@ -258,6 +319,8 @@ const STORE: &str = "M12,18H6V14H12M21,14V12L20,7H4L3,12V14H4V20H14V14H18V20H20V
 const CART: &str = "M17,18C15.89,18 15,18.89 15,20A2,2 0 0,0 17,22A2,2 0 0,0 19,20C19,18.89 18.1,18 17,18M1,2V4H3L6.6,11.59L5.24,14.04C5.09,14.32 5,14.65 5,15A2,2 0 0,0 7,17H19V15H7.42A0.25,0.25 0 0,1 7.17,14.75C7.17,14.7 7.18,14.66 7.2,14.63L8.1,13H15.55C16.3,13 16.96,12.58 17.3,11.97L20.88,5.5C20.95,5.34 21,5.17 21,5A1,1 0 0,0 20,4H5.21L4.27,2M7,18C5.89,18 5,18.89 5,20A2,2 0 0,0 7,22A2,2 0 0,0 9,20C9,18.89 8.1,18 7,18Z";
 // mdiMedicalBag
 const MEDICAL_BAG: &str = "M10,3L8,5V7H5C3.85,7 3.12,8 3,9L2,19C1.88,20 2.54,21 4,21H20C21.46,21 22.12,20 22,19L21,9C20.88,8 20.06,7 19,7H16V5L14,3H10M10,5H14V7H10V5M11,10H13V13H16V15H13V18H11V15H8V13H11V10Z";
+// mdiClose
+const CLOSE: &str = "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z";
 // mdiTreasureChest
 const TREASURE_CHEST: &str = "M5,4H19A3,3 0 0,1 22,7V11H15V10H9V11H2V7A3,3 0 0,1 5,4M11,11H13V13H11V11M2,12H9V13L11,15H13L15,13V12H22V20H2V12Z";
 // mdiWaterfall
@@ -266,105 +329,4 @@ const WATERFALL: &str = "M20 20C18.61 20 17.22 19.53 16 18.67C13.56 20.38 10.44 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn shape(path: &'static str, color: &'static str) -> Option<WaypointIcon> {
-        Some(WaypointIcon::Shape { path, color })
-    }
-
-    #[test]
-    fn us95_a_colored_symbol_is_its_shape_in_its_color() {
-        assert_eq!(icon("Triangle, Blue"), shape(TRIANGLE, "#1f7fe0"));
-        assert_eq!(icon("Diamond, Green"), shape(RHOMBUS, "#2e9a3e"));
-        assert_eq!(icon("Letter B, Red"), shape(ALPHA_B_CIRCLE, "#e0322b"));
-        assert_eq!(icon("Number 7, Blue"), shape(NUMERIC7_CIRCLE, "#1f7fe0"));
-    }
-
-    #[test]
-    fn us95_every_shape_is_closed_so_its_outline_goes_all_round() {
-        let shapes = [
-            "Circle",
-            "Triangle",
-            "Square",
-            "Diamond",
-            "Oval",
-            "Rectangle",
-            "Flag",
-            "Pin",
-        ]
-        .into_iter()
-        .chain(["Block", "Letter A", "Letter D", "Number 0", "Number 9"]);
-        for shape in shapes {
-            let Some(WaypointIcon::Shape { path, .. }) = icon(&format!("{shape}, Red")) else {
-                panic!("{shape} is not a shape");
-            };
-            assert!(path.trim_end().ends_with(['Z', 'z']), "{shape}: {path}");
-        }
-    }
-
-    #[test]
-    fn us95_a_named_symbol_is_a_glyph() {
-        assert_eq!(
-            icon("Summit"),
-            Some(WaypointIcon::Glyph {
-                path: IMAGE_FILTER_HDR
-            })
-        );
-        // Garmin's names for one thing share its glyph.
-        assert_eq!(icon("Hotel"), icon("Lodging"));
-        // A flag without a color is still a flag.
-        assert_eq!(icon("Flag"), Some(WaypointIcon::Glyph { path: FLAG }));
-    }
-
-    #[test]
-    fn us95_a_symbol_is_matched_ignoring_case_and_spacing() {
-        assert_eq!(icon("flag,red"), icon("Flag, Red"));
-        assert_eq!(icon("  Scenic   AREA "), icon("Scenic Area"));
-        assert!(icon("Flag, Red").is_some());
-    }
-
-    #[test]
-    fn us95_a_symbol_the_archive_has_no_icon_for_keeps_the_marker() {
-        for symbol in [
-            // Garmin's own default.
-            "Waypoint",
-            "Navaid, Amber",
-            "Contact, Pirate",
-            // A known shape in a color Garmin has not, and the reverse.
-            "Circle, Amber",
-            "Star, Blue",
-            "Shipwreck",
-            "",
-        ] {
-            assert_eq!(icon(symbol), None, "{symbol:?}");
-        }
-    }
-
-    #[test]
-    fn us95_every_symbol_of_the_alpencross_book_gets_an_icon() {
-        // data/collections/Alpencross-light-Baukasten.gpx
-        for symbol in [
-            "Flag, Red",
-            "Flag, Green",
-            "Circle, Blue",
-            "Circle, Red",
-            "Triangle, Red",
-            "Triangle, Blue",
-        ] {
-            assert!(icon(symbol).is_some(), "{symbol}");
-        }
-    }
-
-    #[test]
-    fn us95_an_icon_reaches_the_script_tagged_by_how_it_is_drawn() {
-        assert_eq!(
-            serde_json::to_value(icon("Circle, Red")).unwrap(),
-            serde_json::json!({ "kind": "shape", "path": CIRCLE, "color": "#e0322b" })
-        );
-        assert_eq!(
-            serde_json::to_value(icon("Summit")).unwrap(),
-            serde_json::json!({ "kind": "glyph", "path": IMAGE_FILTER_HDR })
-        );
-    }
-}
+mod tests;

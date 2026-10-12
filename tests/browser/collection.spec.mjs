@@ -150,6 +150,28 @@ test("a waypoint with a symbol shows its icon, named on hover; one without keeps
   await expect(page.locator(".leaflet-tooltip")).toHaveText("San Bernardino Pass");
 });
 
+test("a navaid shows its diamond, a two-tone one split in its colors (US-95)", async ({
+  page,
+  request,
+}) => {
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="trip-archive-test" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="46.4958" lon="9.1705"><name>Pass</name><sym>Navaid, Green/Red</sym></wpt>
+  <wpt lat="46.5822" lon="9.8377"><name>Col</name><sym>Circle with X</sym></wpt>
+  <trk><trkseg>
+    <trkpt lat="46.4958" lon="9.1705"></trkpt><trkpt lat="46.5822" lon="9.8377"></trkpt>
+  </trkseg></trk>
+</gpx>`;
+  const id = await importCollection(request, Buffer.from(gpx));
+
+  await page.goto(`/app/collections/${id}`);
+  const symbols = page.locator("#overview-map .waypoint-symbol");
+  await expect(symbols).toHaveCount(2);
+  await expect(page.locator("#overview-map path.shape")).toHaveAttribute("fill", "#2e9a3e");
+  await expect(page.locator("#overview-map path.half")).toHaveAttribute("fill", "#e0322b");
+  await expect(page.locator("#overview-map path.glyph")).toHaveCount(1);
+});
+
 // A marker turned in CSS was turned about the map pane's corner, Leaflet's
 // placing transform and all, and landed far to the south-west of its place.
 test("a waypoint without an icon sits where it is (US-86)", async ({ page, request }) => {
