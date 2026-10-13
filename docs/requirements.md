@@ -145,6 +145,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | 📋     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
+| [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | 📋     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
 
 ### Maintaining this file
 
@@ -1971,6 +1972,18 @@ some. An item without tags starts with what followed the tags before. Changing t
 rewrites each exported item once, on the next run (US-37).
 
 **Decisions:** US-96 → ADR-0022
+
+### US-102 — Collection-track tags as QMapShack keywords
+
+**Planned 📋** — As the owner, a collection track's tags are its keywords in QMapShack, as a trip's
+are, so I find and filter guide-book tracks there by the tags I gave them.
+
+**Acceptance criteria:** The item the export (US-89) writes for a collection track carries the
+track's own tags (US-93) as its keywords, as a trip's item carries the trip's (US-36); its
+collection's tags do not pass to it. A track without tags has no keywords. Tagging or untagging a
+track, or renaming or deleting one of its tags (US-85), updates its item on the next run (US-37).
+
+**Decisions:** US-102 → ADR-0022
 
 ## Access & security
 
