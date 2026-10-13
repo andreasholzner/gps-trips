@@ -40,9 +40,11 @@ pub use photo::{
     set_photo_taken_at, NewPhoto,
 };
 pub use share::{
-    insert_share, list_active_shares, list_shared_trips, resolve_share, share_covers_blob,
-    share_covers_trip, share_label, shared_tag_names, stop_share, NewShare, ResolvedShare,
-    ShareTarget,
+    insert_share, list_active_shares, list_shared_collection_tracks,
+    list_shared_collection_waypoints, list_shared_collections, list_shared_track_waypoints,
+    list_shared_trips, list_shared_waypoints, resolve_share, share_covers_blob,
+    share_covers_collection, share_covers_collection_track, share_covers_trip, share_label,
+    shared_collection_track, shared_tag_names, stop_share, NewShare, ResolvedShare, ShareTarget,
 };
 pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,

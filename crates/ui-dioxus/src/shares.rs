@@ -184,6 +184,8 @@ mod tests {
             label: label.map(str::to_string),
             trip_names: vec!["Day one".to_string(), "Day two".to_string()],
             tags: Vec::new(),
+            collection_names: Vec::new(),
+            collection_track_names: Vec::new(),
             created_at: "2026-09-25T12:00:00Z".to_string(),
             expires_at: expires_at.map(str::to_string),
             opens: 0,
@@ -250,6 +252,8 @@ mod tests {
             let share = ActiveShare {
                 trip_names: Vec::new(),
                 tags: vec!["alps".to_string(), "norway".to_string()],
+                collection_names: Vec::new(),
+                collection_track_names: Vec::new(),
                 ..a_share(7, Some("Summer"), None)
             };
             rsx! { ShareRow { share, on_stopped: move |_| {} } }
@@ -307,6 +311,8 @@ mod tests {
             &CreateShare {
                 trip_ids: vec![id],
                 tags: Vec::new(),
+                collection_ids: Vec::new(),
+                collection_track_ids: Vec::new(),
                 label: Some("For Kari".to_string()),
                 expiry: ShareExpiry::Never,
             },

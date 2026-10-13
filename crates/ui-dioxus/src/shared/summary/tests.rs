@@ -18,6 +18,8 @@ async fn shared(archive: &ApiClient, tags: &[&str], label: Option<&str>) -> (Api
         &CreateShare {
             trip_ids: Vec::new(),
             tags: tags.iter().map(|tag| tag.to_string()).collect(),
+            collection_ids: Vec::new(),
+            collection_track_ids: Vec::new(),
             label: label.map(str::to_string),
             expiry: ShareExpiry::Never,
         },

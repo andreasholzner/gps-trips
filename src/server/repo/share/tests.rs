@@ -276,6 +276,8 @@ async fn us69_an_active_share_is_listed_with_its_trips_and_dates() {
             label: Some("For Kari".to_string()),
             trip_names: vec!["First".to_string(), "Second".to_string()],
             tags: Vec::new(),
+            collection_names: Vec::new(),
+            collection_track_names: Vec::new(),
             created_at: to_rfc3339(noon()),
             expires_at: Some(to_rfc3339(expires)),
             opens: 0,
@@ -400,4 +402,5 @@ async fn us69_only_an_active_share_can_be_stopped() {
     assert!(!stop_share(&db.pool, 999, noon()).await.unwrap());
 }
 
+mod collections;
 mod tags;

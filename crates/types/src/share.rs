@@ -1,6 +1,7 @@
 //! US-53 — a share: read-only access to a few trips through a link, for
 //! someone who has no password and no account. US-82 — or to the recorded
-//! trips under a few tags, as their summary.
+//! trips under a few tags, as their summary. US-94 — or to collections or
+//! collection tracks, whose recipient's types are in `shared_collection`.
 //!
 //! The request the owner makes ([`CreateShare`]), what it answers
 //! ([`CreatedShare`]), and what the recipient reads. The recipient's shapes
@@ -10,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ActivityType;
+use crate::{ActivityType, SharedCollection, SharedCollectionTrack};
 
 /// How long a share lasts. A closed set on the wire, so an enum (ADR-0018);
 /// how long each one is lives in the server's configuration.
@@ -51,15 +52,19 @@ impl ShareExpiry {
     }
 }
 
-/// The `POST /api/shares` body: either `trip_ids` or `tags` (US-82), never
-/// both.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The `POST /api/shares` body: `trip_ids`, `tags` (US-82),
+/// `collection_ids` or `collection_track_ids` (US-94) — exactly one of them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CreateShare {
     #[serde(default)]
     pub trip_ids: Vec<i64>,
     /// The tags whose summary is shared, in the order the owner chose them.
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub collection_ids: Vec<i64>,
+    #[serde(default)]
+    pub collection_track_ids: Vec<i64>,
     /// Who or what the share is for. The recipient sees it as the title of
     /// what was shared, so it is not a private note.
     #[serde(default)]
@@ -103,6 +108,10 @@ pub struct ActiveShare {
     /// The tags it names, in the order chosen (US-82). Empty for a share of
     /// trips.
     pub tags: Vec<String>,
+    /// The collections it names, by name (US-94).
+    pub collection_names: Vec<String>,
+    /// The collection tracks it names, in their collections' order (US-94).
+    pub collection_track_names: Vec<String>,
     /// RFC-3339 UTC (ADR-0009).
     pub created_at: String,
     /// RFC-3339 UTC; `None` for a share that never expires.
@@ -126,6 +135,8 @@ impl std::fmt::Debug for ActiveShare {
             .field("label", &self.label)
             .field("trip_names", &self.trip_names)
             .field("tags", &self.tags)
+            .field("collection_names", &self.collection_names)
+            .field("collection_track_names", &self.collection_track_names)
             .field("created_at", &self.created_at)
             .field("expires_at", &self.expires_at)
             .field("opens", &self.opens)
@@ -136,13 +147,21 @@ impl std::fmt::Debug for ActiveShare {
 }
 
 /// What the recipient lands on: the share's title and its trips, oldest
-/// first — and, for a share of tags, their summary (US-82).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// first — and, for a share of tags, their summary (US-82); or the
+/// collections or collection tracks it reaches (US-94).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ShareOverview {
     pub label: Option<String>,
     pub trips: Vec<SharedTripSummary>,
     /// `None` for a share of trips.
     pub summary: Option<SharedSummary>,
+    /// The collections it names, by name.
+    #[serde(default)]
+    pub collections: Vec<SharedCollection>,
+    /// Every collection track it reaches — the named ones, or every track of
+    /// the named collections — in their collections' order, then the file's.
+    #[serde(default)]
+    pub collection_tracks: Vec<SharedCollectionTrack>,
 }
 
 /// A shared tag summary (US-82): what the owner's `TagSummaries` holds, in
@@ -252,9 +271,7 @@ mod tests {
             request,
             CreateShare {
                 trip_ids: vec![1, 2],
-                tags: Vec::new(),
-                label: None,
-                expiry: ShareExpiry::Never,
+                ..CreateShare::default()
             }
         );
     }
@@ -266,12 +283,28 @@ mod tests {
         assert_eq!(
             request,
             CreateShare {
-                trip_ids: Vec::new(),
                 tags: vec!["alps".to_string(), "norway".to_string()],
                 label: Some("Summer".to_string()),
-                expiry: ShareExpiry::Never,
+                ..CreateShare::default()
             }
         );
+    }
+
+    #[test]
+    fn us94_a_request_may_name_collections_or_collection_tracks() {
+        let request: CreateShare =
+            serde_json::from_str(r#"{"collection_ids":[3,4],"expiry":"one_month"}"#).unwrap();
+        assert_eq!(
+            request,
+            CreateShare {
+                collection_ids: vec![3, 4],
+                expiry: ShareExpiry::OneMonth,
+                ..CreateShare::default()
+            }
+        );
+        let request: CreateShare = serde_json::from_str(r#"{"collection_track_ids":[7]}"#).unwrap();
+        assert_eq!(request.collection_track_ids, [7]);
+        assert!(request.collection_ids.is_empty());
     }
 
     #[test]
@@ -291,6 +324,8 @@ mod tests {
                 label: None,
                 trip_names: vec!["Walk".to_string()],
                 tags: Vec::new(),
+                collection_names: Vec::new(),
+                collection_track_names: Vec::new(),
                 created_at: "2026-09-25T12:00:00Z".to_string(),
                 expires_at: None,
                 opens: 0,

@@ -18,6 +18,8 @@ async fn shared(
         &CreateShare {
             trip_ids,
             tags: Vec::new(),
+            collection_ids: Vec::new(),
+            collection_track_ids: Vec::new(),
             label: label.map(str::to_string),
             expiry: ShareExpiry::Never,
         },

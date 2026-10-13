@@ -105,6 +105,7 @@ pub fn ShareForm(target: ShareTarget) -> Element {
             tags,
             label: Some(label()).filter(|label| !label.trim().is_empty()),
             expiry: expiry(),
+            ..CreateShare::default()
         };
         busy.set(true);
         spawn(async move {

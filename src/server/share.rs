@@ -212,6 +212,8 @@ async fn overview(
         label: repo::share_label(&state.pool, share_id).await?,
         trips: repo::list_shared_trips(&state.pool, share_id).await?,
         summary,
+        collections: repo::list_shared_collections(&state.pool, share_id).await?,
+        collection_tracks: repo::list_shared_collection_tracks(&state.pool, share_id).await?,
     }))
 }
 

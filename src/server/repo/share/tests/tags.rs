@@ -195,6 +195,8 @@ async fn us82_an_active_tag_share_is_listed_with_its_tags() {
             label: None,
             trip_names: Vec::new(),
             tags: vec!["norway".to_string(), "alps".to_string()],
+            collection_names: Vec::new(),
+            collection_track_names: Vec::new(),
             created_at: to_rfc3339(noon()),
             expires_at: None,
             opens: 0,

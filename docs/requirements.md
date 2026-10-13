@@ -138,7 +138,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 | [US-93](#us-93--tag-collections-and-their-tracks)             | ✅     | Tag collections and their tracks             | [Tags](#tags)                                                       |
-| [US-94](#us-94--share-collections-and-their-tracks)           | 📋     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
+| [US-94](#us-94--share-collections-and-their-tracks)           | 🚧     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
@@ -1706,7 +1706,7 @@ the JSON API)
 
 ### US-94 — Share collections and their tracks
 
-**Planned 📋** — As the owner, I share whole collections or some of their tracks by link, so
+**In progress 🚧** — As the owner, I share whole collections or some of their tracks by link, so
 someone I plan to travel with can look at the guide books' suggestions.
 
 **Acceptance criteria:** The owner shares a whole collection from its page (US-86), several

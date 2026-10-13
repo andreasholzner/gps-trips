@@ -3,12 +3,13 @@
 //!
 //! A share names trips, or tags whose recorded trips it reaches (US-82).
 //! Which trips that is comes from the `share_reach` view alone, so every
-//! check here agrees on it. Every read is scoped by the share's id, which
+//! check here agrees on it. Or it names collections or collection tracks
+//! (US-94), read in [`collections`]. Every read is scoped by the share's id, which
 //! only the gate hands out, and only for a token that resolved — so a
 //! handler that reads through these functions cannot reach a trip its share
 //! does not name.
 
-use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use super::to_rfc3339;
@@ -21,6 +22,9 @@ pub enum ShareTarget<'a> {
     Trips(&'a [i64]),
     /// Tag ids, in the order the owner chose them (US-82).
     Tags(&'a [i64]),
+    /// US-94.
+    Collections(&'a [i64]),
+    CollectionTracks(&'a [i64]),
 }
 
 /// A share as the owner asks for it; the token is minted by the caller.
@@ -67,9 +71,42 @@ pub async fn insert_share(pool: &SqlitePool, share: &NewShare<'_>) -> Result<i64
                 .await?;
             }
         }
+        ShareTarget::Collections(ids) => {
+            link_all(&mut tx, "share_collection", "collection_id", id, ids).await?;
+        }
+        ShareTarget::CollectionTracks(ids) => {
+            link_all(
+                &mut tx,
+                "share_collection_track",
+                "collection_track_id",
+                id,
+                ids,
+            )
+            .await?;
+        }
     }
     tx.commit().await?;
     Ok(id)
+}
+
+/// Link share `share_id` to each of `ids` in `table`, under `column`. Both
+/// names are this module's constants, never input.
+async fn link_all(
+    tx: &mut Transaction<'_, Sqlite>,
+    table: &str,
+    column: &str,
+    share_id: i64,
+    ids: &[i64],
+) -> Result<(), sqlx::Error> {
+    let insert = format!("INSERT OR IGNORE INTO {table} (share_id, {column}) VALUES (?, ?)");
+    for &linked in ids {
+        sqlx::query(&insert)
+            .bind(share_id)
+            .bind(linked)
+            .execute(&mut **tx)
+            .await?;
+    }
+    Ok(())
 }
 
 /// A share a token opened: its id, which scopes every read the recipient's
@@ -82,9 +119,11 @@ pub struct ResolvedShare {
 
 /// Whether share `s` still names something: a trip, or a tag (US-82) —
 /// which keeps it alive while its tags hold no trips, since tagging can
-/// fill it again.
+/// fill it again — or a collection or a collection track (US-94).
 const NAMES_SOMETHING: &str = "(EXISTS (SELECT 1 FROM share_trip st WHERE st.share_id = s.id) \
-     OR EXISTS (SELECT 1 FROM share_tag sg WHERE sg.share_id = s.id))";
+     OR EXISTS (SELECT 1 FROM share_tag sg WHERE sg.share_id = s.id) \
+     OR EXISTS (SELECT 1 FROM share_collection sc WHERE sc.share_id = s.id) \
+     OR EXISTS (SELECT 1 FROM share_collection_track sk WHERE sk.share_id = s.id))";
 
 /// The share `token` opens at `now`: one that exists, has not expired and
 /// still names something. Anything else is `None`, and deliberately the same
@@ -132,6 +171,8 @@ pub async fn list_active_shares(
         label: row.get("label"),
         trip_names: Vec::new(),
         tags: Vec::new(),
+        collection_names: Vec::new(),
+        collection_track_names: Vec::new(),
         created_at: row.get("created_at"),
         expires_at: row.get("expires_at"),
         opens: 0,
@@ -154,9 +195,26 @@ pub async fn list_active_shares(
     )
     .fetch_all(pool)
     .await?;
+    let collection_names: Vec<(i64, String)> = sqlx::query_as(
+        r#"SELECT sc.share_id, c.name FROM share_collection sc
+           JOIN collection c ON c.id = sc.collection_id
+           ORDER BY c.name COLLATE NOCASE, c.id"#,
+    )
+    .fetch_all(pool)
+    .await?;
+    let track_names: Vec<(i64, String)> = sqlx::query_as(
+        r#"SELECT sk.share_id, k.name FROM share_collection_track sk
+           JOIN collection_track k ON k.id = sk.collection_track_id
+           JOIN collection c ON c.id = k.collection_id
+           ORDER BY c.name COLLATE NOCASE, c.id, k.position"#,
+    )
+    .fetch_all(pool)
+    .await?;
     for share in &mut shares {
         share.trip_names = names_of(&trip_names, share.id);
         share.tags = names_of(&tag_names, share.id);
+        share.collection_names = names_of(&collection_names, share.id);
+        share.collection_track_names = names_of(&track_names, share.id);
     }
 
     // How each link was used (US-70), from the access log.
@@ -179,8 +237,8 @@ fn names_of(rows: &[(i64, String)], id: i64) -> Vec<String> {
         .collect()
 }
 
-/// Stop share `id`: its row goes, and with it every `share_trip` and
-/// `share_tag` row, so its token resolves to nothing from the next request
+/// Stop share `id`: its row goes, and with it every row naming what it
+/// shares, so its token resolves to nothing from the next request
 /// on. Only a share that still opens something at `now` is stopped; `false`
 /// for any other, so stopping one twice is not a success.
 pub async fn stop_share(
@@ -298,6 +356,13 @@ fn row_to_shared_summary(row: SqliteRow) -> SharedTripSummary {
         duration_secs: row.get("duration_secs"),
     }
 }
+
+mod collections;
+pub use collections::{
+    list_shared_collection_tracks, list_shared_collection_waypoints, list_shared_collections,
+    list_shared_track_waypoints, list_shared_waypoints, share_covers_collection,
+    share_covers_collection_track, shared_collection_track,
+};
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 

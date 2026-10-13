@@ -32,6 +32,7 @@ mod photo_placement;
 mod photo_response;
 mod session;
 mod share;
+mod shared_collection;
 mod staged_import;
 mod stats_trips;
 mod tag;
@@ -70,6 +71,10 @@ pub use session::{Identity, Login, Principal, Session};
 pub use share::{
     ActiveShare, CreateShare, CreatedShare, ShareExpiry, ShareOverview, SharedSummary,
     SharedSummaryTrip, SharedTag, SharedTrip, SharedTripSummary,
+};
+pub use shared_collection::{
+    SharedCollection, SharedCollectionDetail, SharedCollectionName, SharedCollectionTrack,
+    SharedCollectionTrackDetail, SharedWaypoint,
 };
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};
 pub use stats_trips::{StatsTrip, StatsTrips, TagSummaries, TagTrips};
