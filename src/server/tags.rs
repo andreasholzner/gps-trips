@@ -178,9 +178,8 @@ pub async fn handle_bulk_add_trip_tags(
     if body.trip_ids.is_empty() {
         return Err(AppError::BadRequest("no trips selected".to_string()));
     }
-    let exist = repo::trips_exist(&state.pool, &body.trip_ids).await?;
     let tagged: Vec<Tagged> = body.trip_ids.iter().copied().map(Tagged::Trip).collect();
-    bulk_add(&state, exist, &tagged, &body.names).await
+    bulk_add(&state, &tagged, &body.names).await
 }
 
 /// The `POST /api/collections/tags` request body (US-100, ADR-0008).
@@ -200,40 +199,33 @@ pub async fn handle_bulk_add_collection_tags(
     if body.collection_ids.is_empty() {
         return Err(AppError::BadRequest("no collections selected".to_string()));
     }
-    let exist = repo::collections_exist(&state.pool, &body.collection_ids).await?;
     let tagged: Vec<Tagged> = body
         .collection_ids
         .iter()
         .copied()
         .map(Tagged::Collection)
         .collect();
-    bulk_add(&state, exist, &tagged, &body.names).await
+    bulk_add(&state, &tagged, &body.names).await
 }
 
 /// Tag everything in `tagged` with every name in `names`, all or nothing.
-/// 400 if `names` is empty. Existence (`exist`, checked by the caller) comes
-/// before names are validated, mirroring the single-item ordering of
-/// `add_tag` above: if anything selected does not exist, the whole request
-/// 404s and nothing is created or linked. Every name is normalized (trimmed,
-/// lowercased); the first invalid one 400s the whole request, same as the
-/// single-tag handler.
+/// 400 if `names` is empty or any of them is invalid — each normalized
+/// (trimmed, lowercased) as the single-tag handler does; 404 if anything
+/// selected does not exist, and then nothing is created or linked.
 async fn bulk_add(
     state: &AppState,
-    exist: bool,
     tagged: &[Tagged],
     names: &[String],
 ) -> Result<Json<Vec<Tag>>, AppError> {
     if names.is_empty() {
         return Err(AppError::BadRequest("no tags provided".to_string()));
     }
-    if !exist {
-        return Err(AppError::NotFound);
-    }
     let names = names
         .iter()
         .map(|name| normalize_tag_name(name).map_err(AppError::BadRequest))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(
-        repo::bulk_add_tags(&state.pool, tagged, &names).await?,
-    ))
+    repo::bulk_add_tags(&state.pool, tagged, &names)
+        .await?
+        .map(Json)
+        .ok_or(AppError::NotFound)
 }

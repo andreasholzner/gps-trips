@@ -277,7 +277,8 @@ async fn us100_every_selected_collection_is_tagged_and_none_of_its_tracks() {
         &names_given,
     )
     .await
-    .unwrap();
+    .unwrap()
+    .expect("everything exists");
 
     assert_eq!(
         applied
@@ -317,8 +318,29 @@ async fn us100_tagging_collections_again_is_a_no_op() {
         &["shelf".to_string()],
     )
     .await
-    .unwrap();
+    .unwrap()
+    .expect("everything exists");
 
     assert_eq!(names(&db.pool, Tagged::Collection(alps)).await, ["shelf"]);
     assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn us100_a_collection_deleted_before_the_write_tags_nothing() {
+    let db = TestDb::new().await;
+    let (alps, _) = a_collection(&db.pool, "Alps").await;
+    let (gone, _) = a_collection(&db.pool, "Gone").await;
+    delete_collection(&db.pool, gone).await.unwrap();
+
+    let applied = bulk_add_tags(
+        &db.pool,
+        &[Tagged::Collection(alps), Tagged::Collection(gone)],
+        &["shelf".to_string()],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(applied, None);
+    assert!(list_all_tags(&db.pool).await.unwrap().is_empty());
+    assert!(names(&db.pool, Tagged::Collection(alps)).await.is_empty());
 }

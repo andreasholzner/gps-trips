@@ -160,6 +160,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
                 selected,
                 staged,
                 all_tags,
+                of: BulkTagged::Trips,
                 // A new tag now exists and the trips carry it: both the
                 // suggestions and a tag-filtered list are out of date.
                 on_applied: move |_| {

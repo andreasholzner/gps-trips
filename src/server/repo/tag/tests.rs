@@ -194,7 +194,8 @@ async fn bulk_add_tags_applies_every_tag_to_every_trip() {
     let names = vec!["alps".to_string(), "hiking".to_string()];
     let applied = bulk_add_tags(&db.pool, &[Tagged::Trip(a), Tagged::Trip(b)], &names)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("everything exists");
     assert_eq!(applied.len(), 2);
 
     for trip_id in [a, b] {
@@ -217,7 +218,8 @@ async fn bulk_add_tags_creates_new_tags_on_demand() {
         &["brand-new".to_string()],
     )
     .await
-    .unwrap();
+    .unwrap()
+    .expect("everything exists");
 
     assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
 }
@@ -230,7 +232,8 @@ async fn bulk_add_tags_reuses_an_existing_tag_rather_than_duplicating_it() {
 
     bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &["hiking".to_string()])
         .await
-        .unwrap();
+        .unwrap()
+        .expect("everything exists");
 
     assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
 }
@@ -243,10 +246,12 @@ async fn bulk_add_tags_is_idempotent() {
     let names = vec!["hiking".to_string()];
     bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &names)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("everything exists");
     bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &names)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("everything exists");
 
     assert_eq!(
         list_tags_of(&db.pool, Tagged::Trip(trip_id))
@@ -258,6 +263,29 @@ async fn bulk_add_tags_is_idempotent() {
 }
 
 #[tokio::test]
+async fn bulk_add_tags_with_a_trip_gone_tags_nothing_and_creates_no_tag() {
+    // Checked on the write's own transaction, as `add_tag_named` does, so a
+    // trip deleted meanwhile is `None` rather than a foreign-key failure.
+    let db = TestDb::new().await;
+    let trip_id = insert_sample_trip(&db.pool).await;
+
+    let applied = bulk_add_tags(
+        &db.pool,
+        &[Tagged::Trip(trip_id), Tagged::Trip(trip_id + 100)],
+        &["hiking".to_string()],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(applied, None);
+    assert!(list_all_tags(&db.pool).await.unwrap().is_empty());
+    assert!(list_tags_of(&db.pool, Tagged::Trip(trip_id))
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
 async fn bulk_add_tags_deduplicates_a_repeated_name_in_one_call() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
@@ -265,7 +293,8 @@ async fn bulk_add_tags_deduplicates_a_repeated_name_in_one_call() {
     let names = vec!["hiking".to_string(), "hiking".to_string()];
     let applied = bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &names)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("everything exists");
 
     assert_eq!(
         applied,

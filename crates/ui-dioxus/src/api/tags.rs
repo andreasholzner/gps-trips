@@ -51,9 +51,8 @@ pub async fn add_tag(archive: &ApiClient, tagged: Tagged, name: &str) -> Result<
 
 /// What the list screens select and tag together: trips (US-34), or
 /// collections (US-100) — never collection tracks.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BulkTagged {
-    #[default]
     Trips,
     Collections,
 }
@@ -68,6 +67,21 @@ impl BulkTagged {
     }
 }
 
+/// The `POST /api/trips/tags` body (US-34): every name applied to every
+/// trip, in one request.
+#[derive(Serialize)]
+struct BulkAddTripTags<'a> {
+    trip_ids: &'a [i64],
+    names: &'a [String],
+}
+
+/// The `POST /api/collections/tags` body (US-100), as the trips' is.
+#[derive(Serialize)]
+struct BulkAddCollectionTags<'a> {
+    collection_ids: &'a [i64],
+    names: &'a [String],
+}
+
 /// `POST /api/trips/tags` or `POST /api/collections/tags` — tag everything
 /// selected, `ids` of `of`, with every staged name (US-34, US-100).
 /// All-or-nothing: if any id no longer exists the server tags nothing, which
@@ -80,20 +94,22 @@ pub async fn bulk_add_tags(
     ids: &[i64],
     names: &[String],
 ) -> Result<Vec<Tag>, ApiError> {
-    let (path, body) = match of {
-        BulkTagged::Trips => (
-            "/api/trips/tags",
-            serde_json::json!({ "trip_ids": ids, "names": names }),
-        ),
-        BulkTagged::Collections => (
-            "/api/collections/tags",
-            serde_json::json!({ "collection_ids": ids, "names": names }),
-        ),
+    let url = archive.url(match of {
+        BulkTagged::Trips => "/api/trips/tags",
+        BulkTagged::Collections => "/api/collections/tags",
+    });
+    let request = archive.post(&url);
+    let request = match of {
+        BulkTagged::Trips => request.json(&BulkAddTripTags {
+            trip_ids: ids,
+            names,
+        }),
+        BulkTagged::Collections => request.json(&BulkAddCollectionTags {
+            collection_ids: ids,
+            names,
+        }),
     };
-    let url = archive.url(path);
-    let response = archive
-        .post(&url)
-        .json(&body)
+    let response = request
         .send()
         .await
         .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;

@@ -57,7 +57,7 @@ pub fn BulkTagPanel(
     selected: Signal<BTreeSet<i64>>,
     staged: Signal<Vec<String>>,
     all_tags: Vec<Tag>,
-    #[props(default)] of: BulkTagged,
+    of: BulkTagged,
     on_applied: EventHandler<()>,
 ) -> Element {
     let mut typed = use_signal(String::new);
@@ -241,7 +241,7 @@ mod tests {
         let html = render(|| {
             let staged = Signal::new(vec!["alpine".to_string(), "summer".to_string()]);
             let selected = Signal::new(BTreeSet::from([1_i64, 2, 3]));
-            rsx! { BulkTagPanel { selected, staged, all_tags: known_tags(), on_applied: |_| {} } }
+            rsx! { BulkTagPanel { selected, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
         });
 
         assert!(html.contains("alpine"), "{html}");
@@ -275,7 +275,7 @@ mod tests {
         let html = render(|| {
             let staged = Signal::new(Vec::new());
             let selected = Signal::new(BTreeSet::new());
-            rsx! { BulkTagPanel { selected, staged, all_tags: known_tags(), on_applied: |_| {} } }
+            rsx! { BulkTagPanel { selected, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
         });
 
         assert!(!html.contains("Apply to"), "{html}");

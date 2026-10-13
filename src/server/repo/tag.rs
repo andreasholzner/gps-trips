@@ -316,10 +316,8 @@ pub async fn find_tag_ids(
     Ok(Some(ids))
 }
 
-/// Whether every id in `trip_ids` is an existing trip's id (US-34's
-/// all-or-nothing precondition for a bulk tag apply, checked by the caller
-/// before `bulk_add_trip_tags` — the same "check trip existence first"
-/// ordering `require` already uses for the single-item tag handlers).
+/// Whether every id in `trip_ids` is an existing trip's id: a trip share's
+/// precondition (US-53).
 pub async fn trips_exist(pool: &SqlitePool, trip_ids: &[i64]) -> Result<bool, sqlx::Error> {
     for &trip_id in trip_ids {
         let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM trip WHERE id = ?")
@@ -342,13 +340,21 @@ pub async fn trips_exist(pool: &SqlitePool, trip_ids: &[i64]) -> Result<bool, sq
 /// re-application idempotent just like `add_tag`. A name repeated in
 /// `tag_names` is only applied once — otherwise the DB writes stay
 /// idempotent but the returned `Tag` list would contain the same tag twice.
-/// Returns the applied tags.
+/// Returns the applied tags — or `None` if anything in `tagged` does not
+/// exist, checked on the same transaction as `add_tag_named` does, so
+/// something deleted meanwhile tags nothing and leaves no new tag behind
+/// rather than failing a foreign key (US-34's and US-100's all or nothing).
 pub async fn bulk_add_tags(
     pool: &SqlitePool,
     tagged: &[Tagged],
     tag_names: &[String],
-) -> Result<Vec<Tag>, sqlx::Error> {
+) -> Result<Option<Vec<Tag>>, sqlx::Error> {
     let mut tx = db::begin_write(pool).await?;
+    for &each in tagged {
+        if !tagged_exists(&mut *tx, each).await? {
+            return Ok(None);
+        }
+    }
     let mut tags = Vec::with_capacity(tag_names.len());
     let mut seen = std::collections::HashSet::with_capacity(tag_names.len());
 
@@ -384,7 +390,7 @@ pub async fn bulk_add_tags(
     }
 
     tx.commit().await?;
-    Ok(tags)
+    Ok(Some(tags))
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
