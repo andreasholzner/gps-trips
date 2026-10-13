@@ -134,7 +134,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-87](#us-87--collections-tab)                              | ✅     | Collections tab                              | [Collections](#collections)                                         |
 | [US-88](#us-88--add-a-file-to-a-collection)                   | ✅     | Add a file to a collection                   | [Collections](#collections)                                         |
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | ✅     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
-| [US-90](#us-90--collections-and-trips-on-one-map)             | 📋     | Collections and trips on one map             | [Trip list & map](#trip-list--map)                                  |
+| [US-90](#us-90--trips-and-collections-in-one-list)            | 📋     | Trips and collections in one list            | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 | [US-93](#us-93--tag-collections-and-their-tracks)             | ✅     | Tag collections and their tracks             | [Tags](#tags)                                                       |
@@ -519,6 +519,9 @@ Recorded; switching tabs preserves any active filters (US-13). `trip.trip_kind` 
 two; every trip-creating path writes `recorded` until US-31 lets the owner choose `planned` at
 import time.
 
+**Superseded in part by US-90:** the tabs become toggles, and the kinds that are on are listed
+together.
+
 ### US-61 — Trip counts and compact filters
 
 **Done ✅** — As the owner, the trip list tells me how many trips I have and does not push them off
@@ -677,25 +680,55 @@ script draws them), ADR-0012 (the browser layer for the switch at the threshold 
 
 **Superseded in part by US-92:** with no armed state, lines are always clickable.
 
-### US-90 — Collections and trips on one map
+### US-90 — Trips and collections in one list
 
-**Planned 📋** — As the owner, I see a guide book's tracks together with my planned and recorded
-trips on one map of a region, so I spot at a glance which of the book's suggestions I have neither
-planned nor done.
+**Planned 📋** — As the owner, I list and map a guide book's tracks together with my planned and
+recorded trips, so I spot at a glance which of the book's suggestions I have neither planned nor
+done, and can pick out a trip together with the plan or stage it followed.
 
-**Acceptance criteria:** The trip-list map (US-63) draws the selected tab's trips, as now, unless
-the owner chooses more: a control on the map picks which of recorded trips, planned trips and
-collections — all of them, or chosen ones — are drawn together. The table below still lists only
-the selected tab. The activity and region filters (US-13/14) narrow every kind drawn; the filters
-that are about trips alone — dates, distance, tags — narrow only the trips. Each line keeps its
-activity color (US-75), and the kinds are told apart by line style, for instance recorded solid,
-planned dashed and collection tracks dotted; the legend names the styles the map shows. Marks and
-lines switch at the zoom threshold as in US-73, collection waypoints show with the lines, and a
-click on a line opens its trip page. The choice lives in the URL (US-52). The comparison is by eye:
-nothing computes which collection tracks a trip covers.
+**Acceptance criteria:**
+
+**Kinds instead of tabs.** The Recorded, Planned and Collections tabs (US-32/87) become three
+toggle buttons in the same place, each on or off, each showing the line style its kind is drawn in
+and how many of that kind match the filters. Any combination can be on, but never none: the last
+one on cannot be switched off. Recorded alone is the default, and what the menu's "All trips"
+(US-60) opens. The choice lives in the URL (US-52); an older link naming a single kind opens with
+that kind alone.
+
+**Filters.** The name search and the region (US-92) narrow each kind as they narrowed its tab. The
+activity filter (US-13) narrows every kind, a collection track by its own activity. The filters
+about trips alone — dates, distance, tags, "unnamed" and "unplaced" — narrow only the trips; with
+only Collections on they are hidden and kept, as on the Collections tab before.
+
+**One table.** Everything that matches is listed in one table: the trip table's columns (US-6) with
+the kind in front as an icon — its line style in the row's activity color — named on hover and
+to screen readers. Trips come first, newest first, then the collections by name. A collection is a
+group row — its name linking to its page (US-86), its activity, how many of its tracks match out
+of how many, and its number of waypoints — collapsed by default; opened, it lists its matching
+tracks in file order, each linking to its trip page. A collection track has a distance and an
+ascent, and nothing in the columns about when. Paging (US-63) counts trips and collections, not
+the tracks inside a group. The count above the table
+(US-61) names each kind that is on. With several kinds on, the list is meant to be narrowed — by
+"Filter to map" or by strong filters — and does nothing special for a long one.
+
+**Selection.** Trips, collections and collection tracks can be selected together, across pages
+and kinds. The panels acting on the selection (US-34/53/63/94/100) are laid out as one bar naming
+how many of each kind are selected, followed by the actions. Each action works as it does today,
+and is inactive while the selection mixes trips, collections and collection tracks, or holds one it
+does not act on; recorded and planned trips count as trips alike.
+
+**Map.** The trip-list map (US-63) draws every kind that is on. Each line keeps its activity color
+(US-75); the kinds are told apart by line style — recorded solid, planned dashed, collection tracks
+dotted; zoomed out, the marks do not tell the kinds apart. Marks and lines switch at the zoom
+threshold as in US-73, a collection's waypoints show with the lines, and a click on a line opens
+its trip page. The legend names the activities shown and the waypoint marker; the toggles name
+the line styles. The fit button reads "Fit to items", whatever is on, and fits to everything
+listed. The comparison is by eye: nothing computes which
+collection tracks a trip covers — that is US-99's.
 
 **Decisions:** US-90 → ADR-0025 (Rust decides what is drawn and in which style, the script draws
-it), ADR-0011 (region matching by bounding box)
+it), ADR-0011 (region matching by bounding box), ADR-0028 (trips and collection items stay records
+of their own; only the views are shared)
 
 ### US-92 — Filter by the map's view
 
@@ -1414,6 +1447,9 @@ region here. The tab lives in the URL (US-52) and pages as the trip list does (U
 trip-list map shows the listed collections' tracks the way the other tabs show their trips, as
 marks or, zoomed in, as lines (US-63/73); a click on a line opens that track's trip page. Its fit
 button reads "Fit to collections" here and takes in their tracks and waypoints.
+
+**Superseded in part by US-90:** the tab becomes a toggle beside Recorded and Planned; collections
+are listed with trips in one table, each a group of its tracks.
 
 **Decisions:** US-87 → ADR-0028, ADR-0008 (the tab reads the
 collections from the JSON API), ADR-0025 (Rust decides what the map draws)
