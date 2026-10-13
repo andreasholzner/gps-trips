@@ -4,6 +4,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::waypoints::with_waypoints;
 use crate::heat::HeatMarks;
 use crate::map_items::MapSource;
 use crate::trip_lines::{TripLines, Viewport};
@@ -92,6 +93,12 @@ const REGION_MAP_SCRIPT: &str = r##"
     // How wide a line is to the pointer (US-90).
     const HIT_WEIGHT = 14;
     let points = [];
+    // A collection's waypoints in view, shown with the lines (US-90).
+    let waypoints = null;
+    const clearWaypoints = () => {
+      waypoints?.remove();
+      waypoints = null;
+    };
     const fitToMarks = () => {
       if (points.length === 0) return;
       map.fitBounds(L.latLngBounds(points), { padding: [20, 20], maxZoom: 12 });
@@ -132,6 +139,7 @@ const REGION_MAP_SCRIPT: &str = r##"
       } else if ("marks" in message) {
         heat.clearLayers();
         lines.clearLayers();
+        clearWaypoints();
         const marks = message.marks.marks;
         points = marks.map((mark) => mark.at).concat(message.marks.also_fit);
         for (const mark of marks) {
@@ -148,6 +156,8 @@ const REGION_MAP_SCRIPT: &str = r##"
       } else if ("lines" in message) {
         heat.clearLayers();
         lines.clearLayers();
+        clearWaypoints();
+        waypoints = drawWaypoints(map, message.lines.waypoints);
         points = message.lines.fit;
         for (const line of message.lines.lines) {
           if (line.points.length === 0) continue;
@@ -221,7 +231,7 @@ pub struct Opened {
 /// [`RegionEvent`]s — for as long as the map should report: it is the
 /// channel.
 pub fn start_region_map(restore: Option<[f64; 4]>) -> document::Eval {
-    let eval = document::eval(REGION_MAP_SCRIPT);
+    let eval = document::eval(&with_waypoints(REGION_MAP_SCRIPT));
     if let Err(err) = eval.send(MapMessage::Region(restore)) {
         dioxus::logger::tracing::error!("could not seed the region map: {err}");
     }
@@ -270,6 +280,7 @@ pub fn bbox_corners(param: &str) -> Option<[f64; 4]> {
 mod tests {
     use super::*;
     use crate::heat::HeatMark;
+    use crate::interop::MapWaypoint;
     use trip_archive_types::ActivityType;
 
     #[test]
@@ -315,6 +326,12 @@ mod tests {
                 dash: Some("1 7"),
                 points: vec![[60.0, 11.0]],
             }],
+            waypoints: vec![MapWaypoint {
+                name: Some("Pass".to_string()),
+                lat: 46.5,
+                lon: 9.8,
+                icon: None,
+            }],
             fit: vec![[60.0, 11.0]],
         };
 
@@ -329,6 +346,7 @@ mod tests {
                     "dash": "1 7",
                     "points": [[60.0, 11.0]],
                 }],
+                "waypoints": [{ "name": "Pass", "lat": 46.5, "lon": 9.8 }],
                 "fit": [[60.0, 11.0]],
             } })
         );

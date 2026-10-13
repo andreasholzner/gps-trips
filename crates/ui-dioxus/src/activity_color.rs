@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 use trip_archive_types::ActivityType;
 
 use crate::activity_icon::ActivityIcon;
+use crate::waypoint_icon::WaypointSymbol;
 
 /// The color a trip of this activity is drawn in, on every map.
 pub fn color(activity: ActivityType) -> &'static str {
@@ -89,9 +90,15 @@ pub fn label(activity: ActivityType) -> &'static str {
 /// The legend under a map that shows several activities: each activity's
 /// icon, in the color of its lines, and its name.
 #[component]
-pub fn ActivityLegend(shown: Vec<ActivityType>) -> Element {
+pub fn ActivityLegend(
+    shown: Vec<ActivityType>,
+    /// Whether the map shows waypoints too (US-90), which the legend then
+    /// names by their plain marker.
+    #[props(default)]
+    waypoints: bool,
+) -> Element {
     let entries = legend(shown);
-    if entries.is_empty() {
+    if entries.is_empty() && !waypoints {
         return rsx! {};
     }
     rsx! {
@@ -100,6 +107,12 @@ pub fn ActivityLegend(shown: Vec<ActivityType>) -> Element {
                 li { key: "{activity}",
                     ActivityIcon { activity }
                     "{label(activity)}"
+                }
+            }
+            if waypoints {
+                li {
+                    WaypointSymbol { symbol: None }
+                    "Waypoint"
                 }
             }
         }
@@ -267,5 +280,19 @@ mod tests {
         let html = render(|| rsx! { ActivityLegend { shown: vec![Hiking] } });
 
         assert!(!html.contains("map-legend"), "{html}");
+    }
+
+    #[test]
+    fn us90_waypoints_on_the_map_are_named_in_the_legend() {
+        let html =
+            render(|| rsx! { ActivityLegend { shown: vec![Hiking, Cycling], waypoints: true } });
+
+        assert!(html.contains("Waypoint"), "{html}");
+        assert!(
+            html.contains("waypoint-mark"),
+            "by the plain marker: {html}"
+        );
+        let alone = render(|| rsx! { ActivityLegend { shown: vec![Hiking], waypoints: true } });
+        assert!(alone.contains("Waypoint"), "{alone}");
     }
 }

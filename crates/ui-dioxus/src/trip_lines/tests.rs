@@ -328,3 +328,65 @@ fn us90_a_trips_track_is_not_a_collection_tracks_with_the_same_id() {
         "one line, one activity"
     );
 }
+
+// ── US-90: a collection's waypoints with the lines ───────────────────────────
+
+fn a_waypoint(name: &str) -> trip_archive_types::Waypoint {
+    trip_archive_types::Waypoint {
+        id: 1,
+        collection_track_id: None,
+        name: Some(name.to_string()),
+        description: None,
+        lat: 46.58,
+        lon: 9.84,
+        ele: None,
+        symbol: None,
+    }
+}
+
+#[test]
+fn us90_only_collections_whose_waypoints_lie_in_view_show_them() {
+    let waypointed = [
+        Waypointed {
+            collection: 1,
+            bounds: [9.17, 46.49, 9.84, 46.58],
+        },
+        Waypointed {
+            collection: 2,
+            bounds: [11.3, 47.2, 11.5, 47.4],
+        },
+    ];
+
+    let shown = waypoints_in_view(&waypointed, &view([9.8, 46.5, 10.0, 46.6]));
+
+    assert_eq!(shown, [1]);
+}
+
+#[test]
+fn us90_a_collections_waypoints_are_read_once() {
+    let mut cache = WaypointCache::default();
+    assert_eq!(cache.missing(&[1, 2]), [1, 2]);
+
+    cache.store(1, &[a_waypoint("Albula Pass")]);
+    cache.store(2, &[]);
+
+    assert!(cache.missing(&[1, 2]).is_empty());
+    let shown = cache.waypoints(&[2, 1, 3]);
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].name.as_deref(), Some("Albula Pass"));
+}
+
+#[test]
+fn us90_the_lines_carry_the_waypoints_shown_with_them() {
+    let trips = [hike(1, [10.0, 59.0, 11.0, 60.0])];
+    let waypoints = vec![crate::interop::MapWaypoint::from(&a_waypoint("Pass"))];
+
+    let drawn = lines(
+        &trips,
+        &[(MapSource::Trips, &a_track(1))],
+        &heat::marks(&trips),
+    )
+    .with_waypoints(waypoints.clone());
+
+    assert_eq!(drawn.waypoints, waypoints);
+}

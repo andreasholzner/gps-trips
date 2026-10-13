@@ -55,6 +55,17 @@ pub struct Mapped {
     /// the corners around each collection's waypoints, so fitting takes
     /// them in too.
     pub also_fit: Vec<[f64; 2]>,
+    /// The listed collections that have waypoints, and where, so the map
+    /// can show those in view with the lines (US-90).
+    pub waypointed: Vec<Waypointed>,
+}
+
+/// A listed collection's waypoints: whose, and the rectangle around them,
+/// `[west, south, east, north]`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Waypointed {
+    pub collection: i64,
+    pub bounds: [f64; 4],
 }
 
 impl From<&TripSummary> for MapItem {
@@ -98,14 +109,26 @@ impl Mapped {
                     max_lon: track.max_lon,
                 }),
             });
-        let also_fit = collections
+        let waypointed: Vec<Waypointed> = collections
             .iter()
-            .filter_map(|collection| collection.waypoint_bounds)
-            .flat_map(|[west, south, east, north]| [[south, west], [north, east]])
+            .filter_map(|collection| {
+                Some(Waypointed {
+                    collection: collection.id,
+                    bounds: collection.waypoint_bounds?,
+                })
+            })
+            .collect();
+        let also_fit = waypointed
+            .iter()
+            .flat_map(|w| {
+                let [west, south, east, north] = w.bounds;
+                [[south, west], [north, east]]
+            })
             .collect();
         Mapped {
             items: trips.iter().map(MapItem::from).chain(tracks).collect(),
             also_fit,
+            waypointed,
         }
     }
 }
@@ -252,6 +275,14 @@ mod tests {
         );
 
         assert_eq!(mapped.also_fit, [[46.49, 9.17], [46.58, 9.84]]);
+        assert_eq!(
+            mapped.waypointed,
+            [Waypointed {
+                collection: 1,
+                bounds: [9.17, 46.49, 9.84, 46.58],
+            }],
+            "US-90: whose waypoints lie where"
+        );
     }
 
     #[test]

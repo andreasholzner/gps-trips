@@ -21,7 +21,7 @@ use crate::filters::Filters;
 use crate::heat;
 use crate::interop::{self, RegionEvent};
 use crate::map_items::{MapItem, MapSource, Mapped};
-use crate::trip_lines::{self, TrackCache, Viewport};
+use crate::trip_lines::{self, TrackCache, Viewport, WaypointCache};
 use crate::Route;
 
 /// The map and its controls, always in view (US-63). `mapped` — every trip
@@ -40,12 +40,14 @@ pub fn RegionFilter(filters: Signal<Filters>, mapped: Option<Mapped>) -> Element
     // The activities of the lines drawn while zoomed in (US-73); `None`
     // while the map shows the marks, whose activities the legend names.
     let lined = use_signal(|| None::<Vec<ActivityType>>);
+    // Whether waypoints are shown with the lines (US-90).
+    let waypointed = use_signal(|| false);
     let shown = legend_activities(lined(), mapped.as_ref().map(|mapped| &mapped.items[..]));
     rsx! {
         section { class: "region",
-            RegionMap { filters, mapped, viewport, lined }
+            RegionMap { filters, mapped, viewport, lined, waypointed }
             if let Some(shown) = shown {
-                ActivityLegend { shown }
+                ActivityLegend { shown, waypoints: waypointed() }
             }
             p { class: "region-controls",
                 FilterToMap { filters, viewport }
@@ -139,6 +141,7 @@ fn RegionMap(
     mapped: Option<Mapped>,
     mut viewport: Signal<Option<Viewport>>,
     lined: Signal<Option<Vec<ActivityType>>>,
+    waypointed: Signal<bool>,
 ) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut handle = use_signal(|| None::<document::Eval>);
@@ -152,6 +155,9 @@ fn RegionMap(
     let trip_pending = use_signal(HashSet::<i64>::new);
     let collection_cache = use_signal(TrackCache::default);
     let collection_pending = use_signal(HashSet::<i64>::new);
+    // The same for the collections' waypoints shown with the lines (US-90).
+    let waypoint_cache = use_signal(WaypointCache::default);
+    let waypoint_pending = use_signal(HashSet::<i64>::new);
     let tracks_of = move |source| match source {
         MapSource::Trips => (trip_cache, trip_pending),
         MapSource::CollectionTracks => (collection_cache, collection_pending),
@@ -226,10 +232,22 @@ fn RegionMap(
                         spawn(fetch_tracks(archive(), source, cache, pending, request));
                     }
                 }
+                let collections = trip_lines::waypoints_in_view(&mapped.waypointed, &view);
+                let missing = waypoint_cache.read().missing(&collections);
+                if !missing.is_empty() {
+                    waiting = true;
+                    let mut pending = waypoint_pending;
+                    let request = trip_lines::to_request(&missing, &pending.peek());
+                    for id in request {
+                        pending.write().insert(id);
+                        spawn(fetch_waypoints(archive(), id, waypoint_cache, pending));
+                    }
+                }
                 if waiting {
                     if outlived(drawn.peek().as_ref(), &mapped) {
                         drawn.set(None);
                         lined.set(None);
+                        waypointed.set(false);
                         interop::draw_heat_marks(&map, &marks);
                     }
                     return;
@@ -245,8 +263,10 @@ fn RegionMap(
                         Some((item.source(), cache.get(item.id)?))
                     })
                     .collect();
-                let lines = trip_lines::lines(items, &tracks, &marks);
+                let lines = trip_lines::lines(items, &tracks, &marks)
+                    .with_waypoints(waypoint_cache.read().waypoints(&collections));
                 lined.set(Some(trip_lines::activities(items, &lines)));
+                waypointed.set(!lines.waypoints.is_empty());
                 drawn.set(Some(DrawnLines {
                     keys: lines
                         .lines
@@ -259,6 +279,7 @@ fn RegionMap(
             _ => {
                 drawn.set(None);
                 lined.set(None);
+                waypointed.set(false);
                 interop::draw_heat_marks(&map, &marks);
             }
         }
@@ -266,9 +287,10 @@ fn RegionMap(
 
     // The sign shows while lines wait on the archive, not while marks do.
     let busy = viewport().is_some_and(|view| trip_lines::shows_lines(&view))
-        && SOURCES
+        && (SOURCES
             .into_iter()
-            .any(|source| !tracks_of(source).1.read().is_empty());
+            .any(|source| !tracks_of(source).1.read().is_empty())
+            || !waypoint_pending.read().is_empty());
 
     rsx! {
         div { class: "region-map-frame",
@@ -323,6 +345,23 @@ async fn fetch_tracks(
         Err(err) => dioxus::logger::tracing::error!("could not read the tracks in view: {err}"),
     }
     pending.write().retain(|id| !ids.contains(id));
+}
+
+/// Fetch collection `id`'s waypoints into `cache` (US-90). A request that
+/// fails stores nothing, so the next view that needs them asks again.
+async fn fetch_waypoints(
+    archive: ApiClient,
+    id: i64,
+    mut cache: Signal<WaypointCache>,
+    mut pending: Signal<HashSet<i64>>,
+) {
+    match api::list_collection_waypoints(&archive, id).await {
+        Ok(waypoints) => cache.write().store(id, &waypoints),
+        Err(err) => {
+            dioxus::logger::tracing::error!("could not read the waypoints in view: {err}")
+        }
+    }
+    pending.write().remove(&id);
 }
 
 /// Over the map while the tracks in view load (US-73): zooming in past the

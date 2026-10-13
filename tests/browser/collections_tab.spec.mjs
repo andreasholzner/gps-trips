@@ -137,6 +137,11 @@ test("zoomed in, a collection's tracks are lines, and a click opens the track", 
 
   // Fitted to one short tour, the map is zoomed in past the threshold.
   await expect(lines(page)).toHaveCount(1);
+  // Its two waypoints show with it, and the legend names them (US-90).
+  await expect(
+    page.locator("#region-map .waypoint-mark, #region-map .waypoint-symbol"),
+  ).toHaveCount(2);
+  await expect(page.locator(".map-legend")).toContainText("Waypoint");
   await page.locator("#region-map").scrollIntoViewIfNeeded();
   const at = await onTheLine(lines(page));
   await page.mouse.move(at.x, at.y);

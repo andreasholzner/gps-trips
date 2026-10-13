@@ -9,12 +9,13 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use trip_archive_types::{ActivityType, TripTrack};
+use trip_archive_types::{ActivityType, TripTrack, Waypoint};
 
 use crate::activity_color;
 use crate::config::trip_map::LINES_FROM_ZOOM;
 use crate::heat::HeatMarks;
-use crate::map_items::{MapItem, MapSource};
+use crate::interop::MapWaypoint;
+use crate::map_items::{MapItem, MapSource, Waypointed};
 use crate::track;
 
 /// Where the map is looking once it has settled: its zoom, and the visible
@@ -33,6 +34,9 @@ pub struct Viewport {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TripLines {
     pub lines: Vec<RegionLine>,
+    /// The waypoints of the collections in view, shown with the lines
+    /// (US-90).
+    pub waypoints: Vec<MapWaypoint>,
     /// `[lat, lon]` of every matching trip's heat mark.
     pub fit: Vec<[f64; 2]>,
 }
@@ -60,19 +64,38 @@ pub fn shows_lines(viewport: &Viewport) -> bool {
 /// The trips whose stored bounding box overlaps the visible area, in list
 /// order. A trip without a box has no track to draw.
 pub fn in_view<'a>(trips: &'a [MapItem], viewport: &Viewport) -> Vec<&'a MapItem> {
-    let [west, south, east, north] = viewport.bounds;
     trips
         .iter()
         .filter(|trip| {
             trip.bbox.is_some_and(|bbox| {
-                bbox.min_lat <= north
-                    && bbox.max_lat >= south
-                    && lon_ranges(west, east)
-                        .iter()
-                        .any(|&(from, to)| bbox.min_lon <= to && bbox.max_lon >= from)
+                overlaps(
+                    [bbox.min_lon, bbox.min_lat, bbox.max_lon, bbox.max_lat],
+                    viewport,
+                )
             })
         })
         .collect()
+}
+
+/// The collections whose waypoints' rectangle overlaps the visible area
+/// (US-90), in list order.
+pub fn waypoints_in_view(waypointed: &[Waypointed], viewport: &Viewport) -> Vec<i64> {
+    waypointed
+        .iter()
+        .filter(|w| overlaps(w.bounds, viewport))
+        .map(|w| w.collection)
+        .collect()
+}
+
+/// Whether `[west, south, east, north]` overlaps the visible area — edges
+/// included, as the archive's region does (ADR-0011).
+fn overlaps([min_lon, min_lat, max_lon, max_lat]: [f64; 4], viewport: &Viewport) -> bool {
+    let [west, south, east, north] = viewport.bounds;
+    min_lat <= north
+        && max_lat >= south
+        && lon_ranges(west, east)
+            .iter()
+            .any(|&(from, to)| min_lon <= to && max_lon >= from)
 }
 
 /// The visible longitudes as ranges within `[-180, 180]`: one, or two for a
@@ -127,6 +150,45 @@ impl TrackCache {
     }
 }
 
+/// The collections' waypoints the map has read while the list is open
+/// (US-90), each collection's at most once, as [`TrackCache`] holds tracks.
+/// An edit to a waypoint is seen once the list is opened again.
+#[derive(Debug, Default)]
+pub struct WaypointCache {
+    /// Each collection read, with its waypoints. One that could not be read
+    /// is not here, so the next view that needs it asks again.
+    known: HashMap<i64, Vec<MapWaypoint>>,
+}
+
+impl WaypointCache {
+    /// Those of `collections` not asked for yet, in their order.
+    pub fn missing(&self, collections: &[i64]) -> Vec<i64> {
+        collections
+            .iter()
+            .copied()
+            .filter(|id| !self.known.contains_key(id))
+            .collect()
+    }
+
+    /// What the archive answered for `collection`.
+    pub fn store(&mut self, collection: i64, waypoints: &[Waypoint]) {
+        self.known.insert(
+            collection,
+            waypoints.iter().map(MapWaypoint::from).collect(),
+        );
+    }
+
+    /// The waypoints of `collections` that were read, in their order.
+    pub fn waypoints(&self, collections: &[i64]) -> Vec<MapWaypoint> {
+        collections
+            .iter()
+            .filter_map(|id| self.known.get(id))
+            .flatten()
+            .cloned()
+            .collect()
+    }
+}
+
 /// Those of `missing` to ask the archive for: not the ones already asked
 /// for, whose answer is still on its way. A view that settles while an
 /// earlier one's tracks load waits for that answer rather than asking again.
@@ -168,7 +230,16 @@ pub fn lines(
         .collect();
     TripLines {
         lines,
+        waypoints: Vec::new(),
         fit: marks.fit_points(),
+    }
+}
+
+impl TripLines {
+    /// The same lines, with `waypoints` shown among them.
+    pub fn with_waypoints(mut self, waypoints: Vec<MapWaypoint>) -> Self {
+        self.waypoints = waypoints;
+        self
     }
 }
 
