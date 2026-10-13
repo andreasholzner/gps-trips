@@ -2,9 +2,10 @@
 //! file-length cap.
 
 use super::*;
+use crate::kinds::Kind;
 
 #[test]
-fn an_untouched_filter_asks_only_for_its_tab() {
+fn an_untouched_filter_asks_only_for_recorded_trips() {
     assert_eq!(Filters::default().to_query(), "kind=recorded");
     assert!(!Filters::default().any_set());
 }
@@ -12,7 +13,7 @@ fn an_untouched_filter_asks_only_for_its_tab() {
 #[test]
 fn set_fields_become_the_servers_own_parameter_names() {
     let filters = Filters {
-        tab: ListTab::Planned,
+        kinds: Kinds::only(Kind::Planned),
         q: "oslo".to_string(),
         activity: Some(ActivityType::Hiking),
         from: "2026-01-01".to_string(),
@@ -61,7 +62,7 @@ fn every_filter_survives_a_round_trip_through_the_query_string() {
     // The SPA's URL is this same string (US-52), so a filtered list is
     // bookmarkable: what goes into the address bar must come back out.
     let filters = Filters {
-        tab: ListTab::Planned,
+        kinds: Kinds::only(Kind::Planned),
         q: "oslo".to_string(),
         activity: Some(ActivityType::SkiTouring),
         from: "2026-01-01".to_string(),
@@ -169,7 +170,7 @@ fn a_hand_edited_query_keeps_what_it_can() {
     // way the server's own parser treats a blank value.
     let filters = Filters::from_query("kind=planned&activity=nonsense&q=oslo&bogus=1&novalue");
 
-    assert_eq!(filters.tab, ListTab::Planned);
+    assert_eq!(filters.kinds, Kinds::only(Kind::Planned));
     assert_eq!(filters.activity, None);
     assert_eq!(filters.q, "oslo");
 }
@@ -184,11 +185,11 @@ fn a_free_text_search_is_encoded_so_it_cannot_break_the_query_string() {
     assert_eq!(filters.to_query(), "kind=recorded&q=oslo+%26+bergen%3F");
 }
 
-// ── US-87: the Collections tab ──────────────────────────────────────────
+// ── US-90: kinds instead of tabs ────────────────────────────────────────
 
-fn every_trip_filter_set(tab: ListTab) -> Filters {
+fn every_filter_set(kinds: Kinds) -> Filters {
     Filters {
-        tab,
+        kinds,
         q: "alp".to_string(),
         activity: Some(ActivityType::Hiking),
         from: "2026-01-01".to_string(),
@@ -202,80 +203,115 @@ fn every_trip_filter_set(tab: ListTab) -> Filters {
     }
 }
 
+fn collections_only() -> Kinds {
+    Kinds::only(Kind::Collections)
+}
+
+fn all_kinds() -> Kinds {
+    Kinds::default()
+        .toggled(Kind::Planned)
+        .toggled(Kind::Collections)
+}
+
 #[test]
-fn us87_the_collections_tab_lives_in_the_url() {
+fn us90_the_kinds_on_live_in_the_url() {
     let filters = Filters {
-        tab: ListTab::Collections,
+        kinds: all_kinds(),
         ..Default::default()
     };
 
-    assert_eq!(filters.to_query(), "kind=collections");
+    assert_eq!(filters.to_query(), "kind=recorded%2Cplanned%2Ccollections");
     assert_eq!(Filters::from_query(&filters.to_query()), filters);
 }
 
 #[test]
-fn us87_switching_tabs_keeps_every_trip_filter_in_the_url() {
-    let filters = every_trip_filter_set(ListTab::Collections);
+fn us87_a_link_to_the_collections_tab_opens_with_collections_alone() {
+    assert_eq!(
+        Filters::from_query("kind=collections").kinds,
+        collections_only()
+    );
+}
+
+#[test]
+fn us90_switching_trips_off_keeps_every_trip_filter_in_the_url() {
+    let filters = every_filter_set(collections_only());
 
     assert_eq!(Filters::from_query(&filters.to_query()), filters);
 }
 
 #[test]
-fn us87_the_tabs_come_in_order_with_their_labels() {
-    let labels: Vec<_> = ListTab::ALL.iter().map(|tab| tab.label()).collect();
-
-    assert_eq!(labels, ["Recorded", "Planned", "Collections"]);
-}
-
-#[test]
-fn us87_only_the_trip_tabs_ask_for_trips() {
+fn us90_trips_are_asked_for_by_their_kind_or_both_without_one() {
     assert_eq!(
         Filters::default().trip_query().as_deref(),
         Some("kind=recorded")
     );
-    let collections = Filters {
-        tab: ListTab::Collections,
+    let planned = Filters {
+        kinds: Kinds::only(Kind::Planned).toggled(Kind::Collections),
+        q: "alp".to_string(),
         ..Default::default()
     };
-    assert_eq!(collections.trip_query(), None);
-    assert_eq!(ListTab::Planned.trip_kind(), Some(TripKind::Planned));
-    assert_eq!(ListTab::Collections.trip_kind(), None);
+    assert_eq!(planned.trip_query().as_deref(), Some("kind=planned&q=alp"));
+    let both = Filters {
+        kinds: all_kinds(),
+        q: "alp".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(both.trip_query().as_deref(), Some("q=alp"));
 }
 
 #[test]
-fn us87_collections_are_asked_for_by_name_and_region_alone() {
-    let filters = every_trip_filter_set(ListTab::Collections);
+fn us90_with_no_kind_of_trip_on_no_trips_are_asked_for() {
+    let filters = Filters {
+        kinds: collections_only(),
+        ..Default::default()
+    };
 
-    assert_eq!(filters.collection_query(), "q=alp&bbox=10%2C59%2C11%2C60");
+    assert_eq!(filters.trip_query(), None);
+}
+
+#[test]
+fn us90_collections_are_asked_for_by_name_region_and_activity() {
+    let filters = every_filter_set(collections_only());
+
+    assert_eq!(
+        filters.collection_query(),
+        "q=alp&bbox=10%2C59%2C11%2C60&activity=hiking"
+    );
     assert_eq!(Filters::default().collection_query(), "");
 }
 
 #[test]
-fn us87_on_the_collections_tab_only_its_own_filters_count() {
+fn us90_with_collections_alone_only_their_filters_count() {
     let trip_filters_only = Filters {
         q: String::new(),
         bbox: String::new(),
-        ..every_trip_filter_set(ListTab::Collections)
+        activity: None,
+        ..every_filter_set(collections_only())
     };
-    let searched = Filters {
-        tab: ListTab::Collections,
-        q: "alp".to_string(),
-        ..Default::default()
-    };
-    let in_a_region = Filters {
-        tab: ListTab::Collections,
-        bbox: "10,59,11,60".to_string(),
-        ..Default::default()
-    };
+    let narrowed = [
+        Filters {
+            q: "alp".to_string(),
+            ..trip_filters_only.clone()
+        },
+        Filters {
+            bbox: "10,59,11,60".to_string(),
+            ..trip_filters_only.clone()
+        },
+        Filters {
+            activity: Some(ActivityType::Cycling),
+            ..trip_filters_only.clone()
+        },
+    ];
 
     assert!(!trip_filters_only.any_set());
-    assert!(searched.any_set());
-    assert!(in_a_region.any_set());
+    for filters in narrowed {
+        assert!(filters.any_set(), "{filters:?}");
+    }
 }
 
 #[test]
-fn us87_clearing_on_the_collections_tab_keeps_the_hidden_trip_filters() {
-    let filters = every_trip_filter_set(ListTab::Collections);
+fn us90_clearing_with_collections_alone_keeps_the_hidden_trip_filters() {
+    let filters = every_filter_set(collections_only());
 
     let cleared = filters.cleared();
 
@@ -284,25 +320,26 @@ fn us87_clearing_on_the_collections_tab_keeps_the_hidden_trip_filters() {
         Filters {
             q: String::new(),
             bbox: String::new(),
+            activity: None,
             ..filters
         }
     );
 }
 
 #[test]
-fn clearing_on_a_trip_tab_clears_everything_but_the_tab() {
-    let cleared = every_trip_filter_set(ListTab::Planned).cleared();
+fn clearing_with_trips_on_clears_everything_but_the_kinds() {
+    let cleared = every_filter_set(all_kinds()).cleared();
 
     assert_eq!(
         cleared,
         Filters {
-            tab: ListTab::Planned,
+            kinds: all_kinds(),
             ..Default::default()
         }
     );
 }
 
 #[test]
-fn an_unknown_tab_in_the_url_shows_recorded_trips() {
-    assert_eq!(Filters::from_query("kind=nonsense").tab, ListTab::Recorded);
+fn an_unknown_kind_in_the_url_shows_recorded_trips() {
+    assert_eq!(Filters::from_query("kind=nonsense").kinds, Kinds::default());
 }

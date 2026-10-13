@@ -189,7 +189,7 @@ test("a read of the tracks that fails is not asked again until the view moves", 
   await expect.poll(() => asked.length).toBe(2);
 });
 
-test("a tab switch takes the other tab's lines off while the new ones load", async ({
+test("a kind switched off takes its lines off while the new ones load (US-90)", async ({
   page,
   request,
 }) => {
@@ -216,7 +216,9 @@ test("a tab switch takes the other tab's lines off while the new ones load", asy
       await route.continue();
     });
 
+    // Planned on, recorded off: the list no longer holds the recorded walk.
     await page.getByRole("button", { name: "Planned" }).click();
+    await page.getByRole("button", { name: "Recorded" }).click();
 
     // The recorded walk's line goes; the planned one is a mark until its
     // track arrives.

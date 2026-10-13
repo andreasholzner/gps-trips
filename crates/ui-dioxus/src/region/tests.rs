@@ -3,6 +3,7 @@
 //! browser layer's.
 
 use super::*;
+use crate::kinds::{Kind, Kinds};
 use crate::test_support::render;
 use trip_archive_types::{TripKind, TripSummary};
 
@@ -37,7 +38,7 @@ fn the_map_is_in_view_without_opening_anything() {
 
     assert!(html.contains("region-map"), "{html}");
     assert!(!html.contains("<details"), "{html}");
-    for control in ["Filter to map", "Fit to trips"] {
+    for control in ["Filter to map", "Fit to items"] {
         assert!(html.contains(control), "{control}: {html}");
     }
 }
@@ -176,21 +177,20 @@ fn zoomed_in_the_legend_names_the_activities_of_the_lines_drawn() {
 }
 
 #[test]
-fn us87_the_fit_button_names_what_the_tab_lists() {
-    let on = |tab| {
+fn us90_the_fit_button_names_no_kind_whatever_is_on() {
+    let on = |kinds| {
         render(move || {
             let filters = Signal::new(Filters {
-                tab,
+                kinds,
                 ..Filters::default()
             });
             rsx! { RegionFilter { filters, mapped: None } }
         })
     };
 
-    assert!(on(ListTab::Recorded).contains("Fit to trips"));
-    assert!(on(ListTab::Planned).contains("Fit to trips"));
-    let collections = on(ListTab::Collections);
-    assert!(collections.contains("Fit to collections"), "{collections}");
+    assert!(on(Kinds::default()).contains("Fit to items"));
+    let collections = on(Kinds::only(Kind::Collections));
+    assert!(collections.contains("Fit to items"), "{collections}");
     assert!(
         collections.contains("Filter to map"),
         "the region narrows collections too: {collections}"

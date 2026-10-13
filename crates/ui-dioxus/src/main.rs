@@ -27,8 +27,10 @@ mod gallery;
 mod heat;
 mod import;
 mod interop;
+mod kinds;
 mod komoot;
 mod list;
+mod list_table;
 mod login;
 mod map_items;
 mod menu;
@@ -36,10 +38,12 @@ mod name_filter;
 mod overlay;
 mod pager;
 mod photos;
+mod picked;
 mod placing;
 mod rates;
 mod region;
 mod selection;
+mod selection_bar;
 mod share;
 mod shared;
 mod shares;
@@ -52,7 +56,6 @@ mod tags;
 mod test_support;
 mod track;
 mod trip_lines;
-mod trip_table;
 mod viewer;
 mod waypoint;
 mod waypoint_icon;
@@ -85,6 +88,9 @@ const PICO_CSS: Asset = asset!("/assets/pico.classless.min.css");
 const APP_CSS: Asset = asset!("/assets/app.css");
 /// The activities' icons and drop-down (US-84), used on every screen.
 const ACTIVITY_CSS: Asset = asset!("/assets/activity.css");
+/// The trip list's kinds, table and selection bar (US-90), apart for the
+/// size cap.
+const LIST_CSS: Asset = asset!("/assets/list.css");
 /// The detail screen's own layout, apart so neither sheet outgrows the size cap.
 const DETAIL_CSS: Asset = asset!("/assets/detail.css");
 /// The statistics screen's own (US-77), on the same terms.
@@ -298,6 +304,7 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: PICO_CSS }
         document::Link { rel: "stylesheet", href: APP_CSS }
         document::Link { rel: "stylesheet", href: ACTIVITY_CSS }
+        document::Link { rel: "stylesheet", href: LIST_CSS }
         document::Link { rel: "stylesheet", href: DETAIL_CSS }
         document::Link { rel: "stylesheet", href: STATS_CSS }
         document::Link { rel: "stylesheet", href: SUMMARY_CSS }

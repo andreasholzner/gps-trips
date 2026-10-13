@@ -17,7 +17,7 @@ use trip_archive_types::ActivityType;
 
 use crate::activity_color::ActivityLegend;
 use crate::api::{self, ApiClient};
-use crate::filters::{Filters, ListTab};
+use crate::filters::Filters;
 use crate::heat;
 use crate::interop::{self, RegionEvent};
 use crate::map_items::{MapItem, MapSource, Mapped};
@@ -41,7 +41,6 @@ pub fn RegionFilter(filters: Signal<Filters>, mapped: Option<Mapped>) -> Element
     // while the map shows the marks, whose activities the legend names.
     let lined = use_signal(|| None::<Vec<ActivityType>>);
     let shown = legend_activities(lined(), mapped.as_ref().map(|mapped| &mapped.items[..]));
-    let fit = fit_label(filters.read().tab);
     rsx! {
         section { class: "region",
             RegionMap { filters, mapped, viewport, lined }
@@ -55,7 +54,7 @@ pub fn RegionFilter(filters: Signal<Filters>, mapped: Option<Mapped>) -> Element
                 button {
                     r#type: "button",
                     id: "region-fit",
-                    "{fit}"
+                    "Fit to items"
                 }
             }
         }
@@ -70,14 +69,6 @@ fn legend_activities(
     trips: Option<&[MapItem]>,
 ) -> Option<Vec<ActivityType>> {
     lined.or_else(|| trips.map(|trips| heat::marks(trips).activities()))
-}
-
-/// The fit button's label: it fits the map to what the tab lists (US-87).
-fn fit_label(tab: ListTab) -> &'static str {
-    match tab {
-        ListTab::Collections => "Fit to collections",
-        ListTab::Recorded | ListTab::Planned => "Fit to trips",
-    }
 }
 
 /// The page a click on a line opens: the trip's, or the collection track's
@@ -256,12 +247,10 @@ fn RegionMap(
     }));
 
     // The sign shows while lines wait on the archive, not while marks do.
-    let source = match filters.read().tab {
-        ListTab::Collections => MapSource::CollectionTracks,
-        ListTab::Recorded | ListTab::Planned => MapSource::Trips,
-    };
     let busy = viewport().is_some_and(|view| trip_lines::shows_lines(&view))
-        && !tracks_of(source).1.read().is_empty();
+        && [MapSource::Trips, MapSource::CollectionTracks]
+            .into_iter()
+            .any(|source| !tracks_of(source).1.read().is_empty());
 
     rsx! {
         div { class: "region-map-frame",

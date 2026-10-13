@@ -713,9 +713,11 @@ the tracks inside a group. The count above the table
 
 **Selection.** Trips, collections and collection tracks can be selected together, across pages
 and kinds. The panels acting on the selection (US-34/53/63/94/100) are laid out as one bar naming
-how many of each kind are selected, followed by the actions. Each action works as it does today,
-and is inactive while the selection mixes trips, collections and collection tracks, or holds one it
-does not act on; recorded and planned trips count as trips alike.
+how many trips, collections and collection tracks are selected, followed by the actions, each
+opening its panel under the bar, one at a time. Switching a kind off drops what it listed from the
+selection. Each action works as it does today, and is inactive while the selection mixes trips,
+collections and collection tracks, or holds one it does not act on; recorded and planned trips
+count as trips alike.
 
 **Map.** The trip-list map (US-63) draws every kind that is on. Each line keeps its activity color
 (US-75); the kinds are told apart by line style — recorded solid, planned dashed, collection tracks

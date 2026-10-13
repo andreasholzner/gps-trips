@@ -175,6 +175,26 @@ pub async fn import_collection(
     (created.id, tracks)
 }
 
+/// Give a collection track an activity of its own through the real API
+/// (`PATCH /api/collection-tracks/:id`, US-86).
+pub async fn set_track_activity(archive: &ApiClient, track: i64, activity: &str) {
+    let response = reqwest::Client::new()
+        .patch(format!(
+            "{}/api/collection-tracks/{track}",
+            archive.base_url()
+        ))
+        .bearer_auth(token())
+        .json(&serde_json::json!({ "activity_type": activity }))
+        .send()
+        .await
+        .expect("track edit request");
+    assert!(
+        response.status().is_success(),
+        "track edit failed: {}",
+        response.status()
+    );
+}
+
 /// Seed a trip through the real import API (`POST /api/import`), the same
 /// path the owner's own uploads take — no direct database writes. `fields`
 /// are the import form's text fields (`name`, `activity_type`, `kind`, …);

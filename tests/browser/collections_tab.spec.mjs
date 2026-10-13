@@ -1,13 +1,14 @@
-// The trip list's Collections tab (US-87), and its selection (US-94), driven as
-// the owner drives them.
+// The trip list's collections (US-87), listed with the trips by kind (US-90),
+// and their selection (US-94, US-100), driven as the owner drives them.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
-// **Real user events** — switching tabs, ticking rows, typing a search, reloading,
-// panning, clicking a row or a line. **JS-interop rendering** — the map is
-// Leaflet's. What the tab renders is asserted in `crates/ui-dioxus`
-// (`list/collections_tests.rs`, `collection_table.rs`, `filter_bar.rs`,
-// `region.rs`), and what the archive answers in
-// `tests/it/us87_collections_tab.rs`.
+// **Real user events** — toggling kinds, folding a group out, ticking rows,
+// typing a search, reloading, panning, clicking a row or a line. **JS-interop
+// rendering** — the map is Leaflet's. What the list renders is asserted in
+// `crates/ui-dioxus` (`list/collections_tests.rs`, `list/kinds_tests.rs`,
+// `list_table.rs`, `selection_bar.rs`, `filter_bar.rs`, `region.rs`), and what
+// the archive answers in `tests/it/us87_collections_tab.rs` and
+// `tests/it/us90_trips_and_collections.rs`.
 import { expect, signIn, test } from "./session.mjs";
 import { ownTrips } from "./trips.mjs";
 import { readFileSync } from "node:fs";
@@ -80,7 +81,7 @@ const onTheLine = (line) =>
     return { x: at.x, y: at.y };
   });
 
-test("the tab lives in the URL, its search narrows it, and the trip filters wait", async ({
+test("collections are a kind in the URL, the search narrows them, and the trip filters wait", async ({
   page,
   request,
 }) => {
@@ -89,18 +90,23 @@ test("the tab lives in the URL, its search narrows it, and the trip filters wait
     activity_type: "hiking",
   });
   await importCollection(request, WAYPOINTS_ONLY_GPX, { name: `${TAG} Passes` });
-  // A trip filter, set before switching: hidden on the tab, kept for after.
-  await page.goto(`/app/?activity=cycling&q=${TAG}`);
-  await expect(page.locator("#filter-activity")).toBeVisible();
+  // A trip filter, set before switching trips off: hidden then, kept for after.
+  await page.goto(`/app/?from=2000-01-01&q=${TAG}`);
+  await expect(page.getByText("More filters")).toBeVisible();
 
   await page.getByRole("button", { name: "Collections" }).click();
+  await expect(page).toHaveURL(/kind=recorded%2Ccollections/);
+  await page.getByRole("button", { name: "Recorded" }).click();
   await expect(page).toHaveURL(/kind=collections/);
   await expect(rows(page)).toHaveCount(2);
-  await expect(page.locator("#filter-activity")).toHaveCount(0);
+  // The activity narrows collections too (US-90); the rest is about trips.
+  await expect(page.locator("#filter-activity")).toBeVisible();
   await expect(page.getByText("More filters")).toHaveCount(0);
-  await expect(page).toHaveURL(/activity=cycling/);
+  await expect(page).toHaveURL(/from=2000-01-01/);
+  // The last kind on stays on.
+  await expect(page.getByRole("button", { name: "Collections" })).toBeDisabled();
 
-  // A reload starts on the tab.
+  // A reload starts on collections alone.
   await page.reload();
   await expect(rows(page)).toHaveCount(2);
   await expect(page.locator(".trip-counts")).toHaveText(/^2 (of \d+ )?collections$/);
@@ -109,13 +115,12 @@ test("the tab lives in the URL, its search narrows it, and the trip filters wait
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page)).toContainText("Nordkette");
 
-  // Back on a trip tab, the activity filter is where the owner left it.
+  // With trips back on, the date filter is where the owner left it.
   await page.getByRole("button", { name: "Recorded" }).click();
-  await expect(page.locator("#filter-activity")).toBeVisible();
-  await expect(page).toHaveURL(/activity=cycling/);
+  await expect(page.getByText("More filters")).toBeVisible();
+  await expect(page).toHaveURL(/from=2000-01-01/);
 
-  // And a row opens its collection's page.
-  await page.getByRole("button", { name: "Collections" }).click();
+  // And a group row opens its collection's page.
   await rows(page)
     .getByRole("link", { name: `${TAG} Nordkette` })
     .click();
@@ -149,7 +154,7 @@ test("the region narrows the collections by their waypoints too, and the fit tak
   await page.goto(`/app/?kind=collections&q=${encodeURIComponent(`${TAG} Region`)}`);
   await expect(rows(page)).toHaveCount(1);
   const fit = page.locator("#region-fit");
-  await expect(fit).toHaveText("Fit to collections");
+  await expect(fit).toHaveText("Fit to items");
 
   // Fitted to the waypoints, the map's view holds them: still listed.
   const follow = page.locator("#region-follow");
@@ -174,37 +179,45 @@ test("the region narrows the collections by their waypoints too, and the fit tak
   await expect(page.getByText("No collections match your filters.")).toHaveCount(0);
 });
 
-test("the trips selected and the collections selected are kept apart, each waiting on the other tab (US-94, US-100)", async ({
+test("trips, collections and their tracks are selected together, and the actions follow what is (US-90)", async ({
   page,
   request,
 }) => {
-  // A word of this test's own: the tab's other tests list theirs under TAG.
-  const word = `${TAG}kept`;
+  // A word of this test's own: the file's other tests list theirs under TAG.
+  const word = `${TAG}mixed`;
   await trip(request, `${word} Walk`);
   await importCollection(request, COLLECTION_SINGLE_GPX, { name: `${word} Book` });
-  await page.goto(`/app/?q=${word}`);
-  await expect(rows(page)).toHaveCount(1);
-  await page.getByRole("checkbox", { name: "Select", exact: true }).check();
-  await expect(page.locator("#share-selected")).toHaveText("Share 1 selected…");
+  await page.goto(`/app/?kind=recorded%2Ccollections&q=${word}`);
+  await expect(rows(page)).toHaveCount(2);
+  const tag = page.getByRole("button", { name: "Tag…" });
+  const share = page.getByRole("button", { name: "Share…" });
+  const walk = rows(page).filter({ hasText: `${word} Walk` });
+  const book = rows(page).filter({ hasText: `${word} Book` });
 
-  // On the Collections tab, nothing is selected yet.
-  await page.getByRole("button", { name: "Collections" }).click();
-  await expect(rows(page)).toHaveCount(1);
-  await expect(checked(page)).toHaveCount(0);
-  await expect(page.locator("#share-selected")).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Select", exact: true }).check();
-  await expect(page.locator("#share-selected")).toHaveText("Share 1 selected…");
-  // And tagged (US-100): the panel names what it tags.
+  await walk.getByRole("checkbox").check();
+  await expect(page.getByText("1 selected: 1 trip")).toBeVisible();
+  await expect(tag).toBeEnabled();
+
+  // A trip and a collection together: no action takes both.
+  await book.getByRole("checkbox").check();
+  await expect(page.getByText("2 selected: 1 trip · 1 collection")).toBeVisible();
+  await expect(tag).toBeDisabled();
+  await expect(share).toBeDisabled();
+
+  // The collection alone is tagged as collections are (US-100).
+  await walk.getByRole("checkbox").uncheck();
+  await tag.click();
   await expect(page.getByText("Tag selected collections")).toBeVisible();
-  await expect(page.getByText("Tag selected trips")).toHaveCount(0);
 
-  // Back on the trips, theirs waited; and the collection's waits too.
-  await page.getByRole("button", { name: "Recorded" }).click();
-  await expect(rows(page)).toContainText(`${word} Walk`);
-  await expect(checked(page)).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Apply to 1 selected" })).toBeVisible();
-  await expect(page.getByText("Tag selected trips")).toBeVisible();
+  // Folded out, the group lists its track, which is selected on its own.
+  await book.getByRole("button", { name: "Show its tracks" }).click();
+  await expect(rows(page)).toHaveCount(3);
+  await rows(page).nth(2).getByRole("checkbox").check();
+  await expect(page.getByText("2 selected: 1 collection · 1 collection track")).toBeVisible();
+  await expect(page.getByText("Tag selected collections")).toHaveCount(0);
+
+  // Switching collections off drops what they listed from the selection.
   await page.getByRole("button", { name: "Collections" }).click();
-  await expect(rows(page)).toContainText(`${word} Book`);
-  await expect(checked(page)).toHaveCount(1);
+  await expect(rows(page)).toHaveCount(1);
+  await expect(page.locator(".selection-bar")).toHaveCount(0);
 });

@@ -1,0 +1,109 @@
+/* The trip list's kinds, its one table and its selection bar (US-90). */
+
+/* Recorded, Planned and Collections, each on or off. One that is on keeps
+   Pico's solid fill and one that is off becomes an outline, so what is
+   listed is legible at a glance rather than a subtle shade difference. The
+   last one on is `disabled` — it cannot be switched off — which Pico would
+   otherwise dim into looking broken. */
+.kind-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.kind-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0;
+}
+
+.kind-toggle[aria-pressed="false"] {
+  background: transparent;
+  color: var(--pico-primary);
+}
+
+.kind-toggle:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.kind-count {
+  font-size: 0.8125em;
+  opacity: 0.85;
+}
+
+/* A kind's line style, as a short stroke (the `.swatch` of the legend). */
+.kind-swatch {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.kind-toggle .swatch,
+.kind-swatch .swatch {
+  height: 0.375rem;
+}
+
+/* The name is the third column here, after the kind: it is the one kept
+   from being squeezed (as `.table-scroll td:nth-child(2)` keeps a name in
+   the other tables), not the kind's icon. */
+.list-table td:nth-child(2) {
+  min-width: 0;
+}
+
+.list-table td:nth-child(3) {
+  min-width: 12ch;
+}
+
+/* A collection's group row, and its tracks folded out under it. */
+.list-table tr.collection-group td {
+  background: var(--pico-card-sectioning-background-color);
+}
+
+.list-table .group-counts {
+  color: var(--pico-muted-color);
+}
+
+.list-table tr.collection-track td:nth-child(3) {
+  padding-left: 2.5rem;
+}
+
+.list-table button.fold {
+  margin: 0 0.5rem 0 0;
+  padding: 0 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--pico-color);
+}
+
+/* How many of what are selected, and what can be done with them. */
+.selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: var(--pico-border-width) solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+}
+
+.selection-bar strong {
+  flex: 1 1 auto;
+  font-weight: 600;
+}
+
+.selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.selection-actions button {
+  margin-bottom: 0;
+}
+
+.selection-actions button[aria-pressed="false"] {
+  background: transparent;
+  color: var(--pico-primary);
+}

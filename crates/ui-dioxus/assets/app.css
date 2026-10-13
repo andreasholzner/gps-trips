@@ -15,7 +15,7 @@ main {
 }
 
 /* Pico stretches standalone buttons to full width, which is right for a
-   form's submit and wrong for every button on this screen — tabs, chips,
+   form's submit and wrong for every button on this screen — toggles, chips,
    "Add", "Apply". */
 button {
   width: auto;
@@ -187,28 +187,16 @@ details > summary::after {
   }
 }
 
-/* Recorded/Planned (US-32). The active tab is the `disabled` one, which
-   Pico would otherwise dim into looking broken: it keeps the solid fill and
-   the tab you can switch to becomes an outline, so "you are here" is legible
-   at a glance rather than a subtle shade difference. */
-nav.tabs {
-  display: flex;
-  /* Pico spreads a `nav`'s children apart; two tabs belong side by side. */
-  justify-content: flex-start;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
 /* The controls the owner reaches for constantly, on one line (US-61): the
-   tabs, the name search, the activity and "Clear filters". A flex row rather
+   kinds (US-90), the name search, the activity and "Clear filters". A flex row rather
    than `.filter-fields`' grid, because these four want their natural widths
-   — a tab pair and a button stretched to a grid column's share would read as
+   — a row of toggles and a button stretched to a grid column's share would read as
    a form, which is what the stack of fieldsets above the table used to.
 
    They wrap onto further lines on a phone, and `align-items: end` puts the
-   tabs and the button on the bottom edge of the inputs beside them, whose
+   toggles and the button on the bottom edge of the inputs beside them, whose
    own label sits above them. That alignment is why the bottom margins Pico
-   gives the tabs and the inputs are taken off and the spacing moved to the
+   gives the toggles and the inputs are taken off and the spacing moved to the
    row's `gap`: with each child carrying a different one, "end" was four
    different heights. */
 .filter-toolbar {
@@ -221,7 +209,6 @@ nav.tabs {
 
 .filter-toolbar > *,
 .filter-toolbar .activity-select,
-.filter-toolbar nav.tabs,
 .filter-toolbar input,
 .filter-toolbar select {
   margin-bottom: 0;
@@ -247,15 +234,6 @@ nav.tabs {
   /* Pico's own padding is what would otherwise lift the label off the line
      the inputs sit on, now that nothing here carries a bottom margin. */
   padding-bottom: 0.5rem;
-}
-
-nav.tabs button:disabled {
-  opacity: 1;
-}
-
-nav.tabs button:not(:disabled) {
-  background: transparent;
-  color: var(--pico-primary);
 }
 
 /* The filter inputs sit side by side where there is room and fold down to

@@ -1,25 +1,26 @@
-//! The trip-list screen (US-41): browse, filter and tag trips — and, on its
-//! Collections tab, find the collections (US-87). Each feature slice moves
-//! its story's acceptance assertions over from the server-rendered page
-//! (ADR-0012's migration rule).
+//! The trip-list screen (US-41): browse, filter and tag trips — and find the
+//! collections (US-87) — listed and mapped together, chosen by kind (US-90).
+//! Each feature slice moves its story's acceptance assertions over from the
+//! server-rendered page (ADR-0012's migration rule).
 
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::{CollectionSummary, TripSummary, VERSION};
+use trip_archive_types::{CollectionSummary, TripKind, TripSummary, VERSION};
 
-use crate::api::{self, ApiClient, BulkTagged};
-use crate::bulk_activity::BulkActivityPanel;
-use crate::bulk_tag::BulkTagPanel;
-use crate::collection_table::{CollectionTable, NO_COLLECTIONS};
+use crate::api::{self, ApiClient};
+use crate::collection_table::NO_COLLECTIONS;
 use crate::filter_bar::FilterBar;
-use crate::filters::{Filters, ListTab};
+use crate::filters::Filters;
 use crate::format;
+use crate::kinds::{Kind, Kinds};
+use crate::list_table::{self, ListTable};
 use crate::map_items::Mapped;
 use crate::pager::{self, Pager};
+use crate::picked::{self, Picked};
 use crate::region::RegionFilter;
-use crate::share::{Selected, ShareSelectedPanel};
-use crate::trip_table::TripTable;
+use crate::selection_bar::SelectionBar;
+use crate::share::Selected;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
 /// a bookmarked or reloaded link starts the screen already narrowed — the
@@ -39,7 +40,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         navigator().replace(format!("/?{}", filters.read().to_query()));
     });
     let mut trips = use_trips(filters);
-    let collections = use_collections(filters);
+    let mut collections = use_collections(filters);
     // The known tags: the tag filter's choices (US-38) and the bulk-tag
     // suggestions (US-34). A failure here costs those choices, not the list
     // — hence the separate resource and the fallback to none.
@@ -49,42 +50,42 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         .as_ref()
         .and_then(|tags| tags.clone().ok())
         .unwrap_or_default();
-    // How many trips the tab holds in all (US-61), counted from the same rows
-    // the list reads — only with every filter but the tab dropped. On the
-    // Collections tab, how many collections there are (US-87).
+    // How many of each kind on there are in all (US-61), counted with every
+    // filter dropped: the trips from one unfiltered read, the collections by
+    // the archive — a listed collection comes with its tracks' marks.
     //
-    // Scoped to the tab by reading a memo of it rather than the filters
+    // Scoped to the kinds by reading a memo of them rather than the filters
     // themselves: subscribing to the whole signal would re-count the archive
     // on every typed character, to arrive at the same number each time.
-    //
-    // Collections are counted by the archive rather than listed and counted
-    // here: a collection comes with all its tracks' marks.
-    let tab = use_memo(move || filters.read().tab);
-    let total = use_resource(move || async move {
-        let tab = tab();
-        let all_of_this_tab = Filters {
-            tab,
-            ..Default::default()
+    let kinds = use_memo(move || filters.read().kinds);
+    let totals = use_resource(move || async move {
+        let kinds = kinds();
+        let trips = if kinds.has_trips() {
+            Some(api::list_trips(&archive(), String::new()).await)
+        } else {
+            None
         };
-        let total = match all_of_this_tab.trip_query() {
-            Some(query) => api::list_trips(&archive(), query).await.map(|t| t.len()),
-            None => api::count_collections(&archive()).await,
+        let collections = if kinds.has_collections() {
+            Some(api::count_collections(&archive()).await)
+        } else {
+            None
         };
-        (tab, total)
+        (kinds, totals(kinds, trips, collections))
     });
     // A failure here costs the count line, not the list — the same trade the
     // tags make above.
-    let total = for_tab(total.read_unchecked().as_ref(), tab())
-        .and_then(|total| total.as_ref().ok().copied());
-    // Which trips the bulk panels will act on (US-34, US-63), and which
-    // collections are shared together (US-94) — kept apart, each waiting
-    // while the other tab is shown.
-    let mut selected = use_signal(BTreeSet::new);
-    let mut selected_collections = use_signal(BTreeSet::new);
-    // The names staged to tag each selection with (US-34, US-100), kept
-    // apart as the selections are.
+    let totals = for_kinds(totals.read_unchecked().as_ref(), kinds()).and_then(Clone::clone);
+    // What is selected (US-90): trips, collections and collection tracks,
+    // across pages. Turning a kind off drops what it listed.
+    let mut picked = use_signal(BTreeSet::<Picked>::new);
+    use_effect(move || {
+        let kinds = kinds();
+        picked.with_mut(|picked| picked::retain_kinds(picked, kinds));
+    });
+    // The names staged to tag the selection with (US-34, US-100).
     let staged = use_signal(Vec::new);
-    let staged_for_collections = use_signal(Vec::new);
+    // The collections whose tracks are folded out: none to begin with.
+    let expanded = use_signal(BTreeSet::<i64>::new);
     // Which page of the list the table shows (US-63). Back to the first
     // whenever the filters change — page 4 of a list narrowed to nine rows
     // would be a blank table — and kept out of the URL: US-52's contract is
@@ -94,29 +95,30 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         filters.read();
         page.set(0);
     });
-    // What the tab lists, once read for it — `None` until then, so a list
-    // read for the tab before is neither shown nor counted.
-    let listed: Option<Result<Listed, api::ApiError>> = match tab() {
-        ListTab::Collections => for_tab(
+    // What the kinds on list, once all of it is read for them — `None`
+    // until then, so a list read for other kinds is neither shown nor
+    // counted.
+    let listed = listed(
+        kinds(),
+        for_kinds(
+            trips.read_unchecked().as_ref().and_then(Option::as_ref),
+            kinds(),
+        )
+        .cloned(),
+        for_kinds(
             collections
                 .read_unchecked()
                 .as_ref()
                 .and_then(Option::as_ref),
-            tab(),
+            kinds(),
         )
-        .map(|read| read.clone().map(Listed::Collections)),
-        ListTab::Recorded | ListTab::Planned => for_tab(
-            trips.read_unchecked().as_ref().and_then(Option::as_ref),
-            tab(),
-        )
-        .map(|read| read.clone().map(Listed::Trips)),
-    };
+        .cloned(),
+    );
     let rows = listed.as_ref().and_then(|listed| listed.as_ref().ok());
-    // Every trip the filters match, or every track of the listed
-    // collections (US-87), for the map (US-63, US-73) — all of them, not the
-    // page the table shows.
+    // Everything that matches, for the map (US-63, US-73) — all of it, not
+    // the page the table shows.
     let mapped = rows.map(Listed::mapped);
-    let shown = rows.map(Listed::len);
+    let matched = rows.map(|rows| rows.matched(kinds())).unwrap_or_default();
     // Whether a deploy has happened since this page loaded (US-68). Until
     // the server answers, or if it cannot, nothing says so.
     let server_version = use_resource(move || async move { api::server_version(&archive()).await });
@@ -128,151 +130,211 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             .and_then(|version| version.as_deref().ok()),
     );
 
-    let trip_ids: Vec<i64> = selected.read().iter().copied().collect();
-    let collection_ids: Vec<i64> = selected_collections.read().iter().copied().collect();
     rsx! {
         div { class: "list-heading",
             h1 { "Trips" }
             VersionLabel { outdated }
         }
-        FilterBar { filters, all_tags: all_tags.clone() }
+        FilterBar { filters, all_tags: all_tags.clone(), matched: matched.clone() }
         RegionFilter { filters, mapped }
-        if let (Some(total), Some(shown)) = (total, shown) {
-            ListCounts { shown, total, tab: tab(), page: page() }
+        if let (Some(rows), Some(totals)) = (rows, totals) {
+            ListCounts { counts: counts(&matched, &totals), rows: rows.len(), page: page() }
         }
-        // What to do with the selected trips: tag them (US-34), give them
-        // all one activity (US-63), or share them (US-53); or with the
-        // selected collections: tag them (US-100) or share them (US-94).
-        if tab() == ListTab::Collections {
-            div { class: "bulk-panels",
-                BulkTagPanel {
-                    ids: collection_ids.clone(),
-                    staged: staged_for_collections,
-                    all_tags: all_tags.clone(),
-                    of: BulkTagged::Collections,
-                    // A new tag may now exist: the suggestions are out of
-                    // date. No list here shows a collection's tags.
-                    on_applied: move |_| {
-                        selected_collections.write().clear();
-                        tag_resource.restart();
-                    },
+        // What to do with the selection: tag it (US-34/100), share it
+        // (US-53/94) or set the trips' activity (US-63).
+        SelectionBar {
+            picked,
+            staged,
+            all_tags,
+            on_applied: move |of: Selected| {
+                // A new tag may now exist: the suggestions are out of date.
+                tag_resource.restart();
+                // A tag- or activity-filtered list may no longer hold them.
+                match of {
+                    Selected::Trips => trips.restart(),
+                    Selected::Collections | Selected::CollectionTracks => collections.restart(),
                 }
-                ShareSelectedPanel { ids: collection_ids, of: Selected::Collections }
-            }
-        } else {
-        div { class: "bulk-panels",
-            BulkTagPanel {
-                ids: trip_ids.clone(),
-                staged,
-                all_tags,
-                of: BulkTagged::Trips,
-                // A new tag now exists and the trips carry it: both the
-                // suggestions and a tag-filtered list are out of date.
-                on_applied: move |_| {
-                    selected.write().clear();
-                    tag_resource.restart();
-                    trips.restart();
-                },
-            }
-            // An activity-filtered list may no longer hold the trips.
-            BulkActivityPanel {
-                ids: trip_ids.clone(),
-                on_applied: move |_| {
-                    selected.write().clear();
-                    trips.restart();
-                },
-            }
-            ShareSelectedPanel { ids: trip_ids }
-        }
+            },
         }
         match listed {
             None => rsx! { p { "Loading…" } },
-            Some(Err(err)) => {
-                let what = if tab() == ListTab::Collections { "collections" } else { "trips" };
-                rsx! { p { class: "error", "Could not load {what}: {err}" } }
-            }
+            Some(Err(err)) => rsx! { p { class: "error", "Could not load the list: {err}" } },
             Some(Ok(listed)) if listed.len() == 0 => rsx! { EmptyState { filters } },
-            // Select-all acts on this page's rows alone, while `selected`
-            // lives here and so outlives paging: trips from several pages can
-            // be acted on together (US-34, US-63).
-            Some(Ok(Listed::Trips(trips))) => rsx! {
-                TripTable { trips: trips[pager::page_range(page(), trips.len())].to_vec(), selected }
-                Pager { page, len: trips.len() }
-            },
-            Some(Ok(Listed::Collections(collections))) => rsx! {
-                CollectionTable {
-                    collections: collections[pager::page_range(page(), collections.len())].to_vec(),
-                    selected: selected_collections,
+            // Select-all acts on this page's rows alone, while `picked` lives
+            // here and so outlives paging: rows from several pages can be
+            // acted on together (US-34, US-63).
+            Some(Ok(listed)) => {
+                let (trip_rows, collection_rows) =
+                    list_table::page_rows(page(), listed.trips.len(), listed.collections.len());
+                rsx! {
+                    ListTable {
+                        trips: listed.trips[trip_rows].to_vec(),
+                        collections: listed.collections[collection_rows].to_vec(),
+                        picked,
+                        expanded,
+                    }
+                    Pager { page, len: listed.len() }
                 }
-                Pager { page, len: collections.len() }
-            },
+            }
         }
     }
 }
 
-/// What a tab lists: trips, or collections (US-87).
-enum Listed {
-    Trips(Vec<TripSummary>),
-    Collections(Vec<CollectionSummary>),
+/// What the kinds on list: the matching trips, newest first, and the
+/// matching collections by name (US-90).
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Listed {
+    trips: Vec<TripSummary>,
+    collections: Vec<CollectionSummary>,
 }
 
 impl Listed {
+    /// The rows the table pages over: trips and collections, never the
+    /// tracks inside a group.
     fn len(&self) -> usize {
-        match self {
-            Listed::Trips(trips) => trips.len(),
-            Listed::Collections(collections) => collections.len(),
-        }
+        self.trips.len() + self.collections.len()
     }
 
     fn mapped(&self) -> Mapped {
-        match self {
-            Listed::Trips(trips) => Mapped::trips(trips),
-            Listed::Collections(collections) => Mapped::collections(collections),
+        if self.trips.is_empty() && !self.collections.is_empty() {
+            Mapped::collections(&self.collections)
+        } else {
+            Mapped::trips(&self.trips)
         }
+    }
+
+    /// How many of each kind on match.
+    fn matched(&self, kinds: Kinds) -> Vec<(Kind, usize)> {
+        kinds
+            .iter()
+            .map(|kind| {
+                let count = match kind.trip_kind() {
+                    Some(trip_kind) => self
+                        .trips
+                        .iter()
+                        .filter(|t| t.trip_kind == trip_kind)
+                        .count(),
+                    None => self.collections.len(),
+                };
+                (kind, count)
+            })
+            .collect()
     }
 }
 
-/// What was read, if it was read for `tab`. A resource keeps its last
-/// answer while it reads anew, so right after a tab switch it still holds
-/// the tab before's.
-fn for_tab<T>(read: Option<&(ListTab, T)>, tab: ListTab) -> Option<&T> {
-    read.filter(|(read_for, _)| *read_for == tab)
+/// The list, once every part the kinds need is read: the trips with a kind
+/// of trip on, the collections with collections on. A failure in either is
+/// the list's.
+fn listed(
+    kinds: Kinds,
+    trips: Option<Result<Vec<TripSummary>, api::ApiError>>,
+    collections: Option<Result<Vec<CollectionSummary>, api::ApiError>>,
+) -> Option<Result<Listed, api::ApiError>> {
+    let trips = if kinds.has_trips() {
+        trips?
+    } else {
+        Ok(Vec::new())
+    };
+    let collections = if kinds.has_collections() {
+        collections?
+    } else {
+        Ok(Vec::new())
+    };
+    Some(trips.and_then(|trips| collections.map(|collections| Listed { trips, collections })))
+}
+
+/// How many of each kind on there are in all, whatever the filters.
+#[derive(Clone, Debug, PartialEq)]
+struct Totals(Vec<(Kind, usize)>);
+
+/// The totals, from the unfiltered trips and the collections' count — or
+/// `None` if either could not be read.
+fn totals(
+    kinds: Kinds,
+    trips: Option<Result<Vec<TripSummary>, api::ApiError>>,
+    collections: Option<Result<usize, api::ApiError>>,
+) -> Option<Totals> {
+    let trips = trips.transpose().ok()?;
+    let collections = collections.transpose().ok()?;
+    Some(Totals(
+        kinds
+            .iter()
+            .map(|kind| {
+                let total = match (kind.trip_kind(), &trips, collections) {
+                    (Some(trip_kind), Some(trips), _) => {
+                        trips.iter().filter(|t| t.trip_kind == trip_kind).count()
+                    }
+                    (None, _, Some(count)) => count,
+                    _ => 0,
+                };
+                (kind, total)
+            })
+            .collect(),
+    ))
+}
+
+/// Each kind's line in the counts: how many match out of how many there
+/// are. A kind with none at all is left out — "0 planned trips" says
+/// nothing the toggle does not.
+fn counts(matched: &[(Kind, usize)], totals: &Totals) -> Vec<(Kind, usize, usize)> {
+    totals
+        .0
+        .iter()
+        .filter(|(_, total)| *total > 0)
+        .map(|&(kind, total)| {
+            let shown = matched
+                .iter()
+                .find(|(k, _)| *k == kind)
+                .map_or(0, |(_, shown)| *shown);
+            (kind, shown, total)
+        })
+        .collect()
+}
+
+/// What was read, if it was read for `kinds`. A resource keeps its last
+/// answer while it reads anew, so right after a toggle it still holds what
+/// the kinds before asked for.
+fn for_kinds<T>(read: Option<&(Kinds, T)>, kinds: Kinds) -> Option<&T> {
+    read.filter(|(read_for, _)| *read_for == kinds)
         .map(|(_, read)| read)
 }
 
-/// What a list resource holds: what it read, and for which tab — or `None`
-/// while its tab is not showing, so it asks the archive for nothing.
-type ListResource<T> = Resource<Option<(ListTab, Result<Vec<T>, api::ApiError>)>>;
+/// What a list resource holds: what it read, and for which kinds — or
+/// `None` while its kind is off, so it asks the archive for nothing.
+type ListResource<T> = Resource<Option<(Kinds, Result<Vec<T>, api::ApiError>)>>;
 
-/// Every trip `filters` match. Re-runs whenever the filters or the
-/// configured archive change — reading the signals inside the closure is the
-/// whole subscription.
+/// Every trip `filters` match, with a kind of trip on. Re-runs whenever the
+/// filters or the configured archive change — reading the signals inside
+/// the closure is the whole subscription.
 fn use_trips(filters: Signal<Filters>) -> ListResource<TripSummary> {
     let archive = use_context::<Signal<ApiClient>>();
     use_resource(move || async move {
         // Read into a local, not inline in the call: a temporary read guard
         // would live across the `.await`, and every keystroke's write during
         // the request would panic on the borrowed signal.
-        let (tab, query) = {
+        let (kinds, query) = {
             let filters = filters.read();
-            (filters.tab, filters.trip_query()?)
+            (filters.kinds, filters.trip_query()?)
         };
-        Some((tab, api::list_trips(&archive(), query).await))
+        Some((kinds, api::list_trips(&archive(), query).await))
     })
 }
 
-/// Every collection `filters` match on the Collections tab (US-87).
+/// Every collection `filters` match, with collections on (US-87, US-90).
 fn use_collections(filters: Signal<Filters>) -> ListResource<CollectionSummary> {
     let archive = use_context::<Signal<ApiClient>>();
     use_resource(move || async move {
-        let query = {
+        let (kinds, query) = {
             let filters = filters.read();
-            (filters.tab == ListTab::Collections).then(|| filters.collection_query())?
+            (
+                filters.kinds,
+                filters
+                    .kinds
+                    .has_collections()
+                    .then(|| filters.collection_query())?,
+            )
         };
-        Some((
-            ListTab::Collections,
-            api::list_collections(&archive(), query).await,
-        ))
+        Some((kinds, api::list_collections(&archive(), query).await))
     })
 }
 
@@ -297,23 +359,27 @@ fn VersionLabel(outdated: bool) -> Element {
     }
 }
 
-/// How many trips — or collections (US-87) — the list shows, and how many
-/// the tab holds in all (US-61), and — once the list is longer than a page —
-/// which of them this page shows (US-63). A caption on the table rather than
-/// a heading: the numbers are context for what is below, not an
-/// announcement of their own.
+/// How many of each kind on the list shows, and how many there are in all
+/// (US-61, US-90), and — once the list is longer than a page — which of its
+/// rows this page shows (US-63). A caption on the table rather than a
+/// heading: the numbers are context for what is below, not an announcement
+/// of their own.
 #[component]
-fn ListCounts(shown: usize, total: usize, tab: ListTab, page: usize) -> Element {
-    // An empty tab is said better by `EmptyState`, in its own words — "0
+fn ListCounts(counts: Vec<(Kind, usize, usize)>, rows: usize, page: usize) -> Element {
+    // An empty list is said better by `EmptyState`, in its own words — "0
     // recorded trips" would be a second, colder way of saying the same thing.
-    if total == 0 {
+    if counts.is_empty() {
         return rsx! {};
     }
-    let counts = format::list_counts(shown, total, tab);
-    let line = if pager::page_count(shown) > 1 {
+    let counts = counts
+        .iter()
+        .map(|&(kind, shown, total)| format::list_counts(shown, total, kind))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    let line = if pager::page_count(rows) > 1 {
         format!(
             "{counts} · {}",
-            format::page_place(pager::page_range(page, shown))
+            format::page_place(pager::page_range(page, rows))
         )
     } else {
         counts
@@ -324,18 +390,26 @@ fn ListCounts(shown: usize, total: usize, tab: ListTab, page: usize) -> Element 
 }
 
 /// Tells "nothing imported yet" apart from "nothing matches the filters" —
-/// the same distinction the server-rendered page draws (US-13).
+/// the same distinction the server-rendered page draws (US-13) — in the
+/// words of the kinds on.
 #[component]
 fn EmptyState(filters: Signal<Filters>) -> Element {
     let filters = filters.read();
-    match (filters.tab, filters.any_set()) {
-        (ListTab::Collections, true) => rsx! { p { "No collections match your filters." } },
-        (ListTab::Collections, false) => {
-            rsx! { p { "{NO_COLLECTIONS}" } }
+    let kinds = filters.kinds;
+    let collections_only = kinds == Kinds::only(Kind::Collections);
+    match (filters.any_set(), kinds.has_trips(), collections_only) {
+        (true, _, true) => rsx! { p { "No collections match your filters." } },
+        (true, true, _) if !kinds.has_collections() => {
+            rsx! { p { "No trips match your filters." } }
         }
-        (_, true) => rsx! { p { "No trips match your filters." } },
-        (ListTab::Planned, false) => rsx! { p { "No planned trips yet." } },
-        (ListTab::Recorded, false) => rsx! { p { "No trips yet. Import your first trip." } },
+        (true, _, _) => rsx! { p { "Nothing matches your filters." } },
+        (false, _, true) => rsx! { p { "{NO_COLLECTIONS}" } },
+        (false, _, _)
+            if kinds.trip_kind() == Some(TripKind::Planned) && !kinds.has_collections() =>
+        {
+            rsx! { p { "No planned trips yet." } }
+        }
+        (false, _, _) => rsx! { p { "No trips yet. Import your first trip." } },
     }
 }
 
@@ -344,5 +418,7 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
 
 #[cfg(test)]
 mod collections_tests;
+#[cfg(test)]
+mod kinds_tests;
 #[cfg(test)]
 mod tests;

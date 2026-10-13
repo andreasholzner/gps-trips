@@ -1,4 +1,5 @@
-//! The trip list's filter controls (US-13/US-32/US-38/US-66). US-14's region is
+//! The trip list's filter controls (US-13/US-38/US-66), and the kinds it
+//! lists (US-90, once US-32's tabs). US-14's region is
 //! drawn on the map above the table ([`crate::region`], US-63).
 //!
 //! Split out of `list.rs` by US-61, which reshaped a stack of four full-width
@@ -14,25 +15,32 @@ use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, Tag};
 
 use crate::activity_select::{choices, ActivitySelect, Choice};
-use crate::filters::{Filters, ListTab};
+use crate::filters::Filters;
+use crate::kinds::Kind;
+use crate::list_table::LineSwatch;
 
 /// Everything the owner narrows the list with.
 ///
 /// The split is by how often a filter is reached for, not by what it does:
-/// the tab, the name search and the activity are on the toolbar, always
+/// the kinds, the name search and the activity are on the toolbar, always
 /// visible; the dates, the distances, the tidy-up checkboxes (US-66) and
 /// the tags sit behind "More filters", so the table starts near the top of a desktop screen
 /// instead of below a stack of fieldsets (US-61).
 ///
-/// On the Collections tab (US-87) only the name search is offered: the
-/// other filters are about trips, so they are not rendered there, and keep
-/// their values for when the owner switches back.
+/// The filters behind the disclosure are about trips alone: with no kind of
+/// trip on (US-87, US-90) they are not rendered, and keep their values for
+/// when the owner switches one back on. `matched` says how many of each kind
+/// on the filters match, once read.
 #[component]
-pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
-    let about_trips = filters.read().tab != ListTab::Collections;
+pub fn FilterBar(
+    filters: Signal<Filters>,
+    all_tags: Vec<Tag>,
+    #[props(default)] matched: Vec<(Kind, usize)>,
+) -> Element {
+    let about_trips = filters.read().kinds.has_trips();
     rsx! {
         div { class: "filter-toolbar",
-            Tabs { filters }
+            KindToggles { filters, matched }
             label {
                 "Search "
                 input {
@@ -41,16 +49,14 @@ pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
                     oninput: move |event| filters.write().q = event.value(),
                 }
             }
-            if about_trips {
-                ActivitySelect {
-                    id: "filter-activity",
-                    label: "Activity",
-                    value: filters.read().activity.map_or("", |activity| activity.as_str()),
-                    choices: choices(&[Choice::plain("", "— any —")]),
-                    onchange: move |value: String| {
-                        filters.write().activity = value.parse::<ActivityType>().ok();
-                    },
-                }
+            ActivitySelect {
+                id: "filter-activity",
+                label: "Activity",
+                value: filters.read().activity.map_or("", |activity| activity.as_str()),
+                choices: choices(&[Choice::plain("", "— any —")]),
+                onchange: move |value: String| {
+                    filters.write().activity = value.parse::<ActivityType>().ok();
+                },
             }
             // Clearing is on the toolbar because it resets the filters behind
             // the disclosure too: a shared link that arrives narrowed by a
@@ -77,19 +83,31 @@ pub fn FilterBar(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
     }
 }
 
-/// The Recorded/Planned/Collections tabs (US-32, US-87). Switching tabs
-/// writes only the tab into the shared signal, so every other filter is
-/// kept — the same guarantee the server-rendered page's tab forms gave.
+/// The Recorded, Planned and Collections toggles (US-90), each showing its
+/// line style on the map and how many of its kind match. Toggling writes
+/// only the kinds into the shared signal, so every filter is kept; the last
+/// kind on cannot be switched off.
 #[component]
-fn Tabs(filters: Signal<Filters>) -> Element {
+fn KindToggles(filters: Signal<Filters>, matched: Vec<(Kind, usize)>) -> Element {
+    let kinds = filters.read().kinds;
     rsx! {
-        nav { class: "tabs",
-            for tab in ListTab::ALL {
+        div { class: "kind-toggles", role: "group", aria_label: "Show",
+            for kind in Kind::ALL {
                 button {
-                    key: "{tab.as_str()}",
-                    disabled: filters.read().tab == tab,
-                    onclick: move |_| filters.write().tab = tab,
-                    "{tab.label()}"
+                    key: "{kind.as_str()}",
+                    r#type: "button",
+                    class: "kind-toggle",
+                    aria_pressed: "{kinds.contains(kind)}",
+                    disabled: kinds.is_last(kind),
+                    onclick: move |_| {
+                        let toggled = filters.read().kinds.toggled(kind);
+                        filters.write().kinds = toggled;
+                    },
+                    LineSwatch { kind }
+                    "{kind.label()}"
+                    if let Some((_, count)) = matched.iter().find(|(k, _)| *k == kind) {
+                        span { class: "kind-count", "{count}" }
+                    }
                 }
             }
         }
@@ -219,31 +237,40 @@ mod tests {
         ]
     }
 
-    // The Recorded/Planned tabs (US-32): both tabs offered, the active one
-    // marked. Actually clicking a tab is a real event, which this layer
-    // cannot dispatch — the browser layer covers the switch itself, and
-    // that switching keeps the other filters is KindTabs writing only
-    // `kind` into the shared signal.
+    // The kinds (US-90): each offered with its line style, those on pressed,
+    // the last one on not to be switched off. Actually clicking one is a real
+    // event, which this layer cannot dispatch — the browser layer covers the
+    // toggle itself, and that toggling keeps the other filters is
+    // KindToggles writing only `kinds` into the shared signal.
     #[test]
-    fn the_tabs_offer_recorded_planned_and_collections_with_the_active_one_marked() {
+    fn us90_the_kinds_are_offered_as_toggles_the_last_one_on_kept_on() {
         let html = render(|| {
             let filters = Signal::new(Filters::default());
-            rsx! { Tabs { filters } }
+            rsx! { KindToggles { filters, matched: vec![(Kind::Recorded, 214)] } }
         });
 
-        assert!(html.contains("Recorded"), "{html}");
-        assert!(html.contains("Planned"), "{html}");
-        assert!(html.contains("Collections"), "US-87: {html}");
-        assert!(
-            html.contains("disabled"),
-            "the active tab is not clickable: {html}"
-        );
+        let toggle = |label: &str| {
+            html.split("<button")
+                .find(|button| button.contains(label))
+                .unwrap_or_else(|| panic!("no {label}: {html}"))
+                .to_string()
+        };
+        let recorded = toggle("Recorded");
+        assert!(recorded.contains(r#"aria-pressed="true""#), "{html}");
+        assert!(recorded.contains("disabled"), "the last one on: {html}");
+        assert!(recorded.contains("214"), "how many match: {html}");
+        assert!(recorded.contains(r#"stroke-dasharray="none""#), "{html}");
+        let planned = toggle("Planned");
+        assert!(planned.contains(r#"aria-pressed="false""#), "{html}");
+        assert!(!planned.contains("disabled"), "{html}");
+        assert!(planned.contains(r#"stroke-dasharray="8 6""#), "{html}");
+        assert!(toggle("Collections").contains(r#"stroke-dasharray="1 7""#));
     }
 
     // US-61: the three controls the owner reaches for constantly are on the
-    // toolbar, and the tabs are part of it rather than a row of their own.
+    // toolbar, and the kinds are part of it rather than a row of their own.
     #[test]
-    fn the_toolbar_carries_the_tabs_the_search_and_the_activity() {
+    fn the_toolbar_carries_the_kinds_the_search_and_the_activity() {
         let html = render(|| {
             let filters = Signal::new(Filters {
                 q: "oslo".to_string(),
@@ -352,13 +379,14 @@ mod tests {
         }
     }
 
-    // US-87: on the Collections tab the filters about trips are not offered,
-    // and their values wait in the signal, unrendered.
+    // US-90: with collections alone the filters about trips alone are not
+    // offered, and their values wait in the signal, unrendered; the search
+    // and the activity narrow collections too.
     #[test]
-    fn us87_the_collections_tab_offers_the_name_search_alone() {
+    fn us90_with_collections_alone_the_trip_filters_are_hidden() {
         let html = render(|| {
             let filters = Signal::new(Filters {
-                tab: ListTab::Collections,
+                kinds: crate::kinds::Kinds::only(Kind::Collections),
                 q: "alp".to_string(),
                 from: "2026-07-01".to_string(),
                 ..Default::default()
@@ -366,10 +394,10 @@ mod tests {
             rsx! { FilterBar { filters, all_tags: some_tags() } }
         });
 
-        for expected in ["Collections", "Search", "alp", "Clear filters"] {
+        for expected in ["Collections", "Search", "alp", "Activity", "Clear filters"] {
             assert!(html.contains(expected), "missing {expected}: {html}");
         }
-        for hidden in ["Activity", "More filters", "2026-07-01", "alpine"] {
+        for hidden in ["More filters", "2026-07-01", "alpine"] {
             assert!(!html.contains(hidden), "{hidden} is about trips: {html}");
         }
     }

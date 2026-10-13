@@ -5,7 +5,7 @@
 use time::{format_description::well_known::Rfc3339, Date, OffsetDateTime, UtcOffset};
 use trip_archive_types::KomootPrivacy;
 
-use crate::filters::ListTab;
+use crate::kinds::Kind;
 
 /// Metres as kilometres, the unit the list shows.
 pub fn km(metres: f64) -> String {
@@ -120,10 +120,10 @@ pub fn privacy(privacy: Option<KomootPrivacy>) -> String {
 /// against, and "312 of 312" only reads as noise.
 ///
 /// The noun agrees with the number it follows, which is the total whenever
-/// both are shown. The Collections tab counts collections (US-87).
-pub fn list_counts(shown: usize, total: usize, tab: ListTab) -> String {
+/// both are shown. Collections are counted as collections (US-87).
+pub fn list_counts(shown: usize, total: usize, kind: Kind) -> String {
     let one = total == 1;
-    let what = match tab.trip_kind() {
+    let what = match kind.trip_kind() {
         Some(kind) => format!("{} {}", kind.as_str(), if one { "trip" } else { "trips" }),
         None => (if one { "collection" } else { "collections" }).to_string(),
     };
@@ -302,35 +302,29 @@ mod tests {
     // there is something to have narrowed from.
     #[test]
     fn an_unnarrowed_list_reports_one_number() {
-        assert_eq!(
-            list_counts(312, 312, ListTab::Recorded),
-            "312 recorded trips"
-        );
-        assert_eq!(list_counts(7, 7, ListTab::Planned), "7 planned trips");
+        assert_eq!(list_counts(312, 312, Kind::Recorded), "312 recorded trips");
+        assert_eq!(list_counts(7, 7, Kind::Planned), "7 planned trips");
     }
 
     #[test]
     fn a_narrowed_list_says_what_it_narrowed_from() {
         assert_eq!(
-            list_counts(247, 312, ListTab::Recorded),
+            list_counts(247, 312, Kind::Recorded),
             "247 of 312 recorded trips"
         );
         // Nothing matched, but the tab is not empty — which is exactly the
         // case this line exists for.
         assert_eq!(
-            list_counts(0, 312, ListTab::Recorded),
+            list_counts(0, 312, Kind::Recorded),
             "0 of 312 recorded trips"
         );
     }
 
     #[test]
     fn us87_the_collections_tab_counts_collections() {
-        assert_eq!(list_counts(5, 5, ListTab::Collections), "5 collections");
-        assert_eq!(list_counts(1, 1, ListTab::Collections), "1 collection");
-        assert_eq!(
-            list_counts(3, 5, ListTab::Collections),
-            "3 of 5 collections"
-        );
+        assert_eq!(list_counts(5, 5, Kind::Collections), "5 collections");
+        assert_eq!(list_counts(1, 1, Kind::Collections), "1 collection");
+        assert_eq!(list_counts(3, 5, Kind::Collections), "3 of 5 collections");
     }
 
     #[test]
@@ -342,10 +336,10 @@ mod tests {
 
     #[test]
     fn the_noun_agrees_with_the_number_beside_it() {
-        assert_eq!(list_counts(1, 1, ListTab::Recorded), "1 recorded trip");
+        assert_eq!(list_counts(1, 1, Kind::Recorded), "1 recorded trip");
         // "1 of 312" — the noun follows the total, not the shown count.
         assert_eq!(
-            list_counts(1, 312, ListTab::Recorded),
+            list_counts(1, 312, Kind::Recorded),
             "1 of 312 recorded trips"
         );
     }

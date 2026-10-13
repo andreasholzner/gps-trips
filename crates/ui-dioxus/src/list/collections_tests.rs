@@ -1,5 +1,5 @@
-//! US-87 — the trip list's Collections tab, rendered against a real server
-//! (ADR-0012). Switching tabs and typing are the browser layer's
+//! US-87 — the trip list's collections, once its Collections tab, rendered
+//! against a real server (ADR-0012). Toggling kinds and typing are the browser layer's
 //! (`tests/browser/collections_tab.spec.mjs`).
 
 use super::*;
@@ -10,7 +10,7 @@ use crate::test_support::{
 
 fn on_the_collections_tab(q: &str) -> Filters {
     Filters {
-        tab: ListTab::Collections,
+        kinds: Kinds::only(Kind::Collections),
         q: q.to_string(),
         ..Default::default()
     }
@@ -101,7 +101,7 @@ async fn us87_a_search_matching_no_collection_says_so() {
 #[test]
 fn us87_a_long_list_of_collections_says_which_rows_are_shown() {
     let html = render(|| {
-        rsx! { ListCounts { shown: 60, total: 60, tab: ListTab::Collections, page: 1 } }
+        rsx! { ListCounts { counts: vec![(Kind::Collections, 60, 60)], rows: 60, page: 1 } }
     });
 
     assert!(html.contains("60 collections · showing 51–60"), "{html}");
@@ -136,15 +136,19 @@ async fn us87_a_long_list_of_collections_is_shown_a_page_at_a_time() {
     assert!(html.contains("Page 1 of 2"), "{html}");
 }
 
-// What was read for another tab is not shown, nor counted against this
-// one's total: right after a switch, "3 of 312 collections" would pair the
-// new list with the old tab's total until the new one arrives.
+// What was read for other kinds is not shown, nor counted against these
+// ones' totals: right after a toggle, "3 of 312 collections" would pair the
+// new list with the old kinds' total until the new one arrives.
 #[test]
-fn us87_only_what_was_read_for_the_tab_showing_is_used() {
-    let read = (ListTab::Recorded, 312);
+fn us90_only_what_was_read_for_the_kinds_on_is_used() {
+    let recorded = Kinds::default();
+    let read = (recorded, 312);
 
-    assert_eq!(for_tab(Some(&read), ListTab::Recorded), Some(&312));
-    assert_eq!(for_tab(Some(&read), ListTab::Collections), None);
-    assert_eq!(for_tab(Some(&read), ListTab::Planned), None);
-    assert_eq!(for_tab::<usize>(None, ListTab::Recorded), None);
+    assert_eq!(for_kinds(Some(&read), recorded), Some(&312));
+    assert_eq!(for_kinds(Some(&read), Kinds::only(Kind::Collections)), None);
+    assert_eq!(
+        for_kinds(Some(&read), recorded.toggled(Kind::Planned)),
+        None
+    );
+    assert_eq!(for_kinds::<usize>(None, recorded), None);
 }

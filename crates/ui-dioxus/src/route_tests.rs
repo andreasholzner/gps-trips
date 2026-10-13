@@ -2,7 +2,7 @@
 //! screen it was written for, its query included (US-52).
 
 use super::*;
-use crate::filters::ListTab;
+use crate::kinds::{Kind, Kinds};
 use std::str::FromStr;
 use trip_archive_types::ActivityType;
 
@@ -25,7 +25,7 @@ fn round_trip(filters: Filters) {
 #[test]
 fn a_plain_filter_round_trips_through_the_url() {
     round_trip(Filters {
-        tab: ListTab::Planned,
+        kinds: Kinds::only(Kind::Planned).toggled(Kind::Collections),
         q: "oslo".to_string(),
         activity: Some(ActivityType::Hiking),
         tags: vec!["alpine".to_string()],

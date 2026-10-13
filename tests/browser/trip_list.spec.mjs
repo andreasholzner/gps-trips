@@ -136,7 +136,7 @@ test("the activity filter's list opens over the map (US-84)", async ({ page }) =
   expect(covered).toEqual([]);
 });
 
-test("switching tabs keeps the active filter (US-32)", async ({ page }) => {
+test("toggling kinds keeps the active filter (US-90)", async ({ page }) => {
   // Needs a real click *and* a preserved input value across it — the one
   // criterion that is only observable once both events have happened.
   await page.goto("/app/");
@@ -146,11 +146,17 @@ test("switching tabs keeps the active filter (US-32)", async ({ page }) => {
   // the "no trips yet" one.
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
 
+  // Planned on, alongside recorded: the planned trip is listed.
   await page.getByRole("button", { name: "Planned" }).click();
-
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).first()).toContainText("Planned Ridge Route");
+
+  // Recorded off: the planned trip alone, the search kept throughout.
+  await page.getByRole("button", { name: "Recorded" }).click();
+  await expect(rows(page)).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Planned" })).toBeDisabled();
   await expect(page.getByRole("searchbox")).toHaveValue("route");
+  await expect(page).toHaveURL(/kind=planned(&|$)/);
 });
 
 // US-61: the disclosure is the one thing on this screen whose whole point is
@@ -197,10 +203,12 @@ test("the list says how many trips match and how many there are (US-61)", async 
 
   await expect(page.getByText("1 of 2 recorded trips")).toBeVisible();
 
-  // The total follows the tab, and so does the noun.
+  // Each kind on is counted, in its own noun (US-90).
   await page.getByRole("searchbox").fill("");
   await page.getByRole("button", { name: "Planned" }).click();
-  await expect(page.getByText("1 planned trip")).toBeVisible();
+  await expect(page.getByText("2 recorded trips · 1 planned trip")).toBeVisible();
+  await page.getByRole("button", { name: "Recorded" }).click();
+  await expect(page.locator(".trip-counts")).toHaveText("1 planned trip");
 });
 
 test("choosing a tag narrows the list to trips carrying it (US-38)", async ({ page }) => {
@@ -267,11 +275,11 @@ test("with Filter to map on, panning and zooming move the region (US-92)", async
   const [wider, , further] = bboxOf(page);
   expect(further - wider).toBeGreaterThan(east - west);
 
-  // The region outlives a tab switch, like every other filter (US-14).
+  // The region outlives a toggled kind, like every other filter (US-14).
   await page.getByRole("button", { name: "Planned" }).click();
-  await expect(page).toHaveURL(/kind=planned/);
+  await expect(page).toHaveURL(/kind=recorded%2Cplanned/);
   await expect(page).toHaveURL(/[?&]bbox=/);
-  await page.getByRole("button", { name: "Recorded" }).click();
+  await page.getByRole("button", { name: "Planned" }).click();
 
   // And a reload starts on it, still filtering.
   await page.reload();
@@ -399,7 +407,7 @@ test("on a phone the table scrolls sideways and the page does not (US-63)", asyn
   expect(pageOverflow, "the page itself does not scroll sideways").toBeLessThanOrEqual(0);
 
   // A number stays on one line rather than wrapping into a column of digits.
-  for (const column of [3, 4, 5, 6]) {
+  for (const column of [4, 5, 6, 7]) {
     await expect(rows(page).first().locator("td").nth(column)).toHaveCSS("white-space", "nowrap");
   }
 });
@@ -413,8 +421,9 @@ test("selected trips are tagged in one go, after confirming a new tag (US-34)", 
   await page.goto("/app/");
   await expect(rows(page)).toHaveCount(2);
 
-  // Select every listed trip at once.
+  // Select every listed trip at once, and open tagging (US-90).
   await page.locator("table thead input[type=checkbox]").check();
+  await page.getByRole("button", { name: "Tag…" }).click();
   await expect(page.getByRole("button", { name: "Apply to 2 selected" })).toBeVisible();
 
   // A tag that does not exist yet must be confirmed before it is staged, so
@@ -457,6 +466,7 @@ test.describe("one activity for many trips (US-63)", () => {
     await expect(rows(page)).toHaveCount(2);
 
     await page.locator("table thead").getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Set activity…" }).click();
     await chooseActivity(page, "bulk-activity", "kayaking");
     await page.getByRole("button", { name: "Set for 2 selected" }).click();
 
@@ -502,7 +512,7 @@ test.describe("paging (US-63)", () => {
     await expect(page.getByText("Page 2 of 2")).toBeVisible();
     // Select-all here takes this page's one row, not the fifty behind it.
     await page.locator("table thead").getByRole("checkbox").check();
-    await expect(page.getByRole("button", { name: "Apply to 2 selected" })).toBeVisible();
+    await expect(page.getByText("2 selected: 2 trips")).toBeVisible();
 
     await page.getByRole("button", { name: "‹ Previous" }).click();
     await expect(rows(page).first().getByRole("checkbox")).toBeChecked();
@@ -594,30 +604,36 @@ test.describe("trips to tidy up (US-66)", () => {
   });
 });
 
-// Layout, which only a browser computes: side by side, the panels for the
-// selected trips put their entry rows level and their buttons level, and a
-// button in a row sits level with the field beside it.
-test("the panels for the selected trips line up", async ({ page }) => {
+// US-90: the bar opens one panel at a time, under it; which one is a real
+// click. Layout, which only a browser computes: a panel's button sits level
+// with the field beside it.
+test("the selection bar opens one panel at a time", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app/");
   await page.locator("table thead input[type=checkbox]").check();
+  await expect(page.getByText("2 selected: 2 trips")).toBeVisible();
 
+  await page.getByRole("button", { name: "Tag…" }).click();
+  await expect(page.getByText("Tag selected trips")).toBeVisible();
   const middle = (locator) =>
     locator.evaluate((el) => {
       const box = el.getBoundingClientRect();
       return (box.top + box.bottom) / 2;
     });
   const entry = await middle(page.getByPlaceholder("add a tag"));
-  for (const [what, control] of [
-    ["Add", page.getByRole("button", { name: "Add", exact: true })],
-    ["the activity", page.locator("#bulk-activity")],
-    ["Share", page.locator("#share-selected")],
-  ]) {
-    expect(Math.abs((await middle(control)) - entry), what).toBeLessThanOrEqual(1);
-  }
-  const apply = await middle(page.getByRole("button", { name: /^Apply to/ }));
-  const set = await middle(page.getByRole("button", { name: /^Set for/ }));
-  expect(Math.abs(set - apply)).toBeLessThanOrEqual(1);
+  const add = await middle(page.getByRole("button", { name: "Add", exact: true }));
+  expect(Math.abs(add - entry)).toBeLessThanOrEqual(1);
+
+  await page.getByRole("button", { name: "Set activity…" }).click();
+  await expect(page.getByText("Tag selected trips")).toHaveCount(0);
+  await expect(page.locator("#bulk-activity")).toBeVisible();
+
+  // Pressed again, it closes.
+  await page.getByRole("button", { name: "Set activity…" }).click();
+  await expect(page.locator("#bulk-activity")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Share…" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
 });
 
 // Layout, which only a browser computes: a confirmation's buttons stand
@@ -627,21 +643,33 @@ test("the confirmations' buttons do not touch", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app/");
   await page.locator("table thead input[type=checkbox]").check();
-  await page.getByPlaceholder("add a tag").fill(`unconfirmed-${NEW_TAG}`);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  await chooseActivity(page, "bulk-activity", "kayaking");
-  await page.getByRole("button", { name: /^Set for/ }).click();
 
-  for (const [confirm, cancel] of [
+  // One panel open at a time (US-90): each question is raised in turn.
+  const raise = {
+    tag: async () => {
+      await page.getByRole("button", { name: "Tag…" }).click();
+      await page.getByPlaceholder("add a tag").fill(`unconfirmed-${NEW_TAG}`);
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+    },
+    activity: async () => {
+      await page.getByRole("button", { name: "Set activity…" }).click();
+      await chooseActivity(page, "bulk-activity", "kayaking");
+      await page.getByRole("button", { name: /^Set for/ }).click();
+    },
+  };
+  for (const [ask, confirm, cancel] of [
     [
+      raise.tag,
       page.getByRole("button", { name: "Create", exact: true }),
-      page.getByRole("button", { name: "Cancel" }).first(),
+      page.getByRole("button", { name: "Cancel" }),
     ],
     [
+      raise.activity,
       page.getByRole("button", { name: "Change", exact: true }),
-      page.getByRole("button", { name: "Cancel" }).last(),
+      page.getByRole("button", { name: "Cancel" }),
     ],
   ]) {
+    await ask();
     // The question is the text before the first button.
     const question = await confirm.evaluate((button) => {
       const range = document.createRange();

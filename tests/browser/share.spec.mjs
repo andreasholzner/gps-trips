@@ -321,7 +321,7 @@ test("the owner stops a share from the shares screen, and its link then opens no
   await recipient.close();
 });
 
-test("collections selected on the Collections tab are shared, and the link opens them on one map (US-94)", async ({
+test("collections selected on the trip list are shared, and the link opens them on one map (US-94)", async ({
   page,
   request,
   browser,
@@ -334,7 +334,7 @@ test("collections selected on the Collections tab are shared, and the link opens
   await page.goto(`/app/?kind=collections&q=${BOOK}`);
   await expect(page.locator("table tbody tr")).toHaveCount(2);
   await page.getByRole("checkbox", { name: "Select all" }).check();
-  await page.locator("#share-selected").click();
+  await page.getByRole("button", { name: "Share…" }).click();
   await page.locator('input[name="share-label"]').fill("Guide books");
   await page.locator("#create-share").click();
   const link = await page.locator("#share-link").inputValue();

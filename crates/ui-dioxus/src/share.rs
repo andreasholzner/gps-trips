@@ -32,7 +32,7 @@ pub enum Selected {
 }
 
 impl Selected {
-    fn target(self, ids: Vec<i64>) -> ShareTarget {
+    pub fn target(self, ids: Vec<i64>) -> ShareTarget {
         match self {
             Self::Trips => ShareTarget::Trips(ids),
             Self::Collections => ShareTarget::Collections(ids),
