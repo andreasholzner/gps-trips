@@ -29,7 +29,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-90, US-100                            | Each builds only on stories done (US-86/87, US-94's selection), not on each other, so their order is free.                                            |
+| 1    | US-90                                    | Builds only on stories done (US-86/87).                                                                                                               |
 | 2    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
 
 ## Story index
@@ -144,7 +144,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
-| [US-100](#us-100--tag-many-collections-at-once)               | 🚧     | Tag many collections at once                 | [Tags](#tags)                                                       |
+| [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1307,7 +1307,7 @@ own), ADR-0008 (the screens read and change the tags through the JSON API)
 
 ### US-100 — Tag many collections at once
 
-**In progress 🚧** — As the owner, I select several collections and tag them together, so organizing a
+**Done ✅** — As the owner, I select several collections and tag them together, so organizing a
 shelf of guide books does not take a visit to each one's page.
 
 **Acceptance criteria:** The collections selected on the Collections page (US-97) or on the trip
