@@ -196,11 +196,7 @@ impl Listed {
     }
 
     fn mapped(&self) -> Mapped {
-        if self.trips.is_empty() && !self.collections.is_empty() {
-            Mapped::collections(&self.collections)
-        } else {
-            Mapped::trips(&self.trips)
-        }
+        Mapped::of(&self.trips, &self.collections)
     }
 
     /// How many of each kind on match.

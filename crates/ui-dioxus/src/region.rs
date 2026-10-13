@@ -2,9 +2,9 @@
 //! US-63): the trips the filters match, drawn as a heat map — or, zoomed
 //! in, as their tracks (US-73). With "Filter to map" ticked, its visible
 //! area is the region (US-92): the list narrows to trips whose stored
-//! bounding box overlaps it, and follows every pan and zoom. On the
-//! Collections tab (US-87) the same goes for the listed collections' tracks,
-//! and the region narrows the collections.
+//! bounding box overlaps it, and follows every pan and zoom. The listed
+//! collections' tracks (US-87) are drawn with the trips, each kind in its
+//! line style (US-90), and the region narrows the collections too.
 //!
 //! The map itself is Leaflet, reached through `interop`; this module is the
 //! Rust half — what to hand the map, and what to do with the view it
@@ -156,8 +156,8 @@ fn RegionMap(
         MapSource::Trips => (trip_cache, trip_pending),
         MapSource::CollectionTracks => (collection_cache, collection_pending),
     };
-    // Which lines are drawn, so a click opens the right page and lines the
-    // list no longer holds are not left up while others load.
+    // Which lines are drawn, so lines the list no longer holds are not left
+    // up while others load.
     let mut drawn = use_signal(|| None::<DrawnLines>);
     // One channel for the life of this component. `use_future` runs once, so
     // the re-render each new region causes — the filters change, the list
@@ -176,9 +176,8 @@ fn RegionMap(
                         filters.write().bbox = region;
                     }
                 }
-                Ok(RegionEvent::Open(id)) => {
-                    let source = drawn.peek().as_ref().map_or(MapSource::Trips, |d| d.source);
-                    navigator().push(route_for(source, id));
+                Ok(RegionEvent::Open(line)) => {
+                    navigator().push(route_for(line.source, line.id));
                 }
                 Err(err) => {
                     dioxus::logger::tracing::error!("the region map stopped reporting: {err}");
@@ -205,24 +204,29 @@ fn RegionMap(
         let marks = heat::marks(items).also_fitting(&mapped.also_fit);
         match viewport() {
             Some(view) if trip_lines::shows_lines(&view) => {
-                let (cache, mut pending) = tracks_of(mapped.source);
-                let ids: Vec<i64> = trip_lines::in_view(items, &view)
-                    .iter()
-                    .map(|item| item.id)
-                    .collect();
-                let missing = cache.read().missing(&ids);
-                if !missing.is_empty() {
+                let in_view = trip_lines::in_view(items, &view);
+                // Each source's tracks not read yet, asked for in one
+                // request of its own.
+                let mut waiting = false;
+                for source in SOURCES {
+                    let (cache, mut pending) = tracks_of(source);
+                    let ids: Vec<i64> = in_view
+                        .iter()
+                        .filter(|item| item.source() == source)
+                        .map(|item| item.id)
+                        .collect();
+                    let missing = cache.read().missing(&ids);
+                    if missing.is_empty() {
+                        continue;
+                    }
+                    waiting = true;
                     let request = trip_lines::to_request(&missing, &pending.peek());
                     if !request.is_empty() {
                         pending.write().extend(&request);
-                        spawn(fetch_tracks(
-                            archive(),
-                            mapped.source,
-                            cache,
-                            pending,
-                            request,
-                        ));
+                        spawn(fetch_tracks(archive(), source, cache, pending, request));
                     }
+                }
+                if waiting {
                     if outlived(drawn.peek().as_ref(), &mapped) {
                         drawn.set(None);
                         lined.set(None);
@@ -230,11 +234,25 @@ fn RegionMap(
                     }
                     return;
                 }
-                let lines = trip_lines::lines(items, &cache.read().tracks(&ids), &marks);
+                let (trip_tracks, collection_tracks) = (trip_cache.read(), collection_cache.read());
+                let tracks: Vec<_> = in_view
+                    .iter()
+                    .filter_map(|item| {
+                        let cache = match item.source() {
+                            MapSource::Trips => &trip_tracks,
+                            MapSource::CollectionTracks => &collection_tracks,
+                        };
+                        Some((item.source(), cache.get(item.id)?))
+                    })
+                    .collect();
+                let lines = trip_lines::lines(items, &tracks, &marks);
                 lined.set(Some(trip_lines::activities(items, &lines)));
                 drawn.set(Some(DrawnLines {
-                    source: mapped.source,
-                    ids: lines.lines.iter().map(|line| line.id).collect(),
+                    keys: lines
+                        .lines
+                        .iter()
+                        .map(|line| (line.source, line.id))
+                        .collect(),
                 }));
                 interop::draw_trip_lines(&map, &lines);
             }
@@ -248,7 +266,7 @@ fn RegionMap(
 
     // The sign shows while lines wait on the archive, not while marks do.
     let busy = viewport().is_some_and(|view| trip_lines::shows_lines(&view))
-        && [MapSource::Trips, MapSource::CollectionTracks]
+        && SOURCES
             .into_iter()
             .any(|source| !tracks_of(source).1.read().is_empty());
 
@@ -264,23 +282,24 @@ fn RegionMap(
     }
 }
 
-/// The lines on the map: whose they are, and which.
+/// Where the map reads tracks from (US-87, US-90).
+const SOURCES: [MapSource; 2] = [MapSource::Trips, MapSource::CollectionTracks];
+
+/// The lines on the map: whose they are.
 #[derive(Debug, Clone, PartialEq)]
 struct DrawnLines {
-    source: MapSource,
-    ids: Vec<i64>,
+    keys: Vec<(MapSource, i64)>,
 }
 
-/// Whether the lines drawn are of something `mapped` no longer holds — the
-/// other tab's, or a trip the list has dropped — so they should not stay up
-/// while the tracks now in view load.
+/// Whether the lines drawn are of something `mapped` no longer holds — a
+/// kind switched off, or a trip the list has dropped — so they should not
+/// stay up while the tracks now in view load.
 fn outlived(drawn: Option<&DrawnLines>, mapped: &Mapped) -> bool {
     drawn.is_some_and(|drawn| {
-        drawn.source != mapped.source
-            || drawn
-                .ids
-                .iter()
-                .any(|id| !mapped.items.iter().any(|item| item.id == *id))
+        drawn
+            .keys
+            .iter()
+            .any(|key| !mapped.items.iter().any(|item| item.key() == *key))
     })
 }
 

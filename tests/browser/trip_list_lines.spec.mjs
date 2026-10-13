@@ -230,3 +230,40 @@ test("a kind switched off takes its lines off while the new ones load (US-90)", 
     await request.delete(`/api/trips/${plannedId}`);
   }
 });
+
+test("recorded and planned trips are drawn together, each in its line style (US-90)", async ({
+  page,
+  request,
+}) => {
+  const tag = `styles${Math.random().toString(36).slice(2, 8)}`;
+  await ownTrip(request, `${tag} Recorded`, "hiking");
+  const planned = await request.post("/api/import", {
+    maxRedirects: 0,
+    multipart: {
+      gpx: { name: "track.gpx", mimeType: "application/gpx+xml", buffer: UNTIMED_GPX },
+      name: `${tag} Planned`,
+      kind: "planned",
+    },
+  });
+  expect(planned.status()).toBe(303);
+  const plannedId = Number(planned.headers()["location"].replace("/app/trips/", ""));
+  try {
+    await page.goto(`${listOf(tag)}&kind=recorded%2Cplanned`);
+    await expect(lines(page)).toHaveCount(2);
+
+    // Solid for the recorded walk, dashed for the planned one.
+    const dashes = await lines(page).evaluateAll((paths) =>
+      paths.map((path) => path.getAttribute("stroke-dasharray")).sort(),
+    );
+    expect(dashes).toEqual(["8 6", null]);
+
+    // A click on the planned line opens the planned trip.
+    const dashed = page.locator('#region-map .trip-line[stroke-dasharray="8 6"]');
+    await page.locator("#region-map").scrollIntoViewIfNeeded();
+    const at = await onTheLine(dashed);
+    await page.mouse.click(at.x, at.y);
+    await expect(page).toHaveURL(new RegExp(`/app/trips/${plannedId}$`));
+  } finally {
+    await request.delete(`/api/trips/${plannedId}`);
+  }
+});

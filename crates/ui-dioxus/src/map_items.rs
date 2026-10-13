@@ -1,13 +1,18 @@
-//! What the trip list's map draws, whichever tab is showing: the matching
-//! trips (US-63/73), or the listed collections' tracks (US-87). The marks,
-//! the lines and the legend are worked out the same way for both — the views
-//! are shared, the records are not (ADR-0028).
+//! What the trip list's map draws: the matching trips (US-63/73) and the
+//! listed collections' tracks (US-87), together (US-90). The marks, the
+//! lines and the legend are worked out the same way for all of them — the
+//! views are shared, the records are not (ADR-0028).
 
+use serde::{Deserialize, Serialize};
 use trip_archive_types::{ActivityType, BoundingBox, CollectionSummary, TripSummary};
 
-/// What the map's items are, so their tracks are read from the right place
-/// and a click on a line opens the right page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::kinds::Kind;
+
+/// Where an item's track is read from and which page a click on its line
+/// opens: a trip and a collection track may share an id, so the two are
+/// never told apart by it alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MapSource {
     Trips,
     CollectionTracks,
@@ -16,6 +21,8 @@ pub enum MapSource {
 /// One trip or collection track on the map.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapItem {
+    /// Which kind lists it, and so how its line is drawn (US-90).
+    pub kind: Kind,
     pub id: i64,
     pub name: String,
     pub activity_type: ActivityType,
@@ -24,15 +31,29 @@ pub struct MapItem {
     pub bbox: Option<BoundingBox>,
 }
 
-/// Everything the map shows for one tab's list.
+impl MapItem {
+    pub fn source(&self) -> MapSource {
+        match self.kind {
+            Kind::Recorded | Kind::Planned => MapSource::Trips,
+            Kind::Collections => MapSource::CollectionTracks,
+        }
+    }
+
+    /// What tells it apart from every other item on the map.
+    pub fn key(&self) -> (MapSource, i64) {
+        (self.source(), self.id)
+    }
+}
+
+/// Everything the map shows for the list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mapped {
-    pub source: MapSource,
-    /// In list order, which the lines' shades follow (US-72).
+    /// In list order — the trips, then each listed collection's tracks —
+    /// which the lines' shades follow (US-72).
     pub items: Vec<MapItem>,
     /// `[lat, lon]` points the map is fitted to besides the items' marks:
-    /// the corners around each collection's waypoints, so "Fit to
-    /// collections" takes them in too.
+    /// the corners around each collection's waypoints, so fitting takes
+    /// them in too.
     pub also_fit: Vec<[f64; 2]>,
 }
 
@@ -48,6 +69,7 @@ impl From<&TripSummary> for MapItem {
             _ => None,
         };
         MapItem {
+            kind: Kind::of_trip(trip.trip_kind),
             id: trip.id,
             name: trip.name.clone(),
             activity_type: trip.activity_type,
@@ -57,22 +79,15 @@ impl From<&TripSummary> for MapItem {
 }
 
 impl Mapped {
-    /// The trips the filters match.
-    pub fn trips(trips: &[TripSummary]) -> Self {
-        Mapped {
-            source: MapSource::Trips,
-            items: trips.iter().map(MapItem::from).collect(),
-            also_fit: Vec::new(),
-        }
-    }
-
-    /// Every track of the listed collections, collection by collection in
-    /// list order, and the corners around their waypoints.
-    pub fn collections(collections: &[CollectionSummary]) -> Self {
-        let items = collections
+    /// The matching trips, then every track of the listed collections —
+    /// collection by collection in list order — and the corners around
+    /// their waypoints.
+    pub fn of(trips: &[TripSummary], collections: &[CollectionSummary]) -> Self {
+        let tracks = collections
             .iter()
             .flat_map(|collection| &collection.tracks)
             .map(|track| MapItem {
+                kind: Kind::Collections,
                 id: track.id,
                 name: track.name.clone(),
                 activity_type: track.activity_type,
@@ -82,16 +97,14 @@ impl Mapped {
                     max_lat: track.max_lat,
                     max_lon: track.max_lon,
                 }),
-            })
-            .collect();
+            });
         let also_fit = collections
             .iter()
             .filter_map(|collection| collection.waypoint_bounds)
             .flat_map(|[west, south, east, north]| [[south, west], [north, east]])
             .collect();
         Mapped {
-            source: MapSource::CollectionTracks,
-            items,
+            items: trips.iter().map(MapItem::from).chain(tracks).collect(),
             also_fit,
         }
     }
@@ -158,12 +171,16 @@ mod tests {
 
     #[test]
     fn a_trip_is_drawn_by_its_bounding_box() {
-        let mapped = Mapped::trips(&[a_trip(4, Some([59.0, 10.0, 60.0, 11.0])), a_trip(5, None)]);
+        let mapped = Mapped::of(
+            &[a_trip(4, Some([59.0, 10.0, 60.0, 11.0])), a_trip(5, None)],
+            &[],
+        );
 
-        assert_eq!(mapped.source, MapSource::Trips);
+        assert_eq!(mapped.items[0].source(), MapSource::Trips);
         assert_eq!(
             mapped.items[0],
             MapItem {
+                kind: Kind::Recorded,
                 id: 4,
                 name: "Trip 4".to_string(),
                 activity_type: ActivityType::Hiking,
@@ -181,18 +198,24 @@ mod tests {
 
     #[test]
     fn us87_every_track_of_every_listed_collection_is_drawn_in_list_order() {
-        let mapped = Mapped::collections(&[
-            a_collection(
-                vec![
-                    a_track(3, ActivityType::Cycling),
-                    a_track(1, ActivityType::Unknown),
-                ],
-                None,
-            ),
-            a_collection(vec![a_track(2, ActivityType::Hiking)], None),
-        ]);
+        let mapped = Mapped::of(
+            &[],
+            &[
+                a_collection(
+                    vec![
+                        a_track(3, ActivityType::Cycling),
+                        a_track(1, ActivityType::Unknown),
+                    ],
+                    None,
+                ),
+                a_collection(vec![a_track(2, ActivityType::Hiking)], None),
+            ],
+        );
 
-        assert_eq!(mapped.source, MapSource::CollectionTracks);
+        assert!(mapped
+            .items
+            .iter()
+            .all(|item| item.source() == MapSource::CollectionTracks));
         let drawn: Vec<_> = mapped
             .items
             .iter()
@@ -219,12 +242,42 @@ mod tests {
 
     #[test]
     fn us87_fitting_to_collections_takes_in_their_waypoints() {
-        let mapped = Mapped::collections(&[
-            a_collection(vec![a_track(1, ActivityType::Hiking)], None),
-            // Waypoints alone: nothing to mark, still something to fit to.
-            a_collection(Vec::new(), Some([9.17, 46.49, 9.84, 46.58])),
-        ]);
+        let mapped = Mapped::of(
+            &[],
+            &[
+                a_collection(vec![a_track(1, ActivityType::Hiking)], None),
+                // Waypoints alone: nothing to mark, still something to fit to.
+                a_collection(Vec::new(), Some([9.17, 46.49, 9.84, 46.58])),
+            ],
+        );
 
         assert_eq!(mapped.also_fit, [[46.49, 9.17], [46.58, 9.84]]);
+    }
+
+    #[test]
+    fn us90_trips_and_collection_tracks_are_mapped_together_trips_first() {
+        let planned = TripSummary {
+            trip_kind: TripKind::Planned,
+            ..a_trip(7, Some([59.0, 10.0, 60.0, 11.0]))
+        };
+        let mapped = Mapped::of(
+            &[a_trip(4, Some([59.0, 10.0, 60.0, 11.0])), planned],
+            &[a_collection(vec![a_track(7, ActivityType::Cycling)], None)],
+        );
+
+        let drawn: Vec<_> = mapped
+            .items
+            .iter()
+            .map(|item| (item.kind, item.key()))
+            .collect();
+        assert_eq!(
+            drawn,
+            [
+                (Kind::Recorded, (MapSource::Trips, 4)),
+                (Kind::Planned, (MapSource::Trips, 7)),
+                (Kind::Collections, (MapSource::CollectionTracks, 7)),
+            ],
+            "a trip and a track sharing an id are told apart"
+        );
     }
 }

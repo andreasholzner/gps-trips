@@ -136,7 +136,14 @@ fn each_line_is_its_trips_shade_in_list_order_over_every_matching_trip() {
         hike(3, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[&a_track(2), &a_track(3)], &heat::marks(&trips));
+    let drawn = lines(
+        &trips,
+        &[
+            (MapSource::Trips, &a_track(2)),
+            (MapSource::Trips, &a_track(3)),
+        ],
+        &heat::marks(&trips),
+    );
 
     let drawn: Vec<_> = drawn
         .lines
@@ -150,7 +157,11 @@ fn each_line_is_its_trips_shade_in_list_order_over_every_matching_trip() {
 fn a_line_is_named_after_its_trip_and_follows_its_track() {
     let trips = [hike(7, [10.0, 59.0, 11.0, 60.0])];
 
-    let drawn = lines(&trips, &[&a_track(7)], &heat::marks(&trips));
+    let drawn = lines(
+        &trips,
+        &[(MapSource::Trips, &a_track(7))],
+        &heat::marks(&trips),
+    );
 
     assert_eq!(drawn.lines[0].name, "Trip 7");
     assert_eq!(drawn.lines[0].points, vec![[59.9, 10.7], [60.0, 10.8]]);
@@ -163,7 +174,11 @@ fn a_track_that_could_not_be_read_is_left_off() {
         hike(2, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[&a_track(2)], &heat::marks(&trips));
+    let drawn = lines(
+        &trips,
+        &[(MapSource::Trips, &a_track(2))],
+        &heat::marks(&trips),
+    );
 
     assert_eq!(drawn.lines.len(), 1);
     assert_eq!(drawn.lines[0].id, 2);
@@ -176,7 +191,11 @@ fn fit_to_trips_still_covers_every_matching_trip() {
         hike(2, [10.0, 59.0, 12.0, 61.0]),
     ];
 
-    let drawn = lines(&trips, &[&a_track(2)], &heat::marks(&trips));
+    let drawn = lines(
+        &trips,
+        &[(MapSource::Trips, &a_track(2))],
+        &heat::marks(&trips),
+    );
 
     assert_eq!(drawn.fit, vec![[1.0, 1.0], [60.0, 11.0]]);
 }
@@ -188,7 +207,11 @@ fn the_legend_names_the_activities_of_the_lines_drawn() {
         hike(2, [10.0, 59.0, 11.0, 60.0]),
     ];
 
-    let drawn = lines(&trips, &[&a_track(2)], &heat::marks(&trips));
+    let drawn = lines(
+        &trips,
+        &[(MapSource::Trips, &a_track(2))],
+        &heat::marks(&trips),
+    );
 
     assert_eq!(activities(&trips, &drawn), [ActivityType::Hiking]);
 }
@@ -209,15 +232,17 @@ fn a_track_the_archive_did_not_send_is_not_asked_for_again() {
     cache.store(&[1, 2], vec![a_track(1)]);
 
     assert!(cache.missing(&[1, 2]).is_empty());
-    assert_eq!(ids_of(&cache.tracks(&[1, 2])), [1]);
+    assert!(cache.get(1).is_some());
+    assert_eq!(cache.get(2), None);
 }
 
 #[test]
-fn the_cache_hands_back_only_the_tracks_in_view() {
+fn the_cache_hands_back_a_track_it_read() {
     let mut cache = TrackCache::default();
     cache.store(&[1, 2, 3], vec![a_track(1), a_track(2), a_track(3)]);
 
-    assert_eq!(ids_of(&cache.tracks(&[3, 1])), [3, 1]);
+    assert_eq!(cache.get(3), Some(&a_track(3)));
+    assert_eq!(cache.get(4), None, "never asked for");
 }
 
 #[test]
@@ -225,10 +250,6 @@ fn a_track_already_asked_for_is_not_asked_for_again_while_it_loads() {
     let pending = std::collections::HashSet::from([2, 3]);
 
     assert_eq!(to_request(&[1, 2, 3, 4], &pending), [1, 4]);
-}
-
-fn ids_of(tracks: &[&TripTrack]) -> Vec<i64> {
-    tracks.iter().map(|track| track.id).collect()
 }
 
 #[test]
@@ -239,4 +260,71 @@ fn us87_zoomed_in_the_map_is_still_fitted_to_what_the_list_adds() {
     let drawn = lines(&trips, &[], &marks);
 
     assert_eq!(drawn.fit, vec![[1.0, 1.0], [46.5, 9.2]]);
+}
+
+// ── US-90: every kind on one map ─────────────────────────────────────────────
+
+fn of_kind(kind: crate::kinds::Kind, id: i64) -> MapItem {
+    MapItem {
+        kind,
+        ..hike(id, [10.0, 59.0, 11.0, 60.0])
+    }
+}
+
+#[test]
+fn us90_each_line_is_drawn_in_its_kinds_style() {
+    use crate::kinds::Kind;
+    let items = [
+        of_kind(Kind::Recorded, 1),
+        of_kind(Kind::Planned, 2),
+        of_kind(Kind::Collections, 3),
+    ];
+
+    let drawn = lines(
+        &items,
+        &[
+            (MapSource::Trips, &a_track(1)),
+            (MapSource::Trips, &a_track(2)),
+            (MapSource::CollectionTracks, &a_track(3)),
+        ],
+        &heat::marks(&items),
+    );
+
+    let styles: Vec<_> = drawn
+        .lines
+        .iter()
+        .map(|line| (line.source, line.dash))
+        .collect();
+    assert_eq!(
+        styles,
+        [
+            (MapSource::Trips, Kind::Recorded.dash()),
+            (MapSource::Trips, Kind::Planned.dash()),
+            (MapSource::CollectionTracks, Kind::Collections.dash()),
+        ]
+    );
+}
+
+#[test]
+fn us90_a_trips_track_is_not_a_collection_tracks_with_the_same_id() {
+    use crate::kinds::Kind;
+    let items = [of_kind(Kind::Recorded, 7), of_kind(Kind::Collections, 7)];
+    let track = TripTrack {
+        id: 7,
+        coordinates: vec![[9.0, 46.0], [9.1, 46.1]],
+    };
+
+    let drawn = lines(
+        &items,
+        &[(MapSource::CollectionTracks, &track)],
+        &heat::marks(&items),
+    );
+
+    assert_eq!(drawn.lines.len(), 1);
+    assert_eq!(drawn.lines[0].source, MapSource::CollectionTracks);
+    assert_eq!(
+        activities(&items, &drawn),
+        [ActivityType::Hiking],
+        "one line, one activity"
+    );
 }

@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::kinds::{Kind, Kinds};
+use crate::map_items::MapItem;
 use crate::test_support::render;
 use trip_archive_types::{TripKind, TripSummary};
 
@@ -148,7 +149,7 @@ fn the_map_names_the_colors_of_the_activities_it_marks() {
     let html = render(|| {
         let filters = Signal::new(Filters::default());
         let trips = vec![a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)];
-        rsx! { RegionFilter { filters, mapped: Some(Mapped::trips(&trips)) } }
+        rsx! { RegionFilter { filters, mapped: Some(Mapped::of(&trips, &[])) } }
     });
 
     assert!(html.contains("map-legend"), "{html}");
@@ -162,7 +163,10 @@ fn the_map_names_the_colors_of_the_activities_it_marks() {
 fn zoomed_in_the_legend_names_the_activities_of_the_lines_drawn() {
     // US-73: a kayak trip marked elsewhere but with no line in view is
     // not on the map, so not in its legend.
-    let trips = Mapped::trips(&[a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)]);
+    let trips = Mapped::of(
+        &[a_trip(ActivityType::Hiking), a_trip(ActivityType::Kayaking)],
+        &[],
+    );
     let trips = &trips.items[..];
 
     assert_eq!(
@@ -229,54 +233,51 @@ fn while_the_tracks_load_the_map_says_so() {
 }
 
 // US-87: while the tracks in view load, the map keeps what it shows — unless
-// that is lines the list no longer holds, after a tab switch or a narrowed
-// list.
-fn mapped(source: MapSource, ids: &[i64]) -> Mapped {
-    let mut trips = Mapped::trips(
-        &ids.iter()
-            .map(|&id| TripSummary {
-                id,
-                ..a_trip(ActivityType::Hiking)
-            })
-            .collect::<Vec<_>>(),
-    );
-    trips.source = source;
-    trips
+// that is lines the list no longer holds, after a kind is switched off or the
+// list narrowed.
+fn mapped(ids: &[i64], tracks: &[i64]) -> Mapped {
+    let trips: Vec<TripSummary> = ids
+        .iter()
+        .map(|&id| TripSummary {
+            id,
+            ..a_trip(ActivityType::Hiking)
+        })
+        .collect();
+    let mut mapped = Mapped::of(&trips, &[]);
+    let template = mapped.items[0].clone();
+    mapped.items.extend(tracks.iter().map(|&id| MapItem {
+        kind: Kind::Collections,
+        id,
+        ..template.clone()
+    }));
+    mapped
+}
+
+fn drawn(keys: &[(MapSource, i64)]) -> DrawnLines {
+    DrawnLines {
+        keys: keys.to_vec(),
+    }
 }
 
 #[test]
 fn us87_lines_of_what_the_list_still_holds_are_kept_while_more_load() {
-    let drawn = DrawnLines {
-        source: MapSource::Trips,
-        ids: vec![1, 2],
-    };
+    let drawn = drawn(&[(MapSource::Trips, 1), (MapSource::CollectionTracks, 2)]);
 
-    assert!(!outlived(
-        Some(&drawn),
-        &mapped(MapSource::Trips, &[1, 2, 3])
-    ));
-    assert!(!outlived(None, &mapped(MapSource::Trips, &[1])));
+    assert!(!outlived(Some(&drawn), &mapped(&[1, 3], &[2])));
+    assert!(!outlived(None, &mapped(&[1], &[])));
 }
 
 #[test]
-fn us87_lines_of_another_tab_are_taken_off_while_its_own_load() {
-    let drawn = DrawnLines {
-        source: MapSource::Trips,
-        ids: vec![1],
-    };
+fn us90_lines_of_a_kind_switched_off_are_taken_off_while_the_rest_load() {
+    // Trip 1 and collection track 1 share an id; the track is gone.
+    let drawn = drawn(&[(MapSource::Trips, 1), (MapSource::CollectionTracks, 1)]);
 
-    assert!(outlived(
-        Some(&drawn),
-        &mapped(MapSource::CollectionTracks, &[1])
-    ));
+    assert!(outlived(Some(&drawn), &mapped(&[1], &[])));
 }
 
 #[test]
 fn lines_of_trips_no_longer_listed_are_taken_off_while_the_new_ones_load() {
-    let drawn = DrawnLines {
-        source: MapSource::Trips,
-        ids: vec![1, 2],
-    };
+    let drawn = drawn(&[(MapSource::Trips, 1), (MapSource::Trips, 2)]);
 
-    assert!(outlived(Some(&drawn), &mapped(MapSource::Trips, &[2, 3])));
+    assert!(outlived(Some(&drawn), &mapped(&[2, 3], &[])));
 }

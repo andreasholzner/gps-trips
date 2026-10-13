@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::heat::HeatMarks;
+use crate::map_items::MapSource;
 use crate::trip_lines::{TripLines, Viewport};
 
 /// Coordinate decimals kept in the `bbox` parameter. Six is ~10 cm — far
@@ -88,6 +89,8 @@ const REGION_MAP_SCRIPT: &str = r##"
     // Thinner than a share's lines: a dense region draws many at once.
     const LINE_WEIGHT = 3;
     const HIGHLIGHTED_WEIGHT = 6;
+    // How wide a line is to the pointer (US-90).
+    const HIT_WEIGHT = 14;
     let points = [];
     const fitToMarks = () => {
       if (points.length === 0) return;
@@ -148,21 +151,36 @@ const REGION_MAP_SCRIPT: &str = r##"
         points = message.lines.fit;
         for (const line of message.lines.lines) {
           if (line.points.length === 0) continue;
+          // Each kind in its line style (US-90): solid, dashed or dotted.
+          // The dots are dashes shorter than the line is wide, rounded by
+          // its caps. Drawn only: the pointer is taken by the path below.
           const path = L.polyline(line.points, {
             color: line.color,
             weight: LINE_WEIGHT,
+            dashArray: line.dash,
+            lineCap: "round",
+            interactive: false,
             className: "trip-line",
+          }).addTo(lines);
+          // An unseen, wider path along the same track takes the pointer:
+          // a dashed or dotted line is hit only where it is painted, and a
+          // thin one is hard to touch at all.
+          const hit = L.polyline(line.points, {
+            weight: HIT_WEIGHT,
+            opacity: 0,
+            className: "trip-line-hit",
           }).addTo(lines);
           // A node, not the string: Leaflet puts a string tooltip in as
           // HTML, and a trip's name comes from a GPX or a Komoot title.
-          path.bindTooltip(document.createTextNode(line.name), { sticky: true });
-          path.on("click", () => report({ open: line.id }));
+          hit.bindTooltip(document.createTextNode(line.name), { sticky: true });
+          hit.on("click", () => report({ open: { source: line.source, id: line.id } }));
           // The line under the pointer stands out above the others.
-          path.on("mouseover", () => {
+          hit.on("mouseover", () => {
             path.setStyle({ weight: HIGHLIGHTED_WEIGHT });
             path.bringToFront();
+            hit.bringToFront();
           });
-          path.on("mouseout", () => path.setStyle({ weight: LINE_WEIGHT }));
+          hit.on("mouseout", () => path.setStyle({ weight: LINE_WEIGHT }));
         }
         fitOnce();
       }
@@ -185,8 +203,16 @@ enum MapMessage<'a> {
 pub enum RegionEvent {
     /// Where the map is looking, once it has settled (US-73).
     View(Viewport),
-    /// A trip's line was clicked or tapped: open the trip (US-73).
-    Open(i64),
+    /// A line was clicked or tapped: open its trip (US-73) or collection
+    /// track (US-87).
+    Open(Opened),
+}
+
+/// Whose line was clicked: a trip and a collection track may share an id.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct Opened {
+    pub source: MapSource,
+    pub id: i64,
 }
 
 /// Start the region map on the region the filters already hold (US-92).
@@ -281,10 +307,12 @@ mod tests {
     fn the_map_is_handed_the_lines_to_draw_in_place_of_the_marks() {
         // US-73.
         let lines = TripLines {
-            lines: vec![crate::interop::OverviewLine {
+            lines: vec![crate::trip_lines::RegionLine {
+                source: MapSource::CollectionTracks,
                 id: 7,
                 name: "Ridge".to_string(),
                 color: "#b2182b",
+                dash: Some("1 7"),
                 points: vec![[60.0, 11.0]],
             }],
             fit: vec![[60.0, 11.0]],
@@ -293,7 +321,14 @@ mod tests {
         assert_eq!(
             serde_json::to_value(MapMessage::Lines(&lines)).unwrap(),
             serde_json::json!({ "lines": {
-                "lines": [{ "id": 7, "name": "Ridge", "color": "#b2182b", "points": [[60.0, 11.0]] }],
+                "lines": [{
+                    "source": "collection_tracks",
+                    "id": 7,
+                    "name": "Ridge",
+                    "color": "#b2182b",
+                    "dash": "1 7",
+                    "points": [[60.0, 11.0]],
+                }],
                 "fit": [[60.0, 11.0]],
             } })
         );
@@ -310,7 +345,13 @@ mod tests {
                 bounds: [1.0, 2.0, 3.0, 4.0]
             })
         );
-        assert_eq!(read(serde_json::json!({ "open": 7 })), RegionEvent::Open(7));
+        assert_eq!(
+            read(serde_json::json!({ "open": { "source": "collection_tracks", "id": 7 } })),
+            RegionEvent::Open(Opened {
+                source: MapSource::CollectionTracks,
+                id: 7
+            })
+        );
     }
 
     #[test]

@@ -14,8 +14,7 @@ use trip_archive_types::{ActivityType, TripTrack};
 use crate::activity_color;
 use crate::config::trip_map::LINES_FROM_ZOOM;
 use crate::heat::HeatMarks;
-use crate::interop::OverviewLine;
-use crate::map_items::MapItem;
+use crate::map_items::{MapItem, MapSource};
 use crate::track;
 
 /// Where the map is looking once it has settled: its zoom, and the visible
@@ -29,13 +28,28 @@ pub struct Viewport {
 }
 
 /// What the map draws in place of the heat marks: the lines, and where the
-/// matching trips are, so "Fit to trips" still fits to all of them rather
+/// matching items are, so "Fit to items" still fits to all of them rather
 /// than to the few in view.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TripLines {
-    pub lines: Vec<OverviewLine>,
+    pub lines: Vec<RegionLine>,
     /// `[lat, lon]` of every matching trip's heat mark.
     pub fit: Vec<[f64; 2]>,
+}
+
+/// One trip's or collection track's line on the region map.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RegionLine {
+    /// With `id`, what a click on it opens.
+    pub source: MapSource,
+    pub id: i64,
+    pub name: String,
+    /// Its shade of its activity's color (US-72, US-75).
+    pub color: &'static str,
+    /// Its kind's line style (US-90): `None` for a solid line.
+    pub dash: Option<&'static str>,
+    /// `[lat, lon]`, the order Leaflet takes.
+    pub points: Vec<[f64; 2]>,
 }
 
 /// Whether the map is zoomed in far enough to draw lines.
@@ -107,11 +121,9 @@ impl TrackCache {
         }
     }
 
-    /// The tracks of `ids` that were read, in their order.
-    pub fn tracks(&self, ids: &[i64]) -> Vec<&TripTrack> {
-        ids.iter()
-            .filter_map(|id| self.known.get(id)?.as_ref())
-            .collect()
+    /// Track `id`, if it was read.
+    pub fn get(&self, id: i64) -> Option<&TripTrack> {
+        self.known.get(&id)?.as_ref()
     }
 }
 
@@ -126,21 +138,30 @@ pub fn to_request(missing: &[i64], pending: &HashSet<i64>) -> Vec<i64> {
         .collect()
 }
 
-/// One line per trip whose track was read, in list order, each in its shade
-/// of its activity's color (US-72, US-75). The shades are taken over every
-/// matching trip, not only those in view, so panning recolors nothing; and
-/// `tracks` lacks those that could not be read, which shifts no other color.
-pub fn lines(trips: &[MapItem], tracks: &[&TripTrack], marks: &HeatMarks) -> TripLines {
-    let colors = activity_color::in_list_order(trips.iter().map(|trip| trip.activity_type));
-    let lines = trips
+/// One line per item whose track was read, in list order, each in its
+/// shade of its activity's color (US-72, US-75) and its kind's line style
+/// (US-90). The shades are taken over every matching item, not only those in
+/// view, so panning recolors nothing; and `tracks` lacks those that could
+/// not be read, which shifts no other color.
+pub fn lines(
+    items: &[MapItem],
+    tracks: &[(MapSource, &TripTrack)],
+    marks: &HeatMarks,
+) -> TripLines {
+    let colors = activity_color::in_list_order(items.iter().map(|item| item.activity_type));
+    let lines = items
         .iter()
         .zip(colors)
-        .filter_map(|(trip, color)| {
-            let track = tracks.iter().find(|track| track.id == trip.id)?;
-            Some(OverviewLine {
-                id: trip.id,
-                name: trip.name.clone(),
+        .filter_map(|(item, color)| {
+            let (_, track) = tracks
+                .iter()
+                .find(|(source, track)| (*source, track.id) == item.key())?;
+            Some(RegionLine {
+                source: item.source(),
+                id: item.id,
+                name: item.name.clone(),
                 color,
+                dash: item.kind.dash(),
                 points: track::lat_lon(&track.coordinates),
             })
         })
@@ -151,12 +172,17 @@ pub fn lines(trips: &[MapItem], tracks: &[&TripTrack], marks: &HeatMarks) -> Tri
     }
 }
 
-/// The activities of the trips that got a line, for the legend.
-pub fn activities(trips: &[MapItem], lines: &TripLines) -> Vec<ActivityType> {
-    trips
+/// The activities of the items that got a line, for the legend.
+pub fn activities(items: &[MapItem], lines: &TripLines) -> Vec<ActivityType> {
+    items
         .iter()
-        .filter(|trip| lines.lines.iter().any(|line| line.id == trip.id))
-        .map(|trip| trip.activity_type)
+        .filter(|item| {
+            lines
+                .lines
+                .iter()
+                .any(|line| (line.source, line.id) == item.key())
+        })
+        .map(|item| item.activity_type)
         .collect()
 }
 
