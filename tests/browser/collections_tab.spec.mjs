@@ -1,13 +1,15 @@
-// The trip list's Collections tab (US-87), driven as the owner drives it.
+// The trip list's Collections tab (US-87), and its selection (US-94), driven as
+// the owner drives them.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
-// **Real user events** — switching tabs, typing a search, reloading,
+// **Real user events** — switching tabs, ticking rows, typing a search, reloading,
 // panning, clicking a row or a line. **JS-interop rendering** — the map is
 // Leaflet's. What the tab renders is asserted in `crates/ui-dioxus`
 // (`list/collections_tests.rs`, `collection_table.rs`, `filter_bar.rs`,
 // `region.rs`), and what the archive answers in
 // `tests/it/us87_collections_tab.rs`.
 import { expect, signIn, test } from "./session.mjs";
+import { ownTrips } from "./trips.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +30,8 @@ const TAG = `book${Math.random().toString(36).slice(2, 8)}`;
 const created = [];
 
 const rows = (page) => page.locator("table tbody tr");
+const checked = (page) => page.locator("table tbody input[type=checkbox]:checked");
+const trip = ownTrips(test);
 const lines = (page) => page.locator("#region-map .trip-line");
 
 test.beforeEach(async ({ page }) => {
@@ -168,4 +172,35 @@ test("the region narrows the collections by their waypoints too, and the fit tak
   await expect(page).toHaveURL(/[?&]bbox=/);
   await expect(rows(page)).toHaveCount(1);
   await expect(page.getByText("No collections match your filters.")).toHaveCount(0);
+});
+
+test("the trips selected and the collections selected are kept apart, each waiting on the other tab (US-94)", async ({
+  page,
+  request,
+}) => {
+  // A word of this test's own: the tab's other tests list theirs under TAG.
+  const word = `${TAG}kept`;
+  await trip(request, `${word} Walk`);
+  await importCollection(request, COLLECTION_SINGLE_GPX, { name: `${word} Book` });
+  await page.goto(`/app/?q=${word}`);
+  await expect(rows(page)).toHaveCount(1);
+  await page.getByRole("checkbox", { name: "Select", exact: true }).check();
+  await expect(page.locator("#share-selected")).toHaveText("Share 1 selected…");
+
+  // On the Collections tab, nothing is selected yet.
+  await page.getByRole("button", { name: "Collections" }).click();
+  await expect(rows(page)).toHaveCount(1);
+  await expect(checked(page)).toHaveCount(0);
+  await expect(page.locator("#share-selected")).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Select", exact: true }).check();
+  await expect(page.locator("#share-selected")).toHaveText("Share 1 selected…");
+
+  // Back on the trips, theirs waited; and the collection's waits too.
+  await page.getByRole("button", { name: "Recorded" }).click();
+  await expect(rows(page)).toContainText(`${word} Walk`);
+  await expect(checked(page)).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Apply to 1 selected" })).toBeVisible();
+  await page.getByRole("button", { name: "Collections" }).click();
+  await expect(rows(page)).toContainText(`${word} Book`);
+  await expect(checked(page)).toHaveCount(1);
 });

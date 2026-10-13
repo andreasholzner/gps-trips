@@ -41,7 +41,7 @@ pub fn SharedCollectionTracks(token: String, overview: ShareOverview) -> Element
         .collect();
     rsx! {
         h1 { id: "share-title", "{heading}" }
-        SharedMap { token: token.clone(), tracks: tracks.clone(), collection: None::<i64> }
+        SharedMap { token: token.clone(), tracks: tracks.clone(), waypoints: None }
         TrackList { tracks, token }
     }
 }

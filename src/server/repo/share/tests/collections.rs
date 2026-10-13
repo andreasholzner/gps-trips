@@ -144,14 +144,26 @@ async fn us94_a_share_of_collections_reaches_every_track_and_waypoint_they_hold(
         list_shared_collection_waypoints(&db.pool, share, other)
             .await
             .unwrap(),
-        []
+        None
     );
     assert_eq!(
         list_shared_collection_waypoints(&db.pool, share, rondane)
             .await
             .unwrap()
-            .len(),
-        3
+            .map(|waypoints| waypoints.len()),
+        Some(3)
+    );
+    // Reached without waypoints is not the same as not reached.
+    sqlx::query("DELETE FROM waypoint WHERE collection_id = ?")
+        .bind(jotunheimen)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        list_shared_collection_waypoints(&db.pool, share, jotunheimen)
+            .await
+            .unwrap(),
+        Some(Vec::new())
     );
 }
 
@@ -211,7 +223,7 @@ async fn us94_shared_tracks_from_several_collections_reach_their_own_waypoints_o
         list_shared_collection_waypoints(&db.pool, share, rondane)
             .await
             .unwrap(),
-        []
+        None
     );
 
     let detail = shared_collection_track(&db.pool, share, r1)
@@ -223,14 +235,27 @@ async fn us94_shared_tracks_from_several_collections_reach_their_own_waypoints_o
     assert_eq!(detail.collection, None, "its collection is not shared");
     let track_waypoints = list_shared_track_waypoints(&db.pool, share, r1)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("reached");
     assert_eq!(names(&track_waypoints, |w| w.name.as_deref()), ["R1 hut"]);
     let r2 = track_ids(&db.pool, rondane).await[1];
     assert_eq!(
         list_shared_track_waypoints(&db.pool, share, r2)
             .await
             .unwrap(),
-        []
+        None
+    );
+    // Reached without waypoints is not the same as not reached.
+    sqlx::query("DELETE FROM waypoint WHERE collection_track_id = ?")
+        .bind(j1)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        list_shared_track_waypoints(&db.pool, share, j1)
+            .await
+            .unwrap(),
+        Some(Vec::new())
     );
 }
 

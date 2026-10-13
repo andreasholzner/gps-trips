@@ -302,6 +302,7 @@ async fn us94_shared_tracks_reach_themselves_and_their_waypoints_only() {
         format!("/api/collections/{tyrol}"),
         format!("/api/collections/{alps}/waypoints"),
         format!("/api/collection-tracks/{}", alps_tracks[1]),
+        format!("/api/collection-tracks/{}/waypoints", alps_tracks[1]),
         format!("/api/collection-tracks/{}/gpx", alps_tracks[2]),
     ] {
         assert_eq!(

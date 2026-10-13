@@ -4,6 +4,8 @@
 //! something that does not exist otherwise. The paths are the owner's, so
 //! the UI's client reads them unchanged through a share's client.
 
+use std::collections::HashSet;
+
 use axum::{
     extract::{Path, Query, State},
     response::Response,
@@ -104,10 +106,10 @@ async fn collection_waypoints(
     Extension(principal): Extension<Principal>,
     Path((_, id)): Path<(String, i64)>,
 ) -> Result<Json<Vec<SharedWaypoint>>, AppError> {
-    let id = covered_collection(&state, principal, id).await?;
-    Ok(Json(
-        repo::list_shared_collection_waypoints(&state.pool, share_id(principal)?, id).await?,
-    ))
+    repo::list_shared_collection_waypoints(&state.pool, share_id(principal)?, id)
+        .await?
+        .map(Json)
+        .ok_or(AppError::NotFound)
 }
 
 /// GET `/s/:token/api/collection-tracks?ids=…` — the positions of the
@@ -118,11 +120,12 @@ async fn tracks(
     Extension(principal): Extension<Principal>,
     Query(query): Query<TracksQuery>,
 ) -> Result<Json<Vec<TripTrack>>, AppError> {
-    let reached: Vec<i64> = repo::list_shared_collection_tracks(&state.pool, share_id(principal)?)
-        .await?
-        .into_iter()
-        .map(|track| track.id)
-        .collect();
+    let reached: HashSet<i64> =
+        repo::list_shared_collection_tracks(&state.pool, share_id(principal)?)
+            .await?
+            .into_iter()
+            .map(|track| track.id)
+            .collect();
     let ids: Vec<i64> = parse_ids(query.ids())?
         .into_iter()
         .filter(|id| reached.contains(id))
@@ -180,10 +183,10 @@ async fn track_waypoints(
     Extension(principal): Extension<Principal>,
     Path((_, id)): Path<(String, i64)>,
 ) -> Result<Json<Vec<SharedWaypoint>>, AppError> {
-    let id = covered_track(&state, principal, id).await?;
-    Ok(Json(
-        repo::list_shared_track_waypoints(&state.pool, share_id(principal)?, id).await?,
-    ))
+    repo::list_shared_track_waypoints(&state.pool, share_id(principal)?, id)
+        .await?
+        .map(Json)
+        .ok_or(AppError::NotFound)
 }
 
 /// The recipient's copy of a collection, field by field — so a field the

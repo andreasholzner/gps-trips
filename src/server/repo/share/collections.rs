@@ -177,40 +177,47 @@ pub async fn list_shared_waypoints(
     .await
 }
 
-/// The waypoints of collection `collection_id`, in file order, if
-/// `share_id` names it; empty otherwise.
+/// The waypoints of collection `collection_id`, in file order, or `None`
+/// if `share_id` does not name it.
 pub async fn list_shared_collection_waypoints(
     pool: &SqlitePool,
     share_id: i64,
     collection_id: i64,
-) -> Result<Vec<SharedWaypoint>, sqlx::Error> {
-    sqlx::query(&format!(
-        "SELECT {WAYPOINT_COLUMNS} FROM waypoint w \
-         JOIN share_collection sc ON sc.collection_id = w.collection_id AND sc.share_id = ? \
-         WHERE w.collection_id = ? ORDER BY w.position"
-    ))
-    .bind(share_id)
-    .bind(collection_id)
-    .map(|row: SqliteRow| shared_waypoint(&row))
-    .fetch_all(pool)
-    .await
+) -> Result<Option<Vec<SharedWaypoint>>, sqlx::Error> {
+    if !share_covers_collection(pool, share_id, collection_id).await? {
+        return Ok(None);
+    }
+    waypoints_where(pool, "w.collection_id = ?", collection_id)
+        .await
+        .map(Some)
 }
 
-/// The waypoints belonging to track `track_id`, in file order, if
-/// `share_id` reaches it; empty otherwise.
+/// The waypoints belonging to track `track_id`, in file order, or `None`
+/// if `share_id` does not reach it.
 pub async fn list_shared_track_waypoints(
     pool: &SqlitePool,
     share_id: i64,
     track_id: i64,
+) -> Result<Option<Vec<SharedWaypoint>>, sqlx::Error> {
+    if !share_covers_collection_track(pool, share_id, track_id).await? {
+        return Ok(None);
+    }
+    waypoints_where(pool, "w.collection_track_id = ?", track_id)
+        .await
+        .map(Some)
+}
+
+/// The waypoints matching `filter` on `id`, in file order. `filter` is one
+/// of this module's constants, never input.
+async fn waypoints_where(
+    pool: &SqlitePool,
+    filter: &str,
+    id: i64,
 ) -> Result<Vec<SharedWaypoint>, sqlx::Error> {
     sqlx::query(&format!(
-        "SELECT {WAYPOINT_COLUMNS} FROM waypoint w \
-         JOIN share_track_reach r \
-             ON r.collection_track_id = w.collection_track_id AND r.share_id = ? \
-         WHERE w.collection_track_id = ? ORDER BY w.position"
+        "SELECT {WAYPOINT_COLUMNS} FROM waypoint w WHERE {filter} ORDER BY w.position"
     ))
-    .bind(share_id)
-    .bind(track_id)
+    .bind(id)
     .map(|row: SqliteRow| shared_waypoint(&row))
     .fetch_all(pool)
     .await

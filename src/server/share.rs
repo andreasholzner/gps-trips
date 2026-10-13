@@ -82,11 +82,10 @@ pub async fn handle_create_share(
             repo::trips_exist(&state.pool, &body.trip_ids).await?,
         ),
         Named::Tags(tags) => {
-            tag_ids = repo::find_tag_ids(&state.pool, &tags).await?;
-            match &tag_ids {
-                Some(ids) => (ShareTarget::Tags(ids), true),
-                None => (ShareTarget::Tags(&[]), false),
-            }
+            tag_ids = repo::find_tag_ids(&state.pool, &tags)
+                .await?
+                .ok_or(AppError::NotFound)?;
+            (ShareTarget::Tags(&tag_ids), true)
         }
         Named::Collections => (
             ShareTarget::Collections(&body.collection_ids),

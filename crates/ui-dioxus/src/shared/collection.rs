@@ -71,7 +71,7 @@ pub fn SharedCollections(token: String, overview: ShareOverview) -> Element {
         .collect();
     rsx! {
         h1 { id: "share-title", "{heading}" }
-        SharedMap { token: token.clone(), tracks, collection: None::<i64> }
+        SharedMap { token: token.clone(), tracks, waypoints: None }
         div { class: "table-scroll",
             table { id: "shared-collections",
                 thead {
@@ -158,7 +158,17 @@ pub fn SharedCollectionView(token: String, id: i64, overview: ShareOverview) -> 
                             "{detail.description}"
                         }
                     }
-                    SharedMap { token: token.clone(), tracks: tracks.clone(), collection: Some(id) }
+                    // Drawn once its waypoints are read, so they are read once.
+                    match &*waypoints.read_unchecked() {
+                        Some((read_for, read)) if *read_for == id => rsx! {
+                            SharedMap {
+                                token: token.clone(),
+                                tracks: tracks.clone(),
+                                waypoints: Some(drawn(read.clone())),
+                            }
+                        },
+                        _ => rsx! {},
+                    }
                     TrackList { tracks, token: token.clone() }
                     match &*waypoints.read_unchecked() {
                         Some((read_for, Ok(waypoints))) if *read_for == id => rsx! {
@@ -184,18 +194,18 @@ pub fn SharedCollectionView(token: String, id: i64, overview: ShareOverview) -> 
     }
 }
 
-/// `tracks` and their waypoints on one map — collection `collection`'s, or
-/// every one the share reaches — with a click on a line opening its track's
-/// page under the share.
+/// `tracks` on one map with `waypoints` — or, without them, every waypoint
+/// the share reaches — and a click on a line opening its track's page under
+/// the share.
 #[component]
 pub fn SharedMap(
     token: String,
     tracks: Vec<CollectionTrackSummary>,
-    collection: Option<i64>,
+    waypoints: Option<Vec<MapWaypoint>>,
 ) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut handle = use_signal(|| None::<document::Eval>);
-    let _draw = use_resource(use_reactive!(|token, tracks, collection| async move {
+    let _draw = use_resource(use_reactive!(|token, tracks, waypoints| async move {
         // A map without lines or markers beats no map at all: the list
         // below still leads to every track.
         let archive = archive();
@@ -203,9 +213,9 @@ pub fn SharedMap(
         let (positions, waypoints) = futures_util::future::join(
             api::list_collection_track_positions(&archive, &ids),
             async {
-                match collection {
-                    Some(id) => api::list_shared_collection_waypoints(&archive, id).await,
-                    None => api::list_share_waypoints(&archive).await,
+                match waypoints {
+                    Some(waypoints) => waypoints,
+                    None => drawn(api::list_share_waypoints(&archive).await),
                 }
             },
         )
@@ -214,7 +224,6 @@ pub fn SharedMap(
             dioxus::logger::tracing::error!("could not read the tracks: {err}");
             Vec::new()
         });
-        let waypoints = drawn(waypoints);
         let mut map = interop::start_overview_map(collection_lines(&tracks, &positions), waypoints);
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {
