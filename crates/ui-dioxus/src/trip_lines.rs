@@ -218,13 +218,17 @@ pub fn lines(
     marks: &HeatMarks,
 ) -> TripLines {
     let colors = activity_color::in_list_order(items.iter().map(|item| item.activity_type));
+    // Looked up by key, once each: the items are every one listed, of every
+    // kind on, and the map redraws on each pan past the threshold.
+    let tracks: HashMap<(MapSource, i64), &TripTrack> = tracks
+        .iter()
+        .map(|&(source, track)| ((source, track.id), track))
+        .collect();
     let lines = items
         .iter()
         .zip(colors)
         .filter_map(|(item, color)| {
-            let (_, track) = tracks
-                .iter()
-                .find(|(source, track)| (*source, track.id) == item.key())?;
+            let track = tracks.get(&item.key())?;
             Some(RegionLine {
                 source: item.source(),
                 id: item.id,
@@ -252,14 +256,14 @@ impl TripLines {
 
 /// The activities of the items that got a line, for the legend.
 pub fn activities(items: &[MapItem], lines: &TripLines) -> Vec<ActivityType> {
+    let lined: HashSet<(MapSource, i64)> = lines
+        .lines
+        .iter()
+        .map(|line| (line.source, line.id))
+        .collect();
     items
         .iter()
-        .filter(|item| {
-            lines
-                .lines
-                .iter()
-                .any(|line| (line.source, line.id) == item.key())
-        })
+        .filter(|item| lined.contains(&item.key()))
         .map(|item| item.activity_type)
         .collect()
 }
