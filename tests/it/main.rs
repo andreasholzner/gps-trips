@@ -6,6 +6,7 @@
 mod common;
 
 mod us100_bulk_tag_collections;
+mod us102_qmapshack_track_keywords;
 mod us10_self_host;
 mod us11_activity_type;
 mod us12_staged_import;
@@ -68,5 +69,6 @@ mod us90_trips_and_collections;
 mod us93_tag_collections;
 mod us94_share_collections;
 mod us95_waypoint_symbols;
+mod us96_qmapshack_tags_first;
 mod us98_waypoint_pages;
 mod us9_delete_trip;

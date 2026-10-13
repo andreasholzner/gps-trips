@@ -18,7 +18,7 @@ use super::blob::{self, waypoint::WaypointBlobInput};
 use super::config::ExportConfig;
 use super::reconcile::{self, record, Desired, Folders, ItemContent, ItemOutcome};
 use super::target::ItemType;
-use super::{fetch_points, icons, ExportOutcome};
+use super::{fetch_points, icons, keywords, tags_line, ExportOutcome};
 
 /// `keyqms` namespace of the items made from collection tracks.
 pub const TRACK_KEYQMS_PREFIX: &str = "trip-archive:collection-track:";
@@ -127,7 +127,7 @@ async fn reconcile_track(
                 desc: Some(&comment),
                 trk_type: track.activity_type.as_str(),
                 color: icons::color(track.activity_type),
-                keywords: &[],
+                keywords: &keywords(&track.tags),
                 points: &points,
             },
             OffsetDateTime::now_utc(),
@@ -196,7 +196,8 @@ fn waypoint_name(waypoint: &ExportWaypoint) -> String {
 /// `trk.desc`: what the archive holds about it beyond name and geometry,
 /// and the stats and bounds that tell a replaced geometry.
 fn track_comment(collection: &ExportCollection, track: &ExportCollectionTrack) -> String {
-    let mut lines = vec![
+    let mut lines: Vec<String> = tags_line(&track.tags).into_iter().collect();
+    lines.extend([
         format!("{} · {}", collection.name, track.activity_type.label()),
         format!(
             "{:.1} km · ↑{} m · ↓{} m",
@@ -208,7 +209,7 @@ fn track_comment(collection: &ExportCollection, track: &ExportCollectionTrack) -
             "Bounds: {:.6}, {:.6} – {:.6}, {:.6}",
             track.min_lat, track.min_lon, track.max_lat, track.max_lon
         ),
-    ];
+    ]);
     let description = collection.description.trim();
     if !description.is_empty() {
         lines.push(description.to_string());
@@ -238,7 +239,7 @@ fn waypoint_comment(collection: &ExportCollection, waypoint: &ExportWaypoint) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ActivityType;
+    use crate::models::{ActivityType, Tag};
 
     fn collection(description: &str) -> ExportCollection {
         ExportCollection {
@@ -263,6 +264,7 @@ mod tests {
             min_lon: 8.6,
             max_lat: 61.512_345_6,
             max_lon: 8.8,
+            tags: Vec::new(),
         }
     }
 
@@ -301,6 +303,27 @@ mod tests {
              14.0 km · ↑1100 m · ↓1100 m\n\
              Bounds: 61.400000, 8.600000 – 61.512346, 8.800000\n\
              50 Touren\n\
+             Exported from trip-archive (collection 3, track 12)"
+        );
+    }
+
+    #[test]
+    fn us96_a_tagged_track_comment_starts_with_its_tags() {
+        let mut tagged = track();
+        tagged.tags = ["fjell", "telt"]
+            .into_iter()
+            .enumerate()
+            .map(|(id, name)| Tag {
+                id: id as i64,
+                name: name.to_string(),
+            })
+            .collect();
+        assert_eq!(
+            track_comment(&collection(""), &tagged),
+            "Tags: fjell, telt\n\
+             Jotunheimen · Hiking\n\
+             14.0 km · ↑1100 m · ↓1100 m\n\
+             Bounds: 61.400000, 8.600000 – 61.512346, 8.800000\n\
              Exported from trip-archive (collection 3, track 12)"
         );
     }

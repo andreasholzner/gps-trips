@@ -33,7 +33,7 @@ use anyhow::Context;
 use sqlx::SqliteConnection;
 use time::OffsetDateTime;
 
-use crate::models::{ExportCollection, ExportTrip};
+use crate::models::{ExportCollection, ExportTrip, Tag};
 use crate::server::archive_client::ArchiveClient;
 
 use self::config::ExportConfig;
@@ -220,7 +220,7 @@ async fn build_trip_content(
     // the next run's list no longer holds it.
     let id = trip.id.to_string();
     let points = fetch_points(archive, &["api", "trips", &id, "track.geojson"]).await?;
-    let keywords: Vec<String> = trip.tags.iter().map(|t| t.name.clone()).collect();
+    let keywords = keywords(&trip.tags);
 
     let (data, hash) = blob::build_track_item(
         &blob::TrackBlobInput {
@@ -298,16 +298,29 @@ fn item_comment(trip: &ExportTrip) -> String {
         stats.push(format!("{} h {} min", secs / 3600, (secs % 3600) / 60));
     }
 
-    let mut lines = vec![head.join(" · "), stats.join(" · ")];
-    if !trip.tags.is_empty() {
-        let names: Vec<&str> = trip.tags.iter().map(|t| t.name.as_str()).collect();
-        lines.push(format!("Tags: {}", names.join(", ")));
-    }
+    let mut lines: Vec<String> = tags_line(&trip.tags).into_iter().collect();
+    lines.push(head.join(" · "));
+    lines.push(stats.join(" · "));
     if let Some(tz) = &trip.tz_name {
         lines.push(format!("Timezone: {tz}"));
     }
     lines.push(format!("Exported from trip-archive (trip {})", trip.id));
     lines.join("\n")
+}
+
+/// The line that opens an item's comment (US-96): how its owner organized
+/// it, before its figures. `None` without tags.
+fn tags_line(tags: &[Tag]) -> Option<String> {
+    if tags.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
+    Some(format!("Tags: {}", names.join(", ")))
+}
+
+/// An item's QMapShack keywords: its tags, already in name order.
+fn keywords(tags: &[Tag]) -> Vec<String> {
+    tags.iter().map(|t| t.name.clone()).collect()
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -353,9 +366,9 @@ mod tests {
         let comment = item_comment(&tagged);
         assert_eq!(
             comment,
-            "2024-06-01 · Hiking · recorded\n\
+            "Tags: fjell, telt\n\
+             2024-06-01 · Hiking · recorded\n\
              12.3 km · ↑400 m · ↓380 m · 3 h 20 min\n\
-             Tags: fjell, telt\n\
              Timezone: Europe/Oslo\n\
              Exported from trip-archive (trip 42)"
         );

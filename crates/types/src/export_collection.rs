@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::ActivityType;
+use crate::{ActivityType, Tag};
 
 /// One collection as the QMapShack exporter reads it (US-89,
 /// ADR-0022's 2026-10-11 amendment): what its change detection compares for
@@ -36,6 +36,9 @@ pub struct ExportCollectionTrack {
     pub min_lon: f64,
     pub max_lat: f64,
     pub max_lon: f64,
+    /// Its own, not its collection's (US-93), in name order, so the
+    /// exported item's text is deterministic.
+    pub tags: Vec<Tag>,
 }
 
 /// One of an exported collection's waypoints, as its file gave it.
@@ -77,6 +80,10 @@ mod tests {
                 min_lon: 8.6,
                 max_lat: 61.5,
                 max_lon: 8.8,
+                tags: vec![Tag {
+                    id: 5,
+                    name: "fjell".into(),
+                }],
             }],
             waypoints: vec![ExportWaypoint {
                 id: 40,

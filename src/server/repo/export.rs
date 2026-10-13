@@ -66,6 +66,22 @@ pub async fn list_export_collections(
     pool: &SqlitePool,
 ) -> Result<Vec<ExportCollection>, sqlx::Error> {
     let mut tx = pool.begin().await?;
+    let mut tags: HashMap<i64, Vec<Tag>> = HashMap::new();
+    let rows = sqlx::query(
+        r#"SELECT collection_track_tag.collection_track_id, tag.id, tag.name FROM tag
+           JOIN collection_track_tag ON collection_track_tag.tag_id = tag.id
+           ORDER BY tag.name"#,
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in rows {
+        tags.entry(row.get("collection_track_id"))
+            .or_default()
+            .push(Tag {
+                id: row.get("id"),
+                name: row.get("name"),
+            });
+    }
     let mut tracks: HashMap<i64, Vec<ExportCollectionTrack>> = HashMap::new();
     let rows = sqlx::query(&format!(
         "SELECT k.collection_id, k.id, k.name, {TRACK_ACTIVITY} AS activity_type, \
@@ -76,11 +92,12 @@ pub async fn list_export_collections(
     .fetch_all(&mut *tx)
     .await?;
     for row in rows {
+        let id = row.get("id");
         tracks
             .entry(row.get("collection_id"))
             .or_default()
             .push(ExportCollectionTrack {
-                id: row.get("id"),
+                id,
                 name: row.get("name"),
                 activity_type: row.get("activity_type"),
                 distance_m: row.get("distance_m"),
@@ -90,6 +107,7 @@ pub async fn list_export_collections(
                 min_lon: row.get("min_lon"),
                 max_lat: row.get("max_lat"),
                 max_lon: row.get("max_lon"),
+                tags: tags.remove(&id).unwrap_or_default(),
             });
     }
     let mut waypoints: HashMap<i64, Vec<ExportWaypoint>> = HashMap::new();
@@ -240,8 +258,9 @@ mod tests {
         use crate::server::geojson::build_track_geojson;
         use crate::server::gpx::{compute_stats, TrackPoint};
         use crate::server::repo::{
-            insert_collection, update_collection_track, CollectionTrackChange, NewCollection,
-            NewCollectionFile, NewCollectionTrack, NewWaypoint,
+            add_tag, get_or_create_tag, insert_collection, update_collection_track,
+            CollectionTrackChange, NewCollection, NewCollectionFile, NewCollectionTrack,
+            NewWaypoint, Tagged,
         };
 
         fn points(lat: f64) -> [TrackPoint; 2] {
@@ -358,6 +377,35 @@ mod tests {
             assert_eq!(collections[1].id, empty);
             assert!(collections[1].tracks.is_empty());
             assert!(collections[1].waypoints.is_empty());
+        }
+
+        #[tokio::test]
+        async fn us96_each_track_carries_its_own_tags_in_name_order_not_its_collections() {
+            let db = TestDb::new().await;
+            let book = insert(&db.pool, "Book", None, &["Tagged", "Plain"], &[]).await;
+            let tracks = list_export_collections(&db.pool).await.unwrap()[0]
+                .tracks
+                .clone();
+            for (tagged, name) in [
+                (Tagged::CollectionTrack(tracks[0].id), "telt"),
+                (Tagged::CollectionTrack(tracks[0].id), "fjell"),
+                (Tagged::Collection(book), "bok"),
+            ] {
+                let tag_id = get_or_create_tag(&db.pool, name).await.unwrap();
+                add_tag(&db.pool, tagged, tag_id).await.unwrap();
+            }
+
+            let collections = list_export_collections(&db.pool).await.unwrap();
+
+            let names = |i: usize| -> Vec<&str> {
+                collections[0].tracks[i]
+                    .tags
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .collect()
+            };
+            assert_eq!(names(0), ["fjell", "telt"]);
+            assert!(names(1).is_empty());
         }
 
         #[tokio::test]

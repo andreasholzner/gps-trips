@@ -46,7 +46,7 @@ pub struct TrackBlobInput<'a> {
     pub trk_type: &'a str,
     /// A QMapShack color *name* (`IGisItem::init()`'s color map).
     pub color: &'a str,
-    /// Trip tags, pre-sorted by the caller for deterministic output.
+    /// The item's tags, pre-sorted by the caller for deterministic output.
     pub keywords: &'a [String],
     pub points: &'a [TrackPointIn],
 }

@@ -22,15 +22,16 @@ use trip_archive::server::qmapshack::collections::{track_keyqms, waypoint_keyqms
 use trip_archive::server::qmapshack::{self, config::ExportConfig, decode};
 
 /// A fresh archive served over HTTP, its pool for what no route changes,
-/// and a router to import and edit through.
-struct Archive {
+/// and a router to import and edit through. US-96 and US-102 export through
+/// it too.
+pub(crate) struct Archive {
     dir: tempfile::TempDir,
-    pool: SqlitePool,
-    app: Router,
+    pub(crate) pool: SqlitePool,
+    pub(crate) app: Router,
     url: String,
 }
 
-async fn archive() -> Archive {
+pub(crate) async fn archive() -> Archive {
     let dir = tempfile::tempdir().expect("create tempdir");
     let pool = db::create_pool(&dir.path().join("archive.db"))
         .await
@@ -70,14 +71,14 @@ impl Archive {
         ExportConfig::from_toml_str(&toml).expect("valid config")
     }
 
-    async fn export(&self) -> qmapshack::ExportOutcome {
+    pub(crate) async fn export(&self) -> qmapshack::ExportOutcome {
         qmapshack::run_export(&self.url, TEST_PASSWORD, &self.config())
             .await
             .expect("export run")
     }
 
     /// The exported target, opened as the exporter opens it.
-    async fn target(&self) -> SqlitePool {
+    pub(crate) async fn target(&self) -> SqlitePool {
         SqlitePool::connect_with(
             SqliteConnectOptions::new()
                 .filename(self.dir.path().join("export.db"))
@@ -87,7 +88,7 @@ impl Archive {
         .expect("open exported target")
     }
 
-    async fn track_ids(&self, collection: i64) -> Vec<i64> {
+    pub(crate) async fn track_ids(&self, collection: i64) -> Vec<i64> {
         sqlx::query_scalar(
             "SELECT id FROM collection_track WHERE collection_id = ? ORDER BY position",
         )
@@ -105,7 +106,7 @@ impl Archive {
             .unwrap()
     }
 
-    async fn patch(&self, uri: &str, body: &str) {
+    pub(crate) async fn patch(&self, uri: &str, body: &str) {
         let response = send(&self.app, json_request(Method::PATCH, uri, body)).await;
         assert!(
             response.status().is_success(),
@@ -117,7 +118,10 @@ impl Archive {
 
 /// An item's type, name, data, and the folder path it is linked under
 /// (`None` once trashed).
-async fn item(target: &SqlitePool, keyqms: &str) -> (i64, String, Vec<u8>, Option<String>) {
+pub(crate) async fn item(
+    target: &SqlitePool,
+    keyqms: &str,
+) -> (i64, String, Vec<u8>, Option<String>) {
     let (id, item_type, name, data): (i64, i64, String, Vec<u8>) =
         sqlx::query_as("SELECT id, type, name, data FROM items WHERE keyqms = ?")
             .bind(keyqms)

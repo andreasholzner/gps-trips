@@ -27,9 +27,7 @@ covers and why it comes where it does. Only what is not yet done is listed: a st
 table when its stories ship. Each story's own state is recorded with the story and in the
 [story index](#story-index) below.
 
-| Step | Stories                                  | Why it sits here                                                                                                                                      |
-|:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
+Nothing is scheduled.
 
 ## Story index
 
@@ -139,13 +137,13 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-93](#us-93--tag-collections-and-their-tracks)             | ✅     | Tag collections and their tracks             | [Tags](#tags)                                                       |
 | [US-94](#us-94--share-collections-and-their-tracks)           | ✅     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
-| [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
+| [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | ✅     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | 📋     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
-| [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | 📋     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
+| [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
 
 ### Maintaining this file
 
@@ -1963,7 +1961,7 @@ change detection), ADR-0028
 
 ### US-96 — Tags first in the QMapShack comment
 
-**Planned 📋** — As the owner, an exported item's tags open its comment in QMapShack, so I see how I
+**Done ✅** — As the owner, an exported item's tags open its comment in QMapShack, so I see how I
 organized it before its figures.
 
 **Acceptance criteria:** The comment of every item the export (US-36) writes for a trip starts with
@@ -1975,7 +1973,7 @@ rewrites each exported item once, on the next run (US-37).
 
 ### US-102 — Collection-track tags as QMapShack keywords
 
-**Planned 📋** — As the owner, a collection track's tags are its keywords in QMapShack, as a trip's
+**Done ✅** — As the owner, a collection track's tags are its keywords in QMapShack, as a trip's
 are, so I find and filter guide-book tracks there by the tags I gave them.
 
 **Acceptance criteria:** The item the export (US-89) writes for a collection track carries the
