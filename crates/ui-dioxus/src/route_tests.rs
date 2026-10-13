@@ -183,6 +183,31 @@ fn us53_the_share_routes_round_trip() {
 }
 
 #[test]
+fn us94_the_shared_collection_routes_round_trip() {
+    let url = Route::SharedCollectionPage {
+        token: "abc".to_string(),
+        id: 3,
+    }
+    .to_string();
+    assert_eq!(url, "/s/abc/collections/3");
+    assert!(matches!(
+        Route::from_str(&url),
+        Ok(Route::SharedCollectionPage { id: 3, .. })
+    ));
+    let url = Route::SharedCollectionTrackPage {
+        token: "abc".to_string(),
+        id: 7,
+    }
+    .to_string();
+    assert_eq!(url, "/s/abc/collection-tracks/7");
+    assert!(matches!(
+        Route::from_str(&url),
+        Ok(Route::SharedCollectionTrackPage { id: 7, .. })
+    ));
+    assert_eq!(shared_token(&format!("/app{url}")).as_deref(), Some("abc"));
+}
+
+#[test]
 fn the_bare_app_url_is_the_default_view() {
     let parsed = Route::from_str("/").expect("the bare path must parse");
     let Route::TripList { filters } = parsed else {

@@ -30,12 +30,25 @@ pub(super) fn Tracks(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
     }
 }
 
-/// The tracks in file order, each leading to its own page, with a checkbox
-/// each when `selected` is given.
+/// Where a track's row or line leads: its page, or a share's page of it.
+pub fn track_route(token: Option<&str>, id: i64) -> Route {
+    match token {
+        None => Route::CollectionTrack { id },
+        Some(token) => Route::SharedCollectionTrackPage {
+            token: token.to_string(),
+            id,
+        },
+    }
+}
+
+/// The tracks in file order, each leading to its own page — the share's,
+/// for a share's `token` (US-94) — with a checkbox each when `selected` is
+/// given.
 #[component]
 pub fn TrackList(
     tracks: Vec<CollectionTrackSummary>,
     selected: Option<Signal<BTreeSet<i64>>>,
+    token: Option<String>,
 ) -> Element {
     if tracks.is_empty() {
         return rsx! { p { "This collection holds waypoints only." } };
@@ -62,7 +75,7 @@ pub fn TrackList(
                                 td { SelectOne { id: track.id, selected } }
                             }
                             td {
-                                Link { to: Route::CollectionTrack { id: track.id },
+                                Link { to: track_route(token.as_deref(), track.id),
                                     if track.activity_type != ActivityType::Unknown {
                                         ActivityIcon { activity: track.activity_type }
                                     }

@@ -41,10 +41,11 @@ pub(super) fn CollectionWaypoints(id: i64) -> Element {
     }
 }
 
-/// One row per waypoint: its icon and name, linking to its page, and its
-/// elevation. Nothing for a collection without waypoints.
+/// One row per waypoint: its icon and name, linking to its page unless
+/// `linked` is off — a share's recipient has no waypoint pages (US-94) —
+/// and its elevation. Nothing for a collection without waypoints.
 #[component]
-pub fn WaypointList(waypoints: Vec<Waypoint>) -> Element {
+pub fn WaypointList(waypoints: Vec<Waypoint>, #[props(default = true)] linked: bool) -> Element {
     if waypoints.is_empty() {
         return rsx! {};
     }
@@ -61,7 +62,12 @@ pub fn WaypointList(waypoints: Vec<Waypoint>) -> Element {
                     for waypoint in waypoints {
                         tr { key: "{waypoint.id}",
                             td {
-                                Link { to: Route::Waypoint { id: waypoint.id },
+                                if linked {
+                                    Link { to: Route::Waypoint { id: waypoint.id },
+                                        WaypointSymbol { symbol: waypoint.symbol.clone() }
+                                        "{name_of(&waypoint)}"
+                                    }
+                                } else {
                                     WaypointSymbol { symbol: waypoint.symbol.clone() }
                                     "{name_of(&waypoint)}"
                                 }

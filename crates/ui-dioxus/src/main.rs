@@ -69,7 +69,7 @@ use list::TripList;
 use login::Login;
 use menu::{AppShell, SignOut};
 use name_filter::NameFilter;
-use shared::{Shared, SharedTripDetail};
+use shared::{Shared, SharedCollectionPage, SharedCollectionTrackPage, SharedTripDetail};
 use shares::Shares;
 use stats::{Statistics, StatsView};
 use summary::{Summary, SummaryView};
@@ -174,6 +174,12 @@ enum Route {
     /// One trip of a share of several.
     #[route("/s/:token/trips/:id")]
     SharedTripDetail { token: String, id: i64 },
+    /// One collection of a share of several (US-94).
+    #[route("/s/:token/collections/:id")]
+    SharedCollectionPage { token: String, id: i64 },
+    /// One collection track of a share (US-94).
+    #[route("/s/:token/collection-tracks/:id")]
+    SharedCollectionTrackPage { token: String, id: i64 },
 }
 
 fn main() {

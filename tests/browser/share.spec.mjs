@@ -1,5 +1,6 @@
-// Sharing trips through a link (US-53), or a tag summary (US-82), and
-// stopping one (US-69), driven as the owner and the recipient drive it.
+// Sharing trips through a link (US-53), a tag summary (US-82), or
+// collections and their tracks (US-94), and stopping one (US-69), driven as
+// the owner and the recipient drive it.
 //
 // Scope rule, from ADR-0012's 2026-08-26b amendment: both exemptions apply.
 // **Real user events** — the owner clicking "Share" and "Create", or "Stop
@@ -11,6 +12,38 @@
 // `tests/it/us53_share.rs` and `us69_shares.rs`.
 import { expect, signIn, test, watchCsp } from "./session.mjs";
 import { ownTrips } from "./trips.mjs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/// Three tracks and two waypoints (US-86).
+const COLLECTION_GPX = readFileSync(
+  fileURLToPath(new URL("../fixtures/collection.gpx", import.meta.url)),
+);
+
+/// A word no other spec's names hold: the suite shares one archive.
+const BOOK = `book${Math.random().toString(36).slice(2, 8)}`;
+
+/// Every collection these tests create, taken away again afterwards.
+const collections = [];
+
+test.afterAll(async ({ request }) => {
+  for (const id of collections.splice(0)) {
+    await request.delete(`/api/collections/${id}`);
+  }
+});
+
+async function importCollection(request, name) {
+  const response = await request.post("/api/collections", {
+    multipart: {
+      gpx: { name: "book.gpx", mimeType: "application/gpx+xml", buffer: COLLECTION_GPX },
+      name,
+    },
+  });
+  expect(response.status(), `importing ${name}`).toBe(201);
+  const { id } = await response.json();
+  collections.push(id);
+  return id;
+}
 
 const trip = ownTrips(test);
 
@@ -285,5 +318,82 @@ test("the owner stops a share from the shares screen, and its link then opens no
   const recipient = await recipientPage(browser, baseURL);
   await recipient.page.goto(`/app/s/${token}`);
   await expect(recipient.page.locator(".error")).toContainText("This link does not work");
+  await recipient.close();
+});
+
+test("collections selected on the Collections tab are shared, and the link opens them on one map (US-94)", async ({
+  page,
+  request,
+  browser,
+  baseURL,
+}) => {
+  await signIn(page.request);
+  await importCollection(request, `${BOOK} Alps`);
+  await importCollection(request, `${BOOK} Tyrol`);
+
+  await page.goto(`/app/?kind=collections&q=${BOOK}`);
+  await expect(page.locator("table tbody tr")).toHaveCount(2);
+  await page.getByRole("checkbox", { name: "Select all" }).check();
+  await page.locator("#share-selected").click();
+  await page.locator('input[name="share-label"]').fill("Guide books");
+  await page.locator("#create-share").click();
+  const link = await page.locator("#share-link").inputValue();
+
+  const recipient = await recipientPage(browser, baseURL);
+  await recipient.page.goto(link);
+  await expect(recipient.page.getByRole("heading", { name: "Guide books" })).toBeVisible();
+  // Three tracks each, and the waypoints as markers.
+  const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
+  await expect(lines).toHaveCount(6);
+  await expect(recipient.page.locator("#shared-collections tbody tr")).toHaveCount(2);
+  await expect(recipient.page.locator("#login-password")).toHaveCount(0);
+
+  await recipient.page.getByRole("link", { name: `${BOOK} Tyrol` }).click();
+  await expect(recipient.page.locator("#collection-name")).toHaveText(`${BOOK} Tyrol`);
+  await expect(recipient.page.locator("#collection-waypoints tbody tr")).toHaveCount(2);
+  await expect(recipient.page.locator("#edit-collection")).toHaveCount(0);
+
+  await recipient.page
+    .locator("#overview-map path.leaflet-interactive")
+    .first()
+    .dispatchEvent("click");
+  await expect(recipient.page).toHaveURL(/\/app\/s\/[0-9a-f]+\/collection-tracks\/\d+$/);
+  await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
+  await expect(recipient.page.getByRole("link", { name: "Download GPX" })).toBeVisible();
+  await expect(recipient.page.locator("#collection-of-track")).toContainText(`${BOOK} Tyrol`);
+  await recipient.close();
+});
+
+test("tracks selected on a collection's page are shared without their collection (US-94)", async ({
+  page,
+  request,
+  browser,
+  baseURL,
+}) => {
+  await signIn(page.request);
+  const id = await importCollection(request, `${BOOK} Stages`);
+
+  await page.goto(`/app/collections/${id}`);
+  const boxes = page.locator("#collection-tracks tbody input[type=checkbox]");
+  await expect(boxes).toHaveCount(3);
+  await boxes.nth(0).check();
+  await boxes.nth(2).check();
+  await page.locator("#share-selected").click();
+  await expect(page.locator("#create-share")).toHaveText("Make a link to 2 tracks");
+  await page.locator("#create-share").click();
+  const link = await page.locator("#share-link").inputValue();
+
+  const recipient = await recipientPage(browser, baseURL);
+  await recipient.page.goto(link);
+  await expect(recipient.page.getByRole("heading", { name: "Shared tracks" })).toBeVisible();
+  const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
+  await expect(lines).toHaveCount(2);
+  await expect(recipient.page.locator("#collection-tracks tbody tr")).toHaveCount(2);
+
+  await lines.first().dispatchEvent("click");
+  await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
+  await expect(recipient.page.locator("#collection-of-track")).toHaveCount(0);
+  await recipient.page.getByRole("link", { name: "Shared tracks" }).click();
+  await expect(recipient.page.locator("#collection-tracks tbody tr")).toHaveCount(2);
   await recipient.close();
 });

@@ -77,24 +77,41 @@ fn TrackFigures(track: CollectionTrackDetail) -> Element {
                 Link { to: Route::Collection { id: track.collection_id }, "{track.collection_name}" }
             }
         }
+        TrackStats {
+            activity: track.activity_type,
+            distance_m: track.distance_m,
+            ascent_m: track.ascent_m,
+            descent_m: track.descent_m,
+        }
+    }
+}
+
+/// The figures a collection track has — the same for a share's recipient
+/// (US-94).
+#[component]
+pub fn TrackStats(
+    activity: ActivityType,
+    distance_m: f64,
+    ascent_m: f64,
+    descent_m: f64,
+) -> Element {
+    rsx! {
         dl { class: "stats",
             div {
                 dt { "Activity" }
-                dd { id: "trip-activity",
-                    "{track.activity_type.label()}"
-                }
+                dd { id: "trip-activity", "{activity.label()}" }
             }
             div {
                 dt { "Distance" }
-                dd { {format::km(track.distance_m)} }
+                dd { {format::km(distance_m)} }
             }
             div {
                 dt { "Ascent" }
-                dd { {format::metres(Some(track.ascent_m))} }
+                dd { {format::metres(Some(ascent_m))} }
             }
             div {
                 dt { "Descent" }
-                dd { {format::metres(Some(track.descent_m))} }
+                dd { {format::metres(Some(descent_m))} }
             }
         }
     }

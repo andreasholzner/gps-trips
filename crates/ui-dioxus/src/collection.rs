@@ -27,7 +27,9 @@ mod tracks;
 mod waypoints;
 use files::CollectionFiles;
 use tracks::Tracks;
+pub(crate) use tracks::{track_route, TrackList};
 use waypoints::CollectionWaypoints;
+pub(crate) use waypoints::{by_name, WaypointList};
 
 /// The screen. `id` comes from the route (`/collections/:id`).
 #[component]

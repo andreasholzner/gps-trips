@@ -15,9 +15,15 @@ use crate::interop::{self, OverviewEvent, OverviewLine};
 use crate::track;
 use crate::Route;
 
+mod collection;
+mod collection_track;
 mod detail;
 mod summary;
 
+pub use collection::{SharedCollectionPage, SharedCollectionView, SharedCollections};
+pub use collection_track::{
+    SharedCollectionTrackPage, SharedCollectionTrackView, SharedCollectionTracks,
+};
 pub use detail::SharedTripView;
 pub use summary::SharedSummaryView;
 
@@ -27,7 +33,9 @@ const DEAD_LINK: &str = "This link does not work (any more). Ask whoever sent it
 
 /// The share's own page, `/s/:token`: its title, a map of every track, and
 /// the trips. A share of one trip is that trip's page straight away; a
-/// share of tags is their summary, however many trips it holds.
+/// share of tags is their summary, however many trips it holds. A share of
+/// collections or of their tracks (US-94) is likewise the one's page, or
+/// the several on a map above their list.
 #[component]
 pub fn Shared(token: String) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -39,6 +47,20 @@ pub fn Shared(token: String) -> Element {
         Some(Ok(overview)) if overview.summary.is_some() => rsx! {
             SharedSummaryView { token, overview: overview.clone() }
         },
+        Some(Ok(overview)) if !overview.collections.is_empty() => match &overview.collections[..] {
+            [only] => rsx! {
+                SharedCollectionView { token, id: only.id, overview: overview.clone() }
+            },
+            _ => rsx! { SharedCollections { token, overview: overview.clone() } },
+        },
+        Some(Ok(overview)) if !overview.collection_tracks.is_empty() => {
+            match &overview.collection_tracks[..] {
+                [only] => rsx! {
+                    SharedCollectionTrackView { token, id: only.id, overview: overview.clone() }
+                },
+                _ => rsx! { SharedCollectionTracks { token, overview: overview.clone() } },
+            }
+        }
         Some(Ok(overview)) => match &overview.trips[..] {
             [only] => rsx! {
                 SharedTripView { token, id: only.id, overview: overview.clone() }
@@ -75,17 +97,25 @@ fn ShareError(err: ApiError) -> Element {
 }
 
 /// The title a share goes by: its label, or else a shared summary's tag
-/// names (US-82), or else a plain description.
+/// names (US-82), a single shared collection's name (US-94), or else a
+/// plain description.
 pub fn title(overview: &ShareOverview) -> String {
-    match (&overview.label, &overview.summary) {
-        (Some(label), _) => label.clone(),
-        (None, Some(summary)) => summary
+    if let Some(label) = &overview.label {
+        return label.clone();
+    }
+    if let Some(summary) = &overview.summary {
+        return summary
             .tags
             .iter()
             .map(|tag| tag.name.as_str())
             .collect::<Vec<_>>()
-            .join(", "),
-        (None, None) => "Shared trips".to_string(),
+            .join(", ");
+    }
+    match (&overview.collections[..], &overview.collection_tracks[..]) {
+        ([only], _) => only.name.clone(),
+        ([_, _, ..], _) => "Shared collections".to_string(),
+        ([], [_, ..]) => "Shared tracks".to_string(),
+        ([], []) => "Shared trips".to_string(),
     }
 }
 
@@ -256,5 +286,7 @@ pub fn as_trip_detail(trip: &SharedTrip) -> TripDetail {
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
+#[cfg(test)]
+mod collection_tests;
 #[cfg(test)]
 mod tests;

@@ -41,7 +41,9 @@ pub use collections::{
 };
 pub use session::{login, logout, session};
 pub use share::{
-    create_share, get_shared_trip, list_shares, share_link, share_overview, stop_share,
+    create_share, get_shared_collection, get_shared_collection_track, get_shared_trip,
+    list_share_waypoints, list_shared_collection_waypoints, list_shared_track_waypoints,
+    list_shares, share_link, share_overview, stop_share,
 };
 pub use stats::{stats_trips, tag_summaries};
 pub use suggestion::trip_suggestion;

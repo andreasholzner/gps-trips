@@ -5,7 +5,10 @@
 //! routes; the track and the photos are read with the ordinary calls on that
 //! same client.
 
-use trip_archive_types::{ActiveShare, CreateShare, CreatedShare, ShareOverview, SharedTrip};
+use trip_archive_types::{
+    ActiveShare, CreateShare, CreatedShare, ShareOverview, SharedCollectionDetail,
+    SharedCollectionTrackDetail, SharedTrip, SharedWaypoint,
+};
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
 
@@ -58,6 +61,57 @@ pub async fn share_overview(archive: &ApiClient) -> Result<ShareOverview, ApiErr
 /// `GET /s/:token/api/trips/:id` — one shared trip.
 pub async fn get_shared_trip(archive: &ApiClient, id: i64) -> Result<SharedTrip, ApiError> {
     get_json(archive, archive.url(&format!("/api/trips/{id}"))).await
+}
+
+/// `GET /s/:token/api/collections/:id` — one shared collection (US-94).
+pub async fn get_shared_collection(
+    archive: &ApiClient,
+    id: i64,
+) -> Result<SharedCollectionDetail, ApiError> {
+    get_json(archive, archive.url(&format!("/api/collections/{id}"))).await
+}
+
+/// `GET /s/:token/api/collections/:id/waypoints` — a shared collection's
+/// waypoints, in file order.
+pub async fn list_shared_collection_waypoints(
+    archive: &ApiClient,
+    id: i64,
+) -> Result<Vec<SharedWaypoint>, ApiError> {
+    get_json(
+        archive,
+        archive.url(&format!("/api/collections/{id}/waypoints")),
+    )
+    .await
+}
+
+/// `GET /s/:token/api/collection-tracks/:id` — one shared collection track.
+pub async fn get_shared_collection_track(
+    archive: &ApiClient,
+    id: i64,
+) -> Result<SharedCollectionTrackDetail, ApiError> {
+    get_json(
+        archive,
+        archive.url(&format!("/api/collection-tracks/{id}")),
+    )
+    .await
+}
+
+/// `GET /s/:token/api/collection-tracks/:id/waypoints` — the waypoints that
+/// belong to a shared track.
+pub async fn list_shared_track_waypoints(
+    archive: &ApiClient,
+    id: i64,
+) -> Result<Vec<SharedWaypoint>, ApiError> {
+    get_json(
+        archive,
+        archive.url(&format!("/api/collection-tracks/{id}/waypoints")),
+    )
+    .await
+}
+
+/// `GET /s/:token/api/share/waypoints` — every waypoint the share reaches.
+pub async fn list_share_waypoints(archive: &ApiClient) -> Result<Vec<SharedWaypoint>, ApiError> {
+    get_json(archive, archive.url("/api/share/waypoints")).await
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -140,6 +194,62 @@ mod tests {
         assert!(err.is_not_found(), "{err}");
         let err = stop_share(&archive, shares[0].id).await.unwrap_err();
         assert!(err.is_not_found(), "{err}");
+    }
+
+    #[tokio::test]
+    async fn us94_the_recipient_reads_a_shared_collection_and_its_tracks() {
+        use crate::api::{
+            collection_track_gpx_url, get_collection_track_geometry,
+            list_collection_track_positions,
+        };
+        use crate::test_support::{import_collection, COLLECTION_GPX};
+
+        let (archive, _dir) = serve_test_archive().await;
+        let (id, tracks) = import_collection(&archive, COLLECTION_GPX, &[("name", "Alps")]).await;
+        let created = create_share(
+            &archive,
+            &CreateShare {
+                collection_ids: vec![id],
+                ..CreateShare::default()
+            },
+        )
+        .await
+        .expect("share");
+
+        let recipient = anonymous(&archive).for_share(created.token);
+        let overview = share_overview(&recipient).await.expect("overview");
+        assert_eq!(overview.collections[0].name, "Alps");
+        assert_eq!(overview.collection_tracks.len(), 3);
+        let collection = get_shared_collection(&recipient, id)
+            .await
+            .expect("collection");
+        assert_eq!(collection.tracks.len(), 3);
+        let waypoints = list_shared_collection_waypoints(&recipient, id)
+            .await
+            .expect("waypoints");
+        assert_eq!(waypoints.len(), 2);
+        assert_eq!(
+            list_share_waypoints(&recipient).await.expect("all"),
+            waypoints
+        );
+        let track = get_shared_collection_track(&recipient, tracks[0])
+            .await
+            .expect("track");
+        assert_eq!(track.collection.map(|c| c.id), Some(id));
+        list_shared_track_waypoints(&recipient, tracks[0])
+            .await
+            .expect("its waypoints");
+        get_collection_track_geometry(&recipient, tracks[0])
+            .await
+            .expect("geometry");
+        let drawn = list_collection_track_positions(&recipient, &tracks)
+            .await
+            .expect("positions");
+        assert_eq!(drawn.len(), 3);
+        let gpx = reqwest::get(collection_track_gpx_url(&recipient, tracks[0]))
+            .await
+            .expect("gpx");
+        assert!(gpx.status().is_success(), "{}", gpx.status());
     }
 
     #[tokio::test]
