@@ -29,8 +29,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-90                                    | Builds only on stories done (US-86/87).                                                                                                               |
-| 2    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
+| 1    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
 
 ## Story index
 
@@ -134,7 +133,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-87](#us-87--collections-tab)                              | ✅     | Collections tab                              | [Collections](#collections)                                         |
 | [US-88](#us-88--add-a-file-to-a-collection)                   | ✅     | Add a file to a collection                   | [Collections](#collections)                                         |
 | [US-89](#us-89--collections-in-the-qmapshack-export)          | ✅     | Collections in the QMapShack export          | [QMapShack export](#qmapshack-export)                               |
-| [US-90](#us-90--trips-and-collections-in-one-list)            | 📋     | Trips and collections in one list            | [Trip list & map](#trip-list--map)                                  |
+| [US-90](#us-90--trips-and-collections-in-one-list)            | ✅     | Trips and collections in one list            | [Trip list & map](#trip-list--map)                                  |
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 | [US-93](#us-93--tag-collections-and-their-tracks)             | ✅     | Tag collections and their tracks             | [Tags](#tags)                                                       |
@@ -682,7 +681,7 @@ script draws them), ADR-0012 (the browser layer for the switch at the threshold 
 
 ### US-90 — Trips and collections in one list
 
-**Planned 📋** — As the owner, I list and map a guide book's tracks together with my planned and
+**Done ✅** — As the owner, I list and map a guide book's tracks together with my planned and
 recorded trips, so I spot at a glance which of the book's suggestions I have neither planned nor
 done, and can pick out a trip together with the plan or stage it followed.
 
