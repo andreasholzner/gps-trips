@@ -55,7 +55,14 @@ impl Filters {
 
     /// The query string with `kind` as given, or without one.
     fn query(&self, kind: Option<String>) -> String {
-        let mut params: Vec<(&str, String)> = kind.map(|kind| ("kind", kind)).into_iter().collect();
+        let kind = kind.map(|kind| ("kind", kind));
+        joined(kind.into_iter().chain(self.params()))
+    }
+
+    /// Every filter set, by its parameter name, in the order the query
+    /// strings carry them. Blank and whitespace-only fields are left out.
+    fn params(&self) -> Vec<(&'static str, String)> {
+        let mut params = Vec::new();
         if let Some(activity) = self.activity {
             params.push(("activity", activity.as_str().to_string()));
         }
@@ -82,11 +89,7 @@ impl Filters {
                 params.push((name, "true".to_string()));
             }
         }
-        let query: Vec<String> = params
-            .iter()
-            .map(|(name, value)| format!("{name}={}", encode(value)))
-            .collect();
-        query.join("&")
+        params
     }
 
     /// Read filters back out of a query string (no leading `?`), the inverse
@@ -138,17 +141,11 @@ impl Filters {
     /// the region and the activity (US-90), the filters that are not about
     /// trips alone.
     pub fn collection_query(&self) -> String {
-        let activity = self.activity.map(|activity| activity.as_str().to_string());
-        [
-            ("q", self.q.trim()),
-            ("bbox", self.bbox.trim()),
-            ("activity", activity.as_deref().unwrap_or_default()),
-        ]
-        .into_iter()
-        .filter(|(_, value)| !value.is_empty())
-        .map(|(name, value)| format!("{name}={}", encode(value)))
-        .collect::<Vec<_>>()
-        .join("&")
+        joined(
+            self.params()
+                .into_iter()
+                .filter(|(name, _)| COLLECTION_PARAMS.contains(name)),
+        )
     }
 
     /// What "Clear filters" leaves: the kinds, and with no kind of trip on
@@ -193,6 +190,18 @@ impl Filters {
                 .iter()
                 .any(|value| !value.trim().is_empty())
     }
+}
+
+/// The parameters that narrow collections as well as trips (US-87, US-90).
+const COLLECTION_PARAMS: [&str; 3] = ["activity", "q", "bbox"];
+
+/// `params` as a query string, each value encoded.
+fn joined(params: impl IntoIterator<Item = (&'static str, String)>) -> String {
+    params
+        .into_iter()
+        .map(|(name, value)| format!("{name}={}", encode(&value)))
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 /// The SPA's own URL query (US-52), so the router can put the filters in the

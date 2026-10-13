@@ -275,7 +275,8 @@ fn us90_collections_are_asked_for_by_name_region_and_activity() {
 
     assert_eq!(
         filters.collection_query(),
-        "q=alp&bbox=10%2C59%2C11%2C60&activity=hiking"
+        "activity=hiking&q=alp&bbox=10%2C59%2C11%2C60",
+        "in the order the trips' query has them"
     );
     assert_eq!(Filters::default().collection_query(), "");
 }
