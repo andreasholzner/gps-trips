@@ -121,6 +121,15 @@ impl Kinds {
         self.contains(Kind::Recorded) || self.contains(Kind::Planned)
     }
 
+    /// The kinds of trip on, collections left out — what the trips are read
+    /// for, so toggling collections does not read them again — or `None`
+    /// with no kind of trip on.
+    pub fn trips_only(self) -> Option<Kinds> {
+        self.has_trips().then(|| Kinds {
+            on: [self.on[0], self.on[1], false],
+        })
+    }
+
     pub fn has_collections(self) -> bool {
         self.contains(Kind::Collections)
     }
@@ -258,5 +267,23 @@ mod tests {
         assert_eq!(Kind::Planned.trip_kind(), Some(TripKind::Planned));
         assert_eq!(Kind::Collections.trip_kind(), None);
         assert_eq!(Kind::of_trip(TripKind::Planned), Kind::Planned);
+    }
+
+    #[test]
+    fn us90_the_kinds_of_trip_on_leave_collections_out() {
+        let all = Kinds::default()
+            .toggled(Kind::Planned)
+            .toggled(Kind::Collections);
+
+        assert_eq!(
+            all.trips_only(),
+            Some(Kinds::default().toggled(Kind::Planned)),
+            "toggling collections leaves what the trips are read for alone"
+        );
+        assert_eq!(
+            Kinds::only(Kind::Planned).trips_only(),
+            Some(Kinds::only(Kind::Planned))
+        );
+        assert_eq!(Kinds::only(Kind::Collections).trips_only(), None);
     }
 }

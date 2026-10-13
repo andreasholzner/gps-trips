@@ -41,6 +41,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     });
     let mut trips = use_trips(filters);
     let mut collections = use_collections(filters);
+    let kinds = use_memo(move || filters.read().kinds);
     // The known tags: the tag filter's choices (US-38) and the bulk-tag
     // suggestions (US-34). A failure here costs those choices, not the list
     // — hence the separate resource and the fallback to none.
@@ -51,30 +52,47 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         .and_then(|tags| tags.clone().ok())
         .unwrap_or_default();
     // How many of each kind on there are in all (US-61), counted with every
-    // filter dropped: the trips from one unfiltered read, the collections by
-    // the archive — a listed collection comes with its tracks' marks.
+    // filter dropped: the trips of both kinds from one unfiltered read, the
+    // collections by the archive — a listed collection comes with its
+    // tracks' marks.
     //
-    // Scoped to the kinds by reading a memo of them rather than the filters
-    // themselves: subscribing to the whole signal would re-count the archive
-    // on every typed character, to arrive at the same number each time.
-    let kinds = use_memo(move || filters.read().kinds);
-    let totals = use_resource(move || async move {
-        let kinds = kinds();
-        let trips = if kinds.has_trips() {
-            Some(api::list_trips(&archive(), String::new()).await)
-        } else {
-            None
-        };
-        let collections = if kinds.has_collections() {
-            Some(api::count_collections(&archive()).await)
-        } else {
-            None
-        };
-        (kinds, totals(kinds, trips, collections))
+    // Each read only when its side is switched on: scoped by memos rather
+    // than the filters themselves, so neither a typed character nor
+    // toggling the other side re-counts the archive, to arrive at the same
+    // numbers each time.
+    let has_trips = use_memo(move || kinds().has_trips());
+    let has_collections = use_memo(move || kinds().has_collections());
+    let trip_count = use_resource(move || async move {
+        if !has_trips() {
+            return None;
+        }
+        Some(
+            api::list_trips(&archive(), String::new())
+                .await
+                .map(|trips| trip_totals(&trips)),
+        )
+    });
+    let collection_count = use_resource(move || async move {
+        if !has_collections() {
+            return None;
+        }
+        Some(api::count_collections(&archive()).await)
     });
     // A failure here costs the count line, not the list — the same trade the
     // tags make above.
-    let totals = for_kinds(totals.read_unchecked().as_ref(), kinds()).and_then(Clone::clone);
+    let totals = totals(
+        kinds(),
+        trip_count
+            .read_unchecked()
+            .clone()
+            .flatten()
+            .and_then(Result::ok),
+        collection_count
+            .read_unchecked()
+            .clone()
+            .flatten()
+            .and_then(Result::ok),
+    );
     // What is selected (US-90): trips, collections and collection tracks,
     // across pages. Turning a kind off drops what it listed.
     let mut picked = use_signal(BTreeSet::<Picked>::new);
@@ -100,19 +118,12 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // counted.
     let listed = listed(
         kinds(),
-        for_kinds(
+        read_for(
             trips.read_unchecked().as_ref().and_then(Option::as_ref),
-            kinds(),
+            &kinds().trips_only(),
         )
         .cloned(),
-        for_kinds(
-            collections
-                .read_unchecked()
-                .as_ref()
-                .and_then(Option::as_ref),
-            kinds(),
-        )
-        .cloned(),
+        collections.read_unchecked().clone().flatten(),
     );
     let rows = listed.as_ref().and_then(|listed| listed.as_ref().ok());
     // Everything that matches, for the map (US-63, US-73) — all of it, not
@@ -243,30 +254,40 @@ fn listed(
 #[derive(Clone, Debug, PartialEq)]
 struct Totals(Vec<(Kind, usize)>);
 
-/// The totals, from the unfiltered trips and the collections' count — or
-/// `None` if either could not be read.
-fn totals(
-    kinds: Kinds,
-    trips: Option<Result<Vec<TripSummary>, api::ApiError>>,
-    collections: Option<Result<usize, api::ApiError>>,
-) -> Option<Totals> {
-    let trips = trips.transpose().ok()?;
-    let collections = collections.transpose().ok()?;
-    Some(Totals(
-        kinds
-            .iter()
-            .map(|kind| {
-                let total = match (kind.trip_kind(), &trips, collections) {
-                    (Some(trip_kind), Some(trips), _) => {
-                        trips.iter().filter(|t| t.trip_kind == trip_kind).count()
-                    }
-                    (None, _, Some(count)) => count,
-                    _ => 0,
-                };
-                (kind, total)
-            })
-            .collect(),
-    ))
+/// How many trips of each kind there are in all.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TripTotals {
+    recorded: usize,
+    planned: usize,
+}
+
+/// The trips counted by kind, from one read of them all.
+fn trip_totals(trips: &[TripSummary]) -> TripTotals {
+    let planned = trips
+        .iter()
+        .filter(|t| t.trip_kind == TripKind::Planned)
+        .count();
+    TripTotals {
+        recorded: trips.len() - planned,
+        planned,
+    }
+}
+
+/// The totals of the kinds on — or `None` until every side they need is
+/// counted.
+fn totals(kinds: Kinds, trips: Option<TripTotals>, collections: Option<usize>) -> Option<Totals> {
+    kinds
+        .iter()
+        .map(|kind| {
+            let total = match kind {
+                Kind::Recorded => trips?.recorded,
+                Kind::Planned => trips?.planned,
+                Kind::Collections => collections?,
+            };
+            Some((kind, total))
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(Totals)
 }
 
 /// Each kind's line in the counts: how many match out of how many there
@@ -287,50 +308,48 @@ fn counts(matched: &[(Kind, usize)], totals: &Totals) -> Vec<(Kind, usize, usize
         .collect()
 }
 
-/// What was read, if it was read for `kinds`. A resource keeps its last
-/// answer while it reads anew, so right after a toggle it still holds what
-/// the kinds before asked for.
-fn for_kinds<T>(read: Option<&(Kinds, T)>, kinds: Kinds) -> Option<&T> {
-    read.filter(|(read_for, _)| *read_for == kinds)
+/// What was read, if it was read for `key`. A resource keeps its last answer
+/// while it reads anew, so right after a toggle it still holds what the
+/// kinds before asked for.
+fn read_for<'a, K: PartialEq, T>(read: Option<&'a (K, T)>, key: &K) -> Option<&'a T> {
+    read.filter(|(read_for, _)| read_for == key)
         .map(|(_, read)| read)
 }
 
-/// What a list resource holds: what it read, and for which kinds — or
-/// `None` while its kind is off, so it asks the archive for nothing.
-type ListResource<T> = Resource<Option<(Kinds, Result<Vec<T>, api::ApiError>)>>;
+/// What a list resource read.
+type Read<T> = Result<Vec<T>, api::ApiError>;
 
-/// Every trip `filters` match, with a kind of trip on. Re-runs whenever the
-/// filters or the configured archive change — reading the signals inside
-/// the closure is the whole subscription.
-fn use_trips(filters: Signal<Filters>) -> ListResource<TripSummary> {
+/// Every trip `filters` match, with a kind of trip on, and the kinds of trip
+/// it was read for. Re-runs only when the trip query changes — not when the
+/// collections are toggled, nor for a filter that is not the trips' — by
+/// reading a memo of that query rather than the filters themselves.
+fn use_trips(filters: Signal<Filters>) -> Resource<Option<(Option<Kinds>, Read<TripSummary>)>> {
     let archive = use_context::<Signal<ApiClient>>();
+    let query = use_memo(move || {
+        let filters = filters.read();
+        Some((filters.kinds.trips_only(), filters.trip_query()?))
+    });
     use_resource(move || async move {
-        // Read into a local, not inline in the call: a temporary read guard
-        // would live across the `.await`, and every keystroke's write during
-        // the request would panic on the borrowed signal.
-        let (kinds, query) = {
-            let filters = filters.read();
-            (filters.kinds, filters.trip_query()?)
-        };
-        Some((kinds, api::list_trips(&archive(), query).await))
+        let (read_for, query) = query()?;
+        Some((read_for, api::list_trips(&archive(), query).await))
     })
 }
 
 /// Every collection `filters` match, with collections on (US-87, US-90).
-fn use_collections(filters: Signal<Filters>) -> ListResource<CollectionSummary> {
+/// Re-runs only when the collections' own query changes, not for a filter
+/// about trips alone.
+fn use_collections(filters: Signal<Filters>) -> Resource<Option<Read<CollectionSummary>>> {
     let archive = use_context::<Signal<ApiClient>>();
+    let query = use_memo(move || {
+        let filters = filters.read();
+        filters
+            .kinds
+            .has_collections()
+            .then(|| filters.collection_query())
+    });
     use_resource(move || async move {
-        let (kinds, query) = {
-            let filters = filters.read();
-            (
-                filters.kinds,
-                filters
-                    .kinds
-                    .has_collections()
-                    .then(|| filters.collection_query())?,
-            )
-        };
-        Some((kinds, api::list_collections(&archive(), query).await))
+        let query = query()?;
+        Some(api::list_collections(&archive(), query).await)
     })
 }
 

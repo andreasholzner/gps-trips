@@ -50,6 +50,72 @@ fn us90_a_kind_that_could_not_be_read_fails_the_list() {
     );
 }
 
+#[test]
+fn us90_the_trips_are_counted_by_kind_from_one_read() {
+    let trip = |trip_kind| TripSummary {
+        id: 1,
+        name: "Trip".to_string(),
+        activity_type: trip_archive_types::ActivityType::Hiking,
+        start_time: None,
+        start_date: None,
+        distance_m: 1_000.0,
+        ascent_m: None,
+        duration_secs: None,
+        trip_kind,
+        privacy_status: None,
+        min_lat: None,
+        min_lon: None,
+        max_lat: None,
+        max_lon: None,
+    };
+
+    assert_eq!(
+        trip_totals(&[
+            trip(TripKind::Recorded),
+            trip(TripKind::Planned),
+            trip(TripKind::Recorded)
+        ]),
+        TripTotals {
+            recorded: 2,
+            planned: 1
+        }
+    );
+}
+
+#[test]
+fn us90_the_totals_wait_for_every_kind_on_and_name_only_those() {
+    let trips = TripTotals {
+        recorded: 2,
+        planned: 1,
+    };
+    let both = showing(&[Kind::Planned, Kind::Collections]).kinds;
+
+    assert_eq!(totals(both, Some(trips), None), None);
+    assert_eq!(totals(both, None, Some(4)), None);
+    assert_eq!(
+        totals(both, Some(trips), Some(4)),
+        Some(Totals(vec![(Kind::Planned, 1), (Kind::Collections, 4)]))
+    );
+    assert_eq!(
+        totals(Kinds::default(), Some(trips), None),
+        Some(Totals(vec![(Kind::Recorded, 2)])),
+        "collections off are not waited for"
+    );
+}
+
+#[test]
+fn us90_a_read_is_used_only_for_what_it_was_read_for() {
+    let recorded = Kinds::default().trips_only();
+    let read = (recorded, 312);
+
+    assert_eq!(read_for(Some(&read), &recorded), Some(&312));
+    assert_eq!(
+        read_for(Some(&read), &Kinds::only(Kind::Planned).trips_only()),
+        None
+    );
+    assert_eq!(read_for::<Option<Kinds>, usize>(None, &recorded), None);
+}
+
 // ── Against a real server ────────────────────────────────────────────────────
 
 #[tokio::test]
