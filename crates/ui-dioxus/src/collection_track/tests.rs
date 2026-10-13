@@ -56,6 +56,7 @@ async fn us86_the_screen_shows_the_track_its_collection_and_its_figures() {
     );
     assert!(html.contains(r#"id="edit-trip""#), "{html}");
     assert!(html.contains(r#"id="delete-trip""#), "{html}");
+    assert!(html.contains(r#"id="share-collection-track""#), "{html}");
 }
 
 // US-93: tagged as a trip is, its tags leading nowhere.

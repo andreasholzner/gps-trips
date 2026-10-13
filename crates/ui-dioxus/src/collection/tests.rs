@@ -1,3 +1,4 @@
+use super::tracks::TrackList;
 use super::waypoints::{by_name, WaypointList};
 use super::*;
 use crate::test_support::{
@@ -60,6 +61,10 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
     assert!(html.contains("Lakes 2"), "the unnamed track: {html}");
     assert!(html.contains(r#"id="edit-collection""#), "{html}");
     assert!(html.contains(r#"id="delete-collection""#), "{html}");
+    // US-94: the whole collection is shared from here, and its tracks are
+    // selected to share some of them.
+    assert!(html.contains(r#"id="share-collection""#), "{html}");
+    assert!(html.contains(r#"aria-label="Select all""#), "{html}");
 }
 
 // US-93: tagged as a trip is, its tags leading nowhere.
@@ -197,6 +202,29 @@ fn us86_deleting_is_confirmed_naming_what_goes_with_it() {
         html.contains("with its 3 tracks and 1 waypoint? This cannot be undone."),
         "{html}"
     );
+}
+
+#[test]
+fn us94_the_owner_selects_tracks_to_share_them() {
+    let html = render(|| {
+        let tracks = vec![
+            a_track(1, "Day 1", ActivityType::Hiking),
+            a_track(2, "Day 2", ActivityType::Hiking),
+        ];
+        let selected = use_signal(|| std::collections::BTreeSet::from([2]));
+        rsx! {
+            TrackList { tracks, selected }
+        }
+    });
+    assert_eq!(html.matches(r#"aria-label="Select""#).count(), 2, "{html}");
+    assert!(html.contains(r#"aria-label="Select all""#), "{html}");
+    assert_eq!(html.matches("checked").count(), 1, "{html}");
+
+    let html = render(|| {
+        let tracks = vec![a_track(1, "Day 1", ActivityType::Hiking)];
+        rsx! { TrackList { tracks } }
+    });
+    assert!(!html.contains("checkbox"), "no selection, no boxes: {html}");
 }
 
 #[test]

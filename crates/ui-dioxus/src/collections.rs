@@ -6,6 +6,11 @@
 //! (US-83) — a collection comes with all its tracks' marks, so asking again
 //! per keystroke would read them all again. For the same reason the list is
 //! taken out of the answer once, and a keystroke copies only the page shown.
+//!
+//! Collections are selected here to be shared together (US-94); the
+//! selection outlives the filter and the paging, as the trip list's does.
+
+use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
 use trip_archive_types::CollectionSummary;
@@ -14,6 +19,7 @@ use crate::api::{self, ApiClient};
 use crate::collection_table::{CollectionTable, NO_COLLECTIONS};
 use crate::name_filter::NameFilter;
 use crate::pager::{self, Pager};
+use crate::share::{Selected, ShareSelectedPanel};
 use crate::Route;
 
 /// The collections whose names contain `query`, ignoring case and the
@@ -42,15 +48,19 @@ pub fn Collections(#[props(default)] view: NameFilter) -> Element {
         Some(Ok(collections)) => collections.clone(),
         _ => Vec::new(),
     });
+    let selected = use_signal(BTreeSet::new);
 
     rsx! {
         h1 { "Collections" }
         CollectionFilter { query: view.q.clone() }
+        div { class: "bulk-panels",
+            ShareSelectedPanel { selected, of: Selected::Collections }
+        }
         match &*collections.read_unchecked() {
             None => rsx! { p { "Loading…" } },
             Some(Err(err)) => rsx! { p { class: "error", "Could not load collections: {err}" } },
             Some(Ok(_)) => rsx! {
-                CollectionList { collections: all, query: view.q.clone() }
+                CollectionList { collections: all, query: view.q.clone(), selected }
             },
         }
     }
@@ -76,9 +86,13 @@ fn CollectionFilter(query: String) -> Element {
 
 /// The collections `query` matches, 50 a page. Back to the first page
 /// whenever the filter changes, as the trip list goes back when its filters
-/// do (US-63).
+/// do (US-63). Select-all acts on the page's rows alone.
 #[component]
-pub fn CollectionList(collections: ReadSignal<Vec<CollectionSummary>>, query: String) -> Element {
+pub fn CollectionList(
+    collections: ReadSignal<Vec<CollectionSummary>>,
+    query: String,
+    selected: Signal<BTreeSet<i64>>,
+) -> Element {
     let mut page = use_signal(|| 0_usize);
     use_effect(use_reactive!(|query| {
         let _ = query;
@@ -101,7 +115,7 @@ pub fn CollectionList(collections: ReadSignal<Vec<CollectionSummary>>, query: St
         .map(|&collection| collection.clone())
         .collect();
     rsx! {
-        CollectionTable { collections: shown }
+        CollectionTable { collections: shown, selected }
         Pager { page, len }
     }
 }

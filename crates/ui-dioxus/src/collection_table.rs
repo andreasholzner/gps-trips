@@ -1,10 +1,14 @@
 //! The Collections tab's table (US-87): one row per collection,
-//! linking to its page (US-86).
+//! linking to its page (US-86), with the row selection a share acts on
+//! (US-94).
+
+use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
 use trip_archive_types::CollectionSummary;
 
 use crate::activity_icon::ActivityIcon;
+use crate::selection::{SelectAll, SelectOne};
 use crate::Route;
 
 /// What the Collections tab (US-87) and screen (US-97) say with no
@@ -14,12 +18,17 @@ pub const NO_COLLECTIONS: &str = "No collections yet. Import a GPX file as a col
 /// One row per collection: its name, its activity icon — none for a collection
 /// with no activity focus — and how many tracks and waypoints it holds.
 #[component]
-pub fn CollectionTable(collections: Vec<CollectionSummary>) -> Element {
+pub fn CollectionTable(
+    collections: Vec<CollectionSummary>,
+    selected: Signal<BTreeSet<i64>>,
+) -> Element {
+    let listed: Vec<i64> = collections.iter().map(|collection| collection.id).collect();
     rsx! {
         div { class: "table-scroll",
         table {
             thead {
                 tr {
+                    th { SelectAll { listed, selected } }
                     th { "Collection" }
                     th { "Activity" }
                     th { "Tracks" }
@@ -29,6 +38,7 @@ pub fn CollectionTable(collections: Vec<CollectionSummary>) -> Element {
             tbody {
                 for collection in collections {
                     tr { key: "{collection.id}",
+                        td { SelectOne { id: collection.id, selected } }
                         td {
                             Link { to: Route::Collection { id: collection.id }, "{collection.name}" }
                         }
@@ -92,7 +102,8 @@ mod tests {
                 "Alpencross light",
                 Some(ActivityType::Cycling),
             )];
-            rsx! { CollectionTable { collections } }
+            let selected = use_signal(BTreeSet::new);
+            rsx! { CollectionTable { collections, selected } }
         });
 
         let row = row(&html, "Alpencross light");
@@ -108,7 +119,8 @@ mod tests {
                 a_collection(1, "Bike book", Some(ActivityType::Cycling)),
                 a_collection(2, "Mixed book", None),
             ];
-            rsx! { CollectionTable { collections } }
+            let selected = use_signal(BTreeSet::new);
+            rsx! { CollectionTable { collections, selected } }
         });
 
         let with = row(&html, "Bike book");
@@ -116,5 +128,25 @@ mod tests {
         assert!(with.contains(r#"aria-label="Cycling""#), "{with}");
         let without = row(&html, "Mixed book");
         assert!(!without.contains("activity-icon"), "{without}");
+    }
+
+    #[test]
+    fn us94_each_collection_is_selectable_and_so_are_all_at_once() {
+        let html = render(|| {
+            let collections = vec![
+                a_collection(1, "Bike book", None),
+                a_collection(2, "Mixed book", None),
+            ];
+            let selected = use_signal(|| BTreeSet::from([2]));
+            rsx! { CollectionTable { collections, selected } }
+        });
+
+        assert_eq!(
+            html.matches(r#"type="checkbox""#).count(),
+            3,
+            "one per row plus select-all: {html}"
+        );
+        assert!(!row(&html, "Bike book").contains("checked"), "{html}");
+        assert!(row(&html, "Mixed book").contains("checked"), "{html}");
     }
 }

@@ -35,8 +35,11 @@ async fn us87_the_tab_lists_every_collection_alphabetically_and_no_trips() {
     let lakes = html.find("Lakes").expect("listed");
     assert!(alpencross < lakes, "alphabetically: {html}");
     assert!(!html.contains("Oslo Hills Walk"), "{html}");
-    // The trips' bulk panels act on trips alone.
-    assert!(!html.contains("bulk-panels"), "{html}");
+    // Collections are selected to share them (US-94), apart from the trips'
+    // selection; nothing is selected yet.
+    assert_eq!(html.matches(r#"aria-label="Select""#).count(), 2, "{html}");
+    assert!(html.contains(r#"aria-label="Select all""#), "{html}");
+    assert!(!html.contains("Share selected"), "{html}");
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@
 //! give — distance, ascent and descent. Its timestamps, where the file had
 //! any, are not when anyone went, so no date, duration or speed is shown.
 //! Its name and activity can be edited, an activity set here overriding the
-//! collection's, it can be tagged (US-93), and it can be deleted.
+//! collection's, it can be tagged (US-93), shared (US-94), and deleted.
 
 use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, CollectionTrackDetail, CollectionTrackEdit};
@@ -15,6 +15,7 @@ use crate::collection::drawn_waypoints;
 use crate::detail::TrackViews;
 use crate::format;
 use crate::overlay::Overlay;
+use crate::share::{ShareButton, ShareTarget};
 use crate::tagging::Tagging;
 use crate::Route;
 
@@ -44,6 +45,10 @@ pub fn CollectionTrack(id: i64) -> Element {
                 TrackMapSection { id, activity: detail.activity_type }
                 div { class: "trip-actions",
                     EditCollectionTrack { track: detail.clone(), on_saved: move |_| track.restart() }
+                    ShareButton {
+                        id: "share-collection-track",
+                        target: ShareTarget::CollectionTracks(vec![id]),
+                    }
                     a {
                         class: "quiet",
                         href: api::collection_track_gpx_url(&archive(), id),

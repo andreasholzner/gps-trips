@@ -39,6 +39,7 @@ mod photos;
 mod placing;
 mod rates;
 mod region;
+mod selection;
 mod share;
 mod shared;
 mod shares;

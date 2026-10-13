@@ -1,8 +1,8 @@
 //! Sharing trips (US-53), the owner's side: a label, an expiry, and the link
 //! that comes back. The same form serves the trip list's selection, a trip's
-//! own page and the Summary screen's tags (US-82), in an overlay on each:
-//! sharing is occasional, and its options would otherwise sit open beside
-//! the controls used every day.
+//! own page, the Summary screen's tags (US-82), and collections and their
+//! tracks (US-94), in an overlay on each: sharing is occasional, and its
+//! options would otherwise sit open beside the controls used every day.
 
 use std::collections::BTreeSet;
 
@@ -14,28 +14,61 @@ use crate::format;
 use crate::interop;
 use crate::overlay::Overlay;
 
-/// What a share is made for: a few trips, or the summary of a few tags in
-/// the order chosen (US-82).
+/// What a share is made for: a few trips, the summary of a few tags in
+/// the order chosen (US-82), or collections or collection tracks (US-94).
 #[derive(Clone, Debug, PartialEq)]
 pub enum ShareTarget {
     Trips(Vec<i64>),
     Tags(Vec<String>),
+    Collections(Vec<i64>),
+    CollectionTracks(Vec<i64>),
 }
 
-/// Sharing the trips selected on the list screen, beside tagging them and
-/// setting their activity. Appears only once trips are selected, as one
-/// button that opens the options.
+/// What a selection holds, for sharing it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Selected {
+    #[default]
+    Trips,
+    Collections,
+    CollectionTracks,
+}
+
+impl Selected {
+    fn target(self, ids: Vec<i64>) -> ShareTarget {
+        match self {
+            Self::Trips => ShareTarget::Trips(ids),
+            Self::Collections => ShareTarget::Collections(ids),
+            Self::CollectionTracks => ShareTarget::CollectionTracks(ids),
+        }
+    }
+
+    fn legend(self) -> &'static str {
+        match self {
+            Self::Trips => "Share selected trips",
+            Self::Collections => "Share selected collections",
+            Self::CollectionTracks => "Share selected tracks",
+        }
+    }
+}
+
+/// Sharing what is selected — trips on the list screen, beside tagging them
+/// and setting their activity, or collections or a collection's tracks
+/// (US-94). Appears only once something is selected, as one button that
+/// opens the options.
 #[component]
-pub fn ShareSelectedPanel(selected: Signal<BTreeSet<i64>>) -> Element {
+pub fn ShareSelectedPanel(
+    selected: Signal<BTreeSet<i64>>,
+    #[props(default)] of: Selected,
+) -> Element {
     let mut open = use_signal(|| false);
-    let trip_ids: Vec<i64> = selected.read().iter().copied().collect();
-    if trip_ids.is_empty() {
+    let ids: Vec<i64> = selected.read().iter().copied().collect();
+    if ids.is_empty() {
         return rsx! {};
     }
-    let count = trip_ids.len();
+    let count = ids.len();
     rsx! {
         fieldset {
-            legend { "Share selected trips" }
+            legend { {of.legend()} }
             div { class: "tag-entry",
                 button {
                     id: "share-selected",
@@ -46,7 +79,26 @@ pub fn ShareSelectedPanel(selected: Signal<BTreeSet<i64>>) -> Element {
             }
         }
         if open() {
-            ShareDialog { target: ShareTarget::Trips(trip_ids), on_close: move |_| open.set(false) }
+            ShareDialog { target: of.target(ids), on_close: move |_| open.set(false) }
+        }
+    }
+}
+
+/// A page's own "Share" button — a collection's or a collection track's
+/// (US-94) — opening the options for `target`.
+#[component]
+pub fn ShareButton(id: String, target: ShareTarget) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        button {
+            id,
+            r#type: "button",
+            class: "quiet",
+            onclick: move |_| open.set(true),
+            "Share"
+        }
+        if open() {
+            ShareDialog { target, on_close: move |_| open.set(false) }
         }
     }
 }
@@ -57,6 +109,8 @@ pub fn ShareDialog(target: ShareTarget, on_close: EventHandler<()>) -> Element {
     let label = match target {
         ShareTarget::Trips(_) => "Share trips",
         ShareTarget::Tags(_) => "Share the summary",
+        ShareTarget::Collections(_) => "Share collections",
+        ShareTarget::CollectionTracks(_) => "Share tracks",
     };
     rsx! {
         Overlay { label, on_close: move |_| on_close.call(()),
@@ -95,18 +149,9 @@ pub fn ShareForm(target: ShareTarget) -> Element {
     }));
 
     let button = create_label(&target);
+    let shows = shown(&target);
     let create = move |_| {
-        let (trip_ids, tags) = match &target {
-            ShareTarget::Trips(ids) => (ids.clone(), Vec::new()),
-            ShareTarget::Tags(tags) => (Vec::new(), tags.clone()),
-        };
-        let request = CreateShare {
-            trip_ids,
-            tags,
-            label: Some(label()).filter(|label| !label.trim().is_empty()),
-            expiry: expiry(),
-            ..CreateShare::default()
-        };
+        let request = request(&target, &label(), expiry());
         busy.set(true);
         spawn(async move {
             match api::create_share(&archive(), &request).await {
@@ -158,7 +203,7 @@ pub fn ShareForm(target: ShareTarget) -> Element {
                 "{button}"
             }
             if let Some((url, expires_at)) = link() {
-                ShareLink { url, expires_at, id: "share-link".to_string() }
+                ShareLink { url, expires_at, id: "share-link".to_string(), shows }
             }
             if let Some(message) = message() {
                 p { class: "error", "{message}" }
@@ -167,20 +212,73 @@ pub fn ShareForm(target: ShareTarget) -> Element {
     }
 }
 
-/// What the create button says.
-pub fn create_label(target: &ShareTarget) -> String {
+/// The request that shares `target` under `label`, which blank leaves out.
+pub fn request(target: &ShareTarget, label: &str, expiry: ShareExpiry) -> CreateShare {
+    let named = CreateShare {
+        label: Some(label.to_string()).filter(|label| !label.trim().is_empty()),
+        expiry,
+        ..CreateShare::default()
+    };
     match target {
-        ShareTarget::Trips(ids) if ids.len() == 1 => "Make a link to this trip".to_string(),
-        ShareTarget::Trips(ids) => format!("Make a link to {} trips", ids.len()),
-        ShareTarget::Tags(_) => "Make a link to this summary".to_string(),
+        ShareTarget::Trips(ids) => CreateShare {
+            trip_ids: ids.clone(),
+            ..named
+        },
+        ShareTarget::Tags(tags) => CreateShare {
+            tags: tags.clone(),
+            ..named
+        },
+        ShareTarget::Collections(ids) => CreateShare {
+            collection_ids: ids.clone(),
+            ..named
+        },
+        ShareTarget::CollectionTracks(ids) => CreateShare {
+            collection_track_ids: ids.clone(),
+            ..named
+        },
     }
 }
 
-/// A share's link, ready to copy, and until when it works — the one just
-/// made, or one on the owner's list of shares (US-69), where several sit on
-/// one page and so none takes the element id.
+/// What the create button says.
+pub fn create_label(target: &ShareTarget) -> String {
+    let some = |ids: &[i64], one: &str, many: &str| match ids.len() {
+        1 => format!("Make a link to this {one}"),
+        n => format!("Make a link to {n} {many}"),
+    };
+    match target {
+        ShareTarget::Trips(ids) => some(ids, "trip", "trips"),
+        ShareTarget::Tags(_) => "Make a link to this summary".to_string(),
+        ShareTarget::Collections(ids) => some(ids, "collection", "collections"),
+        ShareTarget::CollectionTracks(ids) => some(ids, "track", "tracks"),
+    }
+}
+
+/// What a link to trips or a summary shows.
+pub const TRIPS_SHOWN: &str = "these trips, their photos and GPX";
+/// What a link to collections shows (US-94).
+pub const COLLECTIONS_SHOWN: &str = "these collections, their tracks, waypoints and GPX";
+/// What a link to collection tracks shows (US-94).
+pub const TRACKS_SHOWN: &str = "these tracks, their waypoints and GPX";
+
+/// What a link to `target` lets its holder see.
+pub fn shown(target: &ShareTarget) -> &'static str {
+    match target {
+        ShareTarget::Trips(_) | ShareTarget::Tags(_) => TRIPS_SHOWN,
+        ShareTarget::Collections(_) => COLLECTIONS_SHOWN,
+        ShareTarget::CollectionTracks(_) => TRACKS_SHOWN,
+    }
+}
+
+/// A share's link, ready to copy, what it shows and until when it works —
+/// the one just made, or one on the owner's list of shares (US-69), where
+/// several sit on one page and so none takes the element id.
 #[component]
-pub fn ShareLink(url: String, expires_at: Option<String>, id: Option<String>) -> Element {
+pub fn ShareLink(
+    url: String,
+    expires_at: Option<String>,
+    id: Option<String>,
+    #[props(default = TRIPS_SHOWN)] shows: &'static str,
+) -> Element {
     let until = match expires_at.as_deref() {
         Some(at) => format!("It works until {}.", format::date(Some(at))),
         None => "It works until you stop it.".to_string(),
@@ -205,7 +303,7 @@ pub fn ShareLink(url: String, expires_at: Option<String>, id: Option<String>) ->
                 },
                 "Copy"
             }
-            p { "Anyone with this link can see these trips, their photos and GPX. {until}" }
+            p { "Anyone with this link can see {shows}. {until}" }
         }
     }
 }
@@ -227,6 +325,93 @@ mod tests {
             create_label(&ShareTarget::Trips(vec![1, 2, 3])),
             "Make a link to 3 trips"
         );
+    }
+
+    #[test]
+    fn us94_the_button_says_how_many_collections_or_tracks_it_shares() {
+        assert_eq!(
+            create_label(&ShareTarget::Collections(vec![1])),
+            "Make a link to this collection"
+        );
+        assert_eq!(
+            create_label(&ShareTarget::Collections(vec![1, 2])),
+            "Make a link to 2 collections"
+        );
+        assert_eq!(
+            create_label(&ShareTarget::CollectionTracks(vec![1])),
+            "Make a link to this track"
+        );
+        assert_eq!(
+            create_label(&ShareTarget::CollectionTracks(vec![1, 2, 3])),
+            "Make a link to 3 tracks"
+        );
+    }
+
+    #[test]
+    fn us94_each_target_is_sent_as_its_own_field() {
+        let sent = request(
+            &ShareTarget::Collections(vec![3, 4]),
+            "For Kari",
+            ShareExpiry::OneMonth,
+        );
+        assert_eq!(
+            sent,
+            CreateShare {
+                collection_ids: vec![3, 4],
+                label: Some("For Kari".to_string()),
+                expiry: ShareExpiry::OneMonth,
+                ..CreateShare::default()
+            }
+        );
+        let sent = request(
+            &ShareTarget::CollectionTracks(vec![7]),
+            "  ",
+            ShareExpiry::Never,
+        );
+        assert_eq!(
+            sent,
+            CreateShare {
+                collection_track_ids: vec![7],
+                ..CreateShare::default()
+            }
+        );
+        assert_eq!(
+            request(&ShareTarget::Trips(vec![1]), "", ShareExpiry::Never).trip_ids,
+            [1]
+        );
+        assert_eq!(
+            request(
+                &ShareTarget::Tags(vec!["alps".to_string()]),
+                "",
+                ShareExpiry::Never
+            )
+            .tags,
+            ["alps"]
+        );
+    }
+
+    #[test]
+    fn us94_the_panel_names_what_is_selected() {
+        let html = render(|| {
+            let selected = use_signal(|| BTreeSet::from([4, 5]));
+            rsx! { ShareSelectedPanel { selected, of: Selected::Collections } }
+        });
+        assert!(html.contains("Share selected collections"), "{html}");
+        assert!(html.contains("Share 2 selected…"), "{html}");
+        let html = render(|| {
+            let selected = use_signal(|| BTreeSet::from([4]));
+            rsx! { ShareSelectedPanel { selected, of: Selected::CollectionTracks } }
+        });
+        assert!(html.contains("Share selected tracks"), "{html}");
+    }
+
+    #[test]
+    fn us94_a_pages_share_button_opens_nothing_until_pressed() {
+        let html = render(|| {
+            rsx! { ShareButton { id: "share-collection", target: ShareTarget::Collections(vec![1]) } }
+        });
+        assert!(html.contains(r#"id="share-collection""#), "{html}");
+        assert!(!html.contains(r#"role="dialog""#), "{html}");
     }
 
     #[test]
@@ -320,5 +505,17 @@ mod tests {
             rsx! { ShareLink { url: "x".to_string(), expires_at: None } }
         });
         assert!(html.contains("until you stop it"), "{html}");
+        assert!(html.contains(TRIPS_SHOWN), "{html}");
+    }
+
+    #[test]
+    fn us94_a_link_says_what_it_shows() {
+        assert_eq!(shown(&ShareTarget::Collections(vec![1])), COLLECTIONS_SHOWN);
+        assert_eq!(shown(&ShareTarget::CollectionTracks(vec![1])), TRACKS_SHOWN);
+        assert_eq!(shown(&ShareTarget::Tags(Vec::new())), TRIPS_SHOWN);
+        let html = render(|| {
+            rsx! { ShareLink { url: "x".to_string(), expires_at: None, shows: TRACKS_SHOWN } }
+        });
+        assert!(html.contains(TRACKS_SHOWN), "{html}");
     }
 }

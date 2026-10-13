@@ -18,7 +18,7 @@ use crate::format;
 use crate::map_items::Mapped;
 use crate::pager::{self, Pager};
 use crate::region::RegionFilter;
-use crate::share::ShareSelectedPanel;
+use crate::share::{Selected, ShareSelectedPanel};
 use crate::trip_table::TripTable;
 
 /// The `filters` prop comes from the URL's query string (US-52), so opening
@@ -76,8 +76,11 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // tags make above.
     let total = for_tab(total.read_unchecked().as_ref(), tab())
         .and_then(|total| total.as_ref().ok().copied());
-    // Which trips the bulk panels will act on (US-34, US-63).
+    // Which trips the bulk panels will act on (US-34, US-63), and which
+    // collections are shared together (US-94) — kept apart, each waiting
+    // while the other tab is shown.
     let selected = use_signal(BTreeSet::new);
+    let selected_collections = use_signal(BTreeSet::new);
     let staged = use_signal(Vec::new);
     // Which page of the list the table shows (US-63). Back to the first
     // whenever the filters change — page 4 of a list narrowed to nine rows
@@ -133,9 +136,13 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             ListCounts { shown, total, tab: tab(), page: page() }
         }
         // What to do with the selected trips: tag them (US-34), give them
-        // all one activity (US-63), or share them (US-53). Trips alone: on
-        // the Collections tab the selection waits, as the filters do.
-        if tab() != ListTab::Collections {
+        // all one activity (US-63), or share them (US-53); or with the
+        // selected collections: share them (US-94).
+        if tab() == ListTab::Collections {
+            div { class: "bulk-panels",
+                ShareSelectedPanel { selected: selected_collections, of: Selected::Collections }
+            }
+        } else {
         div { class: "bulk-panels",
             BulkTagPanel {
                 selected,
@@ -168,7 +175,10 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
                 Pager { page, len: trips.len() }
             },
             Some(Ok(Listed::Collections(collections))) => rsx! {
-                CollectionTable { collections: collections[pager::page_range(page(), collections.len())].to_vec() }
+                CollectionTable {
+                    collections: collections[pager::page_range(page(), collections.len())].to_vec(),
+                    selected: selected_collections,
+                }
                 Pager { page, len: collections.len() }
             },
         }

@@ -9,6 +9,7 @@ use trip_archive_types::TripSummary;
 
 use crate::activity_icon::ActivityIcon;
 use crate::format;
+use crate::selection::{SelectAll, SelectOne};
 use crate::Route;
 
 /// One row per trip: name, activity, date, distance, ascent, duration
@@ -17,11 +18,8 @@ use crate::Route;
 /// is display-only.
 #[component]
 pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> Element {
+    // Select-all reflects and acts on the trips actually listed (US-34).
     let listed: Vec<i64> = trips.iter().map(|trip| trip.id).collect();
-    // Select-all reflects and acts on the trips actually listed, so a
-    // filtered list can't select a trip the owner cannot see (US-34).
-    let all_listed_selected =
-        !listed.is_empty() && listed.iter().all(|id| selected.read().contains(id));
 
     rsx! {
         // Eight columns don't fit a phone: the table scrolls inside this
@@ -31,22 +29,7 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
         table {
             thead {
                 tr {
-                    th {
-                        input {
-                            r#type: "checkbox",
-                            checked: all_listed_selected,
-                            onchange: move |event: FormEvent| {
-                                let mut selected = selected.write();
-                                for id in &listed {
-                                    if event.checked() {
-                                        selected.insert(*id);
-                                    } else {
-                                        selected.remove(id);
-                                    }
-                                }
-                            },
-                        }
-                    }
+                    th { SelectAll { listed, selected } }
                     th { "Trip" }
                     th { "Activity" }
                     th { "Date" }
@@ -59,19 +42,7 @@ pub fn TripTable(trips: Vec<TripSummary>, selected: Signal<BTreeSet<i64>>) -> El
             tbody {
                 for trip in trips {
                     tr { key: "{trip.id}",
-                        td {
-                            input {
-                                r#type: "checkbox",
-                                checked: selected.read().contains(&trip.id),
-                                onchange: move |event: FormEvent| {
-                                    if event.checked() {
-                                        selected.write().insert(trip.id);
-                                    } else {
-                                        selected.write().remove(&trip.id);
-                                    }
-                                },
-                            }
-                        }
+                        td { SelectOne { id: trip.id, selected } }
                         td {
                             // A router `Link`, so the detail screen (US-42)
                             // is reached without a page load — and so the

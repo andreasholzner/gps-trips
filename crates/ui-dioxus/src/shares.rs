@@ -6,7 +6,7 @@ use trip_archive_types::ActiveShare;
 
 use crate::api::{self, ApiClient};
 use crate::format;
-use crate::share::ShareLink;
+use crate::share::{ShareLink, COLLECTIONS_SHOWN, TRACKS_SHOWN, TRIPS_SHOWN};
 
 /// What a share without a label is called here. The recipient sees
 /// "Shared trips" for it; the owner is better served by being told there is
@@ -15,7 +15,8 @@ const UNTITLED: &str = "Untitled share";
 
 /// What the screen says when no link opens anything.
 const NONE_ACTIVE: &str = "No active shares. Share trips from the trip list's selection or \
-    from a trip's page, and a summary from the Summary screen.";
+    from a trip's page, a summary from the Summary screen, and collections or their tracks from \
+    the Collections page, the trip list's Collections tab, a collection's page or a track's.";
 
 /// `/shares` — the screen.
 #[component]
@@ -53,8 +54,9 @@ fn ShareList(shares: Vec<ActiveShare>) -> Element {
     }
 }
 
-/// One share: what it is called, the trips or the tags' summary it reaches
-/// (US-82), when it was made, its link, and stopping it.
+/// One share: what it is called, the trips, the tags' summary (US-82) or
+/// the collections or tracks (US-94) it reaches, when it was made, its
+/// link, and stopping it.
 #[component]
 fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -64,11 +66,7 @@ fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
 
     let id = share.id;
     let title = share.label.as_deref().unwrap_or(UNTITLED);
-    let reaches = if share.tags.is_empty() {
-        share.trip_names.join(", ")
-    } else {
-        format!("Summary of {}", share.tags.join(", "))
-    };
+    let (reaches, shows) = reaches(&share);
     let created = format::date(Some(&share.created_at));
     let url = api::share_link(&archive(), &share.token);
     let used = usage(&share);
@@ -79,7 +77,7 @@ fn ShareRow(share: ActiveShare, on_stopped: EventHandler<i64>) -> Element {
             p { "{reaches}" }
             p { class: "muted", "Created {created}" }
             p { class: "share-usage", "{used}" }
-            ShareLink { url, expires_at: share.expires_at.clone() }
+            ShareLink { url, expires_at: share.expires_at.clone(), shows }
             if arming() {
                 ConfirmStop {
                     busy: stopping(),
@@ -165,6 +163,25 @@ fn ConfirmStop(
             }
             button { r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }
         }
+    }
+}
+
+/// What `share` reaches, as its row names it, and what its link shows.
+pub fn reaches(share: &ActiveShare) -> (String, &'static str) {
+    if !share.tags.is_empty() {
+        (format!("Summary of {}", share.tags.join(", ")), TRIPS_SHOWN)
+    } else if !share.collection_names.is_empty() {
+        (
+            format!("Collections: {}", share.collection_names.join(", ")),
+            COLLECTIONS_SHOWN,
+        )
+    } else if !share.collection_track_names.is_empty() {
+        (
+            format!("Tracks: {}", share.collection_track_names.join(", ")),
+            TRACKS_SHOWN,
+        )
+    } else {
+        (share.trip_names.join(", "), TRIPS_SHOWN)
     }
 }
 
@@ -262,6 +279,31 @@ mod tests {
         assert!(html.contains("Summary of alps, norway"), "{html}");
         assert!(!html.contains("Day one"), "{html}");
         assert!(html.contains("Stop sharing"), "{html}");
+    }
+
+    #[test]
+    fn us94_a_share_of_collections_or_tracks_names_them() {
+        let html = render(|| {
+            let share = ActiveShare {
+                trip_names: Vec::new(),
+                collection_names: vec!["Alps".to_string(), "Tyrol".to_string()],
+                ..a_share(7, None, None)
+            };
+            rsx! { ShareRow { share, on_stopped: move |_| {} } }
+        });
+        assert!(html.contains("Collections: Alps, Tyrol"), "{html}");
+        assert!(html.contains(COLLECTIONS_SHOWN), "{html}");
+        assert!(!html.contains("Day one"), "{html}");
+
+        let tracks = ActiveShare {
+            trip_names: Vec::new(),
+            collection_track_names: vec!["Stage 1".to_string(), "Nordkette".to_string()],
+            ..a_share(8, None, None)
+        };
+        assert_eq!(
+            reaches(&tracks),
+            ("Tracks: Stage 1, Nordkette".to_string(), TRACKS_SHOWN)
+        );
     }
 
     #[test]

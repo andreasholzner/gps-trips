@@ -2,7 +2,8 @@
 //! track in its activity's color and every waypoint on one map, the tracks
 //! and the waypoints (US-98) as lists leading to their own pages, and the
 //! files it came from to download (US-88). The details are edited and the
-//! collection tagged (US-93) here, and the whole collection deleted.
+//! collection tagged (US-93) here, the collection or some of its tracks
+//! shared (US-94), and the whole collection deleted.
 
 use dioxus::prelude::*;
 use trip_archive_types::{
@@ -14,16 +15,18 @@ use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient, Tagged};
 use crate::filters::Filters;
-use crate::format;
 use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
 use crate::overlay::Overlay;
+use crate::share::{ShareButton, ShareTarget};
 use crate::tagging::Tagging;
 use crate::track;
 use crate::Route;
 
 mod files;
+mod tracks;
 mod waypoints;
 use files::CollectionFiles;
+use tracks::Tracks;
 use waypoints::CollectionWaypoints;
 
 /// The screen. `id` comes from the route (`/collections/:id`).
@@ -49,11 +52,15 @@ pub fn Collection(id: i64) -> Element {
                 CollectionHeader { collection: detail.clone() }
                 Tagging { tagged: Tagged::Collection(id) }
                 CollectionMap { id, tracks: detail.tracks.clone() }
-                TrackList { tracks: detail.tracks.clone() }
+                Tracks { id, tracks: detail.tracks.clone() }
                 CollectionWaypoints { id }
                 CollectionFiles { id }
                 div { class: "trip-actions",
                     EditCollection { collection: detail.clone(), on_saved: move |_| collection.restart() }
+                    ShareButton {
+                        id: "share-collection",
+                        target: ShareTarget::Collections(vec![id]),
+                    }
                     DeleteCollection {
                         id,
                         tracks: detail.tracks.len(),
@@ -176,45 +183,6 @@ fn CollectionMap(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
     rsx! {
         div { id: "overview-map", class: "overview-map" }
         ActivityLegend { shown }
-    }
-}
-
-/// The tracks in file order, each leading to its own page.
-#[component]
-fn TrackList(tracks: Vec<CollectionTrackSummary>) -> Element {
-    if tracks.is_empty() {
-        return rsx! { p { "This collection holds waypoints only." } };
-    }
-    rsx! {
-        div { class: "table-scroll",
-            table { id: "collection-tracks",
-                thead {
-                    tr {
-                        th { scope: "col", "Track" }
-                        th { scope: "col", class: "num", "Distance" }
-                        th { scope: "col", class: "num", "Ascent" }
-                        th { scope: "col", class: "num", "Descent" }
-                    }
-                }
-                tbody {
-                    for track in tracks {
-                        tr { key: "{track.id}",
-                            td {
-                                Link { to: Route::CollectionTrack { id: track.id },
-                                    if track.activity_type != ActivityType::Unknown {
-                                        ActivityIcon { activity: track.activity_type }
-                                    }
-                                    "{track.name}"
-                                }
-                            }
-                            td { class: "num", {format::km(track.distance_m)} }
-                            td { class: "num", {format::metres(Some(track.ascent_m))} }
-                            td { class: "num", {format::metres(Some(track.descent_m))} }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
