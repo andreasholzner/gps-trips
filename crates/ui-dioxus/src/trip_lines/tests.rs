@@ -367,8 +367,15 @@ fn us90_a_collections_waypoints_are_read_once() {
     let mut cache = WaypointCache::default();
     assert_eq!(cache.missing(&[1, 2]), [1, 2]);
 
-    cache.store(1, &[a_waypoint("Albula Pass")]);
-    cache.store(2, &[]);
+    // Collection 2 is gone: the archive left it out, and it is not asked
+    // for again either.
+    cache.store(
+        &[1, 2],
+        vec![trip_archive_types::CollectionWaypoints {
+            id: 1,
+            waypoints: vec![a_waypoint("Albula Pass")],
+        }],
+    );
 
     assert!(cache.missing(&[1, 2]).is_empty());
     let shown = cache.waypoints(&[2, 1, 3]);

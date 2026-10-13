@@ -3,7 +3,8 @@
 
 use trip_archive_types::{
     CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview, CollectionSummary,
-    CollectionTrackDetail, CollectionTrackEdit, CreatedCollection, TripTrack, Waypoint,
+    CollectionTrackDetail, CollectionTrackEdit, CollectionWaypoints, CreatedCollection, TripTrack,
+    Waypoint,
 };
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
@@ -112,6 +113,25 @@ pub async fn list_collection_track_positions(
     get_json(
         archive,
         archive.url(&format!("/api/collection-tracks?ids={ids}")),
+    )
+    .await
+}
+
+/// `GET /api/collection-waypoints?ids=…` — the waypoints of the collections
+/// of `ids`, for the trip list's map to show with the lines (US-90). A
+/// collection there is not is absent. No ids ask for nothing, without a
+/// request.
+pub async fn list_waypoints_of_collections(
+    archive: &ApiClient,
+    ids: &[i64],
+) -> Result<Vec<CollectionWaypoints>, ApiError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+    get_json(
+        archive,
+        archive.url(&format!("/api/collection-waypoints?ids={ids}")),
     )
     .await
 }

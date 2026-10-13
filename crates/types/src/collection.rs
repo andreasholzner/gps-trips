@@ -49,6 +49,16 @@ pub struct CollectionSummary {
     pub waypoint_bounds: Option<[f64; 4]>,
 }
 
+/// One collection's waypoints, as `GET /api/collection-waypoints?ids=…`
+/// answers for the trip list's map to show with the lines (US-90).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollectionWaypoints {
+    /// The collection's id.
+    pub id: i64,
+    /// In file order.
+    pub waypoints: Vec<Waypoint>,
+}
+
 /// What `GET /api/collections/count` answers with: how many collections
 /// there are, for the Collections tab's count line (US-87).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

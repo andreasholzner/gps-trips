@@ -226,3 +226,16 @@ test("trips, collections and their tracks are selected together, and the actions
   await expect(rows(page)).toHaveCount(1);
   await expect(page.locator(".selection-bar")).toHaveCount(0);
 });
+
+test("waypoints that cannot be read hold no line back (US-90)", async ({ page, request }) => {
+  await importCollection(request, COLLECTION_SINGLE_GPX, { name: `${TAG} Unread` });
+  await page.route("**/api/collection-waypoints?*", (route) => route.abort());
+
+  await page.goto(`/app/?kind=collections&q=${encodeURIComponent(`${TAG} Unread`)}`);
+
+  // Fitted to one short tour, the map is zoomed in: its line is drawn.
+  await expect(lines(page)).toHaveCount(1);
+  await expect(
+    page.locator("#region-map .waypoint-mark, #region-map .waypoint-symbol"),
+  ).toHaveCount(0);
+});

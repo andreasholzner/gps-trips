@@ -6,8 +6,8 @@ use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
 
 use crate::models::{
-    ActivityType, CollectionDetail, CollectionTrackDetail, CollectionTrackSummary, TripTrack,
-    Waypoint,
+    ActivityType, CollectionDetail, CollectionTrackDetail, CollectionTrackSummary,
+    CollectionWaypoints, TripTrack, Waypoint,
 };
 use crate::server::db;
 use crate::server::gpx::TrackStats;
@@ -335,6 +335,45 @@ pub async fn list_collection_waypoints(
     .map(|row| waypoint(&row))
     .fetch_all(pool)
     .await
+}
+
+/// The waypoints of each collection of `ids` there is, in the order asked
+/// for, each collection's in file order (US-90).
+pub async fn list_waypoints_of_collections(
+    pool: &SqlitePool,
+    ids: &[i64],
+) -> Result<Vec<CollectionWaypoints>, sqlx::Error> {
+    let asked = serde_json::to_string(ids).map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
+    let existing: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM collection WHERE id IN (SELECT value FROM json_each(?))",
+    )
+    .bind(&asked)
+    .fetch_all(pool)
+    .await?;
+    let rows = sqlx::query(
+        "SELECT collection_id, id, collection_track_id, name, description, lat, lon, ele, symbol \
+         FROM waypoint WHERE collection_id IN (SELECT value FROM json_each(?)) \
+         ORDER BY collection_id, position",
+    )
+    .bind(&asked)
+    .fetch_all(pool)
+    .await?;
+    let mut by_collection: std::collections::HashMap<i64, Vec<Waypoint>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_collection
+            .entry(row.get("collection_id"))
+            .or_default()
+            .push(waypoint(&row));
+    }
+    Ok(ids
+        .iter()
+        .filter(|id| existing.contains(id))
+        .map(|&id| CollectionWaypoints {
+            id,
+            waypoints: by_collection.remove(&id).unwrap_or_default(),
+        })
+        .collect())
 }
 
 /// The waypoints that belong to one collection track, in file order.

@@ -232,16 +232,21 @@ fn RegionMap(
                         spawn(fetch_tracks(archive(), source, cache, pending, request));
                     }
                 }
+                // The waypoints in view are asked for alongside, but hold no
+                // line back (US-90): they join the lines once they arrive,
+                // and are left off if they cannot be read.
                 let collections = trip_lines::waypoints_in_view(&mapped.waypointed, &view);
                 let missing = waypoint_cache.read().missing(&collections);
-                if !missing.is_empty() {
-                    waiting = true;
-                    let mut pending = waypoint_pending;
-                    let request = trip_lines::to_request(&missing, &pending.peek());
-                    for id in request {
-                        pending.write().insert(id);
-                        spawn(fetch_waypoints(archive(), id, waypoint_cache, pending));
-                    }
+                let mut waypoints_pending = waypoint_pending;
+                let request = trip_lines::to_request(&missing, &waypoints_pending.peek());
+                if !request.is_empty() {
+                    waypoints_pending.write().extend(&request);
+                    spawn(fetch_waypoints(
+                        archive(),
+                        waypoint_cache,
+                        waypoints_pending,
+                        request,
+                    ));
                 }
                 if waiting {
                     if outlived(drawn.peek().as_ref(), &mapped) {
@@ -347,21 +352,22 @@ async fn fetch_tracks(
     pending.write().retain(|id| !ids.contains(id));
 }
 
-/// Fetch collection `id`'s waypoints into `cache` (US-90). A request that
-/// fails stores nothing, so the next view that needs them asks again.
+/// Fetch the waypoints of the collections of `ids` into `cache` (US-90), in
+/// one request. A request that fails stores nothing, so the next view that
+/// needs them asks again.
 async fn fetch_waypoints(
     archive: ApiClient,
-    id: i64,
     mut cache: Signal<WaypointCache>,
     mut pending: Signal<HashSet<i64>>,
+    ids: Vec<i64>,
 ) {
-    match api::list_collection_waypoints(&archive, id).await {
-        Ok(waypoints) => cache.write().store(id, &waypoints),
+    match api::list_waypoints_of_collections(&archive, &ids).await {
+        Ok(answer) => cache.write().store(&ids, answer),
         Err(err) => {
             dioxus::logger::tracing::error!("could not read the waypoints in view: {err}")
         }
     }
-    pending.write().remove(&id);
+    pending.write().retain(|id| !ids.contains(id));
 }
 
 /// Over the map while the tracks in view load (US-73): zooming in past the

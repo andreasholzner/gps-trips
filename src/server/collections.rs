@@ -15,8 +15,8 @@ use axum::{
 use crate::config;
 use crate::models::{
     ActivityType, CollectionCount, CollectionDetail, CollectionEdit, CollectionPreview,
-    CollectionSummary, CollectionTrackDetail, CollectionTrackEdit, CreatedCollection, TripTrack,
-    Waypoint,
+    CollectionSummary, CollectionTrackDetail, CollectionTrackEdit, CollectionWaypoints,
+    CreatedCollection, TripTrack, Waypoint,
 };
 use crate::server::{
     collection_gpx::{parse_collection, track_name, ParsedCollection},
@@ -55,6 +55,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/collections/:id/tracks", get(handle_tracks))
         .route("/api/collections/:id/waypoints", get(handle_waypoints))
         .route("/api/collection-tracks", get(handle_list_tracks))
+        .route("/api/collection-waypoints", get(handle_list_waypoints))
         .route(
             "/api/collection-tracks/:id",
             get(handle_get_track)
@@ -260,6 +261,23 @@ async fn handle_list_tracks(
     }
     Ok(Json(
         repo::list_collection_tracks_by_id(&state.pool, &ids).await?,
+    ))
+}
+
+/// `GET /api/collection-waypoints?ids=…` — each requested collection's
+/// waypoints, for the trip list's map to show with the lines (US-90): one
+/// request for every collection in view. A collection there is not is left
+/// out; 400 for ids that are not integers.
+async fn handle_list_waypoints(
+    State(state): State<AppState>,
+    Query(query): Query<TracksQuery>,
+) -> Result<Json<Vec<CollectionWaypoints>>, AppError> {
+    let ids = parse_ids(query.ids())?;
+    if ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    Ok(Json(
+        repo::list_waypoints_of_collections(&state.pool, &ids).await?,
     ))
 }
 

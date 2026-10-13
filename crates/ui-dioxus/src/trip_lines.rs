@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use trip_archive_types::{ActivityType, TripTrack, Waypoint};
+use trip_archive_types::{ActivityType, CollectionWaypoints, TripTrack};
 
 use crate::activity_color;
 use crate::config::trip_map::LINES_FROM_ZOOM;
@@ -155,8 +155,9 @@ impl TrackCache {
 /// An edit to a waypoint is seen once the list is opened again.
 #[derive(Debug, Default)]
 pub struct WaypointCache {
-    /// Each collection read, with its waypoints. One that could not be read
-    /// is not here, so the next view that needs it asks again.
+    /// Each collection read, with its waypoints — none for one the archive
+    /// left out. One whose request failed is not here, so the next view
+    /// that needs it asks again.
     known: HashMap<i64, Vec<MapWaypoint>>,
 }
 
@@ -170,12 +171,18 @@ impl WaypointCache {
             .collect()
     }
 
-    /// What the archive answered for `collection`.
-    pub fn store(&mut self, collection: i64, waypoints: &[Waypoint]) {
-        self.known.insert(
-            collection,
-            waypoints.iter().map(MapWaypoint::from).collect(),
-        );
+    /// What the archive answered for `asked`; a collection it left out has
+    /// no waypoints to show.
+    pub fn store(&mut self, asked: &[i64], answer: Vec<CollectionWaypoints>) {
+        for id in asked {
+            self.known.entry(*id).or_default();
+        }
+        for collection in answer {
+            self.known.insert(
+                collection.id,
+                collection.waypoints.iter().map(MapWaypoint::from).collect(),
+            );
+        }
     }
 
     /// The waypoints of `collections` that were read, in their order.

@@ -645,3 +645,27 @@ async fn us19_an_ordinary_failure_is_not_mistaken_for_a_lost_session() {
 
     assert!(html.contains("refused: false"), "got {html}");
 }
+
+// US-90: the waypoints of every collection in view, in one request.
+#[tokio::test]
+async fn us90_the_waypoints_of_many_collections_are_read_in_one_request() {
+    let (archive, _dir) = serve_test_archive().await;
+    let (lakes, _) = crate::test_support::import_collection(
+        &archive,
+        crate::test_support::COLLECTION_GPX,
+        &[("name", "Lakes")],
+    )
+    .await;
+
+    let read = list_waypoints_of_collections(&archive, &[lakes, 9999])
+        .await
+        .expect("waypoints");
+    let none = list_waypoints_of_collections(&archive, &[])
+        .await
+        .expect("nothing asked");
+
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].id, lakes);
+    assert_eq!(read[0].waypoints.len(), 2);
+    assert!(none.is_empty());
+}

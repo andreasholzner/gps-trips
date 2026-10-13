@@ -11,7 +11,7 @@
 //! Drives the real Axum router in-process against a real temp SQLite DB (ADR-0012).
 
 use axum::http::{Method, StatusCode};
-use trip_archive::models::{CollectionDetail, CollectionSummary};
+use trip_archive::models::{CollectionDetail, CollectionSummary, CollectionWaypoints};
 
 use crate::common::{
     body_string, error_message, get, import_collection, json_request, send, test_app,
@@ -172,4 +172,57 @@ async fn us90_an_unknown_activity_is_refused_with_the_reason() {
         error_message(response).await.contains("sailing"),
         "the reason names the value"
     );
+}
+
+// ── The waypoints the map shows with the lines ───────────────────────────────
+
+#[tokio::test]
+async fn us90_the_waypoints_of_many_collections_come_in_one_request() {
+    let (app, _dir) = test_app().await;
+    let lakes = import_collection(&app, COLLECTION_GPX, &[("name", "Lakes")]).await;
+    let passes = import_collection(&app, WAYPOINTS_ONLY_GPX, &[("name", "Passes")]).await;
+    let own: Vec<trip_archive::models::Waypoint> =
+        read_json(&app, &format!("/api/collections/{lakes}/waypoints")).await;
+
+    let answer: Vec<CollectionWaypoints> = read_json(
+        &app,
+        &format!("/api/collection-waypoints?ids={passes},9999,{lakes}"),
+    )
+    .await;
+
+    let ids: Vec<i64> = answer.iter().map(|c| c.id).collect();
+    assert_eq!(ids, [passes, lakes], "as asked, an unknown one left out");
+    assert_eq!(
+        answer[1].waypoints, own,
+        "each collection's own, in file order"
+    );
+    assert_eq!(answer[0].waypoints.len(), 2);
+}
+
+#[tokio::test]
+async fn us90_no_collections_ask_for_no_waypoints_and_bad_ids_are_refused() {
+    let (app, _dir) = test_app().await;
+
+    let none: Vec<CollectionWaypoints> = read_json(&app, "/api/collection-waypoints").await;
+    let response = get(&app, "/api/collection-waypoints?ids=1,x").await;
+
+    assert!(none.is_empty());
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn us90_the_waypoints_are_the_owners_alone() {
+    let (app, _dir) = test_app().await;
+    let id = import_collection(&app, COLLECTION_GPX, &[]).await;
+
+    let response = crate::common::send_unauthenticated(
+        &app,
+        axum::http::Request::builder()
+            .uri(format!("/api/collection-waypoints?ids={id}"))
+            .body(axum::body::Body::empty())
+            .unwrap(),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

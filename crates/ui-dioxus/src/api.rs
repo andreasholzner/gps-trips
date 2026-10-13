@@ -36,8 +36,8 @@ pub use collections::{
     delete_collection_track, edit_collection, edit_collection_track, get_collection,
     get_collection_track, get_collection_track_geometry, list_collection_files,
     list_collection_track_positions, list_collection_track_waypoints, list_collection_tracks,
-    list_collection_waypoints, list_collections, preview_collection, review_collection_import,
-    upload_collection_files,
+    list_collection_waypoints, list_collections, list_waypoints_of_collections, preview_collection,
+    review_collection_import, upload_collection_files,
 };
 pub use session::{login, logout, session};
 pub use share::{
