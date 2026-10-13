@@ -31,8 +31,9 @@ use crate::server::{
     state::{self, AppState},
     stats::{handle_stats_trips, handle_tag_summaries},
     tags::{
-        self as tags, handle_bulk_add_trip_tags, handle_create_tag, handle_delete_tag,
-        handle_list_all_tags, handle_rename_tag, handle_tag_overview,
+        self as tags, handle_bulk_add_collection_tags, handle_bulk_add_trip_tags,
+        handle_create_tag, handle_delete_tag, handle_list_all_tags, handle_rename_tag,
+        handle_tag_overview,
     },
     track_files::{geojson_track, gpx_download},
     tracks::handle_list_tracks,
@@ -128,6 +129,11 @@ pub fn router(state: AppState) -> Router {
         ))
         // US-34: bulk-tag trips selected on the list page, in one request.
         .route("/api/trips/tags", post(handle_bulk_add_trip_tags))
+        // US-100: bulk-tag collections selected on either list of them.
+        .route(
+            "/api/collections/tags",
+            post(handle_bulk_add_collection_tags),
+        )
         // US-63: one activity type for the trips selected on the list page.
         .route(
             "/api/trips/activity_type",

@@ -262,3 +262,63 @@ async fn us93_tagging_something_gone_by_name_creates_nothing() {
     }
     assert!(list_all_tags(&db.pool).await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn us100_every_selected_collection_is_tagged_and_none_of_its_tracks() {
+    let db = TestDb::new().await;
+    let (alps, alps_tracks) = a_collection(&db.pool, "Alps").await;
+    let (tyrol, _) = a_collection(&db.pool, "Tyrol").await;
+    let (other, _) = a_collection(&db.pool, "Other").await;
+    let names_given = vec!["shelf".to_string(), "alpine".to_string()];
+
+    let applied = bulk_add_tags(
+        &db.pool,
+        &[Tagged::Collection(alps), Tagged::Collection(tyrol)],
+        &names_given,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        applied
+            .iter()
+            .map(|tag| tag.name.as_str())
+            .collect::<Vec<_>>(),
+        ["shelf", "alpine"]
+    );
+    for collection in [alps, tyrol] {
+        assert_eq!(
+            names(&db.pool, Tagged::Collection(collection)).await,
+            ["alpine", "shelf"]
+        );
+    }
+    assert!(names(&db.pool, Tagged::Collection(other)).await.is_empty());
+    for track in alps_tracks {
+        assert!(names(&db.pool, Tagged::CollectionTrack(track))
+            .await
+            .is_empty());
+    }
+    let none_on_trips: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trip_tag")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(none_on_trips, 0, "the ids are collections', not trips'");
+}
+
+#[tokio::test]
+async fn us100_tagging_collections_again_is_a_no_op() {
+    let db = TestDb::new().await;
+    let (alps, _) = a_collection(&db.pool, "Alps").await;
+    tag(&db.pool, Tagged::Collection(alps), "shelf").await;
+
+    bulk_add_tags(
+        &db.pool,
+        &[Tagged::Collection(alps)],
+        &["shelf".to_string()],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(names(&db.pool, Tagged::Collection(alps)).await, ["shelf"]);
+    assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
+}

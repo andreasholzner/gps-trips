@@ -186,13 +186,15 @@ async fn trips_exist_is_false_when_any_id_is_unknown() {
 }
 
 #[tokio::test]
-async fn bulk_add_trip_tags_applies_every_tag_to_every_trip() {
+async fn bulk_add_tags_applies_every_tag_to_every_trip() {
     let db = TestDb::new().await;
     let a = insert_sample_trip(&db.pool).await;
     let b = insert_sample_trip(&db.pool).await;
 
     let names = vec!["alps".to_string(), "hiking".to_string()];
-    let applied = bulk_add_trip_tags(&db.pool, &[a, b], &names).await.unwrap();
+    let applied = bulk_add_tags(&db.pool, &[Tagged::Trip(a), Tagged::Trip(b)], &names)
+        .await
+        .unwrap();
     assert_eq!(applied.len(), 2);
 
     for trip_id in [a, b] {
@@ -205,24 +207,28 @@ async fn bulk_add_trip_tags_applies_every_tag_to_every_trip() {
 }
 
 #[tokio::test]
-async fn bulk_add_trip_tags_creates_new_tags_on_demand() {
+async fn bulk_add_tags_creates_new_tags_on_demand() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
 
-    bulk_add_trip_tags(&db.pool, &[trip_id], &["brand-new".to_string()])
-        .await
-        .unwrap();
+    bulk_add_tags(
+        &db.pool,
+        &[Tagged::Trip(trip_id)],
+        &["brand-new".to_string()],
+    )
+    .await
+    .unwrap();
 
     assert_eq!(list_all_tags(&db.pool).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
-async fn bulk_add_trip_tags_reuses_an_existing_tag_rather_than_duplicating_it() {
+async fn bulk_add_tags_reuses_an_existing_tag_rather_than_duplicating_it() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
     get_or_create_tag(&db.pool, "hiking").await.unwrap();
 
-    bulk_add_trip_tags(&db.pool, &[trip_id], &["hiking".to_string()])
+    bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &["hiking".to_string()])
         .await
         .unwrap();
 
@@ -230,15 +236,15 @@ async fn bulk_add_trip_tags_reuses_an_existing_tag_rather_than_duplicating_it() 
 }
 
 #[tokio::test]
-async fn bulk_add_trip_tags_is_idempotent() {
+async fn bulk_add_tags_is_idempotent() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
 
     let names = vec!["hiking".to_string()];
-    bulk_add_trip_tags(&db.pool, &[trip_id], &names)
+    bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &names)
         .await
         .unwrap();
-    bulk_add_trip_tags(&db.pool, &[trip_id], &names)
+    bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &names)
         .await
         .unwrap();
 
@@ -252,12 +258,12 @@ async fn bulk_add_trip_tags_is_idempotent() {
 }
 
 #[tokio::test]
-async fn bulk_add_trip_tags_deduplicates_a_repeated_name_in_one_call() {
+async fn bulk_add_tags_deduplicates_a_repeated_name_in_one_call() {
     let db = TestDb::new().await;
     let trip_id = insert_sample_trip(&db.pool).await;
 
     let names = vec!["hiking".to_string(), "hiking".to_string()];
-    let applied = bulk_add_trip_tags(&db.pool, &[trip_id], &names)
+    let applied = bulk_add_tags(&db.pool, &[Tagged::Trip(trip_id)], &names)
         .await
         .unwrap();
 

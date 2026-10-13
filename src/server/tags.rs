@@ -170,12 +170,7 @@ pub struct BulkAddTagsRequest {
 }
 
 /// POST `/api/trips/tags` — from the list page's multi-select, tag every trip
-/// in `trip_ids` with every name in `names` in one request (US-34). 400 if
-/// either list is empty. Trip existence is checked before names are
-/// validated, mirroring the single-trip ordering of `add_tag` above: if any
-/// `trip_ids` entry doesn't exist, the whole request 404s and nothing is
-/// created or linked. Every name is normalized (trimmed, lowercased); the
-/// first invalid one 400s the whole request, same as the single-tag handler.
+/// in `trip_ids` with every name in `names` in one request (US-34).
 pub async fn handle_bulk_add_trip_tags(
     State(state): State<AppState>,
     Json(body): Json<BulkAddTagsRequest>,
@@ -183,18 +178,62 @@ pub async fn handle_bulk_add_trip_tags(
     if body.trip_ids.is_empty() {
         return Err(AppError::BadRequest("no trips selected".to_string()));
     }
-    if body.names.is_empty() {
+    let exist = repo::trips_exist(&state.pool, &body.trip_ids).await?;
+    let tagged: Vec<Tagged> = body.trip_ids.iter().copied().map(Tagged::Trip).collect();
+    bulk_add(&state, exist, &tagged, &body.names).await
+}
+
+/// The `POST /api/collections/tags` request body (US-100, ADR-0008).
+#[derive(Deserialize)]
+pub struct BulkAddCollectionTagsRequest {
+    collection_ids: Vec<i64>,
+    names: Vec<String>,
+}
+
+/// POST `/api/collections/tags` — tag every collection selected on the
+/// Collections page or the trip list's Collections tab with every name in
+/// `names` in one request (US-100). Never their tracks (US-93).
+pub async fn handle_bulk_add_collection_tags(
+    State(state): State<AppState>,
+    Json(body): Json<BulkAddCollectionTagsRequest>,
+) -> Result<Json<Vec<Tag>>, AppError> {
+    if body.collection_ids.is_empty() {
+        return Err(AppError::BadRequest("no collections selected".to_string()));
+    }
+    let exist = repo::collections_exist(&state.pool, &body.collection_ids).await?;
+    let tagged: Vec<Tagged> = body
+        .collection_ids
+        .iter()
+        .copied()
+        .map(Tagged::Collection)
+        .collect();
+    bulk_add(&state, exist, &tagged, &body.names).await
+}
+
+/// Tag everything in `tagged` with every name in `names`, all or nothing.
+/// 400 if `names` is empty. Existence (`exist`, checked by the caller) comes
+/// before names are validated, mirroring the single-item ordering of
+/// `add_tag` above: if anything selected does not exist, the whole request
+/// 404s and nothing is created or linked. Every name is normalized (trimmed,
+/// lowercased); the first invalid one 400s the whole request, same as the
+/// single-tag handler.
+async fn bulk_add(
+    state: &AppState,
+    exist: bool,
+    tagged: &[Tagged],
+    names: &[String],
+) -> Result<Json<Vec<Tag>>, AppError> {
+    if names.is_empty() {
         return Err(AppError::BadRequest("no tags provided".to_string()));
     }
-    if !repo::trips_exist(&state.pool, &body.trip_ids).await? {
+    if !exist {
         return Err(AppError::NotFound);
     }
-    let names = body
-        .names
+    let names = names
         .iter()
         .map(|name| normalize_tag_name(name).map_err(AppError::BadRequest))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(
-        repo::bulk_add_trip_tags(&state.pool, &body.trip_ids, &names).await?,
+        repo::bulk_add_tags(&state.pool, tagged, &names).await?,
     ))
 }

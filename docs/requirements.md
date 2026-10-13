@@ -144,7 +144,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
-| [US-100](#us-100--tag-many-collections-at-once)               | 📋     | Tag many collections at once                 | [Tags](#tags)                                                       |
+| [US-100](#us-100--tag-many-collections-at-once)               | 🚧     | Tag many collections at once                 | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1307,7 +1307,7 @@ own), ADR-0008 (the screens read and change the tags through the JSON API)
 
 ### US-100 — Tag many collections at once
 
-**Planned 📋** — As the owner, I select several collections and tag them together, so organizing a
+**In progress 🚧** — As the owner, I select several collections and tag them together, so organizing a
 shelf of guide books does not take a visit to each one's page.
 
 **Acceptance criteria:** The collections selected on the Collections page (US-97) or on the trip
@@ -1315,8 +1315,8 @@ list's Collections tab (US-87) — the selection US-94 brings — are tagged as 
 (US-34): one or more tag names are staged, with US-33's suggestions and new-tag confirmation, and
 then applied to every selected collection in one request. If the selection includes a collection
 that no longer exists, the whole request 404s and nothing is created or linked; an invalid tag
-name 400s. Only the collections are tagged, never their tracks (US-93). Afterwards the list and the
-tag suggestions show the new tags.
+name 400s. Only the collections are tagged, never their tracks (US-93). Afterwards the tag
+suggestions offer the new tags, and each collection's page (US-86) shows them.
 
 **Decisions:** US-100 → ADR-0028 (tags reach collections through links of their own), ADR-0008 (the
 screens change the tags through the JSON API)

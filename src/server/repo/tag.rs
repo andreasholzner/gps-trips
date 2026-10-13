@@ -334,16 +334,18 @@ pub async fn trips_exist(pool: &SqlitePool, trip_ids: &[i64]) -> Result<bool, sq
 }
 
 /// Apply every tag named in `tag_names` (already normalized by the caller) to
-/// every trip in `trip_ids` (US-34), in one transaction: each tag is created
-/// on demand — the same upsert `get_or_create_tag` uses, inlined here because
-/// it needs to run on this call's transaction, not a fresh pool connection —
-/// and linked to every trip via `INSERT OR IGNORE`, making re-application
-/// idempotent just like `add_tag`. A name repeated in `tag_names` is only
-/// applied once — otherwise the DB writes stay idempotent but the returned
-/// `Tag` list would contain the same tag twice. Returns the applied tags.
-pub async fn bulk_add_trip_tags(
+/// everything in `tagged` — trips selected on the list page (US-34), or
+/// collections (US-100) — in one transaction: each tag is created on demand —
+/// the same upsert `get_or_create_tag` uses, inlined here because it needs to
+/// run on this call's transaction, not a fresh pool connection — and linked
+/// to each through its own link table via `INSERT OR IGNORE`, making
+/// re-application idempotent just like `add_tag`. A name repeated in
+/// `tag_names` is only applied once — otherwise the DB writes stay
+/// idempotent but the returned `Tag` list would contain the same tag twice.
+/// Returns the applied tags.
+pub async fn bulk_add_tags(
     pool: &SqlitePool,
-    trip_ids: &[i64],
+    tagged: &[Tagged],
     tag_names: &[String],
 ) -> Result<Vec<Tag>, sqlx::Error> {
     let mut tx = db::begin_write(pool).await?;
@@ -364,12 +366,15 @@ pub async fn bulk_add_trip_tags(
         .fetch_one(&mut *tx)
         .await?;
 
-        for &trip_id in trip_ids {
-            sqlx::query("INSERT OR IGNORE INTO trip_tag (trip_id, tag_id) VALUES (?, ?)")
-                .bind(trip_id)
-                .bind(tag_id)
-                .execute(&mut *tx)
-                .await?;
+        for &each in tagged {
+            let (table, column, id) = each.link();
+            sqlx::query(&format!(
+                "INSERT OR IGNORE INTO {table} ({column}, tag_id) VALUES (?, ?)"
+            ))
+            .bind(id)
+            .bind(tag_id)
+            .execute(&mut *tx)
+            .await?;
         }
 
         tags.push(Tag {

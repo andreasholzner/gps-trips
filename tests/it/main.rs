@@ -5,6 +5,7 @@
 
 mod common;
 
+mod us100_bulk_tag_collections;
 mod us10_self_host;
 mod us11_activity_type;
 mod us12_staged_import;
