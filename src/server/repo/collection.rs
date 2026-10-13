@@ -221,6 +221,29 @@ pub async fn collection_exists(pool: &SqlitePool, id: i64) -> Result<bool, sqlx:
         .await
 }
 
+/// Whether every one of `ids` names a collection (US-94).
+pub async fn collections_exist(pool: &SqlitePool, ids: &[i64]) -> Result<bool, sqlx::Error> {
+    all_exist(pool, "collection", ids).await
+}
+
+/// Whether every one of `ids` names a collection track (US-94).
+pub async fn collection_tracks_exist(pool: &SqlitePool, ids: &[i64]) -> Result<bool, sqlx::Error> {
+    all_exist(pool, "collection_track", ids).await
+}
+
+/// Whether every one of `ids` is a row of `table` — one of this module's
+/// table names, never input.
+async fn all_exist(pool: &SqlitePool, table: &str, ids: &[i64]) -> Result<bool, sqlx::Error> {
+    let json = serde_json::to_string(ids).map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
+    sqlx::query_scalar(&format!(
+        "SELECT NOT EXISTS(SELECT 1 FROM json_each(?) AS asked \
+         WHERE NOT EXISTS(SELECT 1 FROM {table} WHERE id = asked.value))"
+    ))
+    .bind(json)
+    .fetch_one(pool)
+    .await
+}
+
 /// A collection's name alone, or `None` if there is no such collection.
 pub async fn collection_name(pool: &SqlitePool, id: i64) -> Result<Option<String>, sqlx::Error> {
     sqlx::query_scalar("SELECT name FROM collection WHERE id = ?")

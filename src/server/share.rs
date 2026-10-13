@@ -1,5 +1,6 @@
-//! US-53 — shares: read-only access to a few trips through a link, or to
-//! the summary of a few tags (US-82).
+//! US-53 — shares: read-only access to a few trips through a link, to the
+//! summary of a few tags (US-82), or to collections or collection tracks
+//! (US-94, whose recipient's routes are in [`collections`]).
 //!
 //! Two halves. The owner creates a share (`POST /api/shares`), lists the
 //! active ones (`GET /api/shares`) and stops one (`DELETE /api/shares/:id`,
@@ -38,7 +39,7 @@ use crate::server::{
 /// The recipient's routes, every one under `/s/:token` and every one a
 /// `GET`.
 pub fn router() -> Router<AppState> {
-    Router::new()
+    collections::router()
         .route("/s/:token/api/share", get(overview))
         .route("/s/:token/api/trips/:id", get(trip))
         .route("/s/:token/api/trips/:id/track.geojson", get(track))
@@ -49,25 +50,20 @@ pub fn router() -> Router<AppState> {
         .route("/s/:token/media/*key", get(media))
 }
 
+mod collections;
+
 // ── The owner's half ─────────────────────────────────────────────────────────
 
-/// POST `/api/shares` — share a few trips, or the summary of a few tags
-/// (US-82). 400 for neither or both, a malformed tag name or an overlong
-/// label, 404 if a trip or tag does not exist; 201 with the token otherwise.
+/// POST `/api/shares` — share a few trips, the summary of a few tags
+/// (US-82), or collections or collection tracks (US-94). 400 for nothing,
+/// or more than one kind of thing, a malformed tag name or an overlong
+/// label; 404 if anything named does not exist; 201 with the token
+/// otherwise.
 pub async fn handle_create_share(
     State(state): State<AppState>,
     Json(body): Json<CreateShare>,
 ) -> Result<(StatusCode, Json<CreatedShare>), AppError> {
-    let tags = match (body.trip_ids.is_empty(), body.tags.is_empty()) {
-        (true, true) => return Err(AppError::BadRequest("nothing to share".to_string())),
-        (false, false) => {
-            return Err(AppError::BadRequest(
-                "a share names trips or tags, not both".to_string(),
-            ))
-        }
-        (false, true) => Vec::new(),
-        (true, false) => normalized_tags(&body.tags)?,
-    };
+    let named = named(&body)?;
     let label = body
         .label
         .as_deref()
@@ -79,21 +75,31 @@ pub async fn handle_create_share(
             config::share::LABEL_MAX_CHARS
         )));
     }
-    let tag_ids = if tags.is_empty() {
-        if !repo::trips_exist(&state.pool, &body.trip_ids).await? {
-            return Err(AppError::NotFound);
+    let tag_ids;
+    let (target, exists) = match named {
+        Named::Trips => (
+            ShareTarget::Trips(&body.trip_ids),
+            repo::trips_exist(&state.pool, &body.trip_ids).await?,
+        ),
+        Named::Tags(tags) => {
+            tag_ids = repo::find_tag_ids(&state.pool, &tags).await?;
+            match &tag_ids {
+                Some(ids) => (ShareTarget::Tags(ids), true),
+                None => (ShareTarget::Tags(&[]), false),
+            }
         }
-        Vec::new()
-    } else {
-        repo::find_tag_ids(&state.pool, &tags)
-            .await?
-            .ok_or(AppError::NotFound)?
+        Named::Collections => (
+            ShareTarget::Collections(&body.collection_ids),
+            repo::collections_exist(&state.pool, &body.collection_ids).await?,
+        ),
+        Named::CollectionTracks => (
+            ShareTarget::CollectionTracks(&body.collection_track_ids),
+            repo::collection_tracks_exist(&state.pool, &body.collection_track_ids).await?,
+        ),
     };
-    let target = if tag_ids.is_empty() {
-        ShareTarget::Trips(&body.trip_ids)
-    } else {
-        ShareTarget::Tags(&tag_ids)
-    };
+    if !exists {
+        return Err(AppError::NotFound);
+    }
 
     let now = OffsetDateTime::now_utc();
     let expires_at = expiry_at(body.expiry, now);
@@ -139,6 +145,36 @@ pub async fn handle_stop_share(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(AppError::NotFound)
+    }
+}
+
+/// The one kind of thing a share request names.
+enum Named {
+    Trips,
+    /// Normalized, each once, in the order given.
+    Tags(Vec<String>),
+    Collections,
+    CollectionTracks,
+}
+
+/// What `body` names: exactly one kind of thing, or a 400.
+fn named(body: &CreateShare) -> Result<Named, AppError> {
+    let kinds = [
+        !body.trip_ids.is_empty(),
+        !body.tags.is_empty(),
+        !body.collection_ids.is_empty(),
+        !body.collection_track_ids.is_empty(),
+    ];
+    match kinds {
+        [false, false, false, false] => Err(AppError::BadRequest("nothing to share".to_string())),
+        [true, false, false, false] => Ok(Named::Trips),
+        [false, true, false, false] => Ok(Named::Tags(normalized_tags(&body.tags)?)),
+        [false, false, true, false] => Ok(Named::Collections),
+        [false, false, false, true] => Ok(Named::CollectionTracks),
+        _ => Err(AppError::BadRequest(
+            "a share names trips, tags, collections or collection tracks, not several of them"
+                .to_string(),
+        )),
     }
 }
 
@@ -409,6 +445,32 @@ mod tests {
         let raw = ["Norway", "alps", " norway "].map(String::from);
         assert_eq!(normalized_tags(&raw).unwrap(), ["norway", "alps"]);
         assert!(normalized_tags(&["two words".to_string()]).is_err());
+    }
+
+    #[test]
+    fn us94_a_share_names_exactly_one_kind_of_thing() {
+        let of = |body: serde_json::Value| {
+            named(&serde_json::from_value::<CreateShare>(body).unwrap()).map(|named| match named {
+                Named::Trips => "trips",
+                Named::Tags(_) => "tags",
+                Named::Collections => "collections",
+                Named::CollectionTracks => "tracks",
+            })
+        };
+        assert_eq!(
+            of(serde_json::json!({"collection_ids": [1]})).unwrap(),
+            "collections"
+        );
+        assert_eq!(
+            of(serde_json::json!({"collection_track_ids": [1, 2]})).unwrap(),
+            "tracks"
+        );
+        assert_eq!(of(serde_json::json!({"tags": ["alps"]})).unwrap(), "tags");
+        assert!(of(serde_json::json!({})).is_err());
+        assert!(of(serde_json::json!({"trip_ids": [1], "collection_ids": [1]})).is_err());
+        assert!(
+            of(serde_json::json!({"collection_ids": [1], "collection_track_ids": [1]})).is_err()
+        );
     }
 
     #[test]
