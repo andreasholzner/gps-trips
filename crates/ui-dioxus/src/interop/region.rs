@@ -90,7 +90,7 @@ const REGION_MAP_SCRIPT: &str = r##"
     // Thinner than a share's lines: a dense region draws many at once.
     const LINE_WEIGHT = 3;
     const HIGHLIGHTED_WEIGHT = 6;
-    // How wide a line is to the pointer (US-90).
+    // How wide a dashed or dotted line is to the pointer (US-90).
     const HIT_WEIGHT = 14;
     let points = [];
     // A collection's waypoints in view, shown with the lines (US-90).
@@ -163,23 +163,25 @@ const REGION_MAP_SCRIPT: &str = r##"
           if (line.points.length === 0) continue;
           // Each kind in its line style (US-90): solid, dashed or dotted.
           // The dots are dashes shorter than the line is wide, rounded by
-          // its caps. Drawn only: the pointer is taken by the path below.
+          // its caps.
           const path = L.polyline(line.points, {
             color: line.color,
             weight: LINE_WEIGHT,
             dashArray: line.dash,
             lineCap: "round",
-            interactive: false,
+            interactive: !line.dash,
             className: "trip-line",
           }).addTo(lines);
-          // An unseen, wider path along the same track takes the pointer:
-          // a dashed or dotted line is hit only where it is painted, and a
-          // thin one is hard to touch at all.
-          const hit = L.polyline(line.points, {
-            weight: HIT_WEIGHT,
-            opacity: 0,
-            className: "trip-line-hit",
-          }).addTo(lines);
+          // A dashed or dotted line is hit only where it is painted: an
+          // unseen, wider path along the same track takes the pointer for
+          // it. A solid line takes it itself.
+          const hit = line.dash
+            ? L.polyline(line.points, {
+                weight: HIT_WEIGHT,
+                opacity: 0,
+                className: "trip-line-hit",
+              }).addTo(lines)
+            : path;
           // A node, not the string: Leaflet puts a string tooltip in as
           // HTML, and a trip's name comes from a GPX or a Komoot title.
           hit.bindTooltip(document.createTextNode(line.name), { sticky: true });
@@ -188,7 +190,7 @@ const REGION_MAP_SCRIPT: &str = r##"
           hit.on("mouseover", () => {
             path.setStyle({ weight: HIGHLIGHTED_WEIGHT });
             path.bringToFront();
-            hit.bringToFront();
+            if (hit !== path) hit.bringToFront();
           });
           hit.on("mouseout", () => path.setStyle({ weight: LINE_WEIGHT }));
         }
