@@ -26,12 +26,20 @@ pub fn SelectionBar(
     on_applied: EventHandler<Selected>,
 ) -> Element {
     let mut open = use_signal(|| None::<Action>);
+    // A selection that changed under an open panel closes it — emptied, or
+    // now holding what its action does not act on — so it does not reopen
+    // by itself once the selection allows it again.
+    use_effect(move || {
+        let still = stays_open(*open.peek(), &picked.read());
+        if still != *open.peek() {
+            open.set(still);
+        }
+    });
     let selection = picked.read().clone();
     if selection.is_empty() {
         return rsx! {};
     }
-    // A selection that changed under an open panel can close it.
-    let shown = open().filter(|action| action.active(&selection));
+    let shown = stays_open(open(), &selection);
     let target = picked::target(&selection);
     let mut applied = move |of: Selected| {
         picked.write().clear();
@@ -82,6 +90,11 @@ pub fn SelectionBar(
             }
         }
     }
+}
+
+/// The panel open for `picked`: `open`, while its action can be taken.
+fn stays_open(open: Option<Action>, picked: &BTreeSet<Picked>) -> Option<Action> {
+    open.filter(|action| action.active(picked))
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -155,5 +168,19 @@ mod tests {
         for label in ["Tag…", "Share…", "Set activity…"] {
             assert!(button(&html, label).contains("disabled"), "{html}");
         }
+    }
+
+    #[test]
+    fn us90_a_panel_stays_open_only_while_its_action_can_be_taken() {
+        let trips: BTreeSet<Picked> = [Picked::Trip(Kind::Recorded, 1)].into();
+        let mixed: BTreeSet<Picked> =
+            [Picked::Trip(Kind::Recorded, 1), Picked::Collection(3)].into();
+
+        assert_eq!(stays_open(Some(Action::Tag), &trips), Some(Action::Tag));
+        assert_eq!(stays_open(None, &trips), None);
+        // Closed, not merely hidden: it does not reopen by itself once the
+        // selection allows it again.
+        assert_eq!(stays_open(Some(Action::Tag), &mixed), None);
+        assert_eq!(stays_open(Some(Action::Tag), &BTreeSet::new()), None);
     }
 }

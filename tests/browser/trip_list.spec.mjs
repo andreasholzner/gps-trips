@@ -697,3 +697,20 @@ test("the region map's controls do not touch", async ({ page }) => {
   const fit = await page.locator("#region-fit").boundingBox();
   expect(fit.x - (follow.x + follow.width)).toBeGreaterThanOrEqual(8);
 });
+
+// US-90: a panel the owner left open closes with the selection, and does not
+// reopen by itself with the next one — two real clicks apart.
+test("an emptied selection closes the open panel for good", async ({ page }) => {
+  await page.goto("/app/");
+  const all = page.locator("table thead input[type=checkbox]");
+  await all.check();
+  await page.getByRole("button", { name: "Tag…" }).click();
+  await expect(page.getByText("Tag selected trips")).toBeVisible();
+
+  await all.uncheck();
+  await expect(page.locator(".selection-bar")).toHaveCount(0);
+  await all.check();
+
+  await expect(page.locator(".selection-bar")).toBeVisible();
+  await expect(page.getByText("Tag selected trips")).toHaveCount(0);
+});
