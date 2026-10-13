@@ -145,6 +145,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
+| [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | 📋     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 
 ### Maintaining this file
 
@@ -731,6 +732,26 @@ browser layer.
 **Decisions:** US-92 → ADR-0011 + US-14/US-52 (the region query and URL contract, unchanged; only
 where the region comes from changes), ADR-0025 (the map reports its settled viewport; Rust decides
 the region), ADR-0012 (pan and zoom are real user events, asserted in the browser layer)
+
+### US-101 — Photos Komoot parked at the start or end
+
+**Planned 📋** — As the owner, the "Unplaced photos" filter (US-66) also finds trips whose photos
+Komoot put at the trip's start or end, because that is where Komoot puts a photo it could not
+place, so such a photo still needs placing even though it has a position.
+
+**Acceptance criteria:** A trip matches the filter if it has a photo left unplaced
+(`location_source = none`, as today) or a photo whose position Komoot provided
+(`location_source = provided`, US-22) and that lies at the first or last point of the trip's
+track. "At" allows a small distance, a constant in `config.rs`, so a position Komoot rounded or
+took from its own copy of the track still counts. Photos placed from EXIF (US-3), by timestamp
+(US-4) or by hand (US-30) never count, even at the start or end: those positions are meant. Once
+such a photo is placed by hand it no longer counts, and a trip without a track is matched only on
+unplaced photos. Each trip is still listed once, and the filter keeps its label, `unplaced` URL
+parameter (US-52) and place in the filter area (US-61); only what it matches widens. The map and
+gallery are unchanged: such a photo is still shown where Komoot put it.
+
+**Decisions:** US-101 → ADR-0011 (filtering on SQLite), ADR-0018 (the `LocationSource` set is
+unchanged; `provided` is told apart by position, not by a new value)
 
 ## Trip page
 
