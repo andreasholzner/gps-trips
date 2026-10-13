@@ -16,8 +16,9 @@ The overarching driver: *"self-host the whole thing, so I own my data."* and a l
 
 - **The owner** — the single user who owns and runs the instance, and the only one who signs in.
 - **A share's recipient** — anyone holding a share link (US-53). They have no account and need no
-  password, and they see only the trips the share names, read-only — their stats, map, elevation
-  profile, photos and GPX — until the share expires or the owner stops it (US-69).
+  password, and they see only what the share names, read-only — trips with their stats, map,
+  elevation profile, photos and GPX, or collections and their tracks (US-94) — until the share
+  expires or the owner stops it (US-69).
 
 ## Scheduling
 
@@ -28,9 +29,8 @@ table when its stories ship. Each story's own state is recorded with the story a
 
 | Step | Stories                                  | Why it sits here                                                                                                                                      |
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1    | US-90, US-94                             | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
+| 1    | US-90, US-100                            | Each builds only on stories done (US-86/87, US-94's selection), not on each other, so their order is free.                                            |
 | 2    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
-| 3    | US-100                                   | Tags what US-94's selection of collections picks; independent of US-96.                                                                               |
 
 ## Story index
 
@@ -138,7 +138,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-91](#us-91--export-tracks)                                | ⏳     | Export tracks                                | [Export](#export)                                                   |
 | [US-92](#us-92--filter-by-the-maps-view)                      | ✅     | Filter by the map's view                     | [Trip list & map](#trip-list--map)                                  |
 | [US-93](#us-93--tag-collections-and-their-tracks)             | ✅     | Tag collections and their tracks             | [Tags](#tags)                                                       |
-| [US-94](#us-94--share-collections-and-their-tracks)           | 🚧     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
+| [US-94](#us-94--share-collections-and-their-tracks)           | ✅     | Share collections and their tracks           | [Sharing](#sharing)                                                 |
 | [US-95](#us-95--waypoint-symbols)                             | ✅     | Waypoint symbols                             | [Collections](#collections)                                         |
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | 📋     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
@@ -1706,7 +1706,7 @@ the JSON API)
 
 ### US-94 — Share collections and their tracks
 
-**In progress 🚧** — As the owner, I share whole collections or some of their tracks by link, so
+**Done ✅** — As the owner, I share whole collections or some of their tracks by link, so
 someone I plan to travel with can look at the guide books' suggestions.
 
 **Acceptance criteria:** The owner shares a whole collection from its page (US-86), several
