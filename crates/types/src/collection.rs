@@ -39,7 +39,10 @@ pub struct CollectionSummary {
     /// `None` for a collection with no activity focus.
     pub activity_type: Option<ActivityType>,
     pub waypoint_count: i64,
-    /// In the order the file held them.
+    /// How many tracks it holds in all, whatever the filters (US-90).
+    pub track_count: i64,
+    /// The tracks the filters match — all of them with none set — in the
+    /// order the file held them.
     pub tracks: Vec<CollectionTrackMark>,
     /// The rectangle around every waypoint, `[west, south, east, north]`;
     /// `None` for a collection without waypoints.
@@ -54,13 +57,16 @@ pub struct CollectionCount {
 }
 
 /// One of a listed collection's tracks: enough to mark it on the map, name
-/// its line and color it.
+/// its line and color it, and list it under its collection (US-90).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CollectionTrackMark {
     pub id: i64,
     pub name: String,
     /// The activity the track goes by, as [`CollectionTrackSummary`]'s.
     pub activity_type: ActivityType,
+    /// What its row in the trip list shows (US-90).
+    pub distance_m: f64,
+    pub ascent_m: f64,
     pub min_lat: f64,
     pub min_lon: f64,
     pub max_lat: f64,

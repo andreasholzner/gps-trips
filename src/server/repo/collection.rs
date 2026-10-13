@@ -489,7 +489,7 @@ pub use import::{
     insert_collection_import, load_held, sweep_collection_imports, take_collection_import_in_tx,
     CollectionImportPlan, PlannedTrack, PlannedWaypoint, StagedCollectionImport, TrackRef,
 };
-pub use list::{count_collections, list_collection_tracks_by_id, list_collections};
+pub use list::{count_collections, list_collection_tracks_by_id, list_collections, TrackFilter};
 pub use waypoint::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────

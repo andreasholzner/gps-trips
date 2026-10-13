@@ -132,6 +132,8 @@ mod tests {
             id,
             name: format!("Stage {id}"),
             activity_type,
+            distance_m: 40_000.0,
+            ascent_m: 800.0,
             min_lat: 46.0,
             min_lon: 9.0,
             max_lat: 46.5,
@@ -148,6 +150,7 @@ mod tests {
             name: "Book".to_string(),
             activity_type: None,
             waypoint_count: 0,
+            track_count: tracks.len() as i64,
             tracks,
             waypoint_bounds,
         }

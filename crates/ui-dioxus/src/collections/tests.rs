@@ -14,6 +14,7 @@ fn a_collection(id: i64, name: &str) -> CollectionSummary {
         name: name.to_string(),
         activity_type: None,
         waypoint_count: 0,
+        track_count: 0,
         tracks: Vec::new(),
         waypoint_bounds: None,
     }

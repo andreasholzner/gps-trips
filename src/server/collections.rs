@@ -22,7 +22,7 @@ use crate::server::{
     collection_gpx::{parse_collection, track_name, ParsedCollection},
     collection_import::file_name_of,
     error::AppError,
-    filter::parse_optional_bbox,
+    filter::{parse_optional_activity, parse_optional_bbox},
     geojson::build_track_geojson,
     gpx::compute_stats,
     import::resolve_activity_type,
@@ -212,25 +212,31 @@ pub(crate) fn fallback_name(parsed: &ParsedCollection, file_name: &str) -> Strin
     }
 }
 
-/// The `GET /api/collections` query: the trip list's name search and region
-/// (US-87), under the trip list's own parameter names (ADR-0008).
+/// The `GET /api/collections` query: the trip list's name search, region
+/// (US-87) and activity (US-90), under the trip list's own parameter names
+/// (ADR-0008).
 #[derive(serde::Deserialize)]
 struct ListQuery {
     q: Option<String>,
     bbox: Option<String>,
+    activity: Option<String>,
 }
 
-/// `GET /api/collections?q=…&bbox=…` — every collection matching the name
-/// search and the region, alphabetically (US-87). Blank narrows nothing; 400
-/// for a malformed region.
+/// `GET /api/collections?q=…&bbox=…&activity=…` — every collection matching
+/// the name search, the region and the activity, alphabetically (US-87),
+/// each narrowed to its tracks in the region and of the activity (US-90).
+/// Blank narrows nothing; 400 for a malformed region or an unknown activity.
 async fn handle_list(
     State(state): State<AppState>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<CollectionSummary>>, AppError> {
-    let region = parse_optional_bbox(query.bbox.as_deref())?;
+    let tracks = repo::TrackFilter {
+        region: parse_optional_bbox(query.bbox.as_deref())?,
+        activity: parse_optional_activity(query.activity.as_deref())?,
+    };
     let name = query.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
     Ok(Json(
-        repo::list_collections(&state.pool, name, region).await?,
+        repo::list_collections(&state.pool, name, tracks).await?,
     ))
 }
 

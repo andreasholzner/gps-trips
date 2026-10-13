@@ -47,7 +47,7 @@ pub fn CollectionTable(
                                 ActivityIcon { activity }
                             }
                         }
-                        td { class: "num", "{collection.tracks.len()}" }
+                        td { class: "num", "{collection.track_count}" }
                         td { class: "num", "{collection.waypoint_count}" }
                     }
                 }
@@ -70,6 +70,8 @@ mod tests {
             id,
             name: format!("Stage {id}"),
             activity_type: ActivityType::Cycling,
+            distance_m: 40_000.0,
+            ascent_m: 800.0,
             min_lat: 46.0,
             min_lon: 9.0,
             max_lat: 46.5,
@@ -83,7 +85,10 @@ mod tests {
             name: name.to_string(),
             activity_type,
             waypoint_count: 46,
-            tracks: (1..=125).map(a_track).collect(),
+            // Narrowed by the filters to fewer than it holds (US-90): the
+            // count is of all of them.
+            track_count: 125,
+            tracks: (1..=7).map(a_track).collect(),
             waypoint_bounds: None,
         }
     }

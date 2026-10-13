@@ -191,20 +191,6 @@ async fn us87_a_region_lists_the_collections_with_a_waypoint_in_it() {
 }
 
 #[tokio::test]
-async fn us87_a_listed_collection_keeps_its_tracks_outside_the_region() {
-    // A listed collection is shown whole on the map, as a listed trip's
-    // whole line is.
-    let (app, _dir) = test_app().await;
-    import_collection(&app, COLLECTION_GPX, &[]).await;
-
-    // Around the Albula Pass: only stage 3 reaches it.
-    let listed = collections(&app, "?bbox=9.83,46.58,9.84,46.59").await;
-
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].tracks.len(), 3);
-}
-
-#[tokio::test]
 async fn us87_a_region_with_nothing_in_it_lists_nothing() {
     let (app, _dir) = test_app().await;
     import_collection(&app, COLLECTION_GPX, &[]).await;

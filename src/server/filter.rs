@@ -62,14 +62,7 @@ pub struct TripFilterQuery {
 /// distance, or a `from`/`to`/`min_dist`/`max_dist` range given backwards) is
 /// rejected with 400 rather than silently matching nothing.
 pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
-    let activity_type = match query.activity.as_deref().map(str::trim) {
-        None | Some("") => None,
-        Some(value) => Some(
-            value
-                .parse::<ActivityType>()
-                .map_err(AppError::BadRequest)?,
-        ),
-    };
+    let activity_type = parse_optional_activity(query.activity.as_deref())?;
 
     let from = parse_optional_date(query.from.as_deref())?;
     let to = parse_optional_date(query.to.as_deref())?;
@@ -134,6 +127,18 @@ fn parse_flag(name: &str, s: Option<&str>) -> Result<bool, AppError> {
         Some(value) => Err(AppError::BadRequest(format!(
             "invalid {name} (expected true): {value:?}"
         ))),
+    }
+}
+
+/// An `activity` parameter: blank or absent narrows nothing; anything but a
+/// known activity type is refused with 400, naming it.
+pub(crate) fn parse_optional_activity(s: Option<&str>) -> Result<Option<ActivityType>, AppError> {
+    match s.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(value) => value
+            .parse::<ActivityType>()
+            .map(Some)
+            .map_err(AppError::BadRequest),
     }
 }
 

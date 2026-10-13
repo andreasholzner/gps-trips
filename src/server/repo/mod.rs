@@ -31,7 +31,7 @@ pub use collection::{
     update_collection, update_collection_track, CollectionChange, CollectionError,
     CollectionImportPlan, CollectionTrackChange, NewCollection, NewCollectionFile,
     NewCollectionTrack, NewWaypoint, PlannedTrack, PlannedWaypoint, StagedCollectionImport,
-    TrackRef,
+    TrackFilter, TrackRef,
 };
 pub use collection::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};
 pub use export::{list_export_collections, list_export_trips};
