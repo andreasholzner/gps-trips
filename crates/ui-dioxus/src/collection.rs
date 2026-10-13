@@ -39,6 +39,15 @@ pub fn Collection(id: i64) -> Element {
     let mut collection = use_resource(use_reactive!(|id| async move {
         (id, api::get_collection(&archive(), id).await)
     }));
+    // Read once for the map and the list, each drawn when they are read.
+    let waypoints = use_resource(use_reactive!(|id| async move {
+        (id, api::list_collection_waypoints(&archive(), id).await)
+    }));
+    let waypoints = waypoints.read_unchecked();
+    let waypoints = match &*waypoints {
+        Some((read_for, read)) if *read_for == id => Some(read.clone()),
+        _ => None,
+    };
 
     rsx! {
         match &*collection.read_unchecked() {
@@ -53,9 +62,15 @@ pub fn Collection(id: i64) -> Element {
             Some((_, Ok(detail))) => rsx! {
                 CollectionHeader { collection: detail.clone() }
                 Tagging { tagged: Tagged::Collection(id) }
-                CollectionMap { id, tracks: detail.tracks.clone() }
+                CollectionMap {
+                    id,
+                    tracks: detail.tracks.clone(),
+                    waypoints: waypoints.clone().map(drawn_waypoints),
+                }
                 Tracks { id, tracks: detail.tracks.clone() }
-                CollectionWaypoints { id }
+                if let Some(read) = &waypoints {
+                    CollectionWaypoints { read: read.clone() }
+                }
                 CollectionFiles { id }
                 div { class: "trip-actions",
                     EditCollection { collection: detail.clone(), on_saved: move |_| collection.restart() }
@@ -146,25 +161,28 @@ pub fn drawn_waypoints(read: Result<Vec<Waypoint>, api::ApiError>) -> Vec<MapWay
     }
 }
 
-/// Every track and waypoint on one map; a click on a line opens its track.
+/// Every track and `waypoints` on one map, drawn once the waypoints are
+/// read; a click on a line opens its track.
 #[component]
-fn CollectionMap(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
+fn CollectionMap(
+    id: i64,
+    tracks: Vec<CollectionTrackSummary>,
+    waypoints: Option<Vec<MapWaypoint>>,
+) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let mut handle = use_signal(|| None::<document::Eval>);
-    let _draw = use_resource(use_reactive!(|id, tracks| async move {
+    let _draw = use_resource(use_reactive!(|id, tracks, waypoints| async move {
+        let Some(waypoints) = waypoints else {
+            return;
+        };
         // A map without lines or markers beats no map at all: the list
         // below still leads to every track.
-        let archive = archive();
-        let (positions, waypoints) = futures_util::future::join(
-            api::list_collection_tracks(&archive, id),
-            api::list_collection_waypoints(&archive, id),
-        )
-        .await;
-        let positions = positions.unwrap_or_else(|err| {
-            dioxus::logger::tracing::error!("could not read the tracks: {err}");
-            Vec::new()
-        });
-        let waypoints = drawn_waypoints(waypoints);
+        let positions = api::list_collection_tracks(&archive(), id)
+            .await
+            .unwrap_or_else(|err| {
+                dioxus::logger::tracing::error!("could not read the tracks: {err}");
+                Vec::new()
+            });
         let mut map = interop::start_overview_map(collection_lines(&tracks, &positions), waypoints);
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {

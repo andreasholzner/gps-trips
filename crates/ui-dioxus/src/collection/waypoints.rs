@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 use trip_archive_types::Waypoint;
 
-use crate::api::{self, ApiClient};
+use crate::api;
 use crate::format;
 use crate::waypoint::name_of;
 use crate::waypoint_icon::WaypointSymbol;
@@ -22,22 +22,16 @@ pub fn by_name(mut waypoints: Vec<Waypoint>) -> Vec<Waypoint> {
     waypoints
 }
 
-/// The list, read on its own as the files are: waypoints that cannot be
-/// listed cost the list, not the page.
+/// The list, from the waypoints as the page `read` them: waypoints that
+/// cannot be listed cost the list, not the page.
 #[component]
-pub(super) fn CollectionWaypoints(id: i64) -> Element {
-    let archive = use_context::<Signal<ApiClient>>();
-    let waypoints = use_resource(use_reactive!(|id| async move {
-        api::list_collection_waypoints(&archive(), id).await
-    }));
-
-    match &*waypoints.read_unchecked() {
-        Some(Ok(waypoints)) => rsx! { WaypointList { waypoints: by_name(waypoints.clone()) } },
-        Some(Err(err)) => {
+pub(super) fn CollectionWaypoints(read: Result<Vec<Waypoint>, api::ApiError>) -> Element {
+    match read {
+        Ok(waypoints) => rsx! { WaypointList { waypoints: by_name(waypoints) } },
+        Err(err) => {
             dioxus::logger::tracing::error!("could not list the waypoints: {err}");
             rsx! {}
         }
-        None => rsx! {},
     }
 }
 
