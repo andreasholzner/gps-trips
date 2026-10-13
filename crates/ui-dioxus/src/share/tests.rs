@@ -81,14 +81,14 @@ fn us94_each_target_is_sent_as_its_own_field() {
 #[test]
 fn us94_the_panel_names_what_is_selected() {
     let html = render(|| {
-        let selected = use_signal(|| BTreeSet::from([4, 5]));
-        rsx! { ShareSelectedPanel { selected, of: Selected::Collections } }
+        let ids = vec![4, 5];
+        rsx! { ShareSelectedPanel { ids, of: Selected::Collections } }
     });
     assert!(html.contains("Share selected collections"), "{html}");
     assert!(html.contains("Share 2 selected…"), "{html}");
     let html = render(|| {
-        let selected = use_signal(|| BTreeSet::from([4]));
-        rsx! { ShareSelectedPanel { selected, of: Selected::CollectionTracks } }
+        let ids = vec![4];
+        rsx! { ShareSelectedPanel { ids, of: Selected::CollectionTracks } }
     });
     assert!(html.contains("Share selected tracks"), "{html}");
 }
@@ -139,14 +139,14 @@ fn us53_the_form_offers_a_title_and_the_three_expiries() {
 #[test]
 fn us53_the_panel_appears_only_with_a_selection() {
     let html = render(|| {
-        let selected = use_signal(BTreeSet::new);
-        rsx! { ShareSelectedPanel { selected } }
+        let ids = Vec::<i64>::new();
+        rsx! { ShareSelectedPanel { ids } }
     });
     assert!(!html.contains("Share selected trips"), "{html}");
 
     let html = render(|| {
-        let selected = use_signal(|| BTreeSet::from([4, 5]));
-        rsx! { ShareSelectedPanel { selected } }
+        let ids = vec![4, 5];
+        rsx! { ShareSelectedPanel { ids } }
     });
     assert!(html.contains("Share selected trips"), "{html}");
     assert!(html.contains(r#"id="share-selected""#), "{html}");
@@ -158,8 +158,8 @@ fn the_share_options_stay_closed_until_asked_for() {
     // Sharing is occasional, so its options sit in an overlay rather
     // than beside tagging and setting the activity.
     let html = render(|| {
-        let selected = use_signal(|| BTreeSet::from([4]));
-        rsx! { ShareSelectedPanel { selected } }
+        let ids = vec![4];
+        rsx! { ShareSelectedPanel { ids } }
     });
     assert!(!html.contains(r#"name="share-label""#), "{html}");
     assert!(!html.contains(r#"role="dialog""#), "{html}");

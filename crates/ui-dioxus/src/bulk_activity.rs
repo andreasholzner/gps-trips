@@ -5,8 +5,6 @@
 //! added, an activity type *overwrites* one. So the panel says how many
 //! trips it will change and asks before it does.
 
-use std::collections::BTreeSet;
-
 use dioxus::prelude::*;
 use trip_archive_types::ActivityType;
 
@@ -29,14 +27,15 @@ pub fn confirmation(count: usize, activity: ActivityType) -> String {
 /// The bulk activity panel (US-63). Appears only once trips are selected;
 /// offers the same closed set the edit form does (ADR-0018), and applies
 /// the chosen one to every selected trip in one request once confirmed.
+/// `on_applied` lets the list clear its selection and refresh itself.
 #[component]
-pub fn BulkActivityPanel(selected: Signal<BTreeSet<i64>>, on_applied: EventHandler<()>) -> Element {
+pub fn BulkActivityPanel(ids: Vec<i64>, on_applied: EventHandler<()>) -> Element {
     let mut chosen = use_signal(|| None::<ActivityType>);
     let mut confirming = use_signal(|| false);
     let mut message = use_signal(|| None::<String>);
     let archive = use_context::<Signal<ApiClient>>();
 
-    let count = selected.read().len();
+    let count = ids.len();
     if count == 0 {
         return rsx! {};
     }
@@ -78,11 +77,10 @@ pub fn BulkActivityPanel(selected: Signal<BTreeSet<i64>>, on_applied: EventHandl
                     button {
                         r#type: "button",
                         onclick: move |_| {
-                            let trip_ids: Vec<i64> = selected.read().iter().copied().collect();
+                            let trip_ids = ids.clone();
                             spawn(async move {
                                 match api::bulk_set_activity_type(&archive(), &trip_ids, activity).await {
                                     Ok(()) => {
-                                        selected.write().clear();
                                         chosen.set(None);
                                         confirming.set(false);
                                         message.set(None);
@@ -144,8 +142,8 @@ mod tests {
     #[test]
     fn the_panel_offers_the_edit_forms_activities_for_the_selected_trips() {
         let html = render(|| {
-            let selected = Signal::new(BTreeSet::from([1_i64, 2]));
-            rsx! { BulkActivityPanel { selected, on_applied: |_| {} } }
+            let ids = vec![1_i64, 2];
+            rsx! { BulkActivityPanel { ids, on_applied: |_| {} } }
         });
 
         assert!(html.contains("Set for 2 selected"), "{html}");
@@ -160,8 +158,8 @@ mod tests {
     #[test]
     fn the_panel_stays_out_of_the_way_until_trips_are_selected() {
         let html = render(|| {
-            let selected = Signal::new(BTreeSet::new());
-            rsx! { BulkActivityPanel { selected, on_applied: |_| {} } }
+            let ids = Vec::<i64>::new();
+            rsx! { BulkActivityPanel { ids, on_applied: |_| {} } }
         });
 
         assert!(!html.contains("Set for"), "{html}");

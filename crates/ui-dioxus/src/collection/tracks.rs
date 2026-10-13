@@ -22,9 +22,10 @@ pub(super) fn Tracks(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
         let _ = id;
         selected.write().clear();
     }));
+    let ids: Vec<i64> = selected.read().iter().copied().collect();
     rsx! {
         div { class: "bulk-panels",
-            ShareSelectedPanel { selected, of: Selected::CollectionTracks }
+            ShareSelectedPanel { ids, of: Selected::CollectionTracks }
         }
         TrackList { tracks, selected }
     }

@@ -79,8 +79,8 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // Which trips the bulk panels will act on (US-34, US-63), and which
     // collections are shared together (US-94) — kept apart, each waiting
     // while the other tab is shown.
-    let selected = use_signal(BTreeSet::new);
-    let selected_collections = use_signal(BTreeSet::new);
+    let mut selected = use_signal(BTreeSet::new);
+    let mut selected_collections = use_signal(BTreeSet::new);
     // The names staged to tag each selection with (US-34, US-100), kept
     // apart as the selections are.
     let staged = use_signal(Vec::new);
@@ -128,6 +128,8 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             .and_then(|version| version.as_deref().ok()),
     );
 
+    let trip_ids: Vec<i64> = selected.read().iter().copied().collect();
+    let collection_ids: Vec<i64> = selected_collections.read().iter().copied().collect();
     rsx! {
         div { class: "list-heading",
             h1 { "Trips" }
@@ -144,33 +146,43 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         if tab() == ListTab::Collections {
             div { class: "bulk-panels",
                 BulkTagPanel {
-                    selected: selected_collections,
+                    ids: collection_ids.clone(),
                     staged: staged_for_collections,
                     all_tags: all_tags.clone(),
                     of: BulkTagged::Collections,
                     // A new tag may now exist: the suggestions are out of
                     // date. No list here shows a collection's tags.
-                    on_applied: move |_| tag_resource.restart(),
+                    on_applied: move |_| {
+                        selected_collections.write().clear();
+                        tag_resource.restart();
+                    },
                 }
-                ShareSelectedPanel { selected: selected_collections, of: Selected::Collections }
+                ShareSelectedPanel { ids: collection_ids, of: Selected::Collections }
             }
         } else {
         div { class: "bulk-panels",
             BulkTagPanel {
-                selected,
+                ids: trip_ids.clone(),
                 staged,
                 all_tags,
                 of: BulkTagged::Trips,
                 // A new tag now exists and the trips carry it: both the
                 // suggestions and a tag-filtered list are out of date.
                 on_applied: move |_| {
+                    selected.write().clear();
                     tag_resource.restart();
                     trips.restart();
                 },
             }
             // An activity-filtered list may no longer hold the trips.
-            BulkActivityPanel { selected, on_applied: move |_| trips.restart() }
-            ShareSelectedPanel { selected }
+            BulkActivityPanel {
+                ids: trip_ids.clone(),
+                on_applied: move |_| {
+                    selected.write().clear();
+                    trips.restart();
+                },
+            }
+            ShareSelectedPanel { ids: trip_ids }
         }
         }
         match listed {

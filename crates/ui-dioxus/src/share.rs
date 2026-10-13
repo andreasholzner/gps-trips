@@ -4,8 +4,6 @@
 //! tracks (US-94), in an overlay on each: sharing is occasional, and its
 //! options would otherwise sit open beside the controls used every day.
 
-use std::collections::BTreeSet;
-
 use dioxus::prelude::*;
 use trip_archive_types::{CreateShare, ShareExpiry};
 
@@ -56,12 +54,8 @@ impl Selected {
 /// (US-94). Appears only once something is selected, as one button that
 /// opens the options.
 #[component]
-pub fn ShareSelectedPanel(
-    selected: Signal<BTreeSet<i64>>,
-    #[props(default)] of: Selected,
-) -> Element {
+pub fn ShareSelectedPanel(ids: Vec<i64>, #[props(default)] of: Selected) -> Element {
     let mut open = use_signal(|| false);
-    let ids: Vec<i64> = selected.read().iter().copied().collect();
     if ids.is_empty() {
         return rsx! {};
     }

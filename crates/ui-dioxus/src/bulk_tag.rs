@@ -9,8 +9,6 @@
 //! validates with, so a name this screen accepts is never one the server
 //! rejects.
 
-use std::collections::BTreeSet;
-
 use dioxus::prelude::*;
 use trip_archive_types::{normalize_tag_name, Tag};
 
@@ -50,11 +48,11 @@ pub fn stage(raw: &str, known: &[Tag], staged: &[String]) -> Staged {
 /// The bulk-tag panel (US-34). Appears only once something is selected —
 /// trips, or collections (US-100) as `of` says; stages names as removable
 /// chips and applies all of them to everything selected in one request.
-/// `on_applied` lets the list refresh itself once the request has
-/// succeeded.
+/// `on_applied` lets the list clear its selection and refresh itself once
+/// the request has succeeded.
 #[component]
 pub fn BulkTagPanel(
-    selected: Signal<BTreeSet<i64>>,
+    ids: Vec<i64>,
     staged: Signal<Vec<String>>,
     all_tags: Vec<Tag>,
     of: BulkTagged,
@@ -66,7 +64,7 @@ pub fn BulkTagPanel(
     let mut message = use_signal(|| None::<String>);
     let archive = use_context::<Signal<ApiClient>>();
 
-    let count = selected.read().len();
+    let count = ids.len();
     if count == 0 {
         return rsx! {};
     }
@@ -150,13 +148,12 @@ pub fn BulkTagPanel(
                 r#type: "button",
                 disabled: staged.read().is_empty(),
                 onclick: move |_| {
-                    let ids: Vec<i64> = selected.read().iter().copied().collect();
+                    let ids = ids.clone();
                     let names = staged.read().clone();
                     spawn(async move {
                         match api::bulk_add_tags(&archive(), of, &ids, &names).await {
                             Ok(_) => {
                                 staged.write().clear();
-                                selected.write().clear();
                                 message.set(None);
                                 on_applied.call(());
                             }
@@ -180,7 +177,6 @@ pub fn BulkTagPanel(
 mod tests {
     use super::*;
     use crate::test_support::render;
-    use std::collections::BTreeSet;
     use trip_archive_types::Tag;
 
     fn known_tags() -> Vec<Tag> {
@@ -240,8 +236,8 @@ mod tests {
     fn the_panel_shows_the_staged_tags_and_how_many_trips_they_apply_to() {
         let html = render(|| {
             let staged = Signal::new(vec!["alpine".to_string(), "summer".to_string()]);
-            let selected = Signal::new(BTreeSet::from([1_i64, 2, 3]));
-            rsx! { BulkTagPanel { selected, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
+            let ids = vec![1_i64, 2, 3];
+            rsx! { BulkTagPanel { ids, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
         });
 
         assert!(html.contains("alpine"), "{html}");
@@ -254,10 +250,10 @@ mod tests {
     fn us100_the_panel_says_it_tags_the_selected_collections() {
         let html = render(|| {
             let staged = Signal::new(vec!["shelf".to_string()]);
-            let selected = Signal::new(BTreeSet::from([1_i64, 2]));
+            let ids = vec![1_i64, 2];
             rsx! {
                 BulkTagPanel {
-                    selected,
+                    ids,
                     staged,
                     all_tags: known_tags(),
                     of: BulkTagged::Collections,
@@ -274,8 +270,8 @@ mod tests {
     fn the_panel_stays_out_of_the_way_until_trips_are_selected() {
         let html = render(|| {
             let staged = Signal::new(Vec::new());
-            let selected = Signal::new(BTreeSet::new());
-            rsx! { BulkTagPanel { selected, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
+            let ids = Vec::<i64>::new();
+            rsx! { BulkTagPanel { ids, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
         });
 
         assert!(!html.contains("Apply to"), "{html}");
