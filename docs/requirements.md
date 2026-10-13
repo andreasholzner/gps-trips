@@ -30,6 +30,7 @@ table when its stories ship. Each story's own state is recorded with the story a
 |:-----|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1    | US-90, US-94                             | Each builds only on US-86/87, not on each other, so their order is free.                                                                              |
 | 2    | US-96                                    | Its collection-track half needs US-89's items and US-93's tags; the trips' half could go any time.                                                    |
+| 3    | US-100                                   | Tags what US-94's selection of collections picks; independent of US-96.                                                                               |
 
 ## Story index
 
@@ -143,6 +144,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
+| [US-100](#us-100--tag-many-collections-at-once)               | 📋     | Tag many collections at once                 | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1303,6 +1305,22 @@ tag summaries (US-78) and summary shares (US-82) reach trips only.
 **Decisions:** US-93 → ADR-0028 (tags reach collections and their tracks through links of their
 own), ADR-0008 (the screens read and change the tags through the JSON API)
 
+### US-100 — Tag many collections at once
+
+**Planned 📋** — As the owner, I select several collections and tag them together, so organizing a
+shelf of guide books does not take a visit to each one's page.
+
+**Acceptance criteria:** The collections selected on the Collections page (US-97) or on the trip
+list's Collections tab (US-87) — the selection US-94 brings — are tagged as selected trips are
+(US-34): one or more tag names are staged, with US-33's suggestions and new-tag confirmation, and
+then applied to every selected collection in one request. If the selection includes a collection
+that no longer exists, the whole request 404s and nothing is created or linked; an invalid tag
+name 400s. Only the collections are tagged, never their tracks (US-93). Afterwards the list and the
+tag suggestions show the new tags.
+
+**Decisions:** US-100 → ADR-0028 (tags reach collections through links of their own), ADR-0008 (the
+screens change the tags through the JSON API)
+
 ## Collections
 
 Guide books come with GPX files of their tours, sometimes one file for a whole book, sometimes a
@@ -1688,25 +1706,36 @@ the JSON API)
 
 ### US-94 — Share collections and their tracks
 
-**Planned 📋** — As the owner, I share a whole collection or some of its tracks by link, so someone
-I plan to travel with can look at the guide book's suggestions.
+**Planned 📋** — As the owner, I share whole collections or some of their tracks by link, so
+someone I plan to travel with can look at the guide books' suggestions.
 
-**Acceptance criteria:** The owner shares a whole collection from its page (US-86), a selection of
-its tracks from the page's track list, or a single track from its own page, with the label and
-expiry a trip share has (US-53). **A shared collection** reaches its page, every track and every
-waypoint it holds whenever the link is opened, so a track added later (US-88) appears to the
-recipient and one deleted disappears. **Shared tracks** reach those tracks and the waypoints that
-belong to them, but neither the collection's page nor its other tracks. Everything else about the
-link is US-53's: unguessable, read-only, no account, the token in the path, revocable, optionally
-expiring, and an unknown, expired, stopped or emptied share — its collection or every track it
-names deleted — answering exactly like a route that does not exist.
+**Acceptance criteria:** The owner shares a whole collection from its page (US-86), several
+collections selected on the Collections page (US-97) or on the trip list's Collections tab (US-87),
+a selection of a collection's tracks from its page's track list, or a single track from its own
+page, with the label and expiry a trip share has (US-53). Both lists of collections let the owner
+select any number of them, individually or a page's rows at once, as the trip list selects trips
+(US-34); on the trip list, the collections selected and the trips selected are kept apart, and each
+waits while the other tab is shown. A share names collections, collection tracks, trips or tags —
+never two of these at once. **Shared collections** reach their pages, every track and every
+waypoint they hold whenever the link is opened, so a track added later (US-88) appears to the
+recipient and one deleted disappears. **Shared tracks**, from one collection or several, reach
+those tracks and the waypoints that belong to them, but neither their collections' pages nor their
+other tracks. Everything else about the link is US-53's: unguessable, read-only, no account, the
+token in the path, revocable, optionally expiring, and an unknown, expired, stopped or emptied
+share — every collection or every track it names deleted — answering exactly like a route that
+does not exist.
 
-**What the recipient sees:** a shared collection's page and its tracks' pages, or the shared tracks
-on one map with a track opening its page directly when it is the only one — each with its map,
-elevation profile, figures, waypoints and GPX download, never its tags or a control that changes
-it. A summary share (US-82) never reaches a collection or its tracks.
+**What the recipient sees:** a single shared collection's page; several shared collections on one
+map with every track and waypoint, above a list of the collections, each opening its page; or the
+shared tracks on one map, with a track opening its page directly when it is the only one. A track's
+page has its map, elevation profile, figures, waypoints and GPX download; a collection's page its
+description, map, tracks and waypoints. Neither shows tags, the files a collection came from, or a
+control that changes anything; a waypoint is listed but has no page of its own, and a shared
+track's page names its collection only when the collection is shared too. Without a label, the
+share is titled by the collection's name, "Shared collections" or "Shared tracks". A summary share
+(US-82) never reaches a collection or its tracks.
 
-**Managing it:** the Shares screen (US-69) lists the share with the collection or the tracks it
+**Managing it:** the Shares screen (US-69) lists the share with the collections or the tracks it
 names, and stopping it works as stopping a trip share does. The access log (US-70) counts its link
 as that share's.
 
