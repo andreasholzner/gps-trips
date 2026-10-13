@@ -7,15 +7,17 @@
 //! per keystroke would read them all again. For the same reason the list is
 //! taken out of the answer once, and a keystroke copies only the page shown.
 //!
-//! Collections are selected here to be shared together (US-94); the
-//! selection outlives the filter and the paging, as the trip list's does.
+//! Collections are selected here to be shared (US-94) or tagged (US-100)
+//! together; the selection outlives the filter and the paging, as the trip
+//! list's does.
 
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
 use trip_archive_types::CollectionSummary;
 
-use crate::api::{self, ApiClient};
+use crate::api::{self, ApiClient, BulkTagged};
+use crate::bulk_tag::BulkTagPanel;
 use crate::collection_table::{CollectionTable, NO_COLLECTIONS};
 use crate::name_filter::NameFilter;
 use crate::pager::{self, Pager};
@@ -49,11 +51,26 @@ pub fn Collections(#[props(default)] view: NameFilter) -> Element {
         _ => Vec::new(),
     });
     let selected = use_signal(BTreeSet::new);
+    // The names staged to tag the selection with, and the tags suggested.
+    let staged = use_signal(Vec::new);
+    let mut tags = use_resource(move || async move { api::list_tags(&archive()).await });
+    let all_tags = match &*tags.read_unchecked() {
+        Some(Ok(tags)) => tags.clone(),
+        _ => Vec::new(),
+    };
 
     rsx! {
         h1 { "Collections" }
         CollectionFilter { query: view.q.clone() }
         div { class: "bulk-panels",
+            BulkTagPanel {
+                selected,
+                staged,
+                all_tags,
+                of: BulkTagged::Collections,
+                // A new tag may now exist: the suggestions are out of date.
+                on_applied: move |_| tags.restart(),
+            }
             ShareSelectedPanel { selected, of: Selected::Collections }
         }
         match &*collections.read_unchecked() {

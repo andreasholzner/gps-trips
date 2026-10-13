@@ -48,7 +48,8 @@ pub use share::{
 pub use stats::{stats_trips, tag_summaries};
 pub use suggestion::trip_suggestion;
 pub use tags::{
-    add_tag, create_tag, delete_tag, list_tags_of, remove_tag, rename_tag, tag_overview, Tagged,
+    add_tag, bulk_add_tags, create_tag, delete_tag, list_tags_of, remove_tag, rename_tag,
+    tag_overview, BulkTagged, Tagged,
 };
 pub use tracks::{list_climbs, list_tracks};
 pub use waypoints::{delete_waypoint, edit_waypoint, get_waypoint};
@@ -428,46 +429,6 @@ pub async fn bulk_set_activity_type(
     }
     ok_or_error(archive, &url, response).await?;
     Ok(())
-}
-
-/// The `POST /api/trips/tags` body (US-34): every name applied to every
-/// trip, in one request.
-#[derive(Serialize)]
-struct BulkAddTags<'a> {
-    trip_ids: &'a [i64],
-    names: &'a [String],
-}
-
-/// `POST /api/trips/tags` — tag every selected trip with every staged name
-/// (US-34). All-or-nothing: if any id no longer exists the server tags
-/// nothing, which this reports as such rather than as a bare 404. Other
-/// failures carry the server's own message (an invalid name, US-33's rules)
-/// so the owner reads what is wrong instead of a status code.
-pub async fn bulk_add_tags(
-    archive: &ApiClient,
-    trip_ids: &[i64],
-    names: &[String],
-) -> Result<Vec<Tag>, ApiError> {
-    let url = archive.url("/api/trips/tags");
-    let response = archive
-        .post(&url)
-        .json(&BulkAddTags { trip_ids, names })
-        .send()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} unreachable: {err}")))?;
-
-    let status = response.status();
-    if status == reqwest::StatusCode::NOT_FOUND {
-        return Err(ApiError::from_status(
-            status,
-            "one or more selected trips no longer exist; nothing was tagged",
-        ));
-    }
-    ok_or_error(archive, &url, response)
-        .await?
-        .json()
-        .await
-        .map_err(|err| ApiError::new(format!("{url} returned unreadable JSON: {err}")))
 }
 
 /// `POST /api/import/staged` — phase one of the import (US-12): hand the

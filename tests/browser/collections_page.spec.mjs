@@ -1,9 +1,10 @@
 // US-97: the Collections screen, driven as the owner drives it (ADR-0012's
-// browser layer).
+// browser layer), and the collections selected on it tagged together
+// (US-100).
 //
 // Scope rule, from the 2026-08-26b amendment: only real user events —
 // opening it from the menu, typing in the filter, reloading, clicking a
-// row, paging. What the table, the paging and the empty states say is asserted in
+// row, paging, ticking rows and applying tags. What the table, the paging and the empty states say is asserted in
 // `crates/ui-dioxus` (`collections`), without a browser.
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
@@ -26,9 +27,16 @@ test.beforeEach(async ({ page }) => {
   await signIn(page.request);
 });
 
+/// The tag US-100's test creates, taken away again afterwards.
+const NEW_TAG = `guide-${Math.random().toString(36).slice(2, 8)}`;
+
 test.afterAll(async ({ request }) => {
   for (const id of created.splice(0)) {
     await request.delete(`/api/collections/${id}`);
+  }
+  const tags = await (await request.get("/api/tags")).json();
+  for (const tag of tags.filter((tag) => tag.name === NEW_TAG)) {
+    await request.delete(`/api/tags/${tag.id}`);
   }
 });
 
@@ -93,4 +101,38 @@ test("changing the filter goes back to the first page (US-97)", async ({ page, r
   await expect(page).toHaveURL(new RegExp(`q=${prefix}-`));
   await expect(pager).toHaveText("Page 1 of 2");
   await expect(rows(page).first()).toContainText(`${prefix}-00`);
+});
+
+test("the selected collections are tagged in one go, after confirming a new tag (US-100)", async ({
+  page,
+  request,
+}) => {
+  // A word of this test's own: the others list theirs under TAG.
+  const word = `${TAG}tagged`;
+  const first = await importCollection(request, `${word} Alps`);
+  await importCollection(request, `${word} Tyrol`);
+  await importCollection(request, `${TAG}apart Lakes`);
+
+  await page.goto(`/app/collections?q=${word}`);
+  await expect(rows(page)).toHaveCount(2);
+  await page.getByRole("checkbox", { name: "Select all" }).check();
+  await expect(page.locator("legend")).toContainText(["Tag selected collections"]);
+
+  await page.getByPlaceholder("add a tag").fill(NEW_TAG);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText(`Tag "${NEW_TAG}" doesn't exist yet`)).toBeVisible();
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Apply to 2 selected" }).click();
+
+  // The panel goes with the selection, and the suggestions now offer the tag.
+  await expect(page.getByRole("button", { name: /Apply to/ })).toBeHidden();
+  await expect(page.locator("table tbody input[type=checkbox]:checked")).toHaveCount(0);
+  await rows(page).first().getByRole("checkbox").check();
+  await expect(page.locator(`#bulk-tag-suggestions option[value="${NEW_TAG}"]`)).toHaveCount(1);
+
+  // A tagged collection's page shows it; one not selected does not carry it.
+  await page.goto(`/app/collections/${first}`);
+  await expect(page.locator(".trip-tags")).toContainText(NEW_TAG);
+  const tagged = await (await request.get("/api/tags/overview")).json();
+  expect(tagged.find((tag) => tag.name === NEW_TAG).collection_count).toBe(2);
 });

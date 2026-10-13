@@ -19,6 +19,7 @@ async fn bulk_tagging_applies_every_tag_to_every_selected_trip() {
 
     bulk_add_tags(
         &archive,
+        BulkTagged::Trips,
         &[first, second],
         &["alpine".to_string(), "summer".to_string()],
     )
@@ -293,9 +294,14 @@ async fn a_selection_holding_a_vanished_trip_tags_nothing_at_all() {
     let (archive, _dir) = serve_test_archive().await;
     let existing = import_sample(&archive, &[]).await;
 
-    let err = bulk_add_tags(&archive, &[existing, 9_999], &["alpine".to_string()])
-        .await
-        .expect_err("a vanished trip must fail the request");
+    let err = bulk_add_tags(
+        &archive,
+        BulkTagged::Trips,
+        &[existing, 9_999],
+        &["alpine".to_string()],
+    )
+    .await
+    .expect_err("a vanished trip must fail the request");
 
     assert!(
         err.to_string().contains("no longer exist"),
@@ -309,9 +315,14 @@ async fn an_invalid_tag_name_is_reported_readably_and_tags_nothing() {
     let (archive, _dir) = serve_test_archive().await;
     let trip = import_sample(&archive, &[]).await;
 
-    let err = bulk_add_tags(&archive, &[trip], &["day trip".to_string()])
-        .await
-        .expect_err("a name with a space must be rejected");
+    let err = bulk_add_tags(
+        &archive,
+        BulkTagged::Trips,
+        &[trip],
+        &["day trip".to_string()],
+    )
+    .await
+    .expect_err("a name with a space must be rejected");
 
     // The server's own wording, not a status code the owner must decode.
     assert!(err.to_string().contains("cannot contain spaces"), "{err}");

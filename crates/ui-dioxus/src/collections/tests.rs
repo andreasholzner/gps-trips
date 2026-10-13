@@ -122,9 +122,11 @@ async fn us97_the_screen_lists_every_collection_alphabetically_narrowed_by_the_u
     // No map, and none of the trip list's other filters.
     assert!(!html.contains("region-map"), "{html}");
     assert!(!html.contains("filter-toolbar"), "{html}");
-    // Collections are selected to share them (US-94); nothing is yet.
+    // Collections are selected to share (US-94) or tag (US-100) them;
+    // nothing is yet.
     assert_eq!(html.matches(r#"type="checkbox""#).count(), 5, "{html}");
     assert!(!html.contains("Share selected collections"), "{html}");
+    assert!(!html.contains("Tag selected"), "{html}");
 
     let html = render_against_archive(
         &archive,

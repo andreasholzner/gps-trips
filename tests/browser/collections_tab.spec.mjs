@@ -174,7 +174,7 @@ test("the region narrows the collections by their waypoints too, and the fit tak
   await expect(page.getByText("No collections match your filters.")).toHaveCount(0);
 });
 
-test("the trips selected and the collections selected are kept apart, each waiting on the other tab (US-94)", async ({
+test("the trips selected and the collections selected are kept apart, each waiting on the other tab (US-94, US-100)", async ({
   page,
   request,
 }) => {
@@ -194,12 +194,16 @@ test("the trips selected and the collections selected are kept apart, each waiti
   await expect(page.locator("#share-selected")).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Select", exact: true }).check();
   await expect(page.locator("#share-selected")).toHaveText("Share 1 selected…");
+  // And tagged (US-100): the panel names what it tags.
+  await expect(page.getByText("Tag selected collections")).toBeVisible();
+  await expect(page.getByText("Tag selected trips")).toHaveCount(0);
 
   // Back on the trips, theirs waited; and the collection's waits too.
   await page.getByRole("button", { name: "Recorded" }).click();
   await expect(rows(page)).toContainText(`${word} Walk`);
   await expect(checked(page)).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Apply to 1 selected" })).toBeVisible();
+  await expect(page.getByText("Tag selected trips")).toBeVisible();
   await page.getByRole("button", { name: "Collections" }).click();
   await expect(rows(page)).toContainText(`${word} Book`);
   await expect(checked(page)).toHaveCount(1);

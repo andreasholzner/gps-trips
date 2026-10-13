@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use dioxus::prelude::*;
 use trip_archive_types::{CollectionSummary, TripSummary, VERSION};
 
-use crate::api::{self, ApiClient};
+use crate::api::{self, ApiClient, BulkTagged};
 use crate::bulk_activity::BulkActivityPanel;
 use crate::bulk_tag::BulkTagPanel;
 use crate::collection_table::{CollectionTable, NO_COLLECTIONS};
@@ -81,7 +81,10 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // while the other tab is shown.
     let selected = use_signal(BTreeSet::new);
     let selected_collections = use_signal(BTreeSet::new);
+    // The names staged to tag each selection with (US-34, US-100), kept
+    // apart as the selections are.
     let staged = use_signal(Vec::new);
+    let staged_for_collections = use_signal(Vec::new);
     // Which page of the list the table shows (US-63). Back to the first
     // whenever the filters change — page 4 of a list narrowed to nine rows
     // would be a blank table — and kept out of the URL: US-52's contract is
@@ -137,9 +140,18 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         }
         // What to do with the selected trips: tag them (US-34), give them
         // all one activity (US-63), or share them (US-53); or with the
-        // selected collections: share them (US-94).
+        // selected collections: tag them (US-100) or share them (US-94).
         if tab() == ListTab::Collections {
             div { class: "bulk-panels",
+                BulkTagPanel {
+                    selected: selected_collections,
+                    staged: staged_for_collections,
+                    all_tags: all_tags.clone(),
+                    of: BulkTagged::Collections,
+                    // A new tag may now exist: the suggestions are out of
+                    // date. No list here shows a collection's tags.
+                    on_applied: move |_| tag_resource.restart(),
+                }
                 ShareSelectedPanel { selected: selected_collections, of: Selected::Collections }
             }
         } else {
