@@ -18,6 +18,10 @@
 //!   `us99_a_waypoints_links_are_listed_and_removed`.
 //! * *a link goes when either end is deleted* —
 //!   `us99_deleting_an_end_through_the_api_takes_its_links`.
+//! * *a recipient sees a link only when the share reaches both of its ends*
+//!   — `us99_a_recipient_sees_the_links_whose_ends_the_share_reaches`. A share
+//!   never names trips and collection items together (US-94), so only links
+//!   between trips can reach a recipient at all.
 //!
 //! The repository's half, ordering included, is unit-tested in
 //! `src/server/repo/link/tests.rs`; that the routes need a session is part of
@@ -27,13 +31,15 @@ use axum::{
     http::{Method, StatusCode},
     Router,
 };
-use trip_archive::models::{CollectionDetail, CreatedLinks, Links, Waypoint};
+use trip_archive::models::{
+    CollectionDetail, CreatedLinks, CreatedShare, Links, SharedLinks, Waypoint,
+};
 use trip_archive::server::{db, repo};
 
 use crate::common::{
     body_string, delete, error_message, get, import_collection, import_request_with_fields,
-    import_sample, json_request, router_over, send, trip_id_from_redirect, COLLECTION_GPX,
-    SAMPLE_GPX,
+    import_sample, json_request, router_over, send, send_unauthenticated, trip_id_from_redirect,
+    COLLECTION_GPX, SAMPLE_GPX,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -304,4 +310,61 @@ async fn us99_the_links_of_something_missing_are_not_found() {
             "{uri}"
         );
     }
+}
+
+#[tokio::test]
+async fn us99_a_recipient_sees_the_links_whose_ends_the_share_reaches() {
+    let (app, _pool, _dir) = app().await;
+    let monday = import_sample(&app).await;
+    let tuesday = import_sample(&app).await;
+    let shared_plan = planned(&app).await;
+    let private_plan = planned(&app).await;
+    let (_, tracks, _) = a_collection(&app).await;
+    link(
+        &app,
+        &[monday, tuesday, shared_plan, private_plan],
+        &tracks[..1],
+    )
+    .await;
+    let body = serde_json::json!({ "trip_ids": [monday, shared_plan] });
+    let response = send(
+        &app,
+        json_request(Method::POST, "/api/shares", &body.to_string()),
+    )
+    .await;
+    let created: CreatedShare = serde_json::from_str(&body_string(response).await).unwrap();
+    let visit = |uri: String| {
+        let app = app.clone();
+        async move {
+            let request = axum::http::Request::builder()
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            send_unauthenticated(&app, request).await
+        }
+    };
+    let token = created.token;
+
+    let response = visit(format!("/s/{token}/api/trips/{monday}/links")).await;
+    let status = response.status();
+    let body = body_string(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let on_monday: SharedLinks = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        ids(&on_monday.planned_trips, |trip| trip.id),
+        vec![shared_plan]
+    );
+    assert!(on_monday.recorded_trips.is_empty());
+    let on_plan: SharedLinks = serde_json::from_str(
+        &body_string(visit(format!("/s/{token}/api/trips/{shared_plan}/links")).await).await,
+    )
+    .unwrap();
+    // Tuesday is linked too, but not shared.
+    assert_eq!(ids(&on_plan.recorded_trips, |trip| trip.id), vec![monday]);
+    assert_eq!(
+        visit(format!("/s/{token}/api/trips/{tuesday}/links"))
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
 }

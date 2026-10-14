@@ -69,6 +69,26 @@ pub struct LinkedWaypoint {
     pub collection_name: String,
 }
 
+/// What a shared trip is linked to, as a share's recipient reads it: only
+/// the trips the share reaches too. The recipient's own types, so nothing
+/// the owner's grow later reaches a stranger by itself (ADR-0015).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SharedLinks {
+    /// Newest first.
+    pub recorded_trips: Vec<SharedLinkedTrip>,
+    /// By name.
+    pub planned_trips: Vec<SharedLinkedTrip>,
+}
+
+/// A shared trip at the other end of a link.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SharedLinkedTrip {
+    pub id: i64,
+    pub name: String,
+    pub activity_type: ActivityType,
+    pub start_date: Option<String>,
+}
+
 /// Whether a recorded trip is linked to it — the trip list's filter on
 /// planned trips and collection tracks, and a collection page's on its
 /// tracks and waypoints. A closed set on the wire, so an enum (ADR-0018).

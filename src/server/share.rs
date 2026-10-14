@@ -22,16 +22,16 @@ use time::OffsetDateTime;
 
 use crate::config;
 use crate::models::{
-    normalize_tag_name, ActiveShare, Climb, CreateShare, CreatedShare, PhotoResponse, Principal,
-    ShareExpiry, ShareOverview, SharedSummary, SharedSummaryTrip, SharedTag, SharedTrip, StatsTrip,
-    TagTrips, TripDetail, TripTrack,
+    normalize_tag_name, ActiveShare, Climb, CreateShare, CreatedShare, LinkedTrip, PhotoResponse,
+    Principal, ShareExpiry, ShareOverview, SharedLinkedTrip, SharedLinks, SharedSummary,
+    SharedSummaryTrip, SharedTag, SharedTrip, StatsTrip, TagTrips, TripDetail, TripTrack,
 };
 use crate::server::{
     climb_api::climbs_response,
     error::AppError,
     http::{gpx_response, media_response, track_response},
     photo_api::respond_under,
-    repo::{self, NewShare, ShareTarget},
+    repo::{self, LinkEnd, NewShare, ShareTarget},
     state::AppState,
     tracks::{parse_ids, TracksQuery},
 };
@@ -44,6 +44,7 @@ pub fn router() -> Router<AppState> {
         .route("/s/:token/api/trips/:id", get(trip))
         .route("/s/:token/api/trips/:id/track.geojson", get(track))
         .route("/s/:token/api/trips/:id/climbs", get(climbs))
+        .route("/s/:token/api/trips/:id/links", get(links))
         .route("/s/:token/api/trips/tracks", get(tracks))
         .route("/s/:token/api/trips/:id/photos", get(photos))
         .route("/s/:token/api/trips/:id/gpx", get(gpx))
@@ -263,6 +264,45 @@ async fn trip(
         .await?
         .ok_or(AppError::NotFound)?;
     Ok(Json(shared_trip(trip)))
+}
+
+/// GET `/s/:token/api/trips/:id/links` (US-99) — the trips it is linked to
+/// that the share reaches too. A share never reaches collection items
+/// beside trips (US-94), so a link to one never shows here.
+async fn links(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Path((_, id)): Path<(String, i64)>,
+) -> Result<Json<SharedLinks>, AppError> {
+    let share = share_id(principal)?;
+    let id = covered(&state, principal, id).await?;
+    let links = repo::list_links(&state.pool, LinkEnd::Trip(id))
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(Json(SharedLinks {
+        recorded_trips: shared_trips(&state, share, links.recorded_trips).await?,
+        planned_trips: shared_trips(&state, share, links.planned_trips).await?,
+    }))
+}
+
+/// Those of `trips` the share reaches, as its recipient reads them.
+async fn shared_trips(
+    state: &AppState,
+    share: i64,
+    trips: Vec<LinkedTrip>,
+) -> Result<Vec<SharedLinkedTrip>, AppError> {
+    let mut shared = Vec::with_capacity(trips.len());
+    for trip in trips {
+        if repo::share_covers_trip(&state.pool, share, trip.id).await? {
+            shared.push(SharedLinkedTrip {
+                id: trip.id,
+                name: trip.name,
+                activity_type: trip.activity_type,
+                start_date: trip.start_date,
+            });
+        }
+    }
+    Ok(shared)
 }
 
 /// GET `/s/:token/api/trips/:id/track.geojson`.
