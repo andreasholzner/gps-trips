@@ -5,8 +5,8 @@ use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::models::{
-    ActivityType, BoundingBox, KomootLink, KomootPrivacy, LocationSource, TripDetail, TripKind,
-    TripSummary, TripTrack,
+    ActivityType, BoundingBox, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary,
+    TripTrack,
 };
 use crate::server::db;
 use crate::server::gpx::TrackStats;
@@ -14,10 +14,10 @@ use crate::server::import::date_prefix;
 
 use super::to_rfc3339;
 
-mod parked_photos;
 mod proper_name;
-use parked_photos::trips_with_parked_photos;
+mod unplaced;
 use proper_name::has_proper_name;
+use unplaced::trips_with_photos_to_place;
 
 /// Fields for a new trip + its derived geometry and original GPX file
 /// (mirrors `NewPhoto` in the sibling `photo` module). `trip_kind`
@@ -161,8 +161,9 @@ pub struct TripFilter {
     pub unnamed: bool,
     /// Keep only trips with at least one photo left unplaced (US-66) —
     /// `location_source = none`, what US-4 leaves a photo it could not place
-    /// — or one Komoot parked at the track's start or end (US-101, see
-    /// [`trips_with_parked_photos`]).
+    /// — or one Komoot parked at the track's start or end (US-101). Narrowed
+    /// in SQL, then decided for the listed trips only (see
+    /// [`trips_with_photos_to_place`]).
     pub unplaced_photos: bool,
 }
 
@@ -230,6 +231,10 @@ pub async fn list_trips(
     // — still no track geometry, and the join is on that table's indexed
     // `trip_id`, so the list query stays cheap. A delete-pending link row has
     // a NULL `trip_id` and therefore joins onto nothing.
+    //
+    // One read transaction, so the photos to place (US-101) are looked up in
+    // the same state of the archive the list was read from.
+    let mut tx = pool.begin().await?;
     let mut query = sqlx::QueryBuilder::new(
         "SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type, \
          t.start_time AS start_time, t.tz_name AS tz_name, \
@@ -320,19 +325,7 @@ pub async fn list_trips(
             .push(")");
     }
     if filter.unplaced_photos {
-        // `EXISTS` and `IN` rather than a join, so a trip with several
-        // unplaced photos is still listed once; served by `idx_photo_trip`.
-        let parked = serde_json::to_string(&trips_with_parked_photos(pool).await?)
-            .map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
-        query
-            .push(
-                " AND (EXISTS (SELECT 1 FROM photo p WHERE p.trip_id = t.id \
-                 AND p.location_source = ",
-            )
-            .push_bind(LocationSource::None)
-            .push(") OR t.id IN (SELECT value FROM json_each(")
-            .push_bind(parked)
-            .push(")))");
+        unplaced::push_candidates(&mut query);
     }
     query.push(" ORDER BY t.start_time DESC, t.id DESC");
 
@@ -358,7 +351,7 @@ pub async fn list_trips(
                 max_lon: row.get("max_lon"),
             }
         })
-        .fetch_all(pool)
+        .fetch_all(&mut *tx)
         .await?;
 
     // Missing a date, a trip matches no date bound — as a NULL `start_time`
@@ -374,12 +367,18 @@ pub async fn list_trips(
                 .is_none_or(|to| date.is_some_and(|d| d <= to))
     };
     let q = filter.name_query.as_deref().map(str::to_lowercase);
-    Ok(trips
+    let mut trips: Vec<TripSummary> = trips
         .into_iter()
         .filter(|t| in_range(t.start_date.as_deref()))
         .filter(|t| q.as_ref().is_none_or(|q| t.name.to_lowercase().contains(q)))
         .filter(|t| !filter.unnamed || !has_proper_name(&t.name))
-        .collect())
+        .collect();
+    if filter.unplaced_photos {
+        let ids: Vec<i64> = trips.iter().map(|t| t.id).collect();
+        let to_place = trips_with_photos_to_place(&mut tx, &ids).await?;
+        trips.retain(|t| to_place.contains(&t.id));
+    }
+    Ok(trips)
 }
 
 /// Fetch a trip's track geometry as the stored GeoJSON string (US-7), or `None`

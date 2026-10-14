@@ -3,6 +3,7 @@
 //! the track's start or end. A sibling of `filter.rs` rather than part of it,
 //! to keep both under the repo's 500-line cap.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
@@ -17,6 +18,7 @@ async fn trip_named(pool: &SqlitePool, name: &str) -> i64 {
 const START: (f64, f64) = (59.90, 10.70);
 const MIDDLE: (f64, f64) = (59.92, 10.75);
 const END: (f64, f64) = (59.95, 10.80);
+const ELSEWHERE: (f64, f64) = (61.00, 12.00);
 const TRACK: &str = r#"{"type":"Feature","properties":{},"geometry":{"type":"LineString",
     "coordinates":[[10.70,59.90,100.0],[10.75,59.92,120.0],[10.80,59.95,110.0]]}}"#;
 
@@ -41,15 +43,11 @@ async fn trip_with_geojson(pool: &SqlitePool, name: &str, geojson: &str) -> i64 
     .unwrap()
 }
 
+/// A placed photo goes far off `TRACK`'s ends, so whether it counts as
+/// parked (US-101) never depends on the trip it is added to.
 async fn add_photo(pool: &SqlitePool, trip_id: i64, location_source: LocationSource) {
     let placed = location_source != LocationSource::None;
-    add_photo_at(
-        pool,
-        trip_id,
-        location_source,
-        placed.then_some((59.9, 10.7)),
-    )
-    .await;
+    add_photo_at(pool, trip_id, location_source, placed.then_some(ELSEWHERE)).await;
 }
 
 async fn add_photo_at(
@@ -254,8 +252,12 @@ async fn us101_a_parked_photo_placed_by_hand_no_longer_counts() {
 #[tokio::test]
 async fn us101_a_trip_without_a_track_is_matched_only_on_unplaced_photos() {
     let db = TestDb::new().await;
-    let provided = trip_named(&db.pool, "2024-01-01 Provided").await;
-    let unplaced = trip_named(&db.pool, "2024-01-01 Unplaced").await;
+    let provided = trip_with_track(&db.pool, "2024-01-01 Provided").await;
+    let unplaced = trip_with_track(&db.pool, "2024-01-01 Unplaced").await;
+    sqlx::query("DELETE FROM track")
+        .execute(&db.pool)
+        .await
+        .unwrap();
     add_photo_at(&db.pool, provided, LocationSource::Provided, Some(START)).await;
     add_photo(&db.pool, unplaced, LocationSource::None).await;
 
@@ -292,4 +294,38 @@ async fn us101_parked_photos_still_combine_with_the_other_filters() {
         ..unplaced_filter()
     };
     assert_eq!(names(&db.pool, &filter).await, vec!["Unnamed"]);
+}
+
+#[tokio::test]
+async fn us101_a_malformed_track_is_skipped_rather_than_failing_the_list() {
+    let db = TestDb::new().await;
+    // A Point's coordinates: `[0]` is a number, not a position.
+    let point = r#"{"type":"Feature","properties":{},
+        "geometry":{"type":"Point","coordinates":[10.70,59.90]}}"#;
+    let malformed = trip_with_geojson(&db.pool, "2024-01-01 Malformed", point).await;
+    let unplaced = trip_with_track(&db.pool, "2024-01-01 Unplaced").await;
+    add_photo_at(&db.pool, malformed, LocationSource::Provided, Some(START)).await;
+    add_photo(&db.pool, unplaced, LocationSource::None).await;
+
+    assert_eq!(
+        names(&db.pool, &unplaced_filter()).await,
+        vec!["2024-01-01 Unplaced"]
+    );
+}
+
+#[tokio::test]
+async fn us101_only_the_trips_asked_about_are_looked_at() {
+    let db = TestDb::new().await;
+    let parked = trip_with_track(&db.pool, "2024-01-01 Parked").await;
+    let unplaced = trip_with_track(&db.pool, "2024-01-01 Unplaced").await;
+    let left_out = trip_with_track(&db.pool, "2024-01-01 Left out").await;
+    add_photo_at(&db.pool, parked, LocationSource::Provided, Some(END)).await;
+    add_photo(&db.pool, unplaced, LocationSource::None).await;
+    add_photo_at(&db.pool, left_out, LocationSource::Provided, Some(START)).await;
+
+    let mut conn = db.pool.acquire().await.unwrap();
+    let to_place = trips_with_photos_to_place(&mut conn, &[parked, unplaced])
+        .await
+        .unwrap();
+    assert_eq!(to_place, HashSet::from([parked, unplaced]));
 }
