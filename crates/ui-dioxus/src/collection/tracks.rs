@@ -31,12 +31,20 @@ pub(super) fn Tracks(
         let _ = id;
         selected.write().clear();
     }));
-    let ids: Vec<i64> = selected.read().iter().copied().collect();
     let held = !tracks.is_empty();
     let tracks: Vec<CollectionTrackSummary> = tracks
         .into_iter()
         .filter(|track| view.keeps(track.has_recorded_trip))
         .collect();
+    // A track the filter hides leaves the selection, as a kind switched off
+    // does on the trip list (US-90): nothing out of sight is shared.
+    use_effect(use_reactive!(|tracks| {
+        let listed = listed_selection(&selected.peek(), &tracks);
+        if listed.len() != selected.peek().len() {
+            selected.set(listed.into_iter().collect());
+        }
+    }));
+    let ids = listed_selection(&selected.read(), &tracks);
     rsx! {
         div { class: "bulk-panels",
             ShareSelectedPanel { ids, of: Selected::CollectionTracks }
@@ -47,6 +55,18 @@ pub(super) fn Tracks(
             TrackList { tracks, selected }
         }
     }
+}
+
+/// The selected tracks among those `listed`, in their order.
+pub(super) fn listed_selection(
+    selected: &BTreeSet<i64>,
+    listed: &[CollectionTrackSummary],
+) -> Vec<i64> {
+    listed
+        .iter()
+        .map(|track| track.id)
+        .filter(|id| selected.contains(id))
+        .collect()
 }
 
 /// Where a track's row or line leads: its page, or a share's page of it.

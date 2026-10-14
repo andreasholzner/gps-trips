@@ -8,7 +8,7 @@
 
 use trip_archive_types::{ActivityType, RecordedTripFilter};
 
-use crate::kinds::Kinds;
+use crate::kinds::{Kind, Kinds};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Filters {
@@ -175,12 +175,18 @@ impl Filters {
         }
     }
 
+    /// Whether the recorded trip filter can narrow anything (US-99): only
+    /// planned trips and collection tracks have recorded trips linked.
+    pub fn recorded_trip_applies(&self) -> bool {
+        self.kinds.contains(Kind::Planned) || self.kinds.contains(Kind::Collections)
+    }
+
     /// Whether anything beyond the kinds is narrowing the list — the list
     /// uses it to tell "nothing imported yet" from "nothing matches". With
     /// no kind of trip on, only the filters that apply count.
     pub fn any_set(&self) -> bool {
         let shared = self.activity.is_some()
-            || self.recorded_trip.is_some()
+            || (self.recorded_trip.is_some() && self.recorded_trip_applies())
             // A chosen region narrows the list, so an empty result is
             // "nothing matches" rather than "nothing imported yet" (US-14) —
             // the spike got this wrong by keeping bbox outside Filters, and

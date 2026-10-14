@@ -145,3 +145,15 @@ async fn us99_a_trips_section_lists_what_it_is_linked_to() {
     assert!(html.contains(&format!(r#"href="/trips/{plan}""#)), "{html}");
     assert_eq!(html.matches(r#"class="unlink""#).count(), 2, "{html}");
 }
+
+#[test]
+fn us99_a_failed_removal_is_told_on_its_own_page_only() {
+    let failed = Some((LinkEnd::Trip(5), "Could not remove the link".to_string()));
+
+    assert_eq!(
+        error_on(LinkEnd::Trip(5), &failed),
+        Some("Could not remove the link")
+    );
+    assert_eq!(error_on(LinkEnd::Trip(7), &failed), None);
+    assert_eq!(error_on(LinkEnd::Trip(5), &None), None);
+}

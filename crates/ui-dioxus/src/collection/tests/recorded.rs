@@ -2,7 +2,9 @@
 //! counted, marked, and the lists narrowed to them or to the rest.
 
 use super::*;
+use crate::collection::tracks::listed_selection;
 use crate::test_support::import_sample;
+use std::collections::BTreeSet;
 use trip_archive_types::{CreateLinks, RecordedTripFilter};
 
 fn narrowed(recorded_trip: RecordedTripFilter) -> CollectionView {
@@ -108,4 +110,15 @@ fn us99_a_filter_keeping_no_track_says_so() {
 
     assert!(html.contains("No track matches."), "{html}");
     assert!(!html.contains("waypoints only"), "{html}");
+}
+
+#[test]
+fn us99_tracks_the_filter_hides_are_not_shared() {
+    let selected: BTreeSet<i64> = [1, 2, 3].into();
+    let listed = vec![
+        a_track(1, "Stage 1", ActivityType::Cycling),
+        a_track(3, "Stage 3", ActivityType::Cycling),
+    ];
+
+    assert_eq!(listed_selection(&selected, &listed), vec![1, 3]);
 }

@@ -379,3 +379,18 @@ fn us99_an_unknown_recorded_trip_filter_in_the_url_is_not_applied() {
         None
     );
 }
+
+#[test]
+fn us99_the_recorded_trip_filter_counts_only_while_it_can_narrow_something() {
+    let recorded_only = Filters {
+        recorded_trip: Some(RecordedTripFilter::With),
+        ..Default::default()
+    };
+    let with_planned = Filters {
+        kinds: Kinds::default().toggled(Kind::Planned),
+        ..recorded_only.clone()
+    };
+
+    assert!(!recorded_only.any_set());
+    assert!(with_planned.any_set());
+}

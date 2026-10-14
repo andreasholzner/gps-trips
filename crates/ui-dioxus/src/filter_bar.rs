@@ -90,8 +90,7 @@ pub fn FilterBar(
 /// trips are listed as they are, so it would narrow nothing.
 #[component]
 fn RecordedTripSelect(filters: Signal<Filters>) -> Element {
-    let kinds = filters.read().kinds;
-    if !kinds.contains(Kind::Planned) && !kinds.contains(Kind::Collections) {
+    if !filters.read().recorded_trip_applies() {
         return rsx! {};
     }
     rsx! {

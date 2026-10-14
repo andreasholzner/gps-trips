@@ -181,6 +181,14 @@ pub fn RecordedTripChoice(
     }
 }
 
+/// The message of a failed removal, if it failed on `end`'s page.
+pub fn error_on(end: LinkEnd, error: &Option<(LinkEnd, String)>) -> Option<&str> {
+    match error {
+        Some((failed_on, message)) if *failed_on == end => Some(message),
+        _ => None,
+    }
+}
+
 /// The owner's section: what `end` is linked to. Nothing while it is read,
 /// nothing for no links, and nothing but a log line if it cannot be read —
 /// the page is about something else.
@@ -192,7 +200,9 @@ pub fn LinkedTo(end: LinkEnd) -> Element {
     let mut links = use_resource(use_reactive!(|end| async move {
         (end, api::list_links(&archive(), end).await)
     }));
-    let mut error = use_signal(|| None::<String>);
+    // A failed removal, with the page it failed on: the router shows the
+    // next page of the same kind through this same scope.
+    let mut error = use_signal(|| None::<(LinkEnd, String)>);
     let read = links.read_unchecked();
     let groups = match &*read {
         Some((read_for, Ok(links))) if *read_for == end => groups(end, links),
@@ -208,12 +218,12 @@ pub fn LinkedTo(end: LinkEnd) -> Element {
                 error.set(None);
                 links.restart();
             }
-            Err(err) => error.set(Some(format!("Could not remove the link: {err}"))),
+            Err(err) => error.set(Some((end, format!("Could not remove the link: {err}")))),
         }
     };
     rsx! {
         LinkGroups { groups, on_unlink }
-        if let Some(message) = error() {
+        if let Some(message) = error_on(end, &error.read()) {
             p { class: "error", "{message}" }
         }
     }
