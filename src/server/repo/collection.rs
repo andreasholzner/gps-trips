@@ -12,6 +12,7 @@ use crate::models::{
 use crate::server::db;
 use crate::server::gpx::TrackStats;
 
+use super::link::{waypoints_with_recorded_trip, TRACK_HAS_RECORDED_TRIP};
 use super::{to_rfc3339, trip::track_positions, GpxDownload};
 
 /// The activity a collection track goes by: its own, else its collection's,
@@ -186,7 +187,8 @@ pub async fn get_collection(
 
     let tracks = sqlx::query(&format!(
         "SELECT k.id, k.name, {TRACK_ACTIVITY} AS activity_type, \
-                k.distance_m, k.ascent_m, k.descent_m \
+                k.distance_m, k.ascent_m, k.descent_m, \
+                {TRACK_HAS_RECORDED_TRIP} AS has_recorded_trip \
          FROM collection_track k JOIN collection c ON c.id = k.collection_id \
          WHERE k.collection_id = ? ORDER BY k.position"
     ))
@@ -198,9 +200,11 @@ pub async fn get_collection(
         distance_m: row.get("distance_m"),
         ascent_m: row.get("ascent_m"),
         descent_m: row.get("descent_m"),
+        has_recorded_trip: row.get("has_recorded_trip"),
     })
     .fetch_all(pool)
     .await?;
+    let waypoints_with_recorded_trip = waypoints_with_recorded_trip(pool, id).await?;
 
     Ok(Some(CollectionDetail {
         id: row.get("id"),
@@ -209,6 +213,7 @@ pub async fn get_collection(
         activity_type: row.get("activity_type"),
         waypoint_count: row.get("waypoint_count"),
         tracks,
+        waypoints_with_recorded_trip,
     }))
 }
 

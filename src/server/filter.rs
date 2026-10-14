@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use time::Date;
 
-use crate::models::{normalize_tag_name, ActivityType, BoundingBox, TripKind};
+use crate::models::{normalize_tag_name, ActivityType, BoundingBox, RecordedTripFilter, TripKind};
 use crate::server::{error::AppError, repo::TripFilter};
 
 /// `"[year]-[month]-[day]"`, built once at compile time (rather than
@@ -53,6 +53,9 @@ pub struct TripFilterQuery {
     /// Only trips with photos left unplaced (US-66): `true`, or blank/absent
     /// for no filter.
     pub unplaced: Option<String>,
+    /// Planned trips with or without a recorded trip linked (US-99): `with`
+    /// or `without`, or blank/absent for no filter.
+    pub recorded_trip: Option<String>,
 }
 
 /// Parse a raw query into a `TripFilter`, validating each field at this HTTP
@@ -100,6 +103,7 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
     let region = parse_optional_bbox(query.bbox.as_deref())?;
     let unnamed = parse_flag("unnamed", query.unnamed.as_deref())?;
     let unplaced_photos = parse_flag("unplaced", query.unplaced.as_deref())?;
+    let recorded_trip = parse_optional_recorded_trip(query.recorded_trip.as_deref())?;
 
     Ok(TripFilter {
         activity_type,
@@ -113,7 +117,19 @@ pub fn parse_filter(query: &TripFilterQuery) -> Result<TripFilter, AppError> {
         region,
         unnamed,
         unplaced_photos,
+        recorded_trip,
     })
+}
+
+/// A `recorded_trip` parameter (US-99): blank or absent narrows nothing;
+/// anything but `with` or `without` is refused with 400.
+pub(crate) fn parse_optional_recorded_trip(
+    s: Option<&str>,
+) -> Result<Option<RecordedTripFilter>, AppError> {
+    match s.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(value) => value.parse().map(Some).map_err(AppError::BadRequest),
+    }
 }
 
 /// Blank → `false` ("no filter"); `true` → the filter is on. Anything else,

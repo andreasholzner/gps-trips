@@ -25,6 +25,7 @@ fn trip(id: i64, activity_type: ActivityType, bbox: Option<[f64; 4]>) -> MapItem
         min_lon,
         max_lat,
         max_lon,
+        has_recorded_trip: false,
     })
 }
 

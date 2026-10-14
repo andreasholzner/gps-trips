@@ -67,6 +67,7 @@ fn us90_the_trips_are_counted_by_kind_from_one_read() {
         min_lon: None,
         max_lat: None,
         max_lon: None,
+        has_recorded_trip: false,
     };
 
     assert_eq!(

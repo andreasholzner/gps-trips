@@ -5,13 +5,14 @@ use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool, Transaction};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::models::{
-    ActivityType, BoundingBox, KomootLink, KomootPrivacy, TripDetail, TripKind, TripSummary,
-    TripTrack,
+    ActivityType, BoundingBox, KomootLink, KomootPrivacy, RecordedTripFilter, TripDetail, TripKind,
+    TripSummary, TripTrack,
 };
 use crate::server::db;
 use crate::server::gpx::TrackStats;
 use crate::server::import::date_prefix;
 
+use super::link::{push_trip_filter, TRIP_HAS_RECORDED_TRIP};
 use super::to_rfc3339;
 
 mod proper_name;
@@ -165,6 +166,9 @@ pub struct TripFilter {
     /// in SQL, then decided for the listed trips only (see
     /// [`trips_with_photos_to_place`]).
     pub unplaced_photos: bool,
+    /// Planned trips with or without a recorded trip linked (US-99);
+    /// recorded trips are left as they are.
+    pub recorded_trip: Option<RecordedTripFilter>,
 }
 
 /// `"[year]-[month]-[day]"` — must match `filter::parse_filter`'s format,
@@ -235,15 +239,16 @@ pub async fn list_trips(
     // One read transaction, so the photos to place (US-101) are looked up in
     // the same state of the archive the list was read from.
     let mut tx = pool.begin().await?;
-    let mut query = sqlx::QueryBuilder::new(
+    let mut query = sqlx::QueryBuilder::new(format!(
         "SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type, \
          t.start_time AS start_time, t.tz_name AS tz_name, \
          t.distance_m AS distance_m, t.ascent_m AS ascent_m, \
          t.duration_secs AS duration_secs, t.trip_kind AS trip_kind, \
          l.privacy_status AS privacy_status, \
-         t.min_lat AS min_lat, t.min_lon AS min_lon, t.max_lat AS max_lat, t.max_lon AS max_lon \
-         FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id WHERE 1 = 1",
-    );
+         t.min_lat AS min_lat, t.min_lon AS min_lon, t.max_lat AS max_lat, t.max_lon AS max_lon, \
+         {TRIP_HAS_RECORDED_TRIP} AS has_recorded_trip \
+         FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id WHERE 1 = 1"
+    ));
     if let Some(activity_type) = filter.activity_type {
         query
             .push(" AND t.activity_type = ")
@@ -327,6 +332,9 @@ pub async fn list_trips(
     if filter.unplaced_photos {
         unplaced::push_candidates(&mut query);
     }
+    if let Some(recorded_trip) = filter.recorded_trip {
+        push_trip_filter(&mut query, recorded_trip);
+    }
     query.push(" ORDER BY t.start_time DESC, t.id DESC");
 
     let trips: Vec<TripSummary> = query
@@ -349,6 +357,7 @@ pub async fn list_trips(
                 min_lon: row.get("min_lon"),
                 max_lat: row.get("max_lat"),
                 max_lon: row.get("max_lon"),
+                has_recorded_trip: row.get("has_recorded_trip"),
             }
         })
         .fetch_all(&mut *tx)

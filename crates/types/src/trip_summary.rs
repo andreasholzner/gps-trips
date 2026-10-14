@@ -33,4 +33,7 @@ pub struct TripSummary {
     pub min_lon: Option<f64>,
     pub max_lat: Option<f64>,
     pub max_lon: Option<f64>,
+    /// A planned trip a recorded trip is linked to (US-99); never a recorded
+    /// one.
+    pub has_recorded_trip: bool,
 }

@@ -5,8 +5,12 @@ use std::collections::HashMap;
 
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 
-use crate::models::{ActivityType, BoundingBox, CollectionSummary, CollectionTrackMark, TripTrack};
+use crate::models::{
+    ActivityType, BoundingBox, CollectionSummary, CollectionTrackMark, RecordedTripFilter,
+    TripTrack,
+};
 
+use super::super::link::{push_track_filter, TRACK_HAS_RECORDED_TRIP};
 use super::super::trip::track_positions;
 use super::TRACK_ACTIVITY;
 
@@ -17,6 +21,8 @@ use super::TRACK_ACTIVITY;
 pub struct TrackFilter {
     pub region: Option<BoundingBox>,
     pub activity: Option<ActivityType>,
+    /// With or without a recorded trip linked (US-99).
+    pub recorded_trip: Option<RecordedTripFilter>,
 }
 
 impl TrackFilter {
@@ -39,6 +45,16 @@ impl TrackFilter {
                 .push(format!(" AND {TRACK_ACTIVITY} = "))
                 .push_bind(activity.as_str());
         }
+        if let Some(recorded_trip) = self.recorded_trip {
+            push_track_filter(query, recorded_trip);
+        }
+    }
+
+    /// Whether only some tracks match, so that a waypoint — which has
+    /// neither an activity nor recorded trips of its own here — brings no
+    /// collection in.
+    fn narrows_tracks(&self) -> bool {
+        self.activity.is_some() || self.recorded_trip.is_some()
     }
 }
 
@@ -57,25 +73,28 @@ pub async fn list_collections(
 ) -> Result<Vec<CollectionSummary>, sqlx::Error> {
     // The waypoints are summed up per collection before the join, so the
     // region's subqueries run once per collection, not once per waypoint.
-    let mut query = sqlx::QueryBuilder::new(
+    let mut query = sqlx::QueryBuilder::new(format!(
         "SELECT c.id, c.name, c.activity_type, COALESCE(w.n, 0) AS waypoint_count, \
                 w.west, w.south, w.east, w.north, \
                 (SELECT COUNT(*) FROM collection_track k WHERE k.collection_id = c.id) \
-                    AS track_count \
+                    AS track_count, \
+                (SELECT COUNT(*) FROM collection_track k \
+                 WHERE k.collection_id = c.id AND {TRACK_HAS_RECORDED_TRIP}) \
+                    AS tracks_with_recorded_trip \
          FROM collection c LEFT JOIN ( \
              SELECT collection_id, COUNT(*) AS n, MIN(lon) AS west, MIN(lat) AS south, \
                     MAX(lon) AS east, MAX(lat) AS north \
              FROM waypoint GROUP BY collection_id \
-         ) w ON w.collection_id = c.id",
-    );
-    if tracks.region.is_some() || tracks.activity.is_some() {
+         ) w ON w.collection_id = c.id"
+    ));
+    if tracks.region.is_some() || tracks.narrows_tracks() {
         query.push(
             " WHERE (EXISTS (SELECT 1 FROM collection_track k \
              WHERE k.collection_id = c.id",
         );
         tracks.push_conditions(&mut query);
         query.push(")");
-        if let (Some(region), None) = (tracks.region, tracks.activity) {
+        if let (Some(region), false) = (tracks.region, tracks.narrows_tracks()) {
             query
                 .push(
                     " OR EXISTS (SELECT 1 FROM waypoint v \
@@ -101,6 +120,7 @@ pub async fn list_collections(
             activity_type: row.get("activity_type"),
             waypoint_count: row.get("waypoint_count"),
             track_count: row.get("track_count"),
+            tracks_with_recorded_trip: row.get("tracks_with_recorded_trip"),
             tracks: Vec::new(),
             waypoint_bounds: match (
                 row.get("west"),
@@ -150,7 +170,8 @@ async fn list_track_marks(
     let ids = serde_json::to_string(&ids).map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
     let mut query = sqlx::QueryBuilder::new(format!(
         "SELECT k.collection_id, k.id, k.name, {TRACK_ACTIVITY} AS activity_type, \
-                k.distance_m, k.ascent_m, k.min_lat, k.min_lon, k.max_lat, k.max_lon \
+                k.distance_m, k.ascent_m, k.min_lat, k.min_lon, k.max_lat, k.max_lon, \
+                {TRACK_HAS_RECORDED_TRIP} AS has_recorded_trip \
          FROM collection_track k JOIN collection c ON c.id = k.collection_id \
          WHERE k.collection_id IN (SELECT value FROM json_each("
     ));
@@ -173,6 +194,7 @@ async fn list_track_marks(
                 min_lon: row.get("min_lon"),
                 max_lat: row.get("max_lat"),
                 max_lon: row.get("max_lon"),
+                has_recorded_trip: row.get("has_recorded_trip"),
             });
     }
     Ok(by_collection)

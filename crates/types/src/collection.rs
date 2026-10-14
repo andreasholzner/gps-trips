@@ -14,6 +14,8 @@ pub struct CollectionDetail {
     pub waypoint_count: i64,
     /// In the order the file held them.
     pub tracks: Vec<CollectionTrackSummary>,
+    /// The waypoints a recorded trip is linked to (US-99), in file order.
+    pub waypoints_with_recorded_trip: Vec<i64>,
 }
 
 /// One of a collection's tracks, as its page lists it.
@@ -27,6 +29,8 @@ pub struct CollectionTrackSummary {
     pub distance_m: f64,
     pub ascent_m: f64,
     pub descent_m: f64,
+    /// Whether a recorded trip is linked to it (US-99).
+    pub has_recorded_trip: bool,
 }
 
 /// A collection as the trip list's Collections tab lists it (US-87), with
@@ -41,6 +45,9 @@ pub struct CollectionSummary {
     pub waypoint_count: i64,
     /// How many tracks it holds in all, whatever the filters (US-90).
     pub track_count: i64,
+    /// How many of them a recorded trip is linked to, whatever the filters
+    /// (US-99).
+    pub tracks_with_recorded_trip: i64,
     /// The tracks the filters match — all of them with none set — in the
     /// order the file held them.
     pub tracks: Vec<CollectionTrackMark>,
@@ -81,6 +88,8 @@ pub struct CollectionTrackMark {
     pub min_lon: f64,
     pub max_lat: f64,
     pub max_lon: f64,
+    /// Whether a recorded trip is linked to it (US-99).
+    pub has_recorded_trip: bool,
 }
 
 /// A collection track's page (US-86): only distance, ascent and descent —

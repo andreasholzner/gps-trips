@@ -17,6 +17,7 @@ fn a_collection(id: i64, name: &str) -> CollectionSummary {
         track_count: 0,
         tracks: Vec::new(),
         waypoint_bounds: None,
+        tracks_with_recorded_trip: 0,
     }
 }
 

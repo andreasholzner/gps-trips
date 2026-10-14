@@ -68,3 +68,59 @@ pub struct LinkedWaypoint {
     pub collection_id: i64,
     pub collection_name: String,
 }
+
+/// Whether a recorded trip is linked to it — the trip list's filter on
+/// planned trips and collection tracks, and a collection page's on its
+/// tracks and waypoints. A closed set on the wire, so an enum (ADR-0018).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordedTripFilter {
+    /// Only what has a recorded trip linked to it.
+    With,
+    /// Only what has none.
+    Without,
+}
+
+impl RecordedTripFilter {
+    pub const ALL: [RecordedTripFilter; 2] = [Self::With, Self::Without];
+
+    /// The `recorded_trip` query parameter's value.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::With => "with",
+            Self::Without => "without",
+        }
+    }
+}
+
+impl std::fmt::Display for RecordedTripFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for RecordedTripFilter {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|filter| filter.as_str() == s)
+            .ok_or_else(|| {
+                format!("unknown recorded_trip filter: {s:?} (expected with or without)")
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_recorded_trip_filter_round_trips_through_its_query_value() {
+        for filter in RecordedTripFilter::ALL {
+            assert_eq!(filter.to_string().parse::<RecordedTripFilter>(), Ok(filter));
+        }
+        assert!("maybe".parse::<RecordedTripFilter>().is_err());
+    }
+}

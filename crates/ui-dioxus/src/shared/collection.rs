@@ -42,6 +42,7 @@ pub fn as_track_summary(track: &SharedCollectionTrack) -> CollectionTrackSummary
         distance_m: track.distance_m,
         ascent_m: track.ascent_m,
         descent_m: track.descent_m,
+        has_recorded_trip: false,
     }
 }
 

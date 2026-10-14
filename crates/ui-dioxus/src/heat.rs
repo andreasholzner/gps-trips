@@ -131,6 +131,7 @@ mod tests {
             min_lon,
             max_lat,
             max_lon,
+            has_recorded_trip: false,
         })
     }
 

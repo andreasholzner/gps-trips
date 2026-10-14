@@ -76,6 +76,7 @@ mod tests {
             min_lon: 9.0,
             max_lat: 46.5,
             max_lon: 9.5,
+            has_recorded_trip: false,
         }
     }
 
@@ -90,6 +91,7 @@ mod tests {
             track_count: 125,
             tracks: (1..=7).map(a_track).collect(),
             waypoint_bounds: None,
+            tracks_with_recorded_trip: 0,
         }
     }
 

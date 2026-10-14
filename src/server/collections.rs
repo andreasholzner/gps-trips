@@ -22,7 +22,7 @@ use crate::server::{
     collection_gpx::{parse_collection, track_name, ParsedCollection},
     collection_import::file_name_of,
     error::AppError,
-    filter::{parse_optional_activity, parse_optional_bbox},
+    filter::{parse_optional_activity, parse_optional_bbox, parse_optional_recorded_trip},
     geojson::build_track_geojson,
     gpx::compute_stats,
     import::resolve_activity_type,
@@ -221,6 +221,8 @@ struct ListQuery {
     q: Option<String>,
     bbox: Option<String>,
     activity: Option<String>,
+    /// US-99: tracks with or without a recorded trip linked.
+    recorded_trip: Option<String>,
 }
 
 /// `GET /api/collections?q=…&bbox=…&activity=…` — every collection matching
@@ -234,6 +236,7 @@ async fn handle_list(
     let tracks = repo::TrackFilter {
         region: parse_optional_bbox(query.bbox.as_deref())?,
         activity: parse_optional_activity(query.activity.as_deref())?,
+        recorded_trip: parse_optional_recorded_trip(query.recorded_trip.as_deref())?,
     };
     let name = query.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
     Ok(Json(

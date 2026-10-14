@@ -9,7 +9,7 @@ use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool};
 
 use super::collection::TRACK_ACTIVITY;
 use super::trip::local_start_date;
-use crate::models::{LinkedTrack, LinkedTrip, LinkedWaypoint, Links, TripKind};
+use crate::models::{LinkedTrack, LinkedTrip, LinkedWaypoint, Links, RecordedTripFilter, TripKind};
 use crate::server::db;
 
 /// Something a link can end at, other than the trip at its other end — or,
@@ -293,6 +293,60 @@ async fn linked_waypoints(
             .then_with(|| a.id.cmp(&b.id)),
     });
     Ok(waypoints)
+}
+
+/// True for the planned trip `t` when a recorded trip is linked to it, and
+/// never for a recorded one.
+pub(super) const TRIP_HAS_RECORDED_TRIP: &str =
+    "EXISTS (SELECT 1 FROM trip_trip_link rl WHERE rl.planned_trip_id = t.id)";
+
+/// True for the collection track `k` when a recorded trip is linked to it.
+pub(super) const TRACK_HAS_RECORDED_TRIP: &str = "EXISTS (SELECT 1 FROM trip_track_link rl \
+     JOIN trip rt ON rt.id = rl.trip_id \
+     WHERE rl.collection_track_id = k.id AND rt.trip_kind = 'recorded')";
+
+/// Narrow a query over `trip t` to the planned trips `filter` asks for,
+/// leaving the recorded ones as they are.
+pub(super) fn push_trip_filter(
+    query: &mut sqlx::QueryBuilder<'_, Sqlite>,
+    filter: RecordedTripFilter,
+) {
+    query.push(format!(
+        " AND (t.trip_kind = 'recorded' OR {}{TRIP_HAS_RECORDED_TRIP})",
+        not(filter)
+    ));
+}
+
+/// Narrow a query over `collection_track k` to the tracks `filter` asks for.
+pub(super) fn push_track_filter(
+    query: &mut sqlx::QueryBuilder<'_, Sqlite>,
+    filter: RecordedTripFilter,
+) {
+    query.push(format!(" AND {}{TRACK_HAS_RECORDED_TRIP}", not(filter)));
+}
+
+fn not(filter: RecordedTripFilter) -> &'static str {
+    match filter {
+        RecordedTripFilter::With => "",
+        RecordedTripFilter::Without => "NOT ",
+    }
+}
+
+/// The waypoints of a collection a recorded trip is linked to, in file
+/// order.
+pub(super) async fn waypoints_with_recorded_trip(
+    pool: &SqlitePool,
+    collection_id: i64,
+) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT w.id FROM waypoint w WHERE w.collection_id = ? AND EXISTS ( \
+             SELECT 1 FROM trip_waypoint_link rl JOIN trip rt ON rt.id = rl.trip_id \
+             WHERE rl.waypoint_id = w.id AND rt.trip_kind = 'recorded') \
+         ORDER BY w.position",
+    )
+    .bind(collection_id)
+    .fetch_all(pool)
+    .await
 }
 
 /// Names in order whatever the case of their letters — Unicode's, unlike

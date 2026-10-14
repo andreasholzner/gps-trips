@@ -25,6 +25,7 @@ fn a_trip(activity_type: ActivityType) -> TripSummary {
         min_lon: Some(10.7),
         max_lat: Some(60.0),
         max_lon: Some(10.8),
+        has_recorded_trip: false,
     }
 }
 

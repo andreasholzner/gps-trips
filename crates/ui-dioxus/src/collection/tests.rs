@@ -12,6 +12,7 @@ fn a_track(id: i64, name: &str, activity: ActivityType) -> CollectionTrackSummar
         distance_m: 1_000.0,
         ascent_m: 100.0,
         descent_m: 50.0,
+        has_recorded_trip: false,
     }
 }
 
@@ -23,6 +24,7 @@ fn a_collection() -> CollectionDetail {
         activity_type: Some(ActivityType::Cycling),
         waypoint_count: 2,
         tracks: vec![a_track(1, "Stage 1", ActivityType::Cycling)],
+        waypoints_with_recorded_trip: Vec::new(),
     }
 }
 

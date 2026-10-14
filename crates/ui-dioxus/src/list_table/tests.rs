@@ -25,6 +25,7 @@ fn a_trip(id: i64, name: &str) -> TripSummary {
         min_lon: Some(10.7),
         max_lat: Some(60.0),
         max_lon: Some(10.9),
+        has_recorded_trip: false,
     }
 }
 
@@ -39,6 +40,7 @@ fn a_track(id: i64, name: &str) -> CollectionTrackMark {
         min_lon: 9.0,
         max_lat: 46.5,
         max_lon: 9.5,
+        has_recorded_trip: false,
     }
 }
 
@@ -51,6 +53,7 @@ fn a_collection(id: i64, name: &str, tracks: Vec<CollectionTrackMark>) -> Collec
         track_count: 125,
         tracks,
         waypoint_bounds: None,
+        tracks_with_recorded_trip: 0,
     }
 }
 
