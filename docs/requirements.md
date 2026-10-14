@@ -1106,11 +1106,17 @@ are not linked by hand; their links come from US-103's proposals.
 confirmation — it can be linked again.
 
 **Where it shows:** a recorded trip's page lists the planned trips and collection tracks it is
-linked to, a collection track with its collection's name, and the waypoints it passed, each with
-its symbol's icon (US-95); a planned trip's page lists the recorded trips linked to it with their
-dates, and the collection tracks and waypoints it is linked to; a collection track's page and a
-waypoint's page list the recorded trips, with their dates, and the planned trips linked to them.
-Each entry links to its page; recorded trips come newest first, everything else by name.
+linked to, and the waypoints it passed; a planned trip's page lists the recorded trips linked to it,
+and the collection tracks and waypoints it is linked to; a collection track's page and a waypoint's
+page list the recorded and planned trips linked to them. The list sits below a trip's photos, and
+below the map on a page without photos. Each entry links to its page, a trip or track with its
+activity's icon and a waypoint with its symbol's icon (US-95); a recorded trip shows its date unless
+its name starts with it, and a collection track or waypoint its collection's name. Recorded trips
+come newest first, everything else by name.
+
+**On the map:** each entry has a box, unticked to begin with, that shows it on the page's map once
+ticked — a trip or track as a line in its activity's color and its kind's line style (US-90), a
+waypoint as its icon — and the map takes it in. Unticking it, or removing the link, takes it off.
 
 **With a recorded trip:** a planned trip, collection track or waypoint has a recorded trip when one
 is linked to it, however little of it the trip covered. The collections table (US-87/97) and a collection's page count the tracks with a
