@@ -204,6 +204,15 @@ pub mod photo {
     pub const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
 }
 
+/// The trip list's "Unplaced photos" filter (US-101).
+pub mod unplaced_photos {
+    /// How near the first or last point of its trip's track a position
+    /// Komoot provided may lie and still count as parked there — where
+    /// Komoot puts a photo it could not place. Komoot rounds positions and
+    /// takes them from its own copy of the track, so it need not be exact.
+    pub const PARKED_REACH_M: f64 = 50.0;
+}
+
 /// Thumbnail generation (US-5, ADR-0020).
 pub mod thumbnail {
     /// Maximum long-edge dimension of a generated thumbnail, in pixels.

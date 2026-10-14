@@ -142,7 +142,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
 | [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
-| [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | 📋     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
+| [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | ✅     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
 
 ### Maintaining this file
@@ -768,7 +768,7 @@ the region), ADR-0012 (pan and zoom are real user events, asserted in the browse
 
 ### US-101 — Photos Komoot parked at the start or end
 
-**Planned 📋** — As the owner, the "Unplaced photos" filter (US-66) also finds trips whose photos
+**Done ✅** — As the owner, the "Unplaced photos" filter (US-66) also finds trips whose photos
 Komoot put at the trip's start or end, because that is where Komoot puts a photo it could not
 place, so such a photo still needs placing even though it has a position.
 

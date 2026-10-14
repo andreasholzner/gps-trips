@@ -14,7 +14,9 @@ use crate::server::import::date_prefix;
 
 use super::to_rfc3339;
 
+mod parked_photos;
 mod proper_name;
+use parked_photos::trips_with_parked_photos;
 use proper_name::has_proper_name;
 
 /// Fields for a new trip + its derived geometry and original GPX file
@@ -158,7 +160,9 @@ pub struct TripFilter {
     /// like `name_query`: SQL cannot tell a real date from a malformed one.
     pub unnamed: bool,
     /// Keep only trips with at least one photo left unplaced (US-66) —
-    /// `location_source = none`, what US-4 leaves a photo it could not place.
+    /// `location_source = none`, what US-4 leaves a photo it could not place
+    /// — or one Komoot parked at the track's start or end (US-101, see
+    /// [`trips_with_parked_photos`]).
     pub unplaced_photos: bool,
 }
 
@@ -316,15 +320,19 @@ pub async fn list_trips(
             .push(")");
     }
     if filter.unplaced_photos {
-        // `EXISTS` rather than a join, so a trip with several unplaced
-        // photos is still listed once; served by `idx_photo_trip`.
+        // `EXISTS` and `IN` rather than a join, so a trip with several
+        // unplaced photos is still listed once; served by `idx_photo_trip`.
+        let parked = serde_json::to_string(&trips_with_parked_photos(pool).await?)
+            .map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
         query
             .push(
-                " AND EXISTS (SELECT 1 FROM photo p WHERE p.trip_id = t.id \
+                " AND (EXISTS (SELECT 1 FROM photo p WHERE p.trip_id = t.id \
                  AND p.location_source = ",
             )
             .push_bind(LocationSource::None)
-            .push(")");
+            .push(") OR t.id IN (SELECT value FROM json_each(")
+            .push_bind(parked)
+            .push(")))");
     }
     query.push(" ORDER BY t.start_time DESC, t.id DESC");
 
