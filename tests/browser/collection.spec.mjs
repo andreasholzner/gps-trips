@@ -121,7 +121,7 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
 
   // And the way back.
   await page.locator("#collection-of-track a").click();
-  await page.waitForURL(new RegExp(`/app/collections/${id}$`));
+  await page.waitForURL(new RegExp(`/app/collections/${id}\\??$`));
 });
 
 test("a single tour's waypoints show on its track's map (US-86)", async ({ page, request }) => {

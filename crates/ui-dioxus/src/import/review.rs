@@ -18,8 +18,8 @@ use trip_archive_types::{
 };
 
 use crate::api::{self, ApiClient};
+use crate::collection::collection_route;
 use crate::collection::{CollectionFields, CollectionForm};
-use crate::Route;
 
 /// What the screen says when the archive no longer has the upload: swept
 /// after a long pause, or lost to a restart.
@@ -196,7 +196,7 @@ pub(super) fn ReviewFlow(
         let sent = confirmation(&current, &form);
         match api::confirm_collection_import(&archive(), current.staging_id, &sent).await {
             Ok(id) => {
-                navigator().push(Route::Collection { id });
+                navigator().push(collection_route(id));
             }
             Err(err) if err.is_not_found() => on_leave.call(Some(EXPIRED.to_string())),
             // The collection changed under the review: show the new one.

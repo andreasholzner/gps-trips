@@ -11,6 +11,7 @@ use trip_archive_types::{ActivityType, CollectionTrackDetail, CollectionTrackEdi
 use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient, LinkEnd, Tagged};
+use crate::collection::collection_route;
 use crate::collection::drawn_waypoints;
 use crate::detail::TrackViews;
 use crate::format;
@@ -18,7 +19,6 @@ use crate::linked::LinkedTo;
 use crate::overlay::Overlay;
 use crate::share::{ShareButton, ShareTarget};
 use crate::tagging::Tagging;
-use crate::Route;
 
 /// The screen. `id` comes from the route (`/collection-tracks/:id`).
 #[component]
@@ -76,7 +76,7 @@ fn TrackFigures(track: CollectionTrackDetail) -> Element {
             }
             p { id: "collection-of-track",
                 "From the collection "
-                Link { to: Route::Collection { id: track.collection_id }, "{track.collection_name}" }
+                Link { to: collection_route(track.collection_id), "{track.collection_name}" }
             }
         }
         TrackStats {
@@ -313,7 +313,7 @@ fn DeleteCollectionTrack(id: i64, collection_id: i64) -> Element {
                         deleting.set(true);
                         match api::delete_collection_track(&archive(), id).await {
                             Ok(()) => {
-                                navigator().replace(Route::Collection { id: collection_id });
+                                navigator().replace(collection_route(collection_id));
                             }
                             Err(err) => {
                                 arming.set(false);

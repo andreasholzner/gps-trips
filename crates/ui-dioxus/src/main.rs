@@ -63,7 +63,7 @@ mod waypoint;
 mod waypoint_icon;
 
 use api::ApiClient;
-use collection::Collection;
+use collection::{Collection, CollectionView};
 use collection_track::CollectionTrack;
 use collections::Collections;
 use detail::TripDetail;
@@ -165,9 +165,10 @@ enum Route {
     /// the Tags screen's does.
     #[route("/collections?:..view")]
     Collections { view: NameFilter },
-    /// A collection (US-86), where its import ends.
-    #[route("/collections/:id")]
-    Collection { id: i64 },
+    /// A collection (US-86), where its import ends. What its lists are
+    /// narrowed to lives in the query string (US-99).
+    #[route("/collections/:id?:..view")]
+    Collection { id: i64, view: CollectionView },
     /// One track of a collection (US-86).
     #[route("/collection-tracks/:id")]
     CollectionTrack { id: i64 },

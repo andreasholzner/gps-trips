@@ -57,7 +57,7 @@ fn us97_the_filter_keeps_the_names_containing_it_ignoring_case_and_spaces() {
 fn us97_each_collection_links_to_its_page() {
     let html = list(vec![a_collection(3, "Alpencross")], "");
 
-    assert!(html.contains(r#"href="/collections/3""#), "{html}");
+    assert!(html.contains(r#"href="/collections/3?""#), "{html}");
     // Exactly the Collections tab's table (US-87).
     assert!(html.contains("<th>Waypoints</th>"), "{html}");
 }

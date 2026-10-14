@@ -135,7 +135,7 @@ test("a corrected file is reviewed and the owner's choice is proposed again (US-
   await expect(page.locator("#import-confirm")).toBeEnabled();
   await page.locator("#import-confirm").click();
 
-  await page.waitForURL(new RegExp(`/app/collections/${id}$`));
+  await page.waitForURL(new RegExp(`/app/collections/${id}\\??$`));
   await expect(page.locator("#collection-tracks tbody tr")).toHaveText([/Stage 1/, /Stage 2/]);
   await expect(page.locator("#collection-files li")).toHaveText(["first.gpx", "corrected.gpx"]);
 });

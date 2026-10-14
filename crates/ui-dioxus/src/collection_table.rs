@@ -8,15 +8,16 @@ use dioxus::prelude::*;
 use trip_archive_types::CollectionSummary;
 
 use crate::activity_icon::ActivityIcon;
+use crate::collection::collection_route;
 use crate::selection::{SelectAll, SelectOne};
-use crate::Route;
 
 /// What the Collections tab (US-87) and screen (US-97) say with no
 /// collection to list: that there are none, and where one comes from.
 pub const NO_COLLECTIONS: &str = "No collections yet. Import a GPX file as a collection.";
 
 /// One row per collection: its name, its activity icon — none for a collection
-/// with no activity focus — and how many tracks and waypoints it holds.
+/// with no activity focus — how many tracks and waypoints it holds, and how
+/// many of its tracks have a recorded trip (US-99).
 #[component]
 pub fn CollectionTable(
     collections: Vec<CollectionSummary>,
@@ -32,6 +33,7 @@ pub fn CollectionTable(
                     th { "Collection" }
                     th { "Activity" }
                     th { "Tracks" }
+                    th { "With a recorded trip" }
                     th { "Waypoints" }
                 }
             }
@@ -40,7 +42,7 @@ pub fn CollectionTable(
                     tr { key: "{collection.id}",
                         td { SelectOne { id: collection.id, selected } }
                         td {
-                            Link { to: Route::Collection { id: collection.id }, "{collection.name}" }
+                            Link { to: collection_route(collection.id), "{collection.name}" }
                         }
                         td {
                             if let Some(activity) = collection.activity_type {
@@ -48,6 +50,9 @@ pub fn CollectionTable(
                             }
                         }
                         td { class: "num", "{collection.track_count}" }
+                        td { class: "num",
+                            {with_recorded_trip(collection.tracks_with_recorded_trip, collection.track_count)}
+                        }
                         td { class: "num", "{collection.waypoint_count}" }
                     }
                 }
@@ -55,6 +60,13 @@ pub fn CollectionTable(
         }
         }
     }
+}
+
+/// How many of a collection's `tracks` have a recorded trip, as "12 of 125
+/// tracks" (US-99).
+pub fn with_recorded_trip(with: i64, tracks: i64) -> String {
+    let noun = if tracks == 1 { "track" } else { "tracks" };
+    format!("{with} of {tracks} {noun}")
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -117,6 +129,24 @@ mod tests {
         assert!(row.contains("/collections/3"), "{row}");
         assert!(row.contains(">125<"), "the tracks: {row}");
         assert!(row.contains(">46<"), "the waypoints: {row}");
+    }
+
+    #[test]
+    fn us99_each_collection_counts_its_tracks_with_a_recorded_trip() {
+        let html = render(|| {
+            let collections = vec![CollectionSummary {
+                tracks_with_recorded_trip: 12,
+                ..a_collection(3, "Alpencross light", Some(ActivityType::Cycling))
+            }];
+            let selected = use_signal(BTreeSet::new);
+            rsx! { CollectionTable { collections, selected } }
+        });
+
+        assert!(
+            row(&html, "Alpencross light").contains(">12 of 125 tracks<"),
+            "{html}"
+        );
+        assert_eq!(with_recorded_trip(0, 1), "0 of 1 track");
     }
 
     #[test]

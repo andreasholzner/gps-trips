@@ -17,6 +17,7 @@ use trip_archive_types::{ActivityType, Tag};
 use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::filters::Filters;
 use crate::kinds::Kind;
+use crate::linked::RecordedTripChoice;
 use crate::list_table::LineSwatch;
 
 /// Everything the owner narrows the list with.
@@ -58,6 +59,7 @@ pub fn FilterBar(
                     filters.write().activity = value.parse::<ActivityType>().ok();
                 },
             }
+            RecordedTripSelect { filters }
             // Clearing is on the toolbar because it resets the filters behind
             // the disclosure too: a shared link that arrives narrowed by a
             // date must be clearable without first hunting for what narrowed
@@ -79,6 +81,24 @@ pub fn FilterBar(
                 summary { "More filters" }
                 MoreFilters { filters, all_tags }
             }
+        }
+    }
+}
+
+/// Planned trips and collection tracks with or without a recorded trip
+/// linked (US-99). Offered only while one of those kinds is on: recorded
+/// trips are listed as they are, so it would narrow nothing.
+#[component]
+fn RecordedTripSelect(filters: Signal<Filters>) -> Element {
+    let kinds = filters.read().kinds;
+    if !kinds.contains(Kind::Planned) && !kinds.contains(Kind::Collections) {
+        return rsx! {};
+    }
+    rsx! {
+        RecordedTripChoice {
+            id: "filter-recorded-trip",
+            value: filters.read().recorded_trip,
+            onchange: move |chosen| filters.write().recorded_trip = chosen,
         }
     }
 }
@@ -223,6 +243,7 @@ fn TagFilter(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
 mod tests {
     use super::*;
     use crate::test_support::render;
+    use trip_archive_types::RecordedTripFilter;
 
     fn some_tags() -> Vec<Tag> {
         vec![
@@ -377,6 +398,38 @@ mod tests {
             };
             assert!(ticked[0].contains(expected), "{html}");
         }
+    }
+
+    // US-99: the recorded trip filter is offered while it can narrow
+    // something — planned trips or collection tracks are on — with its
+    // choice from the URL selected.
+    #[test]
+    fn us99_the_recorded_trip_filter_is_offered_with_planned_trips_or_collections() {
+        let recorded_only = render(|| {
+            let filters = Signal::new(Filters::default());
+            rsx! { FilterBar { filters, all_tags: some_tags() } }
+        });
+        let planned = render(|| {
+            let filters = Signal::new(Filters {
+                kinds: crate::kinds::Kinds::default().toggled(Kind::Planned),
+                recorded_trip: Some(RecordedTripFilter::Without),
+                ..Default::default()
+            });
+            rsx! { FilterBar { filters, all_tags: some_tags() } }
+        });
+
+        assert!(
+            !recorded_only.contains("filter-recorded-trip"),
+            "{recorded_only}"
+        );
+        let select = planned
+            .split_once(r#"id="filter-recorded-trip""#)
+            .expect("the filter")
+            .1;
+        assert!(
+            select.contains(r#"<option value="without" selected=true>"#),
+            "{planned}"
+        );
     }
 
     // US-90: with collections alone the filters about trips alone are not

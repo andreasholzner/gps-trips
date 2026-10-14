@@ -13,8 +13,10 @@ use trip_archive_types::{
 
 use crate::activity_color;
 use crate::activity_icon::ActivityIcon;
+use crate::collection::collection_route;
 use crate::format;
 use crate::kinds::Kind;
+use crate::linked::RecordedTripMark;
 use crate::pager;
 use crate::picked::Picked;
 use crate::Route;
@@ -117,6 +119,9 @@ fn TripRow(trip: TripSummary, picked: Signal<BTreeSet<Picked>>) -> Element {
                 // bundle's base path, which a hand-written one would have
                 // to know about.
                 Link { to: Route::TripDetail { id: trip.id }, "{trip.name}" }
+                if trip.has_recorded_trip {
+                    RecordedTripMark {}
+                }
             }
             td { ActivityIcon { activity: trip.activity_type } }
             td { class: "num", {format::or_dash(trip.start_date.as_deref())} }
@@ -158,7 +163,7 @@ fn CollectionRows(
                     },
                     if open { "▾" } else { "▸" }
                 }
-                Link { to: Route::Collection { id }, "{collection.name}" }
+                Link { to: collection_route(id), "{collection.name}" }
             }
             td {
                 if let Some(activity) = collection.activity_type {
@@ -183,6 +188,9 @@ fn TrackRow(track: CollectionTrackMark, picked: Signal<BTreeSet<Picked>>) -> Ele
             td { KindSwatch { kind: Kind::Collections, activity: track.activity_type, name: "Collection track" } }
             td {
                 Link { to: Route::CollectionTrack { id: track.id }, "{track.name}" }
+                if track.has_recorded_trip {
+                    RecordedTripMark {}
+                }
             }
             td { ActivityIcon { activity: track.activity_type } }
             // A guide book's timestamps are not when anyone went (US-86).

@@ -5,7 +5,7 @@
 //! to, without the control.
 
 use dioxus::prelude::*;
-use trip_archive_types::{Links, SharedLinks};
+use trip_archive_types::{Links, RecordedTripFilter, SharedLinks};
 
 use crate::api::{self, ApiClient, LinkEnd};
 use crate::waypoint::UNNAMED;
@@ -133,6 +133,52 @@ pub fn shared_groups(token: &str, links: &SharedLinks) -> Vec<Group> {
     .into_iter()
     .filter(|group| !group.rows.is_empty())
     .collect()
+}
+
+/// What marks a planned trip, a collection track or a waypoint a recorded
+/// trip is linked to — however little of it the trip covered — in a list.
+pub const RECORDED_TRIP_MARK: &str = "Has a recorded trip";
+
+/// The mark itself: a glyph, named on hover and to a screen reader.
+#[component]
+pub fn RecordedTripMark() -> Element {
+    rsx! {
+        span { class: "recorded-mark", title: RECORDED_TRIP_MARK,
+            span { aria_hidden: "true", " ✓" }
+            span { class: "visually-hidden", " ({RECORDED_TRIP_MARK})" }
+        }
+    }
+}
+
+/// The choice between everything, what has a recorded trip and what has
+/// none — the trip list's filter and a collection page's.
+#[component]
+pub fn RecordedTripChoice(
+    id: &'static str,
+    value: Option<RecordedTripFilter>,
+    onchange: EventHandler<Option<RecordedTripFilter>>,
+) -> Element {
+    rsx! {
+        label {
+            "Recorded trip "
+            select {
+                id,
+                onchange: move |event| onchange.call(event.value().parse().ok()),
+                option { value: "", selected: value.is_none(), "— any —" }
+                for (filter, label) in [
+                    (RecordedTripFilter::With, "With one"),
+                    (RecordedTripFilter::Without, "Without one"),
+                ] {
+                    option {
+                        key: "{filter.as_str()}",
+                        value: filter.as_str(),
+                        selected: value == Some(filter),
+                        "{label}"
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// The owner's section: what `end` is linked to. Nothing while it is read,

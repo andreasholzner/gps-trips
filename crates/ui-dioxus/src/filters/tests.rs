@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::kinds::Kind;
+use trip_archive_types::RecordedTripFilter;
 
 #[test]
 fn an_untouched_filter_asks_only_for_recorded_trips() {
@@ -24,6 +25,7 @@ fn set_fields_become_the_servers_own_parameter_names() {
         bbox: String::new(),
         unnamed: false,
         unplaced: false,
+        recorded_trip: None,
     };
 
     assert_eq!(
@@ -73,6 +75,7 @@ fn every_filter_survives_a_round_trip_through_the_query_string() {
         bbox: String::new(),
         unnamed: true,
         unplaced: true,
+        recorded_trip: Some(RecordedTripFilter::Without),
     };
 
     assert_eq!(Filters::from_query(&filters.to_query()), filters);
@@ -200,6 +203,7 @@ fn every_filter_set(kinds: Kinds) -> Filters {
         bbox: "10,59,11,60".to_string(),
         unnamed: true,
         unplaced: true,
+        recorded_trip: Some(RecordedTripFilter::Without),
     }
 }
 
@@ -275,7 +279,7 @@ fn us90_collections_are_asked_for_by_name_region_and_activity() {
 
     assert_eq!(
         filters.collection_query(),
-        "activity=hiking&q=alp&bbox=10%2C59%2C11%2C60",
+        "activity=hiking&q=alp&bbox=10%2C59%2C11%2C60&recorded_trip=without",
         "in the order the trips' query has them"
     );
     assert_eq!(Filters::default().collection_query(), "");
@@ -287,6 +291,7 @@ fn us90_with_collections_alone_only_their_filters_count() {
         q: String::new(),
         bbox: String::new(),
         activity: None,
+        recorded_trip: None,
         ..every_filter_set(collections_only())
     };
     let narrowed = [
@@ -300,6 +305,10 @@ fn us90_with_collections_alone_only_their_filters_count() {
         },
         Filters {
             activity: Some(ActivityType::Cycling),
+            ..trip_filters_only.clone()
+        },
+        Filters {
+            recorded_trip: Some(RecordedTripFilter::With),
             ..trip_filters_only.clone()
         },
     ];
@@ -322,6 +331,7 @@ fn us90_clearing_with_collections_alone_keeps_the_hidden_trip_filters() {
             q: String::new(),
             bbox: String::new(),
             activity: None,
+            recorded_trip: None,
             ..filters
         }
     );
@@ -343,4 +353,29 @@ fn clearing_with_trips_on_clears_everything_but_the_kinds() {
 #[test]
 fn an_unknown_kind_in_the_url_shows_recorded_trips() {
     assert_eq!(Filters::from_query("kind=nonsense").kinds, Kinds::default());
+}
+
+// ── US-99: with or without a recorded trip ──────────────────────────────
+
+#[test]
+fn us99_the_recorded_trip_filter_travels_to_trips_and_collections_and_in_the_url() {
+    let filters = Filters {
+        kinds: all_kinds(),
+        recorded_trip: Some(RecordedTripFilter::With),
+        ..Default::default()
+    };
+
+    assert_eq!(filters.trip_query().as_deref(), Some("recorded_trip=with"));
+    assert_eq!(filters.collection_query(), "recorded_trip=with");
+    assert_eq!(Filters::from_query(&filters.to_query()), filters);
+    assert!(filters.any_set());
+    assert_eq!(filters.cleared().recorded_trip, None);
+}
+
+#[test]
+fn us99_an_unknown_recorded_trip_filter_in_the_url_is_not_applied() {
+    assert_eq!(
+        Filters::from_query("recorded_trip=maybe").recorded_trip,
+        None
+    );
 }

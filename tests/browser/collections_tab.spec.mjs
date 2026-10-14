@@ -124,7 +124,7 @@ test("collections are a kind in the URL, the search narrows them, and the trip f
   await rows(page)
     .getByRole("link", { name: `${TAG} Nordkette` })
     .click();
-  await expect(page).toHaveURL(new RegExp(`/app/collections/${tour}$`));
+  await expect(page).toHaveURL(new RegExp(`/app/collections/${tour}\\??$`));
 });
 
 test("zoomed in, a collection's tracks are lines, and a click opens the track", async ({

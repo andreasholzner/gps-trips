@@ -39,7 +39,7 @@ async fn us86_the_screen_shows_the_track_its_collection_and_its_figures() {
 
     assert!(html.contains("From the collection "), "{html}");
     assert!(
-        html.contains(&format!(r#"href="/collections/{collection}">Lakes</a>"#)),
+        html.contains(&format!(r#"href="/collections/{collection}?">Lakes</a>"#)),
         "{html}"
     );
     assert!(html.contains("Cycling"), "{html}");

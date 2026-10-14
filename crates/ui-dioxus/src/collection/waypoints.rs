@@ -1,14 +1,18 @@
 //! A collection's waypoints below its tracks (US-98), each leading to its
-//! own page, where it is corrected.
+//! own page, where it is corrected, and marked when it has a recorded trip
+//! (US-99).
 
 use dioxus::prelude::*;
 use trip_archive_types::Waypoint;
 
 use crate::api;
 use crate::format;
+use crate::linked::RecordedTripMark;
 use crate::waypoint::name_of;
 use crate::waypoint_icon::WaypointSymbol;
 use crate::Route;
+
+use super::CollectionView;
 
 /// The waypoints by name, ignoring case; those without one last, in file
 /// order.
@@ -22,12 +26,22 @@ pub fn by_name(mut waypoints: Vec<Waypoint>) -> Vec<Waypoint> {
     waypoints
 }
 
-/// The list, from the waypoints as the page `read` them: waypoints that
-/// cannot be listed cost the list, not the page.
+/// The list, from the waypoints as the page `read` them, of those `view`
+/// keeps: waypoints that cannot be listed cost the list, not the page.
 #[component]
-pub(super) fn CollectionWaypoints(read: Result<Vec<Waypoint>, api::ApiError>) -> Element {
+pub(super) fn CollectionWaypoints(
+    read: Result<Vec<Waypoint>, api::ApiError>,
+    with_recorded_trip: Vec<i64>,
+    view: CollectionView,
+) -> Element {
     match read {
-        Ok(waypoints) => rsx! { WaypointList { waypoints: by_name(waypoints) } },
+        Ok(waypoints) => {
+            let waypoints = waypoints
+                .into_iter()
+                .filter(|waypoint| view.keeps(with_recorded_trip.contains(&waypoint.id)))
+                .collect();
+            rsx! { WaypointList { waypoints: by_name(waypoints), with_recorded_trip } }
+        }
         Err(err) => {
             dioxus::logger::tracing::error!("could not list the waypoints: {err}");
             rsx! {}
@@ -37,9 +51,14 @@ pub(super) fn CollectionWaypoints(read: Result<Vec<Waypoint>, api::ApiError>) ->
 
 /// One row per waypoint: its icon and name, linking to its page unless
 /// `linked` is off — a share's recipient has no waypoint pages (US-94) —
-/// and its elevation. Nothing for a collection without waypoints.
+/// marked when it is among `with_recorded_trip`, and its elevation. Nothing
+/// for a collection without waypoints.
 #[component]
-pub fn WaypointList(waypoints: Vec<Waypoint>, #[props(default = true)] linked: bool) -> Element {
+pub fn WaypointList(
+    waypoints: Vec<Waypoint>,
+    #[props(default = true)] linked: bool,
+    #[props(default)] with_recorded_trip: Vec<i64>,
+) -> Element {
     if waypoints.is_empty() {
         return rsx! {};
     }
@@ -64,6 +83,9 @@ pub fn WaypointList(waypoints: Vec<Waypoint>, #[props(default = true)] linked: b
                                 } else {
                                     WaypointSymbol { symbol: waypoint.symbol.clone() }
                                     "{name_of(&waypoint)}"
+                                }
+                                if with_recorded_trip.contains(&waypoint.id) {
+                                    RecordedTripMark {}
                                 }
                             }
                             td { class: "num", {format::metres(waypoint.ele)} }

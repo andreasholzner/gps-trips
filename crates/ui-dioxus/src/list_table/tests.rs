@@ -233,7 +233,7 @@ fn us90_a_collection_is_a_group_row_folded_by_default() {
 
     let group = row(&html, "Alpencross");
     assert!(group.contains(r#"class="collection-group""#), "{html}");
-    assert!(group.contains("href=\"/collections/3\""), "{html}");
+    assert!(group.contains("href=\"/collections/3?\""), "{html}");
     assert!(group.contains("2 of 125 tracks · 46 waypoints"), "{html}");
     assert!(group.contains(r#"aria-expanded="false""#), "{html}");
     assert!(!html.contains("Etappe 7"), "its tracks wait: {html}");
@@ -331,4 +331,42 @@ fn us90_a_page_holds_trips_then_collections_fifty_rows_at_a_time() {
     assert_eq!(page_rows(0, 70, 5), (0..50, 0..0));
     assert_eq!(page_rows(1, 70, 5), (50..70, 0..5));
     assert_eq!(page_rows(0, 0, 3), (0..0, 0..3));
+}
+
+// ── US-99: what has a recorded trip ──────────────────────────────────────────
+
+#[test]
+fn us99_a_planned_trip_or_a_track_with_a_recorded_trip_is_marked() {
+    let planned = TripSummary {
+        trip_kind: TripKind::Planned,
+        has_recorded_trip: true,
+        ..a_trip(1, "Been there")
+    };
+    let open = TripSummary {
+        trip_kind: TripKind::Planned,
+        ..a_trip(2, "Not yet")
+    };
+    let collection = a_collection(
+        3,
+        "Alpencross",
+        vec![
+            CollectionTrackMark {
+                has_recorded_trip: true,
+                ..a_track(4, "Etappe 6")
+            },
+            a_track(5, "Etappe 7"),
+        ],
+    );
+
+    let html = table(vec![planned, open], vec![collection], &[], &[3]);
+
+    for marked in ["Been there", "Etappe 6"] {
+        assert!(row(&html, marked).contains("Has a recorded trip"), "{html}");
+    }
+    for unmarked in ["Not yet", "Etappe 7"] {
+        assert!(
+            !row(&html, unmarked).contains("Has a recorded trip"),
+            "{html}"
+        );
+    }
 }

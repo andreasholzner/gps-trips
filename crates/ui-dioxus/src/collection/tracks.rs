@@ -1,5 +1,6 @@
-//! A collection's tracks in file order, each leading to its own page; the
-//! owner selects some of them here to share them (US-94).
+//! A collection's tracks in file order, each leading to its own page and
+//! marked when it has a recorded trip (US-99); the owner selects some of
+//! them here to share them (US-94).
 
 use std::collections::BTreeSet;
 
@@ -8,13 +9,21 @@ use trip_archive_types::{ActivityType, CollectionTrackSummary};
 
 use crate::activity_icon::ActivityIcon;
 use crate::format;
+use crate::linked::RecordedTripMark;
 use crate::selection::{SelectAll, SelectOne};
 use crate::share::{Selected, ShareSelectedPanel};
 use crate::Route;
 
-/// The owner's list: the tracks, selectable, and sharing the selection.
+use super::CollectionView;
+
+/// The owner's list: the tracks `view` keeps, selectable, and sharing the
+/// selection.
 #[component]
-pub(super) fn Tracks(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
+pub(super) fn Tracks(
+    id: i64,
+    tracks: Vec<CollectionTrackSummary>,
+    view: CollectionView,
+) -> Element {
     let mut selected = use_signal(BTreeSet::new);
     // The router shows the next collection through this same scope; a
     // selection of this one's tracks must not carry over to it.
@@ -23,11 +32,20 @@ pub(super) fn Tracks(id: i64, tracks: Vec<CollectionTrackSummary>) -> Element {
         selected.write().clear();
     }));
     let ids: Vec<i64> = selected.read().iter().copied().collect();
+    let held = !tracks.is_empty();
+    let tracks: Vec<CollectionTrackSummary> = tracks
+        .into_iter()
+        .filter(|track| view.keeps(track.has_recorded_trip))
+        .collect();
     rsx! {
         div { class: "bulk-panels",
             ShareSelectedPanel { ids, of: Selected::CollectionTracks }
         }
-        TrackList { tracks, selected }
+        if held && tracks.is_empty() {
+            p { id: "no-matching-track", "No track matches." }
+        } else {
+            TrackList { tracks, selected }
+        }
     }
 }
 
@@ -81,6 +99,9 @@ pub fn TrackList(
                                         ActivityIcon { activity: track.activity_type }
                                     }
                                     "{track.name}"
+                                }
+                                if track.has_recorded_trip {
+                                    RecordedTripMark {}
                                 }
                             }
                             td { class: "num", {format::km(track.distance_m)} }

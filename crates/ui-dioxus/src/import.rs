@@ -26,6 +26,7 @@ use dioxus::prelude::*;
 use trip_archive_types::{CollectionImportReview, ConfirmImport, StagedImport, TripKind};
 
 use crate::api::{self, ApiClient, ApiError, PhotoUpload};
+use crate::collection::collection_route;
 use crate::collection::CollectionForm;
 use crate::photos::{upload_in_batches, PartialUpload};
 use crate::Route;
@@ -344,7 +345,7 @@ pub fn ImportTrip() -> Element {
         submitting.set(false);
         match created {
             Ok(id) => {
-                navigator().push(Route::Collection { id });
+                navigator().push(collection_route(id));
             }
             Err(err) => error.set(Some(format!("Could not import this collection: {err}"))),
         }

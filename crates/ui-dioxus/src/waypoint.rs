@@ -8,6 +8,7 @@ use trip_archive_types::WaypointDetail;
 
 use crate::activity_color;
 use crate::api::{self, ApiClient, LinkEnd};
+use crate::collection::collection_route;
 use crate::format;
 use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
 use crate::linked::LinkedTo;
@@ -81,7 +82,7 @@ fn WaypointDetails(detail: WaypointDetail) -> Element {
             }
             p { id: "collection-of-waypoint",
                 "From the collection "
-                Link { to: Route::Collection { id: detail.collection_id }, "{detail.collection_name}" }
+                Link { to: collection_route(detail.collection_id), "{detail.collection_name}" }
             }
         }
         dl { class: "stats",
@@ -175,7 +176,7 @@ fn DeleteWaypoint(id: i64, name: String, collection_id: i64) -> Element {
                         deleting.set(true);
                         match api::delete_waypoint(&archive(), id).await {
                             Ok(()) => {
-                                navigator().replace(Route::Collection { id: collection_id });
+                                navigator().replace(collection_route(collection_id));
                             }
                             Err(err) => {
                                 arming.set(false);

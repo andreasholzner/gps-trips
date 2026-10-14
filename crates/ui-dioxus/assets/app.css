@@ -687,3 +687,8 @@ nav.session {
   font-size: 0.75em;
   color: var(--pico-muted-color);
 }
+
+/* What has a recorded trip linked to it (US-99), beside its name in a list. */
+.recorded-mark {
+  color: var(--pico-ins-color);
+}

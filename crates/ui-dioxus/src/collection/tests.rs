@@ -336,3 +336,5 @@ async fn us98_the_page_lists_its_waypoints_below_its_tracks() {
         );
     }
 }
+
+mod recorded;

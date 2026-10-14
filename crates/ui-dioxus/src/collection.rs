@@ -3,7 +3,9 @@
 //! and the waypoints (US-98) as lists leading to their own pages, and the
 //! files it came from to download (US-88). The details are edited and the
 //! collection tagged (US-93) here, the collection or some of its tracks
-//! shared (US-94), and the whole collection deleted.
+//! shared (US-94), and the whole collection deleted. Its tracks and
+//! waypoints with a recorded trip are counted and marked, and the lists
+//! narrowed to them or to the rest (US-99).
 
 use dioxus::prelude::*;
 use trip_archive_types::{
@@ -16,6 +18,7 @@ use crate::activity_select::{choices, ActivitySelect, Choice};
 use crate::api::{self, ApiClient, Tagged};
 use crate::filters::Filters;
 use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
+use crate::linked::RecordedTripChoice;
 use crate::overlay::Overlay;
 use crate::share::{ShareButton, ShareTarget};
 use crate::tagging::Tagging;
@@ -24,16 +27,27 @@ use crate::Route;
 
 mod files;
 mod tracks;
+mod view;
 mod waypoints;
 use files::CollectionFiles;
 use tracks::Tracks;
 pub(crate) use tracks::{track_route, TrackList};
+pub use view::CollectionView;
 use waypoints::CollectionWaypoints;
 pub(crate) use waypoints::{by_name, WaypointList};
 
-/// The screen. `id` comes from the route (`/collections/:id`).
+/// Where a collection's page is, its lists not narrowed.
+pub fn collection_route(id: i64) -> Route {
+    Route::Collection {
+        id,
+        view: CollectionView::default(),
+    }
+}
+
+/// The screen. `id` comes from the route (`/collections/:id`), and what its
+/// lists are narrowed to from its query (US-99).
 #[component]
-pub fn Collection(id: i64) -> Element {
+pub fn Collection(id: i64, #[props(default)] view: CollectionView) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     // The id travels back with the answer, as on the trip page.
     let mut collection = use_resource(use_reactive!(|id| async move {
@@ -67,9 +81,22 @@ pub fn Collection(id: i64) -> Element {
                     tracks: detail.tracks.clone(),
                     waypoints: waypoints.clone().map(drawn_waypoints),
                 }
-                Tracks { id, tracks: detail.tracks.clone() }
+                if !detail.tracks.is_empty() || detail.waypoint_count > 0 {
+                    RecordedTripChoice {
+                        id: "collection-recorded-trip",
+                        value: view.recorded_trip,
+                        onchange: move |recorded_trip| {
+                            navigator().replace(Route::Collection { id, view: CollectionView { recorded_trip } });
+                        },
+                    }
+                }
+                Tracks { id, tracks: detail.tracks.clone(), view }
                 if let Some(read) = &waypoints {
-                    CollectionWaypoints { read: read.clone() }
+                    CollectionWaypoints {
+                        read: read.clone(),
+                        with_recorded_trip: detail.waypoints_with_recorded_trip.clone(),
+                        view,
+                    }
                 }
                 CollectionFiles { id }
                 div { class: "trip-actions",
@@ -101,6 +128,19 @@ pub fn counts(tracks: usize, waypoints: usize, and: &str) -> String {
     )
 }
 
+/// How many of the collection's tracks have a recorded trip (US-99).
+pub fn with_recorded_trip(collection: &CollectionDetail) -> String {
+    let with = collection
+        .tracks
+        .iter()
+        .filter(|track| track.has_recorded_trip)
+        .count();
+    format!(
+        "{} with a recorded trip",
+        crate::collection_table::with_recorded_trip(with as i64, collection.tracks.len() as i64)
+    )
+}
+
 #[component]
 fn CollectionHeader(collection: CollectionDetail) -> Element {
     rsx! {
@@ -113,6 +153,11 @@ fn CollectionHeader(collection: CollectionDetail) -> Element {
             }
             p { id: "collection-counts",
                 {counts(collection.tracks.len(), collection.waypoint_count as usize, " · ")}
+            }
+            if !collection.tracks.is_empty() {
+                p { id: "collection-recorded",
+                    {with_recorded_trip(&collection)}
+                }
             }
         }
         if !collection.description.is_empty() {

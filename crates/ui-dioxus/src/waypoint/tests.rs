@@ -212,7 +212,7 @@ async fn us98_the_page_shows_the_waypoint_its_collection_and_a_map() {
 
     assert!(html.contains("San Bernardino Pass</h1>"), "{html}");
     assert!(
-        html.contains(&format!(r#"href="/collections/{collection}">Lakes</a>"#)),
+        html.contains(&format!(r#"href="/collections/{collection}?">Lakes</a>"#)),
         "{html}"
     );
     assert!(html.contains("Triangle, Blue"), "the symbol: {html}");

@@ -6,7 +6,7 @@
 //! only hold it in a signal and hand it to `api::list_trips` and, with
 //! collections on (US-87, US-90), to `api::list_collections`.
 
-use trip_archive_types::ActivityType;
+use trip_archive_types::{ActivityType, RecordedTripFilter};
 
 use crate::kinds::Kinds;
 
@@ -40,6 +40,9 @@ pub struct Filters {
     pub unnamed: bool,
     /// Only trips with photos left unplaced (US-66).
     pub unplaced: bool,
+    /// Planned trips and collection tracks with or without a recorded trip
+    /// linked (US-99); recorded trips are listed as they are.
+    pub recorded_trip: Option<RecordedTripFilter>,
 }
 
 impl Filters {
@@ -89,6 +92,9 @@ impl Filters {
                 params.push((name, "true".to_string()));
             }
         }
+        if let Some(recorded_trip) = self.recorded_trip {
+            params.push(("recorded_trip", recorded_trip.as_str().to_string()));
+        }
         params
     }
 
@@ -116,6 +122,7 @@ impl Filters {
                 "bbox" => filters.bbox = value,
                 "unnamed" => filters.unnamed = value == "true",
                 "unplaced" => filters.unplaced = value == "true",
+                "recorded_trip" => filters.recorded_trip = value.parse().ok(),
                 "tags" => {
                     filters.tags = value
                         .split(',')
@@ -138,8 +145,8 @@ impl Filters {
     }
 
     /// The query string for `GET /api/collections` (US-87): the name search,
-    /// the region and the activity (US-90), the filters that are not about
-    /// trips alone.
+    /// the region and the activity (US-90), and the recorded trips (US-99) —
+    /// the filters that are not about trips alone.
     pub fn collection_query(&self) -> String {
         joined(
             self.params()
@@ -162,6 +169,7 @@ impl Filters {
                 q: String::new(),
                 bbox: String::new(),
                 activity: None,
+                recorded_trip: None,
                 ..self.clone()
             }
         }
@@ -172,6 +180,7 @@ impl Filters {
     /// no kind of trip on, only the filters that apply count.
     pub fn any_set(&self) -> bool {
         let shared = self.activity.is_some()
+            || self.recorded_trip.is_some()
             // A chosen region narrows the list, so an empty result is
             // "nothing matches" rather than "nothing imported yet" (US-14) —
             // the spike got this wrong by keeping bbox outside Filters, and
@@ -192,8 +201,9 @@ impl Filters {
     }
 }
 
-/// The parameters that narrow collections as well as trips (US-87, US-90).
-const COLLECTION_PARAMS: [&str; 3] = ["activity", "q", "bbox"];
+/// The parameters that narrow collections as well as trips (US-87, US-90,
+/// US-99).
+const COLLECTION_PARAMS: [&str; 4] = ["activity", "q", "bbox", "recorded_trip"];
 
 /// `params` as a query string, each value encoded.
 fn joined(params: impl IntoIterator<Item = (&'static str, String)>) -> String {

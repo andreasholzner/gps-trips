@@ -79,7 +79,7 @@ test("the menu opens the collections, and the filter narrows them, stays in the 
   await rows(page)
     .getByRole("link", { name: `${TAG} Passes` })
     .click();
-  await expect(page).toHaveURL(new RegExp(`/app/collections/${passes}$`));
+  await expect(page).toHaveURL(new RegExp(`/app/collections/${passes}\\??$`));
 });
 
 test("changing the filter goes back to the first page (US-97)", async ({ page, request }) => {

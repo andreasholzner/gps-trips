@@ -137,7 +137,7 @@ fn us97_the_collections_screen_and_a_collection_have_paths_of_their_own() {
     ));
     assert!(matches!(
         Route::from_str("/collections/3"),
-        Ok(Route::Collection { id: 3 })
+        Ok(Route::Collection { id: 3, .. })
     ));
 }
 
@@ -214,4 +214,18 @@ fn the_bare_app_url_is_the_default_view() {
         panic!("the bare path must be the list screen")
     };
     assert_eq!(filters, Filters::default());
+}
+
+#[test]
+fn us99_a_collections_narrowed_lists_round_trip_through_the_url() {
+    let view = CollectionView {
+        recorded_trip: Some(trip_archive_types::RecordedTripFilter::Without),
+    };
+    let url = Route::Collection { id: 3, view }.to_string();
+
+    assert_eq!(url, "/collections/3?recorded_trip=without");
+    let Ok(Route::Collection { id: 3, view: back }) = Route::from_str(&url) else {
+        panic!("a collection URL must parse back to its page; url was {url:?}")
+    };
+    assert_eq!(back, view);
 }
