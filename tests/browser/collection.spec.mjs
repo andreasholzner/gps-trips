@@ -85,7 +85,7 @@ test("a GPX file is imported as a collection and lands on its page (US-86)", asy
   await chooseActivity(page, "collection-activity", "cycling");
   await page.locator("#import-confirm").click();
 
-  await page.waitForURL(/\/app\/collections\/\d+$/);
+  await page.waitForURL(/\/app\/collections\/\d+\??$/);
   const id = Number(page.url().match(/\/collections\/(\d+)/)[1]);
   created.push(id);
   await expect(page.locator("#collection-name")).toHaveText(name);

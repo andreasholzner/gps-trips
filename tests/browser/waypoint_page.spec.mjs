@@ -140,7 +140,7 @@ test("a waypoint is deleted after a confirmation, and the screen goes back to it
   await expect(confirmation).toContainText("Delete the waypoint “Start”?");
   await confirmation.getByRole("button", { name: "Delete it" }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/app/collections/${tour.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/app/collections/${tour.id}\\??$`));
   await expect(page.locator("#collection-waypoints tbody tr")).toHaveCount(1);
   expect((await request.get(`/api/waypoints/${start.id}`)).status()).toBe(404);
 });

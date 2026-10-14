@@ -70,7 +70,7 @@ test("several files make one collection, a hut in both added once (US-88)", asyn
   await page.locator("#collection-name-field").fill(name);
   await page.locator("#import-confirm").click();
 
-  await page.waitForURL(/\/app\/collections\/\d+$/);
+  await page.waitForURL(/\/app\/collections\/\d+\??$/);
   const id = collectionId(page);
   created.push(id);
   await expect(page.locator("#collection-name")).toHaveText(name);

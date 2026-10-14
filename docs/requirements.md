@@ -140,7 +140,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | ✅     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
-| [US-99](#us-99--link-what-i-did-to-what-i-planned)            | 📋     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
+| [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ✅     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | ✅     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
@@ -1082,7 +1082,7 @@ charts and the marked stretches), ADR-0008 (the screens read their figures from 
 
 ### US-99 — Link what I did to what I planned
 
-**Planned 📋** — As the owner, I link a recorded trip to what it followed — planned trips (US-31),
+**Done ✅** — As the owner, I link a recorded trip to what it followed — planned trips (US-31),
 collection tracks (US-86), the waypoints it passed (US-98) — and a planned trip to the collection
 tracks and waypoints it was planned from, so I see which of my plans and which stages of a guide
 book I have already been on, in whole or in part.
