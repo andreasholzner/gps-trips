@@ -441,3 +441,29 @@
   align-items: center;
   margin: 0;
 }
+
+/* What a page is linked to (US-99): one plain list per kind, each entry's
+   remove control a glyph, as a tag chip's is. */
+#links h3 {
+  font-size: 1rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+#links .links {
+  padding-left: 0;
+  list-style: none;
+}
+
+#links .links li {
+  list-style: none;
+}
+
+#links .unlink {
+  width: auto;
+  padding: 0 0.25rem;
+  margin: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  line-height: 1;
+}

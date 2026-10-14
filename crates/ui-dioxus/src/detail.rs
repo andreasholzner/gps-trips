@@ -4,9 +4,10 @@
 
 use dioxus::prelude::*;
 
-use crate::api::Tagged;
 use crate::api::{self, ApiClient};
+use crate::api::{LinkEnd, Tagged};
 use crate::gallery::PhotoGallery;
+use crate::linked::LinkedTo;
 use crate::photos::{self, PhotoView};
 use crate::placing::PlacePhoto;
 use crate::tagging::Tagging;
@@ -114,6 +115,7 @@ pub fn TripDetail(id: i64) -> Element {
             Some((_, Ok(trip))) => rsx! {
                 TripStats { trip: trip.clone() }
                 Tagging { tagged: Tagged::Trip(id) }
+                LinkedTo { end: LinkEnd::Trip(id) }
                 TrackSection {
                     id,
                     activity: trip.activity_type,

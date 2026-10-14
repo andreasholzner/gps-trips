@@ -10,10 +10,11 @@ use trip_archive_types::{ActivityType, CollectionTrackDetail, CollectionTrackEdi
 
 use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
-use crate::api::{self, ApiClient, Tagged};
+use crate::api::{self, ApiClient, LinkEnd, Tagged};
 use crate::collection::drawn_waypoints;
 use crate::detail::TrackViews;
 use crate::format;
+use crate::linked::LinkedTo;
 use crate::overlay::Overlay;
 use crate::share::{ShareButton, ShareTarget};
 use crate::tagging::Tagging;
@@ -42,6 +43,7 @@ pub fn CollectionTrack(id: i64) -> Element {
             Some((_, Ok(detail))) => rsx! {
                 TrackFigures { track: detail.clone() }
                 Tagging { tagged: Tagged::CollectionTrack(id) }
+                LinkedTo { end: LinkEnd::CollectionTrack(id) }
                 TrackMapSection { id, activity: detail.activity_type }
                 div { class: "trip-actions",
                     EditCollectionTrack { track: detail.clone(), on_saved: move |_| track.restart() }

@@ -1,6 +1,7 @@
 //! The bar acting on what is selected on the trip list (US-90): how many of
-//! what, then the actions — tagging (US-34/100), sharing (US-53/94) and
-//! setting the activity (US-63) — each opening the panel it always had. An
+//! what, then the actions — tagging (US-34/100), sharing (US-53/94),
+//! setting the activity (US-63) and linking (US-99) — each opening its
+//! panel. An
 //! action is inactive while the selection holds what it does not act on
 //! ([`crate::picked`]).
 
@@ -12,6 +13,7 @@ use trip_archive_types::Tag;
 use crate::api::BulkTagged;
 use crate::bulk_activity::BulkActivityPanel;
 use crate::bulk_tag::BulkTagPanel;
+use crate::link_panel::LinkPanel;
 use crate::picked::{self, Action, Picked, Target};
 use crate::share::{Selected, ShareDialog};
 
@@ -41,10 +43,18 @@ pub fn SelectionBar(
     }
     let shown = stays_open(open(), &selection);
     let target = picked::target(&selection);
-    let mut applied = move |of: Selected| {
+    let mut applied = move |of: &[Selected]| {
         picked.write().clear();
         open.set(None);
-        on_applied.call(of);
+        for &of in of {
+            on_applied.call(of);
+        }
+    };
+    // Linking marks planned trips and collection tracks anew (US-99).
+    let linked: &[Selected] = if selection.iter().any(|p| matches!(p, Picked::Track(_))) {
+        &[Selected::Trips, Selected::CollectionTracks]
+    } else {
+        &[Selected::Trips]
     };
     rsx! {
         div { class: "selection-bar",
@@ -66,6 +76,11 @@ pub fn SelectionBar(
                 }
             }
         }
+        if shown == Some(Action::Link) {
+            div { class: "bulk-panels",
+                LinkPanel { picked: selection.clone(), on_linked: move |_| applied(linked) }
+            }
+        }
         if let (Some(action), Some(Target { of, ids })) = (shown, target) {
             match action {
                 Action::Tag => rsx! {
@@ -75,18 +90,20 @@ pub fn SelectionBar(
                             staged,
                             all_tags,
                             of: if of == Selected::Collections { BulkTagged::Collections } else { BulkTagged::Trips },
-                            on_applied: move |_| applied(of),
+                            on_applied: move |_| applied(&[of]),
                         }
                     }
                 },
                 Action::SetActivity => rsx! {
                     div { class: "bulk-panels",
-                        BulkActivityPanel { ids, on_applied: move |_| applied(of) }
+                        BulkActivityPanel { ids, on_applied: move |_| applied(&[of]) }
                     }
                 },
                 Action::Share => rsx! {
                     ShareDialog { target: of.target(ids), on_close: move |_| open.set(None) }
                 },
+                // Over pairs rather than one target: above.
+                Action::Link => rsx! {},
             }
         }
     }
@@ -135,7 +152,7 @@ mod tests {
         ]);
 
         assert!(html.contains("2 selected: 2 trips"), "{html}");
-        for label in ["Tag…", "Share…", "Set activity…"] {
+        for label in ["Tag…", "Share…", "Set activity…", "Link…"] {
             assert!(!button(&html, label).contains("disabled"), "{html}");
         }
         // Each opens its panel, closed to begin with.
@@ -165,9 +182,29 @@ mod tests {
         let html = bar(&[Picked::Trip(Kind::Recorded, 1), Picked::Collection(3)]);
 
         assert!(html.contains("2 selected: 1 trip · 1 collection"), "{html}");
+        for label in ["Tag…", "Share…", "Set activity…", "Link…"] {
+            assert!(button(&html, label).contains("disabled"), "{html}");
+        }
+    }
+
+    #[test]
+    fn us99_a_recorded_trip_and_a_collection_track_can_be_linked_and_nothing_else_done() {
+        let html = bar(&[Picked::Trip(Kind::Recorded, 1), Picked::Track(4)]);
+
+        assert!(!button(&html, "Link…").contains("disabled"), "{html}");
         for label in ["Tag…", "Share…", "Set activity…"] {
             assert!(button(&html, label).contains("disabled"), "{html}");
         }
+        let two_recorded = bar(&[
+            Picked::Trip(Kind::Recorded, 1),
+            Picked::Trip(Kind::Recorded, 2),
+        ]);
+        let link = button(&two_recorded, "Link…");
+        assert!(link.contains("disabled"), "{two_recorded}");
+        assert!(
+            link.contains("Select recorded trips with planned trips"),
+            "{two_recorded}"
+        );
     }
 
     #[test]

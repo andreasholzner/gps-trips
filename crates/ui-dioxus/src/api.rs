@@ -21,6 +21,7 @@ use crate::track::Track;
 
 mod client;
 mod collections;
+mod links;
 mod session;
 mod share;
 mod stats;
@@ -39,6 +40,7 @@ pub use collections::{
     list_collection_waypoints, list_collections, list_waypoints_of_collections, preview_collection,
     review_collection_import, upload_collection_files,
 };
+pub use links::{create_links, list_links, list_shared_trip_links, unlink, LinkEnd};
 pub use session::{login, logout, session};
 pub use share::{
     create_share, get_shared_collection, get_shared_collection_track, get_shared_trip,

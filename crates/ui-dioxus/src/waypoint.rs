@@ -7,9 +7,10 @@ use dioxus::prelude::*;
 use trip_archive_types::WaypointDetail;
 
 use crate::activity_color;
-use crate::api::{self, ApiClient};
+use crate::api::{self, ApiClient, LinkEnd};
 use crate::format;
 use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
+use crate::linked::LinkedTo;
 use crate::track;
 use crate::waypoint_icon::WaypointSymbol;
 use crate::Route;
@@ -49,6 +50,7 @@ pub fn Waypoint(id: i64) -> Element {
             },
             Some((_, Ok(detail))) => rsx! {
                 WaypointDetails { detail: detail.clone() }
+                LinkedTo { end: LinkEnd::Waypoint(id) }
                 WaypointMap { detail: detail.clone() }
                 div { class: "trip-actions",
                     EditWaypoint {

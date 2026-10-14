@@ -9,6 +9,7 @@ use super::{as_trip_detail, title};
 use crate::api::{self, ApiClient};
 use crate::detail::{TrackSection, TripStats};
 use crate::gallery::PhotoGallery;
+use crate::linked::SharedLinkedTo;
 use crate::photos::{self, PhotoView};
 use crate::viewer::PhotoViewer;
 use crate::Route;
@@ -54,6 +55,7 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
         match &*trip.read_unchecked() {
             Some((read_for, Ok(trip))) if *read_for == id => rsx! {
                 TripStats { trip: as_trip_detail(trip) }
+                SharedLinkedTo { token: token.clone(), id }
                 TrackSection {
                     id,
                     activity: trip.activity_type,

@@ -29,6 +29,8 @@ mod import;
 mod interop;
 mod kinds;
 mod komoot;
+mod link_panel;
+mod linked;
 mod list;
 mod list_table;
 mod login;
