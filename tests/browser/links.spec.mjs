@@ -145,3 +145,40 @@ test("a collection's tracks are narrowed to those with a recorded trip, in its U
   await page.reload();
   await expect(page.getByText("No track matches.")).toBeVisible();
 });
+
+test("ticking a linked item shows it without moving or zooming the map (US-105)", async ({
+  page,
+  request,
+}) => {
+  // The day is in Oslo and the stage near Innsbruck: framing both would
+  // zoom far out.
+  const day = await importTrip(request, `${WORD} Outing`, "recorded");
+  const id = await importCollection(request, `${WORD} Atlas`);
+  const { tracks } = await (await request.get(`/api/collections/${id}`)).json();
+  const linked = await request.post("/api/links", {
+    data: { trip_ids: [day], collection_track_ids: [tracks[0].id] },
+  });
+  expect(linked.status()).toBe(200);
+
+  await page.goto(`/app/trips/${day}`);
+  const lines = page.locator("#track-map path.leaflet-interactive");
+  await expect(lines).toHaveCount(1);
+  await expect(page.locator("#track-map .leaflet-map-pane")).not.toHaveClass(/leaflet-zoom-anim/);
+  const view = () =>
+    page.evaluate(() => {
+      const map = window.tripArchiveWidgets["track-map"];
+      const { lat, lng } = map.getCenter();
+      return { zoom: map.getZoom(), lat: lat.toFixed(5), lng: lng.toFixed(5) };
+    });
+  const before = await view();
+
+  const stage = page.getByRole("checkbox", { name: /^Show .* on the map$/ });
+  await stage.check();
+  await expect(lines).toHaveCount(2);
+  await expect(page.locator("#track-map .leaflet-map-pane")).not.toHaveClass(/leaflet-zoom-anim/);
+  expect(await view()).toEqual(before);
+
+  await stage.uncheck();
+  await expect(lines).toHaveCount(1);
+  expect(await view()).toEqual(before);
+});

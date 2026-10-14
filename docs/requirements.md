@@ -146,6 +146,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
 | [US-103](#us-103--proposed-links)                             | ⏳     | Proposed links                               | [Trip page](#trip-page)                                             |
 | [US-104](#us-104--pick-from-stacked-lines)                    | 📋     | Pick from stacked lines                      | [Maps](#maps)                                                       |
+| [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -1139,6 +1140,9 @@ links again is US-103's.
 **Decisions:** US-99 → ADR-0028 (collection items stay records of their own; links reach them as
 tags and shares do), ADR-0008 (the screens read and change links through the JSON API)
 
+**Superseded in part by US-105:** ticking an entry no longer makes the map take it in; the view
+stays where it is.
+
 ### US-103 — Proposed links
 
 **Backlog ⏳** — As the owner, the archive proposes links (US-99) between what I did and what I
@@ -1168,6 +1172,16 @@ checked against collections; whether one search over everything already archived
 
 **Decisions:** likely an ADR on matching a recorded track against a planned line — related to, but
 not the same as, ADR-0029's matching of a file against a collection.
+
+### US-105 — Ticking a link keeps the map still
+
+**Done ✅** — As the owner, ticking a linked item to show it on a page's map (US-99) leaves the map
+where it is, so the part of the track I zoomed into stays in view.
+
+**Acceptance criteria:** Ticking or unticking an entry in a page's list of links draws or removes
+it without moving or zooming the map, even when it lies partly or wholly outside the view. What a
+page frames when it opens — its own track, photos and waypoints — is unchanged; the ticked items
+never count toward it.
 
 ## Photos
 

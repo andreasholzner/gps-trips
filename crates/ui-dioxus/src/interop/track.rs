@@ -150,10 +150,11 @@ const TRACK_MAP_SCRIPT: &str = r##"
 
     // Framed on everything there is to see. A track with no drawable
     // positions still has photos, and they should not be left somewhere on a
-    // view of the whole world.
+    // view of the whole world. Not on what the owner ticked to be shown
+    // (US-99): ticking one leaves the view where it is (US-105).
     const bounds = L.latLngBounds([]);
     if (map.trackLine) bounds.extend(map.trackLine.getBounds());
-    for (const markers of [map.photoMarkers, map.waypointMarkers, map.overlays]) {
+    for (const markers of [map.photoMarkers, map.waypointMarkers]) {
       if (markers.getLayers().length > 0) bounds.extend(markers.getBounds());
     }
     if (bounds.isValid()) {

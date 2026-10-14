@@ -29,8 +29,15 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
 
     const el = document.getElementById(CONTAINER);
     const widgets = (window.tripArchiveWidgets ||= {});
+    // The view of an earlier draw into this same container, with what it
+    // framed: kept when only the ticked overlays changed (US-105).
+    let earlier = null;
     if (widgets[CONTAINER]) {
-      widgets[CONTAINER].remove();
+      const old = widgets[CONTAINER];
+      if (old.getContainer() === el && old.framed) {
+        earlier = { framed: old.framed, center: old.getCenter(), zoom: old.getZoom() };
+      }
+      old.remove();
       widgets[CONTAINER] = null;
     }
     const map = L.map(el);
@@ -69,11 +76,16 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     // A collection's waypoints (US-86); none on a share's or a summary's.
     const waypoints = drawWaypoints(map, view.waypoints);
     if (waypoints.getLayers().length > 0) bounds.extend(waypoints.getBounds());
-    // What the page is linked to that the owner ticked (US-99).
-    const overlays = drawOverlays(map, view.overlays);
-    if (overlays.getLayers().length > 0) bounds.extend(overlays.getBounds());
+    // What the page is linked to that the owner ticked (US-99) — left out of
+    // the framing, so ticking one leaves the view where it is (US-105).
+    drawOverlays(map, view.overlays);
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { maxZoom: 15, padding: [16, 16] });
+      map.framed = bounds.toBBoxString();
+      if (earlier && earlier.framed === map.framed) {
+        map.setView(earlier.center, earlier.zoom, { animate: false });
+      } else {
+        map.fitBounds(bounds, { maxZoom: 15, padding: [16, 16] });
+      }
     }
 
     // Then which line to highlight (US-72), for as long as the screen is
