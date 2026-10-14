@@ -140,10 +140,11 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-96](#us-96--tags-first-in-the-qmapshack-comment)          | ✅     | Tags first in the QMapShack comment          | [QMapShack export](#qmapshack-export)                               |
 | [US-97](#us-97--collections-page)                             | ✅     | Collections page                             | [Collections](#collections)                                         |
 | [US-98](#us-98--waypoint-pages)                               | ✅     | Waypoint pages                               | [Collections](#collections)                                         |
-| [US-99](#us-99--link-what-i-did-to-what-i-planned)            | ⏳     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
+| [US-99](#us-99--link-what-i-did-to-what-i-planned)            | 📋     | Link what I did to what I planned            | [Trip page](#trip-page)                                             |
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | ✅     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
+| [US-103](#us-103--proposed-links)                             | ⏳     | Proposed links                               | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -1081,33 +1082,85 @@ charts and the marked stretches), ADR-0008 (the screens read their figures from 
 
 ### US-99 — Link what I did to what I planned
 
-**Backlog ⏳** — As the owner, I link a recorded trip to what it followed — a planned trip (US-31),
-a collection's track (US-86), the collection's waypoints it passed — so I see which of my plans and
-which stages of a guide book I have already done.
+**Planned 📋** — As the owner, I link a recorded trip to what it followed — planned trips (US-31),
+collection tracks (US-86), the waypoints it passed (US-98) — and a planned trip to the collection
+tracks and waypoints it was planned from, so I see which of my plans and which stages of a guide
+book I have already been on, in whole or in part.
 
-**Notes:** Rough. **Suggested, not decided:** the archive proposes the links itself, from the
-geometry — a recorded track that runs along a planned trip's or a collection track's line within a
-tolerance, a waypoint the track passes within a distance — and the owner confirms or dismisses each,
-as re-adding a file proposes and the owner decides (ADR-0029). Suggestions are made when a trip is
-imported or synced and once over the trips already archived; a dismissed one is not proposed
-again. The owner can also link and unlink by hand.
+**Acceptance criteria:** A link joins a recorded trip to a planned trip, a collection track or a
+waypoint, or a planned trip to a collection track or a waypoint; no other pair is ever linked, and
+a pair is linked once at most. Links are not one to one: a recorded trip may follow several plans
+or stages, a long planned trip — a multi-day tour planned as one — is linked to every recorded
+trip that covered part of it, and a planned trip followed twice is linked to both. Only a link counts:
+nothing counts as linked from the geometry alone, and a linked planned trip stays where it is
+listed. Proposing links from the geometry is US-103's.
 
-**Not one to one:** a day may cover two stages, a stage may take two days, a trip may follow part of
-a stage or leave it for a detour; a planned trip may be done more than once. How much of a line must
-be covered to count as done — all of it, most of it, or a share shown as such — is open.
+**Linking by hand:** the trip list's selection bar (US-90) gets a *Link* action, active while the
+selection holds a pair that can be linked. It links every such pair in the selection — every
+recorded trip to every planned trip and collection track, every planned trip to every collection
+track — so six recorded trips and one planned trip selected become six links. Its panel names how
+many links it makes, and makes them when confirmed; a pair already linked stays as it is. Waypoints
+are not linked by hand; their links come from US-103's proposals.
 
-**Where it shows:** a recorded trip's page names what it followed; a planned trip's and a collection
-track's page name the trips that did it, with their dates; a collection's page and the Collections
-page (US-97) count what is done ("12 of 125 tracks"); the planned tab and the collection's list mark
-what is done, and can be narrowed to what is not; a passed waypoint is marked visited.
+**Unlinking:** each link named on a page below has a control that removes it at once, without a
+confirmation — it can be linked again.
 
-**Open:** whether done-ness is only ever a confirmed link or also an unconfirmed match; whether a
-planned trip that was done stays on the Planned tab; how links travel into the QMapShack export
-(US-89) and shares (US-94); what direction of travel, if any, matters.
+**Where it shows:** a recorded trip's page lists the planned trips and collection tracks it is
+linked to, a collection track with its collection's name, and the waypoints it passed, each with
+its symbol's icon (US-95); a planned trip's page lists the recorded trips linked to it with their
+dates, and the collection tracks and waypoints it is linked to; a collection track's page and a
+waypoint's page list the recorded trips, with their dates, and the planned trips linked to them.
+Each entry links to its page; recorded trips come newest first, everything else by name.
+
+**With a recorded trip:** a planned trip, collection track or waypoint has a recorded trip when one
+is linked to it, however little of it the trip covered. The collections table (US-87/97) and a collection's page count the tracks with a
+recorded trip, as "12 of 125 tracks". The trip list marks a planned trip or collection track with a
+recorded trip, and a collection's page its tracks and waypoints with one. A filter — all, with a
+recorded trip, without — narrows the planned trips and collection tracks on the trip list, leaving
+recorded trips as they are, and the track and waypoint lists on a collection's page; it lives in
+the URL (US-52). A collection group's count of matching tracks (US-90) follows it.
+
+**Shares:** a recipient sees a link only when the share reaches both of its ends (US-53/94); the
+marks and counts on a shared page count only those links. The QMapShack export (US-89) carries no
+links; Statistics (US-77) and Summary (US-78) do not use them.
+
+**Lifetime:** a link goes when either end is deleted — a trip (US-9), a collection track, a
+waypoint (US-98) or a whole collection (US-86). A collection item replaced on re-adding a file
+keeps its links (ADR-0029). A changed track or position leaves the links as they are; looking for
+links again is US-103's.
+
+**Decisions:** US-99 → ADR-0028 (collection items stay records of their own; links reach them as
+tags and shares do), ADR-0008 (the screens read and change links through the JSON API)
+
+### US-103 — Proposed links
+
+**Backlog ⏳** — As the owner, the archive proposes links (US-99) between what I did and what I
+planned, from the tracks' geometry, and I confirm or dismiss each, so I don't link a guide book's
+125 stages by hand.
+
+**Notes:** **When it looks:** a recorded trip that enters the archive, whichever way — import
+(US-1), Komoot sync (US-20) — is checked against every planned trip, collection track and
+waypoint. A planned trip, or a collection's tracks and waypoints, entering the archive — including
+those a file adds to a collection (US-88) — are checked against every recorded trip. A trip or item
+whose track or position changes is checked again. The owner can also start a search from a recorded
+trip's, a planned trip's or a collection's page. A pair already linked is not proposed.
+
+**What counts:** a recorded trip followed a planned trip or collection track when it runs along a
+relevant part of its line within a tolerance; a multi-day planned trip covered by six recorded
+trips is proposed with each of them. A track passed a waypoint when it comes within a distance of
+it — a tolerance of its own, likely smaller than the line's. The tolerances and what part is
+relevant are configuration.
+
+**Confirming:** the owner confirms or dismisses each proposal; a confirmed one becomes a link. A
+dismissed one is not remembered: it comes back only from a search the owner starts or a changed
+track or position.
+
+**Open:** where proposals wait and are confirmed, and whether they outlast a restart; how large a
+relevant part is; whether the direction of travel matters; whether a new planned trip is also
+checked against collections; whether one search over everything already archived is offered.
 
 **Decisions:** likely an ADR on matching a recorded track against a planned line — related to, but
-not the same as, ADR-0029's matching of a file against a collection; links of their own between
-trips and collection items, as ADR-0028 has for tags and shares.
+not the same as, ADR-0029's matching of a file against a collection.
 
 ## Photos
 
