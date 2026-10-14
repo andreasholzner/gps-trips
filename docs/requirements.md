@@ -145,6 +145,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | ✅     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
 | [US-103](#us-103--proposed-links)                             | ⏳     | Proposed links                               | [Trip page](#trip-page)                                             |
+| [US-104](#us-104--pick-from-stacked-lines)                    | 📋     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 
 ### Maintaining this file
 
@@ -1689,6 +1690,37 @@ own color: it only ever appears on that one trip's map.
 **Decisions:** US-75 → ADR-0018 (the activity is a closed enum, so the color mapping is exhaustive),
 ADR-0025 (Rust decides the colors, the scripts draw them), ADR-0022 (the QMapShack colors the
 families follow)
+
+### US-104 — Pick from stacked lines
+
+**Planned 📋** — As the owner and as a share's recipient, I see everything under the pointer on a
+map whose lines open a page, and choose which one to open, so a line hidden under another is not
+out of reach and a click opens what I meant.
+
+**Acceptance criteria:** This holds on every map where a click on a line opens its page: the
+trip-list map's lines (US-73/90), a share's overview map (US-53/94), the Summary's map (US-78/82),
+a collection's page (US-86) and a waypoint's page (US-98). **The hover hint** leads each name with
+its activity's icon (US-84); an unspecified activity, or a collection track without one, shows
+the name alone.
+
+**Stacked lines:** where several lines lie under the pointer — within the distance at which a
+click hits a line today — the hint lists them, one per line, in the order the page lists them. It
+shows the first five, followed by "…" when there are more.
+
+**Choosing:** a click or tap where only one line lies opens its page at once, as today, and shows
+no menu. Where several lie, it opens a small menu at that point listing all of them, as the hint
+does but without a cap. A menu taller than fits on the map scrolls. Pointing at an entry
+highlights its line, as pointing at the line does. Choosing an entry opens that line's page, as a
+click on the line does today. Clicking elsewhere, Escape or moving the map closes the menu and
+opens nothing. On a phone, with no hover, the menu is how stacked lines are told apart.
+
+**Waypoints** are the exception, since they are easy to avoid. With the pointer over a waypoint, or
+on a tap on one, the hint lists that waypoint alone, even if lines lie under it. A click or tap on
+a waypoint shows that hint, never the menu, and opens nothing.
+
+**Decisions:** US-104 → ADR-0025 (Rust decides what the hint and the menu list, the script finds
+the lines under the pointer and draws them), ADR-0012 (the browser layer for the hint, the menu
+and a choice from it)
 
 ## Sharing
 
