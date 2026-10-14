@@ -71,4 +71,5 @@ mod us94_share_collections;
 mod us95_waypoint_symbols;
 mod us96_qmapshack_tags_first;
 mod us98_waypoint_pages;
+mod us99_links;
 mod us9_delete_trip;

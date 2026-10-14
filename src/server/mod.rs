@@ -23,6 +23,7 @@ pub mod import;
 pub mod komoot;
 pub mod komoot_sport;
 pub mod komoot_sync;
+pub mod links;
 pub mod location;
 pub mod moving_time;
 pub mod name_suggestion;

@@ -22,7 +22,7 @@ use crate::server::{
     filter::{parse_filter, TripFilterQuery},
     import::{handle_add_photos, handle_import},
     komoot::KomootClient,
-    komoot_sync, paths,
+    komoot_sync, links, paths,
     photo_api::{handle_place_photo, list_trip_photos},
     repo::{self, Tagged},
     session::{handle_login, handle_logout, handle_session},
@@ -200,6 +200,8 @@ pub fn router(state: AppState) -> Router {
         .merge(collection_import::router())
         // US-98: one waypoint, read, corrected and deleted.
         .merge(waypoints::router())
+        // US-99: links from what the owner did to what they planned.
+        .merge(links::router())
         .merge(share::router())
         // Whatever no route answers, in the same JSON as every refusal
         // (ADR-0008) — so an unknown path under a live share reads exactly

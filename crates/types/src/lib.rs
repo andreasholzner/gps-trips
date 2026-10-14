@@ -26,6 +26,7 @@ mod export_trip;
 mod komoot_link;
 mod komoot_privacy;
 mod komoot_sync;
+mod link;
 mod location_source;
 mod photo;
 mod photo_placement;
@@ -63,6 +64,7 @@ pub use komoot_privacy::KomootPrivacy;
 pub use komoot_sync::{
     SelectedTour, SyncCandidate, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
 };
+pub use link::{CreateLinks, CreatedLinks, LinkedTrack, LinkedTrip, LinkedWaypoint, Links};
 pub use location_source::LocationSource;
 pub use photo::Photo;
 pub use photo_placement::PhotoPlacement;
