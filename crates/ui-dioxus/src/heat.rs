@@ -25,10 +25,11 @@ const MIN_OPACITY: f64 = 0.25;
 pub struct HeatMarks {
     pub marks: Vec<HeatMark>,
     pub opacity: f64,
-    /// `[lat, lon]` points "Fit to trips" takes in besides the marks — the
-    /// list's waypoints (US-87). The script adds the marks' own, so they are
-    /// not sent twice.
-    pub also_fit: Vec<[f64; 2]>,
+    /// `[lat, lon]` points "Fit to items" fits the map to: the corners of
+    /// every marked item's bounding box — not its mark, so a lone item is
+    /// shown whole rather than zoomed in on — and the list's waypoints
+    /// (US-87).
+    pub fit: Vec<[f64; 2]>,
 }
 
 /// One trip's mark.
@@ -50,17 +51,14 @@ impl HeatMarks {
 
     /// The same marks, fitted to `points` as well.
     pub fn also_fitting(mut self, points: &[[f64; 2]]) -> Self {
-        self.also_fit.extend_from_slice(points);
+        self.fit.extend_from_slice(points);
         self
     }
 
-    /// Every point the map is fitted to: the marks', then the others.
+    /// Every point the map is fitted to: the items' corners, then the
+    /// others.
     pub fn fit_points(&self) -> Vec<[f64; 2]> {
-        self.marks
-            .iter()
-            .map(|mark| mark.at)
-            .chain(self.also_fit.iter().copied())
-            .collect()
+        self.fit.clone()
     }
 }
 
@@ -73,25 +71,30 @@ impl HeatMarks {
 /// The opacity falls as `1/√n` with the number of marks, so a few trips
 /// stay clearly visible while hundreds do not merge into one solid blob.
 pub fn marks(items: &[MapItem]) -> HeatMarks {
-    let marks: Vec<HeatMark> = items
+    let boxes: Vec<_> = items
         .iter()
-        .filter_map(|item| {
-            let bbox = item.bbox?;
-            Some(HeatMark {
-                at: [
-                    (bbox.min_lat + bbox.max_lat) / 2.0,
-                    (bbox.min_lon + bbox.max_lon) / 2.0,
-                ],
-                activity: item.activity_type,
-                color: activity_color::color(item.activity_type),
-            })
+        .filter_map(|item| Some((item, item.bbox?)))
+        .collect();
+    let marks: Vec<HeatMark> = boxes
+        .iter()
+        .map(|&(item, bbox)| HeatMark {
+            at: [
+                (bbox.min_lat + bbox.max_lat) / 2.0,
+                (bbox.min_lon + bbox.max_lon) / 2.0,
+            ],
+            activity: item.activity_type,
+            color: activity_color::color(item.activity_type),
         })
+        .collect();
+    let fit = boxes
+        .iter()
+        .flat_map(|(_, bbox)| [[bbox.min_lat, bbox.min_lon], [bbox.max_lat, bbox.max_lon]])
         .collect();
     let opacity = opacity_for(marks.len());
     HeatMarks {
         marks,
         opacity,
-        also_fit: Vec::new(),
+        fit,
     }
 }
 
@@ -177,11 +180,12 @@ mod tests {
     }
 
     #[test]
-    fn the_map_is_fitted_to_every_mark() {
+    fn the_map_is_fitted_to_every_marked_items_bounding_box() {
+        // Its corners, not its mark: a lone item's mark is a single point,
+        // which the map would zoom right in on rather than show the item.
         let marks = marks(&[a_trip(Some([59.0, 10.0, 61.0, 12.0])), a_trip(None)]);
 
-        assert_eq!(marks.fit_points(), vec![[60.0, 11.0]]);
-        assert!(marks.also_fit.is_empty(), "the marks are not sent twice");
+        assert_eq!(marks.fit_points(), vec![[59.0, 10.0], [61.0, 12.0]]);
     }
 
     #[test]
@@ -191,9 +195,8 @@ mod tests {
 
         assert_eq!(
             marks.fit_points(),
-            vec![[60.0, 11.0], [46.49, 9.17], [46.58, 9.84]]
+            vec![[59.0, 10.0], [61.0, 12.0], [46.49, 9.17], [46.58, 9.84]]
         );
-        assert_eq!(marks.also_fit, vec![[46.49, 9.17], [46.58, 9.84]]);
         assert_eq!(marks.marks.len(), 1, "nothing more is marked");
     }
 

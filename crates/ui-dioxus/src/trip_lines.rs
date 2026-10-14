@@ -37,7 +37,8 @@ pub struct TripLines {
     /// The waypoints of the collections in view, shown with the lines
     /// (US-90).
     pub waypoints: Vec<MapWaypoint>,
-    /// `[lat, lon]` of every matching trip's heat mark.
+    /// `[lat, lon]` of every matching item's bounding-box corners, and the
+    /// list's waypoints.
     pub fit: Vec<[f64; 2]>,
 }
 

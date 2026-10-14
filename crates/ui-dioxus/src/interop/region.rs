@@ -141,7 +141,7 @@ const REGION_MAP_SCRIPT: &str = r##"
         lines.clearLayers();
         clearWaypoints();
         const marks = message.marks.marks;
-        points = marks.map((mark) => mark.at).concat(message.marks.also_fit);
+        points = message.marks.fit;
         for (const mark of marks) {
           L.circleMarker(mark.at, {
             radius: 8,
@@ -302,7 +302,7 @@ mod tests {
                 color: "#b2182b",
             }],
             opacity: 0.6,
-            also_fit: vec![[46.5, 9.2]],
+            fit: vec![[46.5, 9.2]],
         };
         let marks = serde_json::to_value(MapMessage::Marks(&marks)).unwrap();
         // The activity itself stays in Rust: the script draws the color.
@@ -311,7 +311,7 @@ mod tests {
             serde_json::json!({ "marks": {
                 "marks": [{ "at": [60.0, 11.0], "color": "#b2182b" }],
                 "opacity": 0.6,
-                "also_fit": [[46.5, 9.2]],
+                "fit": [[46.5, 9.2]],
             } })
         );
     }

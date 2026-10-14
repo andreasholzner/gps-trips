@@ -51,7 +51,7 @@ pub struct Mapped {
     /// In list order — the trips, then each listed collection's tracks —
     /// which the lines' shades follow (US-72).
     pub items: Vec<MapItem>,
-    /// `[lat, lon]` points the map is fitted to besides the items' marks:
+    /// `[lat, lon]` points the map is fitted to besides the items' boxes:
     /// the corners around each collection's waypoints, so fitting takes
     /// them in too.
     pub also_fit: Vec<[f64; 2]>,

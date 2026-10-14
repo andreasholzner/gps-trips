@@ -198,7 +198,10 @@ fn fit_to_trips_still_covers_every_matching_trip() {
         &heat::marks(&trips),
     );
 
-    assert_eq!(drawn.fit, vec![[1.0, 1.0], [60.0, 11.0]]);
+    assert_eq!(
+        drawn.fit,
+        vec![[0.0, 0.0], [2.0, 2.0], [59.0, 10.0], [61.0, 12.0]]
+    );
 }
 
 #[test]
@@ -260,7 +263,7 @@ fn us87_zoomed_in_the_map_is_still_fitted_to_what_the_list_adds() {
 
     let drawn = lines(&trips, &[], &marks);
 
-    assert_eq!(drawn.fit, vec![[1.0, 1.0], [46.5, 9.2]]);
+    assert_eq!(drawn.fit, vec![[0.0, 0.0], [2.0, 2.0], [46.5, 9.2]]);
 }
 
 // ── US-90: every kind on one map ─────────────────────────────────────────────
