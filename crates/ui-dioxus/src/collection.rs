@@ -228,7 +228,11 @@ fn CollectionMap(
                 dioxus::logger::tracing::error!("could not read the tracks: {err}");
                 Vec::new()
             });
-        let mut map = interop::start_overview_map(collection_lines(&tracks, &positions), waypoints);
+        let mut map = interop::start_overview_map(
+            collection_lines(&tracks, &positions),
+            waypoints,
+            Default::default(),
+        );
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {
             match event {

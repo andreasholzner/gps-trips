@@ -1,16 +1,25 @@
 //! What a trip, a collection track or a waypoint is linked to (US-99), on
-//! its page: each other end leading to its own page, recorded trips with
-//! their dates, and a control removing the link at once — it can be linked
-//! again. A share's recipient sees the shared trips a shared trip is linked
-//! to, without the control.
+//! its page: each other end with its activity's icon, leading to its own
+//! page, a recorded trip with its date unless its name starts with it, a
+//! box showing it on the page's map, and a control removing the link at
+//! once — it can be linked again. A share's recipient sees the shared trips
+//! a shared trip is linked to, without the control.
+
+use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::{Links, RecordedTripFilter, SharedLinks};
+use trip_archive_types::{ActivityType, Links, RecordedTripFilter, SharedLinks, TripKind};
 
+use crate::activity_icon::ActivityIcon;
 use crate::api::{self, ApiClient, LinkEnd};
+use crate::interop::Overlays;
+use crate::kinds::Kind;
 use crate::waypoint::UNNAMED;
 use crate::waypoint_icon::WaypointSymbol;
 use crate::Route;
+
+mod overlays;
+use overlays::overlays_of;
 
 /// One kind of other end, as its heading names it.
 #[derive(Clone, PartialEq)]
@@ -23,14 +32,59 @@ pub struct Group {
 #[derive(Clone, PartialEq)]
 pub struct Row {
     pub name: String,
-    /// The local date a recorded trip started on; the collection a track
-    /// belongs to.
+    /// The date a recorded trip started on, unless its name starts with it;
+    /// the collection a track or a waypoint belongs to.
     pub detail: Option<String>,
     pub to: Route,
-    /// A waypoint's symbol, for its icon; `None` for anything else.
-    pub symbol: Option<Option<String>>,
+    pub icon: RowIcon,
+    /// What its box puts on the page's map.
+    pub shown: Shown,
     /// The trip whose link removing it names, and the link's other end.
     pub unlink: Option<(i64, LinkEnd)>,
+}
+
+/// What goes in front of a row's name.
+#[derive(Clone, PartialEq)]
+pub enum RowIcon {
+    /// A trip's or a track's activity.
+    Activity(ActivityType),
+    /// A waypoint's symbol (US-95), drawn as on its collection's map.
+    Symbol(Option<String>),
+}
+
+/// Something the page's map can show: a trip's line, of its kind, or a
+/// collection track's (`Kind::Collections`); or a waypoint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Shown {
+    Line(Kind, i64),
+    Waypoint(i64),
+}
+
+/// The date shown beside a trip: a recorded one's, unless its name already
+/// starts with it — as a name the import suggested does (US-12).
+pub fn trip_date(kind: TripKind, name: &str, start_date: Option<&str>) -> Option<String> {
+    match (kind, start_date) {
+        (TripKind::Recorded, Some(date)) if !name.starts_with(date) => Some(date.to_string()),
+        _ => None,
+    }
+}
+
+/// One linked trip's row, leading to `to`.
+fn trip_row(
+    kind: TripKind,
+    trip: (i64, &str, ActivityType, Option<&str>),
+    to: Route,
+    unlink: Option<(i64, LinkEnd)>,
+) -> Row {
+    let (id, name, activity, start_date) = trip;
+    Row {
+        name: name.to_string(),
+        detail: trip_date(kind, name, start_date),
+        to,
+        icon: RowIcon::Activity(activity),
+        shown: Shown::Line(Kind::of_trip(kind), id),
+        unlink,
+    }
 }
 
 /// The groups `end`'s page lists, in the order it lists them, leaving out
@@ -42,18 +96,25 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
         LinkEnd::Trip(own) => Some(own),
         LinkEnd::CollectionTrack(_) | LinkEnd::Waypoint(_) => None,
     };
-    let trips = |trips: &[trip_archive_types::LinkedTrip]| -> Vec<Row> {
+    let trips = |kind: TripKind, trips: &[trip_archive_types::LinkedTrip]| -> Vec<Row> {
         trips
             .iter()
-            .map(|trip| Row {
-                name: trip.name.clone(),
-                detail: trip.start_date.clone(),
-                to: Route::TripDetail { id: trip.id },
-                symbol: None,
-                unlink: Some(match own_trip {
+            .map(|trip| {
+                let unlink = match own_trip {
                     Some(own) => (own, LinkEnd::Trip(trip.id)),
                     None => (trip.id, end),
-                }),
+                };
+                trip_row(
+                    kind,
+                    (
+                        trip.id,
+                        &trip.name,
+                        trip.activity_type,
+                        trip.start_date.as_deref(),
+                    ),
+                    Route::TripDetail { id: trip.id },
+                    Some(unlink),
+                )
             })
             .collect()
     };
@@ -64,7 +125,8 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
             name: track.name.clone(),
             detail: Some(track.collection_name.clone()),
             to: Route::CollectionTrack { id: track.id },
-            symbol: None,
+            icon: RowIcon::Activity(track.activity_type),
+            shown: Shown::Line(Kind::Collections, track.id),
             unlink: own_trip.map(|own| (own, LinkEnd::CollectionTrack(track.id))),
         })
         .collect();
@@ -75,18 +137,19 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
             name: waypoint.name.clone().unwrap_or_else(|| UNNAMED.to_string()),
             detail: Some(waypoint.collection_name.clone()),
             to: Route::Waypoint { id: waypoint.id },
-            symbol: Some(waypoint.symbol.clone()),
+            icon: RowIcon::Symbol(waypoint.symbol.clone()),
+            shown: Shown::Waypoint(waypoint.id),
             unlink: own_trip.map(|own| (own, LinkEnd::Waypoint(waypoint.id))),
         })
         .collect();
     [
         Group {
             title: "Recorded trips",
-            rows: trips(&links.recorded_trips),
+            rows: trips(TripKind::Recorded, &links.recorded_trips),
         },
         Group {
             title: "Planned trips",
-            rows: trips(&links.planned_trips),
+            rows: trips(TripKind::Planned, &links.planned_trips),
         },
         Group {
             title: "Collection tracks",
@@ -105,29 +168,35 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
 /// The groups a share's recipient reads of a shared trip, leading to the
 /// share's own pages.
 pub fn shared_groups(token: &str, links: &SharedLinks) -> Vec<Group> {
-    let trips = |trips: &[trip_archive_types::SharedLinkedTrip]| -> Vec<Row> {
+    let trips = |kind: TripKind, trips: &[trip_archive_types::SharedLinkedTrip]| -> Vec<Row> {
         trips
             .iter()
-            .map(|trip| Row {
-                name: trip.name.clone(),
-                detail: trip.start_date.clone(),
-                to: Route::SharedTripDetail {
-                    token: token.to_string(),
-                    id: trip.id,
-                },
-                symbol: None,
-                unlink: None,
+            .map(|trip| {
+                trip_row(
+                    kind,
+                    (
+                        trip.id,
+                        &trip.name,
+                        trip.activity_type,
+                        trip.start_date.as_deref(),
+                    ),
+                    Route::SharedTripDetail {
+                        token: token.to_string(),
+                        id: trip.id,
+                    },
+                    None,
+                )
             })
             .collect()
     };
     [
         Group {
             title: "Recorded trips",
-            rows: trips(&links.recorded_trips),
+            rows: trips(TripKind::Recorded, &links.recorded_trips),
         },
         Group {
             title: "Planned trips",
-            rows: trips(&links.planned_trips),
+            rows: trips(TripKind::Planned, &links.planned_trips),
         },
     ]
     .into_iter()
@@ -191,18 +260,22 @@ pub fn error_on(end: LinkEnd, error: &Option<(LinkEnd, String)>) -> Option<&str>
 
 /// The owner's section: what `end` is linked to. Nothing while it is read,
 /// nothing for no links, and nothing but a log line if it cannot be read —
-/// the page is about something else.
+/// the page is about something else. What the owner ticks is put into
+/// `overlays`, for the page's map to draw.
 #[component]
-pub fn LinkedTo(end: LinkEnd) -> Element {
+pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     // The end travels back with the answer: the router shows the next page
     // of the same kind through this same scope.
     let mut links = use_resource(use_reactive!(|end| async move {
         (end, api::list_links(&archive(), end).await)
     }));
-    // A failed removal, with the page it failed on: the router shows the
-    // next page of the same kind through this same scope.
+    // A failed removal, with the page it failed on, for the same reason.
     let mut error = use_signal(|| None::<(LinkEnd, String)>);
+    let shown = use_shown(end, overlays, move || match &*links.read() {
+        Some((read_for, Ok(links))) => groups(*read_for, links),
+        _ => Vec::new(),
+    });
     let read = links.read_unchecked();
     let groups = match &*read {
         Some((read_for, Ok(links))) if *read_for == end => groups(end, links),
@@ -222,7 +295,7 @@ pub fn LinkedTo(end: LinkEnd) -> Element {
         }
     };
     rsx! {
-        LinkGroups { groups, on_unlink }
+        LinkGroups { groups, shown, on_unlink }
         if let Some(message) = error_on(end, &error.read()) {
             p { class: "error", "{message}" }
         }
@@ -230,24 +303,59 @@ pub fn LinkedTo(end: LinkEnd) -> Element {
 }
 
 /// A share recipient's section: the shared trips a shared trip is linked
-/// to, read on the share's own client.
+/// to, read on the share's own client, and shown on its map when ticked.
 #[component]
-pub fn SharedLinkedTo(token: String, id: i64) -> Element {
+pub fn SharedLinkedTo(token: String, id: i64, overlays: Signal<Overlays>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let links = use_resource(use_reactive!(|id| async move {
         (id, api::list_shared_trip_links(&archive(), id).await)
     }));
+    let for_map = token.clone();
+    let shown = use_shown(LinkEnd::Trip(id), overlays, move || match &*links.read() {
+        Some((_, Ok(links))) => shared_groups(&for_map, links),
+        _ => Vec::new(),
+    });
     let groups = match &*links.read_unchecked() {
         Some((read_for, Ok(links))) if *read_for == id => shared_groups(&token, links),
         _ => Vec::new(),
     };
     rsx! {
-        LinkGroups { groups, on_unlink: |_| {} }
+        LinkGroups { groups, shown, on_unlink: |_| {} }
     }
 }
 
+/// What is ticked to be shown, emptied on a page of its own, and the
+/// overlays it comes to, read from the archive whenever either the ticks or
+/// the `listed` rows change — so an item whose link is removed leaves the
+/// map too.
+fn use_shown(
+    end: LinkEnd,
+    mut overlays: Signal<Overlays>,
+    listed: impl Fn() -> Vec<Group> + 'static,
+) -> Signal<BTreeSet<Shown>> {
+    let archive = use_context::<Signal<ApiClient>>();
+    let mut shown = use_signal(BTreeSet::<Shown>::new);
+    use_effect(use_reactive!(|end| {
+        let _ = end;
+        shown.write().clear();
+    }));
+    let _read = use_resource(move || {
+        let ticked: Vec<Row> = listed()
+            .into_iter()
+            .flat_map(|group| group.rows)
+            .filter(|row| shown.read().contains(&row.shown))
+            .collect();
+        async move { overlays.set(overlays_of(&archive(), ticked).await) }
+    });
+    shown
+}
+
 #[component]
-fn LinkGroups(groups: Vec<Group>, on_unlink: EventHandler<(i64, LinkEnd)>) -> Element {
+fn LinkGroups(
+    groups: Vec<Group>,
+    shown: Signal<BTreeSet<Shown>>,
+    on_unlink: EventHandler<(i64, LinkEnd)>,
+) -> Element {
     if groups.is_empty() {
         return rsx! {};
     }
@@ -258,29 +366,56 @@ fn LinkGroups(groups: Vec<Group>, on_unlink: EventHandler<(i64, LinkEnd)>) -> El
                 h3 { key: "{group.title}", "{group.title}" }
                 ul { class: "links",
                     for row in group.rows {
-                        li {
-                            Link { to: row.to.clone(),
-                                if let Some(symbol) = row.symbol.clone() {
-                                    WaypointSymbol { symbol }
-                                }
-                                "{row.name}"
-                            }
-                            if let Some(detail) = &row.detail {
-                                span { class: "muted", " · {detail}" }
-                            }
-                            if let Some(unlink) = row.unlink {
-                                " "
-                                button {
-                                    r#type: "button",
-                                    class: "unlink",
-                                    title: "Remove the link to {row.name}",
-                                    aria_label: "Remove the link to {row.name}",
-                                    onclick: move |_| on_unlink.call(unlink),
-                                    "×"
-                                }
-                            }
-                        }
+                        LinkRow { row, shown, on_unlink }
                     }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LinkRow(
+    row: Row,
+    mut shown: Signal<BTreeSet<Shown>>,
+    on_unlink: EventHandler<(i64, LinkEnd)>,
+) -> Element {
+    let item = row.shown;
+    rsx! {
+        li {
+            input {
+                r#type: "checkbox",
+                aria_label: "Show {row.name} on the map",
+                title: "Show on the map",
+                checked: shown.read().contains(&item),
+                onchange: move |event| {
+                    if event.checked() {
+                        shown.write().insert(item);
+                    } else {
+                        shown.write().remove(&item);
+                    }
+                },
+            }
+            Link { to: row.to.clone(),
+                match &row.icon {
+                    RowIcon::Activity(ActivityType::Unknown) => rsx! {},
+                    RowIcon::Activity(activity) => rsx! { ActivityIcon { activity: *activity } },
+                    RowIcon::Symbol(symbol) => rsx! { WaypointSymbol { symbol: symbol.clone() } },
+                }
+                "{row.name}"
+            }
+            if let Some(detail) = &row.detail {
+                span { class: "muted", " · {detail}" }
+            }
+            if let Some(unlink) = row.unlink {
+                " "
+                button {
+                    r#type: "button",
+                    class: "unlink",
+                    title: "Remove the link to {row.name}",
+                    aria_label: "Remove the link to {row.name}",
+                    onclick: move |_| on_unlink.call(unlink),
+                    "×"
                 }
             }
         }

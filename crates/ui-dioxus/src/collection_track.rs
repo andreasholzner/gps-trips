@@ -15,6 +15,7 @@ use crate::collection::collection_route;
 use crate::collection::drawn_waypoints;
 use crate::detail::TrackViews;
 use crate::format;
+use crate::interop::Overlays;
 use crate::linked::LinkedTo;
 use crate::overlay::Overlay;
 use crate::share::{ShareButton, ShareTarget};
@@ -29,6 +30,8 @@ pub fn CollectionTrack(id: i64) -> Element {
     let mut track = use_resource(use_reactive!(|id| async move {
         (id, api::get_collection_track(&archive(), id).await)
     }));
+    // What the owner ticked in the links to see on the map (US-99).
+    let overlays = use_signal(Overlays::default);
 
     rsx! {
         match &*track.read_unchecked() {
@@ -43,8 +46,8 @@ pub fn CollectionTrack(id: i64) -> Element {
             Some((_, Ok(detail))) => rsx! {
                 TrackFigures { track: detail.clone() }
                 Tagging { tagged: Tagged::CollectionTrack(id) }
-                LinkedTo { end: LinkEnd::CollectionTrack(id) }
-                TrackMapSection { id, activity: detail.activity_type }
+                TrackMapSection { id, activity: detail.activity_type, overlays: overlays() }
+                LinkedTo { end: LinkEnd::CollectionTrack(id), overlays }
                 div { class: "trip-actions",
                     EditCollectionTrack { track: detail.clone(), on_saved: move |_| track.restart() }
                     ShareButton {
@@ -122,7 +125,7 @@ pub fn TrackStats(
 /// The map with the track's own waypoints, and the elevation profile — read
 /// together, so the map is drawn once with both.
 #[component]
-fn TrackMapSection(id: i64, activity: ActivityType) -> Element {
+fn TrackMapSection(id: i64, activity: ActivityType, overlays: Overlays) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let geometry = use_resource(use_reactive!(|id| async move {
         let archive = archive();
@@ -145,6 +148,7 @@ fn TrackMapSection(id: i64, activity: ActivityType) -> Element {
                     climbs: Vec::new(),
                     markers: Vec::new(),
                     waypoints: waypoints.clone(),
+                    overlays: overlays.clone(),
                     on_open_photos: |_| {},
                 }
             },

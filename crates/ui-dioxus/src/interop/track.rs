@@ -5,7 +5,8 @@
 use dioxus::prelude::*;
 use serde::Serialize;
 
-use super::waypoints::{with_waypoints, MapWaypoint};
+use super::overlays::{with_overlays, Overlays};
+use super::waypoints::MapWaypoint;
 use crate::photos::PhotoMarker;
 
 /// The track map. Draws into `#track-map`: the polyline it is given, fitted
@@ -61,13 +62,14 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // One payload carries the whole picture — the line and the photos on it —
     // so a redraw replaces what is there rather than layering on top of it.
     const view = await dioxus.recv();
-    for (const layer of [map.trackLine, map.photoMarkers, map.waypointMarkers, map.hoverMark]) {
+    for (const layer of [map.trackLine, map.photoMarkers, map.waypointMarkers, map.overlays, map.hoverMark]) {
       if (layer) map.removeLayer(layer);
     }
     map.trackLine = null;
     map.photoMarkers = null;
     // A collection's waypoints on the track (US-86); none on a trip's.
     map.waypointMarkers = drawWaypoints(map, view.waypoints);
+    map.overlays = drawOverlays(map, view.overlays);
     // A mark for a chart that is being replaced points at a track that is
     // no longer drawn.
     map.hoverMark = null;
@@ -151,7 +153,7 @@ const TRACK_MAP_SCRIPT: &str = r##"
     // view of the whole world.
     const bounds = L.latLngBounds([]);
     if (map.trackLine) bounds.extend(map.trackLine.getBounds());
-    for (const markers of [map.photoMarkers, map.waypointMarkers]) {
+    for (const markers of [map.photoMarkers, map.waypointMarkers, map.overlays]) {
       if (markers.getLayers().length > 0) bounds.extend(markers.getBounds());
     }
     if (bounds.isValid()) {
@@ -412,6 +414,8 @@ struct TrackMapView {
     color: &'static str,
     markers: Vec<PhotoMarker>,
     waypoints: Vec<MapWaypoint>,
+    /// What the page is linked to that the owner ticked (US-99).
+    overlays: Overlays,
 }
 
 /// Start the track map with the line, its color, and the photo markers to
@@ -427,14 +431,16 @@ pub fn start_track_map(
     color: &'static str,
     markers: Vec<PhotoMarker>,
     waypoints: Vec<MapWaypoint>,
+    overlays: Overlays,
 ) -> document::Eval {
     start(
-        &with_waypoints(TRACK_MAP_SCRIPT),
+        &with_overlays(TRACK_MAP_SCRIPT),
         TrackMapView {
             points,
             color,
             markers,
             waypoints,
+            overlays,
         },
         "the track map",
     )

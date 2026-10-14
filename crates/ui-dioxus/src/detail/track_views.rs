@@ -9,7 +9,7 @@ use super::climbs::ClimbsList;
 use crate::activity_color;
 use crate::api::{self, ApiClient};
 use crate::format;
-use crate::interop::{self, MapWaypoint};
+use crate::interop::{self, MapWaypoint, Overlays};
 use crate::photos::{self, PhotoMarker, PhotoView, PopupTap};
 use crate::track::{self, Track};
 
@@ -21,12 +21,14 @@ use crate::track::{self, Track};
 ///
 /// `on_open_photos` is told the set a photo tapped in a marker's popup opens
 /// the viewer on, and where in it to start (US-62). `activity` colors the
-/// line (US-75).
+/// line (US-75). `overlays` are what the page is linked to that the owner
+/// ticked to see on the map (US-99).
 #[component]
 pub fn TrackSection(
     id: i64,
     activity: ActivityType,
     markers: Vec<PhotoMarker>,
+    #[props(default)] overlays: Overlays,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
@@ -53,7 +55,14 @@ pub fn TrackSection(
             (None, _) | (_, None) => rsx! { p { "Loading the track…" } },
             (Some(Err(err)), _) => rsx! { p { class: "error", "Could not load the track: {err}" } },
             (Some(Ok(track)), Some(climbs)) => rsx! {
-                TrackViews { track: track.clone(), activity, climbs, markers: markers.clone(), on_open_photos }
+                TrackViews {
+                    track: track.clone(),
+                    activity,
+                    climbs,
+                    markers: markers.clone(),
+                    overlays: overlays.clone(),
+                    on_open_photos,
+                }
             },
         }
     }
@@ -77,6 +86,7 @@ pub fn TrackViews(
     climbs: Vec<Climb>,
     markers: Vec<PhotoMarker>,
     #[props(default)] waypoints: Vec<MapWaypoint>,
+    #[props(default)] overlays: Overlays,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
     let points = track::polyline(&track);
@@ -95,6 +105,7 @@ pub fn TrackViews(
             color: activity_color::color(activity),
             markers,
             waypoints,
+            overlays,
             hovered_at,
             on_open_photos,
         }
@@ -114,6 +125,7 @@ fn TrackMap(
     color: &'static str,
     markers: Vec<PhotoMarker>,
     waypoints: Vec<MapWaypoint>,
+    overlays: Overlays,
     hovered_at: Option<[f64; 2]>,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
 ) -> Element {
@@ -138,8 +150,9 @@ fn TrackMap(
     // the markers it was first drawn with — a photo added or placed (US-30)
     // stayed where it was until the page was reloaded.
     let _draw = use_resource(use_reactive!(
-        |points, color, markers, waypoints| async move {
-            let mut map = interop::start_track_map(points, color, markers.clone(), waypoints);
+        |points, color, markers, waypoints, overlays| async move {
+            let mut map =
+                interop::start_track_map(points, color, markers.clone(), waypoints, overlays);
             handle.set(Some(map));
             while let Ok(tap) = map.recv::<PopupTap>().await {
                 if let Some(opened) = photos::tapped(&markers, tap) {

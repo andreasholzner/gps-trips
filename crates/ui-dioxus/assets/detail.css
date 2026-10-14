@@ -458,6 +458,11 @@
   list-style: none;
 }
 
+/* The box that shows the item on the page's map. */
+#links .links input[type="checkbox"] {
+  margin: 0 0.5rem 0 0;
+}
+
 #links .unlink {
   width: auto;
   padding: 0 0.25rem;

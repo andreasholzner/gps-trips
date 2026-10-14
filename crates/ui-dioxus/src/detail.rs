@@ -7,6 +7,7 @@ use dioxus::prelude::*;
 use crate::api::{self, ApiClient};
 use crate::api::{LinkEnd, Tagged};
 use crate::gallery::PhotoGallery;
+use crate::interop::Overlays;
 use crate::linked::LinkedTo;
 use crate::photos::{self, PhotoView};
 use crate::placing::PlacePhoto;
@@ -86,6 +87,8 @@ pub fn TripDetail(id: i64) -> Element {
     // Closed on a change of trip for the same reason as the viewer: its
     // photo belongs to the trip being left.
     let mut placing = use_signal(|| None::<PhotoView>);
+    // What the owner ticked in the links to see on the map (US-99).
+    let overlays = use_signal(Overlays::default);
     use_effect(use_reactive!(|id| {
         let _ = id;
         viewing.set(None);
@@ -115,11 +118,11 @@ pub fn TripDetail(id: i64) -> Element {
             Some((_, Ok(trip))) => rsx! {
                 TripStats { trip: trip.clone() }
                 Tagging { tagged: Tagged::Trip(id) }
-                LinkedTo { end: LinkEnd::Trip(id) }
                 TrackSection {
                     id,
                     activity: trip.activity_type,
                     markers: photos::photo_markers(archive().base_url(), photos.as_deref().unwrap_or(&[])),
+                    overlays: overlays(),
                     on_open_photos: move |opened| viewing.set(Some(opened)),
                 }
                 PhotoGallery {
@@ -131,6 +134,7 @@ pub fn TripDetail(id: i64) -> Element {
                         move |start| viewing.set(Some((views.clone(), start)))
                     },
                 }
+                LinkedTo { end: LinkEnd::Trip(id), overlays }
                 TripActions {
                     trip: trip.clone(),
                     on_saved: move |_| trip_resource.restart(),
@@ -396,6 +400,36 @@ mod tests {
             "the gallery fetches the image from the archive it read: {html}"
         );
         assert!(html.contains("Add photos"), "{html}");
+    }
+
+    // US-99: what the trip is linked to sits below its photos, above the
+    // controls.
+    #[tokio::test]
+    async fn us99_the_links_follow_the_photos() {
+        let (archive, _dir) = serve_test_archive().await;
+        let id = import_sample(&archive, &[]).await;
+        let plan = import_sample(&archive, &[("kind", "planned")]).await;
+        api::create_links(
+            &archive,
+            &trip_archive_types::CreateLinks {
+                trip_ids: vec![id, plan],
+                collection_track_ids: Vec::new(),
+            },
+        )
+        .await
+        .expect("linked");
+
+        let html = render_against_archive(
+            &archive,
+            move || rsx! { TripDetail { id } },
+            |html| html.contains(r#"id="links""#) && html.contains("No photos yet"),
+        )
+        .await;
+
+        let photos = html.find("No photos yet").unwrap();
+        let links = html.find(r#"id="links""#).unwrap();
+        let actions = html.find(r#"id="delete-trip""#).unwrap();
+        assert!(photos < links && links < actions, "{html}");
     }
 
     #[tokio::test]

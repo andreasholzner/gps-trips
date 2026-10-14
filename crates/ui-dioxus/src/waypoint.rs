@@ -10,7 +10,7 @@ use crate::activity_color;
 use crate::api::{self, ApiClient, LinkEnd};
 use crate::collection::collection_route;
 use crate::format;
-use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
+use crate::interop::{self, MapWaypoint, Overlays, OverviewEvent, OverviewLine};
 use crate::linked::LinkedTo;
 use crate::track;
 use crate::waypoint_icon::WaypointSymbol;
@@ -38,6 +38,8 @@ pub fn Waypoint(id: i64) -> Element {
     let mut waypoint = use_resource(use_reactive!(|id| async move {
         (id, api::get_waypoint(&archive(), id).await)
     }));
+    // What the owner ticked in the links to see on the map (US-99).
+    let overlays = use_signal(Overlays::default);
 
     rsx! {
         match &*waypoint.read_unchecked() {
@@ -51,8 +53,8 @@ pub fn Waypoint(id: i64) -> Element {
             },
             Some((_, Ok(detail))) => rsx! {
                 WaypointDetails { detail: detail.clone() }
-                LinkedTo { end: LinkEnd::Waypoint(id) }
-                WaypointMap { detail: detail.clone() }
+                WaypointMap { detail: detail.clone(), overlays: overlays() }
+                LinkedTo { end: LinkEnd::Waypoint(id), overlays }
                 div { class: "trip-actions",
                     EditWaypoint {
                         waypoint: detail.waypoint.clone(),
@@ -109,9 +111,9 @@ fn WaypointDetails(detail: WaypointDetail) -> Element {
 /// it belongs to — a click on which opens the track — and nothing else of
 /// the collection.
 #[component]
-fn WaypointMap(detail: WaypointDetail) -> Element {
+fn WaypointMap(detail: WaypointDetail, overlays: Overlays) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
-    let _draw = use_resource(use_reactive!(|detail| async move {
+    let _draw = use_resource(use_reactive!(|detail, overlays| async move {
         let mut lines = Vec::new();
         if let Some(track) = &detail.track {
             // Without its line the waypoint is still worth showing.
@@ -125,7 +127,8 @@ fn WaypointMap(detail: WaypointDetail) -> Element {
                 Err(err) => dioxus::logger::tracing::error!("could not read the track: {err}"),
             }
         }
-        let mut map = interop::start_overview_map(lines, vec![MapWaypoint::from(&detail.waypoint)]);
+        let mut map =
+            interop::start_overview_map(lines, vec![MapWaypoint::from(&detail.waypoint)], overlays);
         while let Ok(event) = map.recv::<OverviewEvent>().await {
             if let OverviewEvent::Open(track) = event {
                 navigator().push(Route::CollectionTrack { id: track });

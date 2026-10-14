@@ -102,8 +102,18 @@ test("a selected day, its plan and a stage are linked from the bar, marked, and 
   await expect(rows(page).filter({ hasText: `${WORD} Plan` })).toHaveCount(0);
   await expect(rows(page).filter({ hasText: `${WORD} Day` })).toHaveCount(1);
 
-  // On the day's page, the plan and the stage; one removed at once.
+  // On the day's page, below the photos: the plan and the stage, each
+  // shown on the map once ticked, in its kind's line style.
   await page.goto(`/app/trips/${day}`);
+  const lines = page.locator("#track-map path.leaflet-interactive");
+  await expect(lines).toHaveCount(1);
+  await page.getByRole("checkbox", { name: `Show ${WORD} Plan on the map` }).check();
+  await expect(lines).toHaveCount(2);
+  await expect(page.locator('#track-map path[stroke-dasharray="8 6"]')).toHaveCount(1);
+  await page.getByRole("checkbox", { name: `Show ${WORD} Plan on the map` }).uncheck();
+  await expect(lines).toHaveCount(1);
+
+  // One removed at once.
   const links = page.locator("#links");
   await expect(links.getByRole("link", { name: `${WORD} Plan` })).toBeVisible();
   await expect(links.locator("li")).toHaveCount(2);

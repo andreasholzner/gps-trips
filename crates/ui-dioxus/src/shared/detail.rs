@@ -9,6 +9,7 @@ use super::{as_trip_detail, title};
 use crate::api::{self, ApiClient};
 use crate::detail::{TrackSection, TripStats};
 use crate::gallery::PhotoGallery;
+use crate::interop::Overlays;
 use crate::linked::SharedLinkedTo;
 use crate::photos::{self, PhotoView};
 use crate::viewer::PhotoViewer;
@@ -30,6 +31,8 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
         (id, api::list_photos(&archive(), id).await)
     }));
     let mut viewing = use_signal(|| None::<(Vec<PhotoView>, usize)>);
+    // The linked trips ticked to be seen on the map (US-99).
+    let overlays = use_signal(Overlays::default);
     use_effect(use_reactive!(|id| {
         let _ = id;
         viewing.set(None);
@@ -55,11 +58,11 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
         match &*trip.read_unchecked() {
             Some((read_for, Ok(trip))) if *read_for == id => rsx! {
                 TripStats { trip: as_trip_detail(trip) }
-                SharedLinkedTo { token: token.clone(), id }
                 TrackSection {
                     id,
                     activity: trip.activity_type,
                     markers: photos::photo_markers(&base_url, photos.as_deref().unwrap_or(&[])),
+                    overlays: overlays(),
                     on_open_photos: move |opened| viewing.set(Some(opened)),
                 }
                 PhotoGallery {
@@ -71,6 +74,7 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
                         move |start| viewing.set(Some((views.clone(), start)))
                     },
                 }
+                SharedLinkedTo { token: token.clone(), id, overlays }
                 div { class: "trip-actions",
                     a { class: "quiet", href: api::original_gpx_url(&archive(), id), "Download GPX" }
                 }

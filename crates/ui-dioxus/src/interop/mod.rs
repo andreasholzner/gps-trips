@@ -22,6 +22,7 @@
 //! heat marks, the detail screen's track map and elevation chart, the
 //! map a photo is placed on by hand, and the map a share opens on.
 
+mod overlays;
 mod overview;
 mod place;
 mod region;
@@ -29,6 +30,7 @@ mod stats;
 mod track;
 mod waypoints;
 
+pub use overlays::{OverlayLine, Overlays};
 pub use overview::{highlight_on_overview_map, start_overview_map, OverviewEvent, OverviewLine};
 pub use place::start_place_map;
 pub use region::{

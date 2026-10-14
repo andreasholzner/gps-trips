@@ -6,7 +6,8 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::waypoints::{with_waypoints, MapWaypoint};
+use super::overlays::{with_overlays, Overlays};
+use super::waypoints::MapWaypoint;
 
 /// Draws into `#overview-map`, over OSM tiles, one line per trip in the
 /// color it is given, and sends
@@ -68,6 +69,9 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     // A collection's waypoints (US-86); none on a share's or a summary's.
     const waypoints = drawWaypoints(map, view.waypoints);
     if (waypoints.getLayers().length > 0) bounds.extend(waypoints.getBounds());
+    // What the page is linked to that the owner ticked (US-99).
+    const overlays = drawOverlays(map, view.overlays);
+    if (overlays.getLayers().length > 0) bounds.extend(overlays.getBounds());
     if (bounds.isValid()) {
       map.fitBounds(bounds, { maxZoom: 15, padding: [16, 16] });
     }
@@ -122,16 +126,25 @@ enum OverviewMessage {
 }
 
 /// Start the overview map, with a collection's `waypoints` among its lines
-/// (US-86). The handle is the channel, read for the map's whole life: every
+/// (US-86), and the `overlays` a page's links put there (US-99). The handle is the channel, read for the map's whole life: every
 /// click on a line and every hover arrives on it as an [`OverviewEvent`].
-pub fn start_overview_map(lines: Vec<OverviewLine>, waypoints: Vec<MapWaypoint>) -> document::Eval {
+pub fn start_overview_map(
+    lines: Vec<OverviewLine>,
+    waypoints: Vec<MapWaypoint>,
+    overlays: Overlays,
+) -> document::Eval {
     #[derive(Serialize)]
     struct View {
         lines: Vec<OverviewLine>,
         waypoints: Vec<MapWaypoint>,
+        overlays: Overlays,
     }
-    let eval = document::eval(&with_waypoints(OVERVIEW_MAP_SCRIPT));
-    if let Err(err) = eval.send(View { lines, waypoints }) {
+    let eval = document::eval(&with_overlays(OVERVIEW_MAP_SCRIPT));
+    if let Err(err) = eval.send(View {
+        lines,
+        waypoints,
+        overlays,
+    }) {
         dioxus::logger::tracing::error!("could not draw the overview map: {err}");
     }
     eval
