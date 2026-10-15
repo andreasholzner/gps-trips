@@ -218,6 +218,8 @@ fn OverviewMap(
                         });
                     }
                     OverviewEvent::Hover(id) => highlighted.set(id),
+                    // A share's overview has no waypoints and no links.
+                    OverviewEvent::OpenWaypoint(_) | OverviewEvent::OpenOverlay(_) => {}
                 }
             }
         }
@@ -254,6 +256,7 @@ pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[TripTrack]) -> Vec<
                 id: trip.id,
                 name: trip.name.clone(),
                 color,
+                icon: crate::activity_icon::map_icon(trip.activity_type),
                 points: track::lat_lon(&track.coordinates),
             })
         })

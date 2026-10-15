@@ -1,0 +1,63 @@
+/* What lies under the pointer on a map (US-104): the hint naming it, and the
+   menu to choose one from, each row an icon and a name. A menu entry is a
+   button stripped of Pico's filled-block look, as a popup's photo is. */
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  white-space: nowrap;
+}
+
+.pick-icon {
+  display: inline-block;
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.pick-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.leaflet-popup.pick-menu .leaflet-popup-content {
+  margin: 0.35rem;
+}
+
+.pick-list {
+  margin: 0;
+  padding: 0;
+}
+
+.pick-list li {
+  margin: 0;
+  list-style: none;
+}
+
+.pick-list .pick-row {
+  width: 100%;
+  margin: 0;
+  padding: 0.3rem 0.45rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.pick-list button.pick-row {
+  cursor: pointer;
+}
+
+.pick-list button.pick-row:hover,
+.pick-list button.pick-row:focus-visible {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* What opens nothing — the page's own track, a recipient's waypoint — is
+   named in a tap's menu, but not offered. */
+.pick-list span.pick-row {
+  opacity: 0.7;
+}

@@ -120,6 +120,7 @@ pub fn TripDetail(id: i64) -> Element {
                 Tagging { tagged: Tagged::Trip(id) }
                 TrackSection {
                     id,
+                    name: trip.name.clone(),
                     activity: trip.activity_type,
                     markers: photos::photo_markers(archive().base_url(), photos.as_deref().unwrap_or(&[])),
                     overlays: overlays(),

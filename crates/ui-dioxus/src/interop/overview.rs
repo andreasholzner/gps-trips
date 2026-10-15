@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use super::overlays::{with_overlays, Overlays};
 use super::waypoints::MapWaypoint;
+use crate::activity_icon::MapIcon;
 
 /// Draws into `#overview-map`, over OSM tiles, one line per trip in the
-/// color it is given, and sends
-/// the trip's id back when its line is clicked or tapped. Drawn into once per
+/// color it is given, and sends back what is chosen of what lies under the
+/// pointer (US-104): a trip's id, a waypoint's, or a linked line's place. Drawn into once per
 /// mount; a map left in the registry by an earlier mount belongs to a
 /// container that is gone, and is removed — the track map's disposal rule.
 const OVERVIEW_MAP_SCRIPT: &str = r##"
@@ -61,13 +62,12 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     const view = await dioxus.recv();
     const bounds = L.latLngBounds([]);
     const drawn = new Map();
+    // What the pointer can be over (US-104), in the page's order.
+    const picks = [];
     for (const line of view.lines || []) {
       if (line.points.length === 0) continue;
       const path = L.polyline(line.points, { color: line.color, weight: WEIGHT }).addTo(map);
-      // A node, not the string: Leaflet puts a string tooltip in as HTML, and
-      // a trip's name comes from a GPX `<name>` or a Komoot title.
-      path.bindTooltip(document.createTextNode(line.name), { sticky: true });
-      path.on("click", () => report({ open: line.id }));
+      picks.push(pickLine(path, line, { open: line.id }));
       path.on("mouseover", () => report({ hover: line.id }));
       path.on("mouseout", () => report({ hover: null }));
       drawn.set(line.id, path);
@@ -78,7 +78,8 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     if (waypoints.getLayers().length > 0) bounds.extend(waypoints.getBounds());
     // What the page is linked to that the owner ticked (US-99) — left out of
     // the framing, so ticking one leaves the view where it is (US-105).
-    drawOverlays(map, view.overlays);
+    const overlays = drawOverlays(map, view.overlays);
+    setPicking(map, [...picks, ...waypointPicks(map, waypoints), ...overlays.picks], report);
     if (bounds.isValid()) {
       map.framed = bounds.toBBoxString();
       if (earlier && earlier.framed === map.framed) {
@@ -115,6 +116,8 @@ pub struct OverviewLine {
     pub name: String,
     /// The trip's activity color (US-75).
     pub color: &'static str,
+    /// What leads its name in the map's hint and menu (US-104).
+    pub icon: Option<MapIcon>,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
 }
@@ -127,6 +130,10 @@ pub enum OverviewEvent {
     Open(i64),
     /// The pointer went onto the line, or off it (US-72).
     Hover(Option<i64>),
+    /// A waypoint was chosen: open its page (US-104).
+    OpenWaypoint(i64),
+    /// The `n`th line a ticked link put there was chosen (US-104).
+    OpenOverlay(usize),
 }
 
 /// What Rust tells the map once it is drawn.
@@ -187,6 +194,17 @@ mod tests {
         assert_eq!(open, OverviewEvent::Open(7));
         assert_eq!(over, OverviewEvent::Hover(Some(7)));
         assert_eq!(off, OverviewEvent::Hover(None));
+    }
+
+    #[test]
+    fn us104_the_map_reports_a_waypoint_or_a_linked_line_chosen() {
+        let waypoint: OverviewEvent =
+            serde_json::from_value(serde_json::json!({ "open_waypoint": 4 })).unwrap();
+        let overlay: OverviewEvent =
+            serde_json::from_value(serde_json::json!({ "open_overlay": 1 })).unwrap();
+
+        assert_eq!(waypoint, OverviewEvent::OpenWaypoint(4));
+        assert_eq!(overlay, OverviewEvent::OpenOverlay(1));
     }
 
     #[test]

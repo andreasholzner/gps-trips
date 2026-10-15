@@ -301,3 +301,23 @@ async fn us94_one_shared_track_opens_its_page() {
         "{html}"
     );
 }
+
+#[test]
+fn us104_a_recipients_waypoint_is_named_on_the_map_but_opens_nothing() {
+    // There is no shared waypoint page to open.
+    let read = Ok(vec![trip_archive_types::SharedWaypoint {
+        id: 4,
+        name: Some("Pass".to_string()),
+        description: None,
+        lat: 46.5,
+        lon: 9.8,
+        ele: None,
+        symbol: None,
+    }]);
+
+    let drawn = crate::shared::collection::drawn(read);
+
+    assert_eq!(drawn.len(), 1);
+    assert_eq!(drawn[0].name.as_deref(), Some("Pass"));
+    assert!(!drawn[0].opens);
+}

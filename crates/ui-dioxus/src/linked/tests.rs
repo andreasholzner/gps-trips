@@ -254,6 +254,12 @@ fn us99_a_ticked_line_takes_its_activitys_color_and_its_kinds_style() {
     );
     assert_eq!(planned.dash, Kind::Planned.dash());
     assert_eq!(planned.points, vec![[46.5, 9.1]]);
+    // US-104: named after its activity's icon, and leading to the row's page.
+    assert_eq!(
+        planned.icon,
+        crate::activity_icon::map_icon(ActivityType::Hiking)
+    );
+    assert_eq!(planned.to, Route::TripDetail { id: 2 });
     assert_eq!(
         stage.color,
         crate::activity_color::color(ActivityType::Cycling)
@@ -299,6 +305,8 @@ async fn us99_what_is_ticked_is_read_for_the_map_in_list_order() {
     assert_eq!(overlays.lines.len(), 1);
     assert_eq!(overlays.lines[0].name, "The plan");
     assert!(!overlays.lines[0].points.is_empty());
+    assert_eq!(overlays.route(0), Some(Route::TripDetail { id: plan }));
+    assert_eq!(overlays.route(1), None);
     assert_eq!(
         overlays.waypoints,
         vec![crate::interop::MapWaypoint::from(&waypoint)]

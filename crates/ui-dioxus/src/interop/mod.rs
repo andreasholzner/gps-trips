@@ -20,16 +20,20 @@
 //!
 //! Each widget lives in its own file here: the list's region map and its
 //! heat marks, the detail screen's track map and elevation chart, the
-//! map a photo is placed on by hand, and the map a share opens on.
+//! map a photo is placed on by hand, and the map a share opens on — and what
+//! lies under the pointer on those whose lines open a page (US-104).
 
+mod elevation;
 mod overlays;
 mod overview;
+mod picking;
 mod place;
 mod region;
 mod stats;
 mod track;
 mod waypoints;
 
+pub use elevation::start_elevation_chart;
 pub use overlays::{OverlayLine, Overlays};
 pub use overview::{highlight_on_overview_map, start_overview_map, OverviewEvent, OverviewLine};
 pub use place::start_place_map;
@@ -37,7 +41,7 @@ pub use region::{
     bbox_corners, bbox_param, draw_heat_marks, draw_trip_lines, start_region_map, RegionEvent,
 };
 pub use stats::draw_stats_plot;
-pub use track::{mark_on_track_map, start_elevation_chart, start_track_map};
+pub use track::{mark_on_track_map, start_track_map, OwnTrack, TrackMapEvent};
 pub use waypoints::MapWaypoint;
 
 use dioxus::prelude::*;

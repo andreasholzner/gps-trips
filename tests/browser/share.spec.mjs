@@ -11,6 +11,7 @@
 // `share.rs` and `shares.rs`, and what a share reaches in
 // `tests/it/us53_share.rs` and `us69_shares.rs`.
 import { expect, signIn, test, watchCsp } from "./session.mjs";
+import { clickLine, hintRows, menuEntries, onTheLine } from "./map.mjs";
 import { ownTrips } from "./trips.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -115,10 +116,11 @@ test("a share of several opens on a map of every track, and a line opens its tri
   await expect(recipient.page.locator('#overview-map path[stroke="#1f4e9c"]')).toHaveCount(1);
   await expect(recipient.page.locator(".map-legend li")).toHaveText(["Hiking", "Cycling"]);
 
-  // Both fixtures are the same track, so either line is a trip of the share.
-  // Dispatched on the line itself: a pointer aimed at the middle of a track's
-  // bounding box misses a track that curves.
-  await lines.first().dispatchEvent("click");
+  // Both fixtures are the same track, so a click on it offers both (US-104),
+  // and either is a trip of the share.
+  await clickLine(recipient.page, lines.first());
+  await expect(menuEntries(recipient.page, "overview-map")).toHaveCount(2);
+  await menuEntries(recipient.page, "overview-map").first().click();
   await expect(recipient.page).toHaveURL(new RegExp(`/app/s/${token}/trips/(${first}|${second})$`));
   await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
 
@@ -160,8 +162,10 @@ test("the owner shares a summary, and a line on its map opens a shared trip (US-
   const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
   await expect(lines).toHaveCount(2);
 
-  // Both fixtures are the same track, so either line is a trip of the share.
-  await lines.first().dispatchEvent("click");
+  // Both fixtures are the same track, so a click on it offers both (US-104),
+  // and either is a trip of the share.
+  await clickLine(recipient.page, lines.first());
+  await menuEntries(recipient.page, "overview-map").first().click();
   await expect(recipient.page).toHaveURL(new RegExp(`/app/s/${token}/trips/(${first}|${second})$`));
   await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
 
@@ -219,8 +223,16 @@ test("trips of one activity are told apart, and a row and its line point at each
   await secondLine.dispatchEvent("mouseout");
   await expect(rows.nth(1)).not.toHaveClass(/highlighted/);
 
-  // And a click still opens the trip.
-  await secondLine.dispatchEvent("click");
+  // The two lie on each other, so a click offers both (US-104); pointing at
+  // an entry points at its row, as pointing at its line does, and choosing
+  // it opens the trip.
+  await clickLine(page, secondLine);
+  const entries = menuEntries(page, "overview-map");
+  await expect(entries).toHaveCount(2);
+  await entries.nth(1).hover();
+  await expect(rows.nth(1)).toHaveClass(/highlighted/);
+  await expect(secondLine).toHaveAttribute("stroke-width", "7");
+  await entries.nth(1).click();
   await expect(page).toHaveURL(new RegExp(`/app/s/${token}/trips/${second}$`));
   await recipient.close();
 });
@@ -246,12 +258,11 @@ test("a trip's name on the share's map is shown as text, never run as markup (US
   await recipient.page.goto(`/app/s/${token}`);
   const lines = recipient.page.locator("#overview-map path.leaflet-interactive");
   await expect(lines).toHaveCount(2);
-  for (const line of await lines.all()) {
-    await line.dispatchEvent("mouseover");
-  }
+  // Both are the same track: the hint names them both (US-104).
+  const at = await onTheLine(lines.first());
+  await recipient.page.mouse.move(at.x, at.y);
 
-  const tooltips = recipient.page.locator("#overview-map .leaflet-tooltip");
-  await expect(tooltips.filter({ hasText: name })).toHaveCount(1);
+  await expect(hintRows(recipient.page, "overview-map").filter({ hasText: name })).toHaveCount(1);
   await expect(recipient.page.locator("#overview-map .leaflet-tooltip img")).toHaveCount(0);
   expect(await recipient.page.evaluate(() => window.__injected)).toBeUndefined();
   await recipient.close();
@@ -353,10 +364,10 @@ test("collections selected on the trip list are shared, and the link opens them 
   await expect(recipient.page.locator("#collection-waypoints tbody tr")).toHaveCount(2);
   await expect(recipient.page.locator("#edit-collection")).toHaveCount(0);
 
-  await recipient.page
-    .locator("#overview-map path.leaflet-interactive")
-    .first()
-    .dispatchEvent("click");
+  await clickLine(
+    recipient.page,
+    recipient.page.locator("#overview-map path.leaflet-interactive").first(),
+  );
   await expect(recipient.page).toHaveURL(/\/app\/s\/[0-9a-f]+\/collection-tracks\/\d+$/);
   await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
   await expect(recipient.page.getByRole("link", { name: "Download GPX" })).toBeVisible();
@@ -390,7 +401,7 @@ test("tracks selected on a collection's page are shared without their collection
   await expect(lines).toHaveCount(2);
   await expect(recipient.page.locator("#collection-tracks tbody tr")).toHaveCount(2);
 
-  await lines.first().dispatchEvent("click");
+  await clickLine(recipient.page, lines.first());
   await expect(recipient.page.locator("#track-map.leaflet-container")).toBeVisible();
   await expect(recipient.page.locator("#collection-of-track")).toHaveCount(0);
   await recipient.page.getByRole("link", { name: "Shared tracks" }).click();

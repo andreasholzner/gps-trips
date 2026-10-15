@@ -122,21 +122,37 @@ fn WaypointMap(detail: WaypointDetail, overlays: Overlays) -> Element {
                     id: track.id,
                     name: track.name.clone(),
                     color: activity_color::color(track.activity_type),
+                    icon: crate::activity_icon::map_icon(track.activity_type),
                     points: track::polyline(&geometry),
                 }),
                 Err(err) => dioxus::logger::tracing::error!("could not read the track: {err}"),
             }
         }
-        let mut map =
-            interop::start_overview_map(lines, vec![MapWaypoint::from(&detail.waypoint)], overlays);
+        let mut map = interop::start_overview_map(
+            lines,
+            vec![own_marker(&detail.waypoint)],
+            overlays.clone(),
+        );
         while let Ok(event) = map.recv::<OverviewEvent>().await {
-            if let OverviewEvent::Open(track) = event {
-                navigator().push(Route::CollectionTrack { id: track });
+            let to = match event {
+                OverviewEvent::Open(track) => Some(Route::CollectionTrack { id: track }),
+                OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
+                OverviewEvent::OpenOverlay(n) => overlays.route(n),
+                OverviewEvent::Hover(_) => None,
+            };
+            if let Some(to) = to {
+                navigator().push(to);
             }
         }
     }));
 
     rsx! { div { id: "overview-map", class: "overview-map" } }
+}
+
+/// The waypoint on its own page's map: named there, but opening nothing —
+/// it would open the page it is on (US-104).
+pub fn own_marker(waypoint: &trip_archive_types::Waypoint) -> MapWaypoint {
+    MapWaypoint::from(waypoint).opening_nothing()
 }
 
 /// The confirmation's question: which waypoint, that nothing else goes with

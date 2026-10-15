@@ -6,7 +6,7 @@
 // exemptions (ADR-0012). Which trips get a line, and in which color, is
 // asserted in `crates/ui-dioxus` (`trip_lines`).
 import { expect, signIn, test } from "./session.mjs";
-import { zoomBy } from "./map.mjs";
+import { menuEntries, onTheLine, zoomBy } from "./map.mjs";
 import { ownTrips, UNTIMED_GPX } from "./trips.mjs";
 
 const ownTrip = ownTrips(test);
@@ -20,15 +20,6 @@ const listOf = (q) => `/app/?q=${encodeURIComponent(q)}`;
 
 /// The trip's name, as the import gave it.
 const nameOf = async (request, id) => (await (await request.get(`/api/trips/${id}`)).json()).name;
-
-/// A point on the line itself, halfway along it, in viewport coordinates.
-const onTheLine = (line) =>
-  line.evaluate((path) => {
-    const at = path
-      .getPointAtLength(path.getTotalLength() / 2)
-      .matrixTransform(path.getScreenCTM());
-    return { x: at.x, y: at.y };
-  });
 
 test.beforeEach(async ({ page }) => {
   await signIn(page.request);
@@ -260,11 +251,16 @@ test("recorded and planned trips are drawn together, each in its line style (US-
     // one is hit wherever it is drawn.
     await expect(page.locator("#region-map .trip-line-hit")).toHaveCount(1);
 
-    // A click on the planned line opens the planned trip.
+    // Both are the same walk, so a click on the planned line offers both,
+    // in the list's order (US-104); choosing the plan opens it.
     const dashed = page.locator('#region-map .trip-line[stroke-dasharray="8 6"]');
-    await page.locator("#region-map").scrollIntoViewIfNeeded();
     const at = await onTheLine(dashed);
     await page.mouse.click(at.x, at.y);
+    await expect(menuEntries(page, "region-map")).toHaveText([
+      new RegExp(`^${tag} Recorded`),
+      `${tag} Planned`,
+    ]);
+    await menuEntries(page, "region-map").nth(1).click();
     await expect(page).toHaveURL(new RegExp(`/app/trips/${plannedId}$`));
   } finally {
     await request.delete(`/api/trips/${plannedId}`);

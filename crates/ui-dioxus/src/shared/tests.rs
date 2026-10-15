@@ -200,6 +200,7 @@ fn us53_each_trip_whose_track_was_read_gets_a_line() {
             name: "Two".to_string(),
             // The share's second hiking trip (US-72).
             color: "#9b2543",
+            icon: crate::activity_icon::map_icon(ActivityType::Hiking),
             points: vec![[59.9, 10.7], [60.0, 10.8]],
         }]
     );

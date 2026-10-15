@@ -236,6 +236,9 @@ pub fn SharedMap(
                 OverviewEvent::Open(track) => {
                     navigator().push(track_route(Some(&token), track));
                 }
+                // A recipient's waypoints open nothing, and nothing is
+                // linked to a collection.
+                OverviewEvent::OpenWaypoint(_) | OverviewEvent::OpenOverlay(_) => {}
                 OverviewEvent::Hover(track) => {
                     if let Some(map) = handle.read().as_ref() {
                         interop::highlight_on_overview_map(map, track);
@@ -253,7 +256,11 @@ pub fn SharedMap(
 }
 
 /// The waypoints as a map draws them; ones that could not be read cost
-/// their markers, not the map.
+/// their markers, not the map. Each opens nothing: a recipient has no
+/// waypoint pages (US-104).
 pub fn drawn(read: Result<Vec<SharedWaypoint>, api::ApiError>) -> Vec<MapWaypoint> {
     crate::collection::drawn_waypoints(read.map(|read| read.iter().map(as_waypoint).collect()))
+        .into_iter()
+        .map(MapWaypoint::opening_nothing)
+        .collect()
 }

@@ -71,6 +71,7 @@ pub fn lines(data: &TagSummaries, tracks: &[TripTrack]) -> Vec<OverviewLine> {
                 id: trip.id,
                 name: trip.name.clone(),
                 color,
+                icon: crate::activity_icon::map_icon(trip.activity_type),
                 points: track::lat_lon(&track.coordinates),
             })
         })
@@ -139,6 +140,8 @@ mod tests {
         );
         assert_eq!(lines[0].name, "Trip 1");
         assert_eq!(lines[0].points[0], [60.0, 10.0]);
+        // US-104: named in the map's hint after its activity's icon.
+        assert_eq!(lines[1].icon, crate::activity_icon::map_icon(Cycling));
     }
 
     #[test]

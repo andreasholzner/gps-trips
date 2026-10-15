@@ -185,6 +185,9 @@ fn RegionMap(
                 Ok(RegionEvent::Open(line)) => {
                     navigator().push(route_for(line.source, line.id));
                 }
+                Ok(RegionEvent::OpenWaypoint(id)) => {
+                    navigator().push(Route::Waypoint { id });
+                }
                 Err(err) => {
                     dioxus::logger::tracing::error!("the region map stopped reporting: {err}");
                     break;

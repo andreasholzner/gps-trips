@@ -7,6 +7,7 @@
 // shows for given tags are asserted in `crates/ui-dioxus` (`summary`),
 // without a browser.
 import { expect, signIn, test } from "./session.mjs";
+import { clickLine, menuEntries } from "./map.mjs";
 import { ownTrips } from "./trips.mjs";
 
 const ownTrip = ownTrips(test);
@@ -61,8 +62,11 @@ test("the menu opens the summary, and a chosen tag stays in the URL and draws it
   await expect(page.locator("#summary-chosen")).toContainText(alps);
   await expect(lines(page)).toHaveCount(2);
 
-  // Either line is one of the two trips: the fixtures are the same track.
-  await lines(page).first().dispatchEvent("click");
+  // The fixtures are the same track, so a click on it offers both (US-104),
+  // and either is one of the two trips.
+  await clickLine(page, lines(page).first());
+  await expect(menuEntries(page, "overview-map")).toHaveCount(2);
+  await menuEntries(page, "overview-map").first().click();
   await expect(page).toHaveURL(new RegExp(`/app/trips/(${walk}|${ride})$`));
 });
 

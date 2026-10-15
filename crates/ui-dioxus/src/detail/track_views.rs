@@ -7,11 +7,13 @@ use trip_archive_types::{ActivityType, Climb};
 
 use super::climbs::ClimbsList;
 use crate::activity_color;
+use crate::activity_icon;
 use crate::api::{self, ApiClient};
 use crate::format;
-use crate::interop::{self, MapWaypoint, Overlays};
-use crate::photos::{self, PhotoMarker, PhotoView, PopupTap};
+use crate::interop::{self, MapWaypoint, Overlays, OwnTrack, TrackMapEvent};
+use crate::photos::{self, PhotoMarker, PhotoView};
 use crate::track::{self, Track};
+use crate::Route;
 
 /// The track on an OSM map and the elevation profile below it (US-7), from
 /// the one fetch that carries both (ADR-0025).
@@ -21,11 +23,13 @@ use crate::track::{self, Track};
 ///
 /// `on_open_photos` is told the set a photo tapped in a marker's popup opens
 /// the viewer on, and where in it to start (US-62). `activity` colors the
-/// line (US-75). `overlays` are what the page is linked to that the owner
-/// ticked to see on the map (US-99).
+/// line (US-75), and with `name` names it in the map's hint (US-104).
+/// `overlays` are what the page is linked to that the owner ticked to see on
+/// the map (US-99).
 #[component]
 pub fn TrackSection(
     id: i64,
+    name: String,
     activity: ActivityType,
     markers: Vec<PhotoMarker>,
     #[props(default)] overlays: Overlays,
@@ -57,6 +61,7 @@ pub fn TrackSection(
             (Some(Ok(track)), Some(climbs)) => rsx! {
                 TrackViews {
                     track: track.clone(),
+                    name: name.clone(),
                     activity,
                     climbs,
                     markers: markers.clone(),
@@ -82,6 +87,7 @@ pub fn TrackSection(
 #[component]
 pub fn TrackViews(
     track: Track,
+    name: String,
     activity: ActivityType,
     climbs: Vec<Climb>,
     markers: Vec<PhotoMarker>,
@@ -101,8 +107,12 @@ pub fn TrackViews(
 
     rsx! {
         TrackMap {
-            points,
-            color: activity_color::color(activity),
+            line: OwnTrack {
+                name,
+                color: activity_color::color(activity),
+                icon: activity_icon::map_icon(activity),
+                points,
+            },
             markers,
             waypoints,
             overlays,
@@ -121,8 +131,7 @@ pub fn TrackViews(
 /// this subtree from the moment it initialises (ADR-0025).
 #[component]
 fn TrackMap(
-    points: Vec<[f64; 2]>,
-    color: &'static str,
+    line: OwnTrack,
     markers: Vec<PhotoMarker>,
     waypoints: Vec<MapWaypoint>,
     overlays: Overlays,
@@ -150,13 +159,25 @@ fn TrackMap(
     // the markers it was first drawn with — a photo added or placed (US-30)
     // stayed where it was until the page was reloaded.
     let _draw = use_resource(use_reactive!(
-        |points, color, markers, waypoints, overlays| async move {
+        |line, markers, waypoints, overlays| async move {
             let mut map =
-                interop::start_track_map(points, color, markers.clone(), waypoints, overlays);
+                interop::start_track_map(line, markers.clone(), waypoints, overlays.clone());
             handle.set(Some(map));
-            while let Ok(tap) = map.recv::<PopupTap>().await {
-                if let Some(opened) = photos::tapped(&markers, tap) {
-                    on_open_photos.call(opened);
+            while let Ok(event) = map.recv::<TrackMapEvent>().await {
+                match event {
+                    TrackMapEvent::Photo(tap) => {
+                        if let Some(opened) = photos::tapped(&markers, tap) {
+                            on_open_photos.call(opened);
+                        }
+                    }
+                    TrackMapEvent::OpenWaypoint(id) => {
+                        navigator().push(Route::Waypoint { id });
+                    }
+                    TrackMapEvent::OpenOverlay(n) => {
+                        if let Some(to) = overlays.route(n) {
+                            navigator().push(to);
+                        }
+                    }
                 }
             }
         }

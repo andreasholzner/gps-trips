@@ -12,6 +12,14 @@ pub mod trip_map {
     pub const LINES_FROM_ZOOM: f64 = 7.0;
 }
 
+/// What lies under the pointer on a map (US-104).
+pub mod map_picking {
+    /// How many the hover hint names before an ellipsis says there are more:
+    /// a pointer resting where a dense region's lines cross must not get a
+    /// hint taller than the map.
+    pub const HINT_ROWS: usize = 5;
+}
+
 /// The elevation profile's speed and incline (US-79).
 pub mod elevation_profile {
     /// The time the speed at a point is averaged over, centred on it: GPS

@@ -110,6 +110,7 @@ pub fn SharedCollectionTrackView(token: String, id: i64, overview: ShareOverview
                     Some((read_for, Ok((geometry, waypoints)))) if *read_for == id => rsx! {
                         TrackViews {
                             track: geometry.clone(),
+                            name: detail.track.name.clone(),
                             activity: detail.track.activity_type,
                             climbs: Vec::new(),
                             markers: Vec::new(),

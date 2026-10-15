@@ -1,6 +1,6 @@
 //! A collection's waypoints on a map (US-86): markers in a style no track
-//! uses, named on hover or tap — the icon of their symbol where there is one
-//! (US-95). Shared by the maps that draw them — a
+//! uses — the icon of their symbol where there is one (US-95) — named in the
+//! map's hint and menu (US-104). Shared by the maps that draw them — a
 //! collection's, and a collection track's — as a function their scripts
 //! start with, so the two cannot drift apart.
 
@@ -10,8 +10,9 @@ use trip_archive_types::Waypoint;
 use crate::waypoint_icon::{self, WaypointIcon, WAYPOINT_MARK};
 
 /// Defines `drawWaypoints(map, waypoints)`, which adds the markers to `map`
-/// and returns them as a feature group, for the caller to frame and to
-/// remove on a redraw.
+/// and returns them as a feature group, for the caller to frame, to pick
+/// from (US-104) and to remove on a redraw; and `waypointSvg(icon)`, the
+/// icon itself, for the map's hint and menu too.
 ///
 /// A diamond, as a `divIcon`: markup rather than Leaflet's default pin,
 /// whose image the bundle does not ship (the photo markers' reason too), and
@@ -22,7 +23,7 @@ use crate::waypoint_icon::{self, WaypointIcon, WAYPOINT_MARK};
 /// marker turns Leaflet's placing transform with it, about the map pane's
 /// corner.
 const WAYPOINTS_JS: &str = r##"
-    function waypointIcon(icon) {
+    function waypointSvg(icon) {
       const ns = "http://www.w3.org/2000/svg";
       const svg = document.createElementNS(ns, "svg");
       svg.setAttribute("viewBox", "0 0 24 24");
@@ -53,6 +54,11 @@ const WAYPOINTS_JS: &str = r##"
         half.setAttribute("fill", icon.half.color);
         svg.appendChild(half);
       }
+      return svg;
+    }
+
+    function waypointIcon(icon) {
+      const svg = waypointSvg(icon);
       return L.divIcon({
         className: icon ? "waypoint-symbol" : "waypoint-mark",
         html: svg,
@@ -66,17 +72,11 @@ const WAYPOINTS_JS: &str = r##"
           const marker = L.marker([waypoint.lat, waypoint.lon], {
             icon: waypointIcon(waypoint.icon),
             keyboard: false,
+            // The map names and opens what lies under the pointer, a
+            // waypoint among the lines (US-104), so its events go on to it.
+            bubblingMouseEvents: true,
           });
-          if (waypoint.name) {
-            // A node, not the string: Leaflet puts a string tooltip in as
-            // HTML, and the name comes from someone else's file.
-            marker.bindTooltip(document.createTextNode(waypoint.name), {
-              direction: "top",
-              offset: [0, -8],
-            });
-            // A finger does not hover: a tap names it.
-            marker.on("click", () => marker.openTooltip());
-          }
+          marker.waypoint = waypoint;
           return marker;
         }),
       ).addTo(map);
@@ -92,21 +92,37 @@ pub(super) fn with_waypoints(script: &str) -> String {
 /// One waypoint as a map draws it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MapWaypoint {
+    pub id: i64,
     pub name: Option<String>,
     pub lat: f64,
     pub lon: f64,
     /// Left out for the plain marker.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<WaypointIcon>,
+    /// Whether choosing it on the map opens its page (US-104): not on its
+    /// own page, nor for a share's recipient, who has no waypoint pages.
+    pub opens: bool,
+}
+
+impl MapWaypoint {
+    /// The same waypoint, named on the map but opening nothing (US-104).
+    pub fn opening_nothing(self) -> Self {
+        Self {
+            opens: false,
+            ..self
+        }
+    }
 }
 
 impl From<&Waypoint> for MapWaypoint {
     fn from(waypoint: &Waypoint) -> Self {
         Self {
+            id: waypoint.id,
             name: waypoint.name.clone(),
             lat: waypoint.lat,
             lon: waypoint.lon,
             icon: waypoint.symbol.as_deref().and_then(waypoint_icon::icon),
+            opens: true,
         }
     }
 }
@@ -136,8 +152,16 @@ mod tests {
 
         assert_eq!(
             sent,
-            serde_json::json!({ "name": "Albula Pass", "lat": 46.58, "lon": 9.84 })
+            serde_json::json!({ "id": 3, "name": "Albula Pass", "lat": 46.58, "lon": 9.84, "opens": true })
         );
+    }
+
+    #[test]
+    fn us104_a_waypoint_opens_its_page_unless_told_it_opens_nothing() {
+        let shown = MapWaypoint::from(&albula(None)).opening_nothing();
+
+        assert!(!shown.opens);
+        assert_eq!(shown.id, 3);
     }
 
     #[test]

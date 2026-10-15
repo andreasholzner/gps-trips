@@ -95,6 +95,8 @@ const ACTIVITY_CSS: Asset = asset!("/assets/activity.css");
 const LIST_CSS: Asset = asset!("/assets/list.css");
 /// The detail screen's own layout, apart so neither sheet outgrows the size cap.
 const DETAIL_CSS: Asset = asset!("/assets/detail.css");
+/// What lies under the pointer on every map (US-104), on the same terms.
+const MAP_CSS: Asset = asset!("/assets/map.css");
 /// The statistics screen's own (US-77), on the same terms.
 const STATS_CSS: Asset = asset!("/assets/stats.css");
 /// The Summary screen's own (US-78), on the same terms.
@@ -126,7 +128,7 @@ const UPLOT_JS: Asset = asset!("/assets/uPlot.iife.min.js");
 /// bookmarkable and survives a reload — the same property the
 /// server-rendered page had for free, and what lets the region rectangle be
 /// restored onto the map on the next load.
-#[derive(Routable, Clone, PartialEq)]
+#[derive(Routable, Clone, Debug, PartialEq)]
 enum Route {
     /// Every screen renders inside the app's own menu (US-60), which is why
     /// it is a layout route: `Link` needs the router's context, and the
@@ -309,6 +311,7 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: ACTIVITY_CSS }
         document::Link { rel: "stylesheet", href: LIST_CSS }
         document::Link { rel: "stylesheet", href: DETAIL_CSS }
+        document::Link { rel: "stylesheet", href: MAP_CSS }
         document::Link { rel: "stylesheet", href: STATS_CSS }
         document::Link { rel: "stylesheet", href: SUMMARY_CSS }
         document::Link { rel: "stylesheet", href: TAGS_CSS }

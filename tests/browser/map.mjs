@@ -23,3 +23,35 @@ export async function zoomBy(page, container, label, times, from) {
     );
   }
 }
+
+/// A point on an SVG line itself, halfway along it, in viewport coordinates,
+/// once its map is scrolled into view. Aimed at the line rather than its
+/// bounding box, whose middle misses a track that curves.
+export async function onTheLine(line) {
+  await line.evaluate((path) =>
+    path.closest(".leaflet-container").scrollIntoView({ block: "center" }),
+  );
+  return line.evaluate((path) => {
+    const at = path
+      .getPointAtLength(path.getTotalLength() / 2)
+      .matrixTransform(path.getScreenCTM());
+    return { x: at.x, y: at.y };
+  });
+}
+
+/// Click `line` where it is drawn, with the mouse.
+export async function clickLine(page, line) {
+  const at = await onTheLine(line);
+  await page.mouse.click(at.x, at.y);
+}
+
+/// What the map in `#container` names under the pointer (US-104): one row
+/// per line or waypoint, and "…" for more.
+export const hintRows = (page, container) =>
+  page.locator(`#${container} .pick-hint .pick-rows > *`);
+
+/// The menu a click where several things lie opens, or any tap (US-104):
+/// its entries that open a page, and all of its rows.
+export const menuEntries = (page, container) =>
+  page.locator(`#${container} .pick-menu`).getByRole("button");
+export const menuRows = (page, container) => page.locator(`#${container} .pick-menu .pick-row`);

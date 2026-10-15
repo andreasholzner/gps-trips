@@ -160,6 +160,11 @@ fn us86_each_track_is_drawn_in_its_activitys_color_and_a_track_not_read_shifts_n
     assert_eq!((lines[0].id, lines[0].color), (1, colors[0]));
     assert_eq!((lines[1].id, lines[1].color), (3, colors[2]));
     assert_eq!(lines[1].name, "Stage 3");
+    // US-104: named in the map's hint after its activity's icon.
+    assert_eq!(
+        lines[1].icon,
+        crate::activity_icon::map_icon(ActivityType::Hiking)
+    );
     // Leaflet takes `[lat, lon]`.
     assert_eq!(lines[0].points, [[46.55, 9.32]]);
 }

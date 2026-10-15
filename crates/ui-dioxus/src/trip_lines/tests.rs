@@ -169,6 +169,30 @@ fn a_line_is_named_after_its_trip_and_follows_its_track() {
 }
 
 #[test]
+fn us104_a_line_leads_its_name_with_its_activitys_icon() {
+    let trips = [
+        hike(1, [10.0, 59.0, 11.0, 60.0]),
+        trip(2, ActivityType::Unknown, Some([10.0, 59.0, 11.0, 60.0])),
+    ];
+    let tracks = [a_track(1), a_track(2)];
+
+    let drawn = lines(
+        &trips,
+        &[
+            (MapSource::Trips, &tracks[0]),
+            (MapSource::Trips, &tracks[1]),
+        ],
+        &heat::marks(&trips),
+    );
+
+    assert_eq!(
+        drawn.lines[0].icon,
+        crate::activity_icon::map_icon(ActivityType::Hiking)
+    );
+    assert_eq!(drawn.lines[1].icon, None);
+}
+
+#[test]
 fn a_track_that_could_not_be_read_is_left_off() {
     let trips = [
         hike(1, [10.0, 59.0, 11.0, 60.0]),

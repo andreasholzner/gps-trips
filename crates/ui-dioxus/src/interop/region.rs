@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::waypoints::with_waypoints;
+use super::picking::with_picking;
 use crate::heat::HeatMarks;
 use crate::map_items::MapSource;
 use crate::trip_lines::{TripLines, Viewport};
@@ -140,6 +140,7 @@ const REGION_MAP_SCRIPT: &str = r##"
         heat.clearLayers();
         lines.clearLayers();
         clearWaypoints();
+        setPicking(map, [], report);
         const marks = message.marks.marks;
         points = message.marks.fit;
         for (const mark of marks) {
@@ -159,6 +160,8 @@ const REGION_MAP_SCRIPT: &str = r##"
         clearWaypoints();
         waypoints = drawWaypoints(map, message.lines.waypoints);
         points = message.lines.fit;
+        // What the pointer can be over (US-104), in the list's order.
+        const picks = [];
         for (const line of message.lines.lines) {
           if (line.points.length === 0) continue;
           // Each kind in its line style (US-90): solid, dashed or dotted.
@@ -182,10 +185,7 @@ const REGION_MAP_SCRIPT: &str = r##"
                 className: "trip-line-hit",
               }).addTo(lines)
             : path;
-          // A node, not the string: Leaflet puts a string tooltip in as
-          // HTML, and a trip's name comes from a GPX or a Komoot title.
-          hit.bindTooltip(document.createTextNode(line.name), { sticky: true });
-          hit.on("click", () => report({ open: { source: line.source, id: line.id } }));
+          picks.push(pickLine(hit, line, { open: { source: line.source, id: line.id } }));
           // The line under the pointer stands out above the others.
           hit.on("mouseover", () => {
             path.setStyle({ weight: HIGHLIGHTED_WEIGHT });
@@ -194,6 +194,7 @@ const REGION_MAP_SCRIPT: &str = r##"
           });
           hit.on("mouseout", () => path.setStyle({ weight: LINE_WEIGHT }));
         }
+        setPicking(map, [...picks, ...waypointPicks(map, waypoints)], report);
         fitOnce();
       }
     }
@@ -218,6 +219,8 @@ pub enum RegionEvent {
     /// A line was clicked or tapped: open its trip (US-73) or collection
     /// track (US-87).
     Open(Opened),
+    /// A waypoint was chosen: open its page (US-104).
+    OpenWaypoint(i64),
 }
 
 /// Whose line was clicked: a trip and a collection track may share an id.
@@ -233,7 +236,7 @@ pub struct Opened {
 /// [`RegionEvent`]s — for as long as the map should report: it is the
 /// channel.
 pub fn start_region_map(restore: Option<[f64; 4]>) -> document::Eval {
-    let eval = document::eval(&with_waypoints(REGION_MAP_SCRIPT));
+    let eval = document::eval(&with_picking(REGION_MAP_SCRIPT));
     if let Err(err) = eval.send(MapMessage::Region(restore)) {
         dioxus::logger::tracing::error!("could not seed the region map: {err}");
     }
@@ -281,6 +284,7 @@ pub fn bbox_corners(param: &str) -> Option<[f64; 4]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::activity_icon::MapIcon;
     use crate::heat::HeatMark;
     use crate::interop::MapWaypoint;
     use trip_archive_types::ActivityType;
@@ -325,14 +329,20 @@ mod tests {
                 id: 7,
                 name: "Ridge".to_string(),
                 color: "#b2182b",
+                icon: Some(MapIcon {
+                    paths: &["M0 0Z"],
+                    color: "#b2182b",
+                }),
                 dash: Some("1 7"),
                 points: vec![[60.0, 11.0]],
             }],
             waypoints: vec![MapWaypoint {
+                id: 4,
                 name: Some("Pass".to_string()),
                 lat: 46.5,
                 lon: 9.8,
                 icon: None,
+                opens: true,
             }],
             fit: vec![[60.0, 11.0]],
         };
@@ -345,10 +355,11 @@ mod tests {
                     "id": 7,
                     "name": "Ridge",
                     "color": "#b2182b",
+                    "icon": { "paths": ["M0 0Z"], "color": "#b2182b" },
                     "dash": "1 7",
                     "points": [[60.0, 11.0]],
                 }],
-                "waypoints": [{ "name": "Pass", "lat": 46.5, "lon": 9.8 }],
+                "waypoints": [{ "id": 4, "name": "Pass", "lat": 46.5, "lon": 9.8, "opens": true }],
                 "fit": [[60.0, 11.0]],
             } })
         );
@@ -371,6 +382,15 @@ mod tests {
                 source: MapSource::CollectionTracks,
                 id: 7
             })
+        );
+    }
+
+    #[test]
+    fn us104_the_map_reports_a_waypoint_chosen() {
+        assert_eq!(
+            serde_json::from_value::<RegionEvent>(serde_json::json!({ "open_waypoint": 4 }))
+                .unwrap(),
+            RegionEvent::OpenWaypoint(4)
         );
     }
 

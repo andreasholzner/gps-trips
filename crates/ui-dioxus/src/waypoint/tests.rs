@@ -33,6 +33,14 @@ fn form_of(edit: impl FnOnce(&mut WaypointForm)) -> WaypointForm {
 // ── Names ────────────────────────────────────────────────────────────────────
 
 #[test]
+fn us104_the_pages_own_waypoint_is_named_on_its_map_but_opens_nothing() {
+    let marker = own_marker(&a_hut());
+
+    assert_eq!(marker.name.as_deref(), Some("Chamanna"));
+    assert!(!marker.opens, "it would open the page it is on");
+}
+
+#[test]
 fn us98_a_waypoint_without_a_name_is_called_unnamed() {
     let unnamed = trip_archive_types::Waypoint {
         name: None,

@@ -145,7 +145,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | ✅     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
 | [US-103](#us-103--proposed-links)                             | ⏳     | Proposed links                               | [Trip page](#trip-page)                                             |
-| [US-104](#us-104--pick-from-stacked-lines)                    | 📋     | Pick from stacked lines                      | [Maps](#maps)                                                       |
+| [US-104](#us-104--pick-from-stacked-lines)                    | ✅     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
@@ -1716,7 +1716,7 @@ families follow)
 
 ### US-104 — Pick from stacked lines
 
-**Planned 📋** — As the owner and as a share's recipient, I see everything under the pointer on a
+**Done ✅** — As the owner and as a share's recipient, I see everything under the pointer on a
 map whose lines and waypoints open a page, and choose which one to open, so a line hidden under
 another is not out of reach and a click opens what I meant.
 

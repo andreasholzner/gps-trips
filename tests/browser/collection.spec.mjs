@@ -13,6 +13,7 @@
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { clickLine, hintRows } from "./map.mjs";
 import { chooseActivity } from "./trips.mjs";
 
 const fixture = (name) =>
@@ -108,11 +109,16 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
   await page.goto(`/app/collections/${id}`);
   const waypoints = waypointsOn(page, "#overview-map");
   await expect(waypoints).toHaveCount(2);
+  // The pass ends the first stage and starts the second: the hint names all
+  // three, the lines first (US-104).
   await waypoints.first().hover();
-  await expect(page.locator(".leaflet-tooltip")).toHaveText("San Bernardino Pass");
+  await expect(hintRows(page, "overview-map")).toHaveText([
+    "Stage 1: Splügen",
+    /2$/,
+    "San Bernardino Pass",
+  ]);
 
-  // Dispatched on the line itself, as the share's map test does.
-  await page.locator("#overview-map path.leaflet-interactive").first().dispatchEvent("click");
+  await clickLine(page, page.locator("#overview-map path.leaflet-interactive").first());
   await page.waitForURL(/\/app\/collection-tracks\/\d+$/);
   await expect(page.locator("#trip-name")).toHaveText("Stage 1: Splügen");
   await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
@@ -146,8 +152,10 @@ test("a waypoint with a symbol shows its icon, named on hover; one without keeps
   await expect(symbol).toHaveCount(1);
   await expect(symbol.locator("path.shape")).toHaveAttribute("fill", "#1f7fe0");
   await expect(page.locator("#overview-map .waypoint-mark")).toHaveCount(1);
+  // Named in the map's hint after its icon (US-104).
   await symbol.hover();
-  await expect(page.locator(".leaflet-tooltip")).toHaveText("San Bernardino Pass");
+  const named = hintRows(page, "overview-map").filter({ hasText: "San Bernardino Pass" });
+  await expect(named.locator(".waypoint-symbol path.shape")).toHaveAttribute("fill", "#1f7fe0");
 });
 
 test("a navaid shows its diamond, a two-tone one split in its colors (US-95)", async ({

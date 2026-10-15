@@ -46,7 +46,12 @@ pub fn CollectionTrack(id: i64) -> Element {
             Some((_, Ok(detail))) => rsx! {
                 TrackFigures { track: detail.clone() }
                 Tagging { tagged: Tagged::CollectionTrack(id) }
-                TrackMapSection { id, activity: detail.activity_type, overlays: overlays() }
+                TrackMapSection {
+                    id,
+                    name: detail.name.clone(),
+                    activity: detail.activity_type,
+                    overlays: overlays(),
+                }
                 LinkedTo { end: LinkEnd::CollectionTrack(id), overlays }
                 div { class: "trip-actions",
                     EditCollectionTrack { track: detail.clone(), on_saved: move |_| track.restart() }
@@ -125,7 +130,7 @@ pub fn TrackStats(
 /// The map with the track's own waypoints, and the elevation profile — read
 /// together, so the map is drawn once with both.
 #[component]
-fn TrackMapSection(id: i64, activity: ActivityType, overlays: Overlays) -> Element {
+fn TrackMapSection(id: i64, name: String, activity: ActivityType, overlays: Overlays) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let geometry = use_resource(use_reactive!(|id| async move {
         let archive = archive();
@@ -144,6 +149,7 @@ fn TrackMapSection(id: i64, activity: ActivityType, overlays: Overlays) -> Eleme
             Some(Ok((track, waypoints))) => rsx! {
                 TrackViews {
                     track: track.clone(),
+                    name: name.clone(),
                     activity,
                     climbs: Vec::new(),
                     markers: Vec::new(),

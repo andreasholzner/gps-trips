@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use trip_archive_types::{ActivityType, CollectionWaypoints, TripTrack};
 
 use crate::activity_color;
+use crate::activity_icon::{self, MapIcon};
 use crate::config::trip_map::LINES_FROM_ZOOM;
 use crate::heat::HeatMarks;
 use crate::interop::MapWaypoint;
@@ -51,6 +52,8 @@ pub struct RegionLine {
     pub name: String,
     /// Its shade of its activity's color (US-72, US-75).
     pub color: &'static str,
+    /// What leads its name in the map's hint and menu (US-104).
+    pub icon: Option<MapIcon>,
     /// Its kind's line style (US-90): `None` for a solid line.
     pub dash: Option<&'static str>,
     /// `[lat, lon]`, the order Leaflet takes.
@@ -235,6 +238,7 @@ pub fn lines(
                 id: item.id,
                 name: item.name.clone(),
                 color,
+                icon: activity_icon::map_icon(item.activity_type),
                 dash: item.kind.dash(),
                 points: track::lat_lon(&track.coordinates),
             })

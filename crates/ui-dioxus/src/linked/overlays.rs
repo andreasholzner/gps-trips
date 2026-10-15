@@ -7,6 +7,7 @@ use trip_archive_types::ActivityType;
 
 use super::{Row, RowIcon, Shown};
 use crate::activity_color;
+use crate::activity_icon;
 use crate::api::{self, ApiClient};
 use crate::interop::{MapWaypoint, OverlayLine, Overlays};
 use crate::kinds::Kind;
@@ -24,6 +25,8 @@ pub fn overlay_line(row: &Row, track: &Track) -> Option<OverlayLine> {
     Some(OverlayLine {
         name: row.name.clone(),
         color: activity_color::color(activity),
+        icon: activity_icon::map_icon(activity),
+        to: row.to.clone(),
         dash: kind.dash(),
         points: track::polyline(track),
     })

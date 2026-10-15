@@ -6,41 +6,44 @@
 
 use serde::Serialize;
 
-use super::waypoints::{with_waypoints, MapWaypoint};
+use super::picking::with_picking;
+use super::waypoints::MapWaypoint;
+use crate::activity_icon::MapIcon;
+use crate::Route;
 
 /// Draws `overlays` into `map` as one layer, which the caller removes before
-/// drawing anew, and returns it. The lines take no clicks: the page's own
-/// list leads to them.
+/// drawing anew, and returns it with what of it can be picked (US-104), in
+/// the links' order: each line reports its place among the lines, for Rust
+/// to open the page it leads to, and each waypoint its own page.
 const OVERLAYS_JS: &str = r##"
     function drawOverlays(map, overlays) {
-      const lines = ((overlays && overlays.lines) || [])
-        .filter((line) => line.points.length > 0)
-        .map((line) => {
-          const path = L.polyline(line.points, {
-            color: line.color,
-            weight: 3,
-            dashArray: line.dash || null,
-            lineCap: "round",
-          });
-          // A node, not the string: Leaflet puts a string tooltip in as
-          // HTML, and a name comes from someone's GPX.
-          path.bindTooltip(document.createTextNode(line.name), { sticky: true });
-          return path;
+      const group = L.featureGroup().addTo(map);
+      group.picks = [];
+      ((overlays && overlays.lines) || []).forEach((line, index) => {
+        if (line.points.length === 0) return;
+        const path = L.polyline(line.points, {
+          color: line.color,
+          weight: 3,
+          dashArray: line.dash || null,
+          lineCap: "round",
         });
-      const group = L.featureGroup(lines).addTo(map);
+        group.addLayer(path);
+        group.picks.push(pickLine(path, line, { open_overlay: index }));
+      });
       // Taken off the map in their own group first, so moving them into this
       // one is what puts them back.
       const waypoints = drawWaypoints(map, (overlays && overlays.waypoints) || []);
       map.removeLayer(waypoints);
       for (const marker of waypoints.getLayers()) group.addLayer(marker);
+      group.picks.push(...waypointPicks(map, waypoints));
       return group;
     }
 "##;
 
-/// `script` with what it needs to draw overlays — and waypoints, which
-/// overlays draw with.
+/// `script` with what it needs to draw overlays — and to pick from them, and
+/// waypoints, which overlays draw with.
 pub(super) fn with_overlays(script: &str) -> String {
-    with_waypoints(&format!("{OVERLAYS_JS}\n{script}"))
+    with_picking(&format!("{OVERLAYS_JS}\n{script}"))
 }
 
 /// One linked trip or track on the map.
@@ -49,6 +52,12 @@ pub struct OverlayLine {
     pub name: String,
     /// Its activity's color (US-75).
     pub color: &'static str,
+    /// What leads its name in the map's hint and menu (US-104).
+    pub icon: Option<MapIcon>,
+    /// The page choosing it opens (US-104), kept here: the map reports
+    /// which line was chosen, never where it leads.
+    #[serde(skip)]
+    pub to: Route,
     /// Its kind's Leaflet `dashArray` (US-90); `None` for a solid line.
     pub dash: Option<&'static str>,
     /// `[lat, lon]`, the order Leaflet takes.
@@ -60,6 +69,13 @@ pub struct OverlayLine {
 pub struct Overlays {
     pub lines: Vec<OverlayLine>,
     pub waypoints: Vec<MapWaypoint>,
+}
+
+impl Overlays {
+    /// The page the `n`th line opens (US-104).
+    pub fn route(&self, n: usize) -> Option<Route> {
+        self.lines.get(n).map(|line| line.to.clone())
+    }
 }
 
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
@@ -74,6 +90,8 @@ mod tests {
             lines: vec![OverlayLine {
                 name: "Plan".to_string(),
                 color: "#1f4e9c",
+                icon: None,
+                to: crate::Route::TripDetail { id: 2 },
                 dash: Some("8 6"),
                 points: vec![[46.5, 9.1]],
             }],
@@ -83,7 +101,8 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&overlays).unwrap(),
             serde_json::json!({
-                "lines": [{ "name": "Plan", "color": "#1f4e9c", "dash": "8 6", "points": [[46.5, 9.1]] }],
+                // The page it leads to stays in Rust (US-104).
+                "lines": [{ "name": "Plan", "color": "#1f4e9c", "icon": null, "dash": "8 6", "points": [[46.5, 9.1]] }],
                 "waypoints": [],
             })
         );
@@ -95,5 +114,7 @@ mod tests {
 
         assert!(script.contains("function drawOverlays"), "{script}");
         assert!(script.contains("function drawWaypoints"), "{script}");
+        // US-104: and with what it picks them with.
+        assert!(script.contains("function pickLine"), "{script}");
     }
 }
