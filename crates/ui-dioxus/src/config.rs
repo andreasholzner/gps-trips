@@ -18,6 +18,11 @@ pub mod map_picking {
     /// a pointer resting where a dense region's lines cross must not get a
     /// hint taller than the map.
     pub const HINT_ROWS: usize = 5;
+
+    /// How far from a line, in screen pixels, the pointer may be and still
+    /// be on it — the same for every line, whatever its width or style, so
+    /// a thin solid recorded line is as easy to point at as a dashed plan.
+    pub const LINE_REACH_PX: f64 = 7.0;
 }
 
 /// The elevation profile's speed and incline (US-79).

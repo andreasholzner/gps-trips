@@ -13,7 +13,7 @@
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { clickLine, hintRows } from "./map.mjs";
+import { hintRows, onTheLine } from "./map.mjs";
 import { chooseActivity } from "./trips.mjs";
 
 const fixture = (name) =>
@@ -118,7 +118,16 @@ test("a waypoint is named on hover, and a line opens its track (US-86)", async (
     "San Bernardino Pass",
   ]);
 
-  await clickLine(page, page.locator("#overview-map path.leaflet-interactive").first());
+  // Pointing at a line brings it to the front, so the first stage's line is
+  // found by what the hint names at its middle.
+  for (const line of await page.locator("#overview-map path.leaflet-interactive").all()) {
+    const at = await onTheLine(line);
+    await page.mouse.move(at.x, at.y);
+    if ((await hintRows(page, "overview-map").allTextContents()).join() === "Stage 1: Splügen") {
+      await page.mouse.click(at.x, at.y);
+      break;
+    }
+  }
   await page.waitForURL(/\/app\/collection-tracks\/\d+$/);
   await expect(page.locator("#trip-name")).toHaveText("Stage 1: Splügen");
   await expect(page.locator("#track-map.leaflet-container")).toBeVisible();

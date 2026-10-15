@@ -216,12 +216,14 @@ test("trips of one activity are told apart, and a row and its line point at each
   await rows.nth(0).getByRole("link").blur();
   await expect(firstLine).toHaveAttribute("stroke-width", "4");
 
-  // Pointing at a line highlights its row.
-  await secondLine.dispatchEvent("mouseover");
-  await expect(rows.nth(1)).toHaveClass(/highlighted/);
-  await expect(rows.nth(0)).not.toHaveClass(/highlighted/);
-  await secondLine.dispatchEvent("mouseout");
+  // Pointing at a line highlights its row — of the two lying on each other,
+  // the first the hint names (US-104).
+  const at = await onTheLine(secondLine);
+  await page.mouse.move(at.x, at.y);
+  await expect(rows.nth(0)).toHaveClass(/highlighted/);
   await expect(rows.nth(1)).not.toHaveClass(/highlighted/);
+  await page.locator("#share-title").hover();
+  await expect(rows.nth(0)).not.toHaveClass(/highlighted/);
 
   // The two lie on each other, so a click offers both (US-104); pointing at
   // an entry points at its row, as pointing at its line does, and choosing

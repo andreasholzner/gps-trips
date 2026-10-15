@@ -90,8 +90,6 @@ const REGION_MAP_SCRIPT: &str = r##"
     // Thinner than a share's lines: a dense region draws many at once.
     const LINE_WEIGHT = 3;
     const HIGHLIGHTED_WEIGHT = 6;
-    // How wide a dashed or dotted line is to the pointer (US-90).
-    const HIT_WEIGHT = 14;
     let points = [];
     // A collection's waypoints in view, shown with the lines (US-90).
     let waypoints = null;
@@ -172,27 +170,16 @@ const REGION_MAP_SCRIPT: &str = r##"
             weight: LINE_WEIGHT,
             dashArray: line.dash,
             lineCap: "round",
-            interactive: !line.dash,
             className: "trip-line",
           }).addTo(lines);
-          // A dashed or dotted line is hit only where it is painted: an
-          // unseen, wider path along the same track takes the pointer for
-          // it. A solid line takes it itself.
-          const hit = line.dash
-            ? L.polyline(line.points, {
-                weight: HIT_WEIGHT,
-                opacity: 0,
-                className: "trip-line-hit",
-              }).addTo(lines)
-            : path;
-          picks.push(pickLine(hit, line, { open: { source: line.source, id: line.id } }));
-          // The line under the pointer stands out above the others.
-          hit.on("mouseover", () => {
-            path.setStyle({ weight: HIGHLIGHTED_WEIGHT });
-            path.bringToFront();
-            if (hit !== path) hit.bringToFront();
-          });
-          hit.on("mouseout", () => path.setStyle({ weight: LINE_WEIGHT }));
+          // Found under the pointer by its distance from it, the same for
+          // every style (US-104); the one pointed at stands out above the
+          // others.
+          const point = (on) => {
+            path.setStyle({ weight: on ? HIGHLIGHTED_WEIGHT : LINE_WEIGHT });
+            if (on) path.bringToFront();
+          };
+          picks.push(pickLine(path, line, { open: { source: line.source, id: line.id } }, point));
         }
         setPicking(map, [...picks, ...waypointPicks(map, waypoints)], report);
         fitOnce();

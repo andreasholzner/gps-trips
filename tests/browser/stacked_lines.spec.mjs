@@ -152,6 +152,36 @@ test("choosing an entry opens its trip (US-104)", async ({ page, request }) => {
   await expect(page).toHaveURL(new RegExp(`/app/trips/${second}$`));
 });
 
+test("a recorded line is as easy to point at as a planned one (US-104)", async ({
+  page,
+  request,
+}) => {
+  const tag = word();
+  const recorded = await ownTrip(request, `${tag} Recorded`, "cycling");
+  await importPlan(request, `${tag} Planned`);
+  await page.goto(`/app/?q=${tag}&kind=recorded%2Cplanned`);
+  await expect(regionLines(page)).toHaveCount(2);
+
+  // A few pixels beside the walk both lie on, not on either stroke: the
+  // thin solid line is named as the dashed one is.
+  const solid = page.locator("#region-map .trip-line:not([stroke-dasharray])");
+  const at = await onTheLine(solid);
+  await page.mouse.move(at.x, at.y + 5);
+  const rows = hintRows(page, "region-map");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: `${tag} Recorded` })).toHaveCount(1);
+  await expect(rows.filter({ hasText: `${tag} Planned` })).toHaveCount(1);
+  // The first named stands out, though the pointer is on neither stroke.
+  await expect(page.locator('#region-map .trip-line[stroke-width="6"]')).toHaveCount(1);
+
+  // And a click there offers it too.
+  await page.mouse.click(at.x, at.y + 5);
+  await menuEntries(page, "region-map")
+    .filter({ hasText: `${tag} Recorded` })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/app/trips/${recorded}$`));
+});
+
 test("a waypoint opens its page alone and from the menu, but not on its own page (US-104)", async ({
   page,
   request,

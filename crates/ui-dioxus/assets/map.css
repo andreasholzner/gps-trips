@@ -61,3 +61,9 @@
 .pick-list span.pick-row {
   opacity: 0.7;
 }
+
+/* Near enough to a line or waypoint to name it, the pointer says it can be
+   chosen, though it is beside the stroke rather than on it. */
+.leaflet-container.pick-here {
+  cursor: pointer;
+}

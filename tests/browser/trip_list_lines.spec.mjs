@@ -247,9 +247,6 @@ test("recorded and planned trips are drawn together, each in its line style (US-
       paths.map((path) => path.getAttribute("stroke-dasharray")).sort(),
     );
     expect(dashes).toEqual(["8 6", null]);
-    // Only the dashed line needs a wider, unseen path to be hit by: the solid
-    // one is hit wherever it is drawn.
-    await expect(page.locator("#region-map .trip-line-hit")).toHaveCount(1);
 
     // Both are the same walk, so a click on the planned line offers both,
     // in the list's order (US-104); choosing the plan opens it.

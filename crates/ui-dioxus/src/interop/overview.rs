@@ -67,9 +67,8 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     for (const line of view.lines || []) {
       if (line.points.length === 0) continue;
       const path = L.polyline(line.points, { color: line.color, weight: WEIGHT }).addTo(map);
-      picks.push(pickLine(path, line, { open: line.id }));
-      path.on("mouseover", () => report({ hover: line.id }));
-      path.on("mouseout", () => report({ hover: null }));
+      // Pointed at, it says so; Rust decides what stands out (US-72).
+      picks.push(pickLine(path, line, { open: line.id }, (on) => report({ hover: on ? line.id : null })));
       drawn.set(line.id, path);
       bounds.extend(path.getBounds());
     }

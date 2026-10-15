@@ -10,25 +10,27 @@
 //! (ADR-0025).
 
 use super::waypoints::with_waypoints;
-use crate::config::map_picking::HINT_ROWS;
+use crate::config::map_picking::{HINT_ROWS, LINE_REACH_PX};
 use crate::waypoint::UNNAMED;
 
 /// Defines, for a map's script:
 ///
 /// - `waypointPicks(map, markers)`: `drawWaypoints`' markers, each
 ///   reporting its page if Rust says it opens one.
-/// - `pickLine(hit, line, opens)` and `pickWaypoint(map, marker, opens)`:
-///   one thing that can lie under the pointer. A line lies there within
-///   half the width it takes the pointer at — where a click on it hit it
-///   before (US-104) — and a waypoint where its marker is drawn. `opens` is
-///   what choosing it reports, or `null` for what opens nothing.
+/// - `pickLine(path, line, opens, point)` and `pickWaypoint(map, marker,
+///   opens)`: one thing that can lie under the pointer. A line lies there
+///   within `LINE_REACH` of it, whatever its width or style, and a waypoint
+///   where its marker is drawn. `opens` is what choosing it reports, or
+///   `null` for what opens nothing; `point(on)` makes a line stand out, or
+///   no longer, as the map does it.
 /// - `setPicking(map, items, report)`: what lies on `map` now, in the order
 ///   the page lists it, and where a choice goes. Called again on a redraw;
 ///   the listeners are put on the map once.
 /// - `pickIcon(icon)`: an activity's icon as nodes, for a hint or a menu.
 ///
 /// A mouse's hover names everything under it, the first `HINT_ROWS` and an
-/// ellipsis for more. A click with a mouse opens the one thing there is to
+/// ellipsis for more, and points at the first of it — the same reach for
+/// the highlight as for the hint and a click. A click with a mouse opens the one thing there is to
 /// open at once, or a menu of them; a tap always opens the menu, listing
 /// everything under the finger with what opens nothing as plain text — on a
 /// map there is no sign that a tap leads anywhere. The menu closes on a
@@ -57,16 +59,16 @@ const PICKING_JS: &str = r##"
       return box;
     }
 
-    function pickLine(hit, line, opens) {
+    function pickLine(path, line, opens, point = () => {}) {
       return {
         name: line.name,
         icon: () => pickIcon(line.icon),
         opens,
-        hits: (point) => {
-          const closest = hit.closestLayerPoint(point);
-          return closest !== null && closest.distance <= hit.options.weight / 2;
+        hits: (at) => {
+          const closest = path.closestLayerPoint(at);
+          return closest !== null && closest.distance <= LINE_REACH;
         },
-        point: (on) => hit.fire(on ? "mouseover" : "mouseout"),
+        point,
       };
     }
 
@@ -124,16 +126,29 @@ const PICKING_JS: &str = r##"
         closeOnClick: false,
         className: "pick-menu",
       });
+      // What a menu entry points at, and what the mouse points at on the map.
       let pointed = null;
       const unpoint = () => {
         pointed?.point(false);
         pointed = null;
       };
+      let hovered = null;
+      const container = map.getContainer();
+      const hover = (item) => {
+        container.classList.toggle("pick-here", item !== null);
+        if (hovered === item) return;
+        hovered?.point(false);
+        hovered = item;
+        item?.point(true);
+      };
       const closeMenu = () => {
         unpoint();
         if (map.hasLayer(picker)) map.closePopup(picker);
       };
-      picking.hideHint = () => map.closeTooltip(hint);
+      picking.hideHint = () => {
+        hover(null);
+        map.closeTooltip(hint);
+      };
       picking.close = () => {
         closeMenu();
         picking.hideHint();
@@ -142,7 +157,6 @@ const PICKING_JS: &str = r##"
       // Whether the last press or move came from a mouse: a finger's tap
       // ends in a click too, and a phone has no hover to show the hint.
       let mouse = true;
-      const container = map.getContainer();
       for (const kind of ["pointerdown", "pointermove"]) {
         container.addEventListener(kind, (event) => (mouse = event.pointerType === "mouse"), true);
       }
@@ -173,7 +187,7 @@ const PICKING_JS: &str = r##"
           }
           list.appendChild(entry);
         }
-        map.closeTooltip(hint);
+        picking.hideHint();
         // Never taller than the map: a longer menu scrolls.
         picker.options.maxHeight = Math.max(map.getSize().y - 48, 64);
         picker.setLatLng(latlng).setContent(list).openOn(map);
@@ -182,9 +196,10 @@ const PICKING_JS: &str = r##"
       map.on("mousemove", (event) => {
         const items = mouse && !map.hasLayer(picker) ? under(event) : [];
         if (items.length === 0) {
-          map.closeTooltip(hint);
+          picking.hideHint();
           return;
         }
+        hover(items[0]);
         const rows = document.createElement("div");
         rows.className = "pick-rows";
         for (const item of items.slice(0, HINT_ROWS)) rows.appendChild(pickRow(item, "div"));
@@ -196,7 +211,7 @@ const PICKING_JS: &str = r##"
         hint.setContent(rows).setLatLng(event.latlng);
         if (!map.hasLayer(hint)) map.openTooltip(hint);
       });
-      map.on("mouseout", () => map.closeTooltip(hint));
+      map.on("mouseout", () => picking.hideHint());
       map.on("click", (event) => {
         if (map.hasLayer(picker)) {
           closeMenu();
@@ -227,7 +242,7 @@ const PICKING_JS: &str = r##"
 /// unnamed waypoint is called are Rust's, handed over as constants.
 pub(super) fn with_picking(script: &str) -> String {
     with_waypoints(&format!(
-        "const HINT_ROWS = {HINT_ROWS};\nconst UNNAMED = {UNNAMED:?};\n{PICKING_JS}\n{script}"
+        "const HINT_ROWS = {HINT_ROWS};\nconst LINE_REACH = {LINE_REACH_PX:?};\nconst UNNAMED = {UNNAMED:?};\n{PICKING_JS}\n{script}"
     ))
 }
 
@@ -251,6 +266,16 @@ mod tests {
 
         assert!(script.contains(&format!("const HINT_ROWS = {HINT_ROWS};")));
         assert!(script.contains(r#"const UNNAMED = "Unnamed waypoint";"#));
+    }
+
+    #[test]
+    fn us104_every_line_is_as_easy_to_point_at_whatever_its_width_or_style() {
+        // A solid recorded line is drawn thinner than a dashed plan is hit.
+        let script = with_picking("");
+
+        assert!(script.contains(&format!("const LINE_REACH = {LINE_REACH_PX:?};")));
+        assert!(PICKING_JS.contains("closest.distance <= LINE_REACH"));
+        assert!(!PICKING_JS.contains("options.weight"));
     }
 
     #[test]
