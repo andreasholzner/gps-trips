@@ -15,7 +15,7 @@
 - Validate input at system boundaries
 - The ADRs for this project are maintained at `/docs/adr`. Always follow them.
 - Follow TDD also for fixing issues found during code review.
-- NEVER reword a done (✅) user story when a later story changes it — add a `**Superseded in part by US-NN:** …` line under it instead, so commits tagged with the story still match the text they implemented. Planned stories are edited freely.
+- NEVER reword a done (✅) user story when a later story changes it significantly — add a `**Superseded in part by US-NN:** …` line under it instead, so commits tagged with the story still match the text they implemented. A typical exception would be changes after the first deployment and manual tests. Ask the user for confirmation before editing a done story except if it is only a "superseded" comment. Planned stories are edited freely.
 - NEVER update `docs/initial_plan.md` — it is a frozen historical snapshot. Record design, scope, schema, or API changes in the living docs instead: `docs/requirements.md` (user stories), `docs/adr/` (decisions), `docs/architecture.md` (C4 diagrams). See the banner atop the file.
 - ALWAYS run tests after code changes
 - ALWAYS verify build succeeds before committing
