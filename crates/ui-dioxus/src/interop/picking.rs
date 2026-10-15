@@ -34,7 +34,8 @@ use crate::waypoint::UNNAMED;
 /// open at once, or a menu of them; a tap always opens the menu, listing
 /// everything under the finger with what opens nothing as plain text — on a
 /// map there is no sign that a tap leads anywhere. The menu closes on a
-/// click elsewhere, on Escape and when the map moves.
+/// click elsewhere, on Escape and when the map moves. Both stay within the
+/// map's frame, wrapping long names and scrolling what still does not fit.
 ///
 /// Everything named is put in as text nodes, never markup: the names come
 /// from GPX files and Komoot titles.
@@ -118,14 +119,45 @@ const PICKING_JS: &str = r##"
 
     function installPicking(map) {
       const picking = { items: [], report: () => {} };
-      const hint = L.tooltip({ direction: "right", offset: [14, 0], className: "pick-hint" });
-      const picker = L.popup({
-        autoPan: false,
-        closeButton: false,
-        // Closed here, so a click that closes it opens nothing.
-        closeOnClick: false,
-        className: "pick-menu",
-      });
+      const container = map.getContainer();
+
+      // The hint and the menu are boxes of the map's own, not Leaflet's
+      // tooltip and popup: those open on one side of the point whether or
+      // not they fit, and the map clips them. These are kept within the
+      // map's frame and never larger than it — a long name wraps, and a menu
+      // that still does not fit scrolls.
+      const EDGE = 8;
+      const GAP = 14;
+      const box = (className) => {
+        const el = document.createElement("div");
+        el.className = className;
+        el.hidden = true;
+        container.appendChild(el);
+        return el;
+      };
+      const hint = box("pick-hint");
+      const menu = box("pick-menu");
+      // A click, a drag or a wheel in the menu is the menu's, not the map's.
+      L.DomEvent.disableClickPropagation(menu);
+      L.DomEvent.disableScrollPropagation(menu);
+      const clamp = (value, low, high) => Math.max(low, Math.min(value, high));
+      // Beside `at`, on whichever side it fits, and moved in from the edges.
+      const place = (el, at) => {
+        const size = map.getSize();
+        el.style.maxWidth = `${size.x - 2 * EDGE}px`;
+        el.style.maxHeight = `${size.y - 2 * EDGE}px`;
+        el.style.left = "0px";
+        el.style.top = "0px";
+        el.hidden = false;
+        const width = el.offsetWidth;
+        const height = el.offsetHeight;
+        const right = at.x + GAP;
+        const x = right + width <= size.x - EDGE ? right : at.x - GAP - width;
+        el.style.left = `${clamp(x, EDGE, size.x - EDGE - width)}px`;
+        el.style.top = `${clamp(at.y - height / 2, EDGE, size.y - EDGE - height)}px`;
+      };
+      const menuOpen = () => !menu.hidden;
+
       // What a menu entry points at, and what the mouse points at on the map.
       let pointed = null;
       const unpoint = () => {
@@ -133,7 +165,6 @@ const PICKING_JS: &str = r##"
         pointed = null;
       };
       let hovered = null;
-      const container = map.getContainer();
       const hover = (item) => {
         container.classList.toggle("pick-here", item !== null);
         if (hovered === item) return;
@@ -143,11 +174,13 @@ const PICKING_JS: &str = r##"
       };
       const closeMenu = () => {
         unpoint();
-        if (map.hasLayer(picker)) map.closePopup(picker);
+        menu.hidden = true;
+        menu.replaceChildren();
       };
       picking.hideHint = () => {
         hover(null);
-        map.closeTooltip(hint);
+        hint.hidden = true;
+        hint.replaceChildren();
       };
       picking.close = () => {
         closeMenu();
@@ -166,7 +199,7 @@ const PICKING_JS: &str = r##"
         picking.report(item.opens);
       };
 
-      const openMenu = (latlng, items) => {
+      const openMenu = (at, items) => {
         const list = document.createElement("ul");
         list.className = "pick-list";
         for (const item of items) {
@@ -188,13 +221,12 @@ const PICKING_JS: &str = r##"
           list.appendChild(entry);
         }
         picking.hideHint();
-        // Never taller than the map: a longer menu scrolls.
-        picker.options.maxHeight = Math.max(map.getSize().y - 48, 64);
-        picker.setLatLng(latlng).setContent(list).openOn(map);
+        menu.replaceChildren(list);
+        place(menu, at);
       };
 
       map.on("mousemove", (event) => {
-        const items = mouse && !map.hasLayer(picker) ? under(event) : [];
+        const items = mouse && !menuOpen() ? under(event) : [];
         if (items.length === 0) {
           picking.hideHint();
           return;
@@ -208,31 +240,42 @@ const PICKING_JS: &str = r##"
           more.textContent = "…";
           rows.appendChild(more);
         }
-        hint.setContent(rows).setLatLng(event.latlng);
-        if (!map.hasLayer(hint)) map.openTooltip(hint);
+        hint.replaceChildren(rows);
+        place(hint, event.containerPoint);
       });
       map.on("mouseout", () => picking.hideHint());
       map.on("click", (event) => {
-        if (map.hasLayer(picker)) {
+        // A click that closes the menu opens nothing with it.
+        if (menuOpen()) {
           closeMenu();
           return;
         }
         const items = under(event);
         const choosable = items.filter((item) => item.opens);
         if (!mouse) {
-          if (items.length > 0) openMenu(event.latlng, items);
+          if (items.length > 0) openMenu(event.containerPoint, items);
         } else if (choosable.length === 1) {
           choose(choosable[0]);
         } else if (choosable.length > 1) {
-          openMenu(event.latlng, choosable);
+          openMenu(event.containerPoint, choosable);
         }
       });
       map.on("movestart", closeMenu);
       const onKey = (event) => {
         if (event.key === "Escape") closeMenu();
       };
+      // A press anywhere off the map closes the menu too.
+      const onPress = (event) => {
+        if (menuOpen() && !container.contains(event.target)) closeMenu();
+      };
       document.addEventListener("keydown", onKey);
-      map.on("unload", () => document.removeEventListener("keydown", onKey));
+      document.addEventListener("pointerdown", onPress);
+      map.on("unload", () => {
+        document.removeEventListener("keydown", onKey);
+        document.removeEventListener("pointerdown", onPress);
+        hint.remove();
+        menu.remove();
+      });
       return picking;
     }
 "##;
@@ -287,9 +330,18 @@ mod tests {
     }
 
     #[test]
-    fn us104_a_menu_that_closes_on_a_click_opens_nothing_with_it() {
-        // Leaflet's own closing on a click comes before the click; it would
-        // leave the click free to open the menu anew.
-        assert!(PICKING_JS.contains("closeOnClick: false"));
+    fn us104_the_hint_and_the_menu_are_kept_within_the_map() {
+        // Leaflet's tooltip and popup open on one side whether or not they
+        // fit, and the map clips them.
+        assert!(!PICKING_JS.contains("L.tooltip"));
+        assert!(!PICKING_JS.contains("L.popup"));
+        assert!(PICKING_JS.contains("el.style.maxWidth = `${size.x - 2 * EDGE}px`"));
+        assert!(PICKING_JS.contains("el.style.maxHeight = `${size.y - 2 * EDGE}px`"));
+    }
+
+    #[test]
+    fn us104_a_click_in_the_menu_is_the_menus_not_the_maps() {
+        assert!(PICKING_JS.contains("disableClickPropagation(menu)"));
+        assert!(PICKING_JS.contains("disableScrollPropagation(menu)"));
     }
 }

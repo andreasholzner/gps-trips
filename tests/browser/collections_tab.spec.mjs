@@ -145,7 +145,7 @@ test("zoomed in, a collection's tracks are lines, and a click opens the track", 
   await page.locator("#region-map").scrollIntoViewIfNeeded();
   const at = await onTheLine(lines(page));
   await page.mouse.move(at.x, at.y);
-  await expect(page.locator("#region-map .leaflet-tooltip")).toHaveText(track.name);
+  await expect(page.locator("#region-map .pick-hint")).toHaveText(track.name);
 
   await page.mouse.click(at.x, at.y);
   await expect(page).toHaveURL(new RegExp(`/app/collection-tracks/${track.id}$`));

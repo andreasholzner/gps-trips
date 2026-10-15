@@ -1,11 +1,39 @@
 /* What lies under the pointer on a map (US-104): the hint naming it, and the
-   menu to choose one from, each row an icon and a name. A menu entry is a
-   button stripped of Pico's filled-block look, as a popup's photo is. */
+   menu to choose one from, each row an icon and a name. Both are boxes the
+   script keeps within the map, above its panes and controls, no larger than
+   it: a long name wraps, and a menu that still does not fit scrolls. A menu
+   entry is a button stripped of Pico's filled-block look, as a popup's photo
+   is. */
+.pick-hint,
+.pick-menu {
+  position: absolute;
+  z-index: 1001;
+  box-sizing: border-box;
+  overflow: auto;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #333333;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
+}
+
+.pick-hint {
+  padding: 0.35rem 0.55rem;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pick-menu {
+  padding: 0.35rem;
+  overscroll-behavior: contain;
+}
+
 .pick-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.4em;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .pick-icon {
@@ -13,16 +41,13 @@
   flex: none;
   width: 1.1em;
   height: 1.1em;
+  margin-top: 0.12em;
 }
 
 .pick-icon svg {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.leaflet-popup.pick-menu .leaflet-popup-content {
-  margin: 0.35rem;
 }
 
 .pick-list {

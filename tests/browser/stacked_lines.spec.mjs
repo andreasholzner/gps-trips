@@ -269,8 +269,91 @@ test("a ticked link's line is named with the page's own track, and opens its pag
   await expect(page).toHaveURL(new RegExp(`/app/trips/${plan}$`));
 });
 
+/// Share six trips on the same walk, each with a long name; the recipient's
+/// page on the share's map.
+async function longNamedShare(request, browser, baseURL, device = {}) {
+  const tag = word();
+  const ids = [];
+  for (let i = 1; i <= 6; i++) {
+    ids.push(
+      await ownTrip(
+        request,
+        `${tag} ${i} Blick auf die Tromsø-Brücke – Eismeerkathedrale Runde von Myreng und zurück`,
+        "cycling",
+      ),
+    );
+  }
+  const created = await request.post("/api/shares", { data: { trip_ids: ids } });
+  expect(created.status(), "creating the share").toBe(201);
+  const { token } = await created.json();
+  const context = await browser.newContext({ baseURL, ...device });
+  const page = await context.newPage();
+  await page.goto(`/app/s/${token}`);
+  await expect(page.locator("#overview-map path.leaflet-interactive")).toHaveCount(6);
+  return { page, context };
+}
+
+/// Drag the map so that the walk's middle lies near its top right corner;
+/// where it now is.
+async function dragToCorner(page, line) {
+  const at = await onTheLine(line);
+  const map = await page.locator("#overview-map").boundingBox();
+  const to = { x: map.x + map.width - 24, y: map.y + 24 };
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move((at.x + to.x) / 2, (at.y + to.y) / 2, { steps: 5 });
+  await page.mouse.move(to.x, to.y, { steps: 5 });
+  // Held still before letting go, so Leaflet's inertia leaves the map
+  // where it was dragged to.
+  await page.waitForTimeout(200);
+  await page.mouse.up();
+  return to;
+}
+
+/// Whether `box` lies wholly within the map, and none of its rows is cut.
+async function expectWithinMap(page, box) {
+  await expect(box).toBeVisible();
+  const map = await page.locator("#overview-map").boundingBox();
+  const shown = await box.boundingBox();
+  expect(shown.x).toBeGreaterThanOrEqual(map.x);
+  expect(shown.y).toBeGreaterThanOrEqual(map.y);
+  expect(shown.x + shown.width).toBeLessThanOrEqual(map.x + map.width + 0.5);
+  expect(shown.y + shown.height).toBeLessThanOrEqual(map.y + map.height + 0.5);
+  const cut = await box
+    .locator(".pick-row")
+    .evaluateAll((rows) => rows.filter((row) => row.scrollWidth > row.clientWidth + 1).length);
+  expect(cut, "rows whose names overflow").toBe(0);
+}
+
+test("in a corner, the hint and the menu stay within the map, long names and all (US-104)", async ({
+  request,
+  browser,
+  baseURL,
+}) => {
+  const { page, context } = await longNamedShare(request, browser, baseURL);
+  const at = await dragToCorner(
+    page,
+    page.locator("#overview-map path.leaflet-interactive").first(),
+  );
+
+  await page.mouse.move(at.x - 1, at.y + 1);
+  await page.mouse.move(at.x, at.y);
+  await expect(hintRows(page, "overview-map")).toHaveCount(6);
+  await expectWithinMap(page, page.locator("#overview-map .pick-hint"));
+
+  await page.mouse.click(at.x, at.y);
+  await expect(menuEntries(page, "overview-map")).toHaveCount(6);
+  await expectWithinMap(page, page.locator("#overview-map .pick-menu"));
+  // Every entry can be reached, scrolling if need be.
+  await menuEntries(page, "overview-map").last().scrollIntoViewIfNeeded();
+  await expect(menuEntries(page, "overview-map").last()).toBeInViewport();
+  await context.close();
+});
+
+const PHONE = { hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } };
+
 test.describe("with a touchscreen", () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+  test.use(PHONE);
 
   test("a tap opens the menu even for one line, and names the page's own track there (US-104)", async ({
     page,
@@ -297,5 +380,18 @@ test.describe("with a touchscreen", () => {
     await expect(menuRows(page, "track-map")).toHaveCount(1);
     await expect(menuRows(page, "track-map")).toContainText(`${tag} Tapped`);
     await expect(menuEntries(page, "track-map")).toHaveCount(0);
+  });
+
+  test("on a phone, the menu stays within the map, long names and all (US-104)", async ({
+    request,
+    browser,
+    baseURL,
+  }) => {
+    const { page, context } = await longNamedShare(request, browser, baseURL, PHONE);
+    const at = await onTheLine(page.locator("#overview-map path.leaflet-interactive").first());
+    await page.touchscreen.tap(at.x, at.y);
+    await expect(menuEntries(page, "overview-map")).toHaveCount(6);
+    await expectWithinMap(page, page.locator("#overview-map .pick-menu"));
+    await context.close();
   });
 });

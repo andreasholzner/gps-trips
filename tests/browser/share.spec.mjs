@@ -265,7 +265,7 @@ test("a trip's name on the share's map is shown as text, never run as markup (US
   await recipient.page.mouse.move(at.x, at.y);
 
   await expect(hintRows(recipient.page, "overview-map").filter({ hasText: name })).toHaveCount(1);
-  await expect(recipient.page.locator("#overview-map .leaflet-tooltip img")).toHaveCount(0);
+  await expect(recipient.page.locator("#overview-map .pick-hint img")).toHaveCount(0);
   expect(await recipient.page.evaluate(() => window.__injected)).toBeUndefined();
   await recipient.close();
 });

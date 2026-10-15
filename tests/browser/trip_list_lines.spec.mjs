@@ -127,7 +127,7 @@ test("a line is named and highlighted on hover, and a click opens its trip", asy
   await expect(lines(page)).toHaveAttribute("stroke-width", "3");
   const at = await onTheLine(lines(page));
   await page.mouse.move(at.x, at.y);
-  await expect(page.locator("#region-map .leaflet-tooltip")).toHaveText(name);
+  await expect(page.locator("#region-map .pick-hint")).toHaveText(name);
   await expect(lines(page)).toHaveAttribute("stroke-width", "6");
 
   // Off the line, it is drawn as before.
