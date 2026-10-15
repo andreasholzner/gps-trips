@@ -1725,8 +1725,8 @@ trip-list map (US-73/90), a share's overview map (US-53/94), the Summary's map (
 collection's page and a collection track's page (US-86), a share's collection and collection track
 pages (US-94), a waypoint's page (US-98), and — once a link's line is ticked onto it (US-99) — a
 trip's page and a share's trip page. What lies under the pointer is every line and waypoint the
-map draws, those a ticked link put there included: a line within the distance at which a click
-hits it today, a waypoint where its marker is drawn.
+map draws, those a ticked link put there included: a line within the same small distance of the
+pointer, whatever its width or style; a waypoint where its marker is drawn.
 
 **The hover hint** lists everything under the pointer, one per row, in the order the page lists
 it — the map's own lines and waypoints first, then those of ticked links in the links' order. It
