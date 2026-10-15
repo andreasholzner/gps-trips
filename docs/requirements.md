@@ -681,6 +681,9 @@ script draws them), ADR-0012 (the browser layer for the switch at the threshold 
 
 **Superseded in part by US-92:** with no armed state, lines are always clickable.
 
+**Superseded in part by US-104:** a tap on a line opens the map's menu, from which its page is
+opened; a click with a mouse still opens it at once where nothing else lies under the pointer.
+
 ### US-90 — Trips and collections in one list
 
 **Done ✅** — As the owner, I list and map a guide book's tracks together with my planned and
@@ -1505,6 +1508,9 @@ GPX, or holds neither a track nor a waypoint, is refused with the reason, and no
 own, apart from trips; deleting a collection deletes everything it owns), ADR-0004 (the import pipeline), ADR-0003 (track storage), ADR-0008 (the screens use the
 JSON API)
 
+**Superseded in part by US-104:** a tap on a waypoint opens the map's menu, from which its page
+can be opened; hovering names it in the map's hint.
+
 ### US-87 — Collections tab
 
 **Done ✅** — As the owner, the trip list has a Collections tab, so I find my guide books where
@@ -1597,6 +1603,9 @@ so QMapShack shows its own icon for it.
 **Decisions:** US-95 → ADR-0025 (Rust decides which icon a waypoint gets, the script draws it;
 the icons ship with the app rather than being fetched — US-10), US-89's extension of ADR-0022
 (waypoint items, once it exists), ADR-0028
+
+**Superseded in part by US-104:** a tap on a waypoint opens the map's menu, from which its page
+can be opened; hovering names it in the map's hint, with its icon.
 
 ### US-97 — Collections page
 
@@ -1708,33 +1717,40 @@ families follow)
 ### US-104 — Pick from stacked lines
 
 **Planned 📋** — As the owner and as a share's recipient, I see everything under the pointer on a
-map whose lines open a page, and choose which one to open, so a line hidden under another is not
-out of reach and a click opens what I meant.
+map whose lines and waypoints open a page, and choose which one to open, so a line hidden under
+another is not out of reach and a click opens what I meant.
 
-**Acceptance criteria:** This holds on every map where a click on a line opens its page: the
-trip-list map's lines (US-73/90), a share's overview map (US-53/94), the Summary's map (US-78/82),
-a collection's page (US-86) and a waypoint's page (US-98). **The hover hint** leads each name with
-its activity's icon (US-84); an unspecified activity, or a collection track without one, shows
-the name alone.
+**Acceptance criteria:** This holds on every map where a line or a waypoint opens a page: the
+trip-list map (US-73/90), a share's overview map (US-53/94), the Summary's map (US-78/82), a
+collection's page and a collection track's page (US-86), a share's collection and collection track
+pages (US-94), a waypoint's page (US-98), and — once a link's line is ticked onto it (US-99) — a
+trip's page and a share's trip page. What lies under the pointer is every line and waypoint the
+map draws, those a ticked link put there included: a line within the distance at which a click
+hits it today, a waypoint where its marker is drawn.
 
-**Stacked lines:** where several lines lie under the pointer — within the distance at which a
-click hits a line today — the hint lists them, one per line, in the order the page lists them. It
-shows the first five, followed by "…" when there are more.
+**The hover hint** lists everything under the pointer, one per row, in the order the page lists
+it — the map's own lines and waypoints first, then those of ticked links in the links' order. It
+shows the first five, followed by "…" when there are more. A trip or track leads with its
+activity's icon (US-84), a waypoint with its symbol's icon (US-95) or the plain marker; an
+unspecified activity shows the name alone. On a page's own map, the page's own track or waypoint
+is in the hint too.
 
-**Choosing:** a click or tap where only one line lies opens its page at once, as today, and shows
-no menu. Where several lie, it opens a small menu at that point listing all of them, as the hint
-does but without a cap. A menu taller than fits on the map scrolls. Pointing at an entry
-highlights its line, as pointing at the line does. Choosing an entry opens that line's page, as a
-click on the line does today. Clicking elsewhere, Escape or moving the map closes the menu and
-opens nothing. On a phone, with no hover, the menu is how stacked lines are told apart.
+**Opening:** a line or waypoint opens its page — a trip's, a collection track's or a waypoint's,
+and for a recipient the shared trip's or track's page. Two kinds open nothing: the page's own
+track or waypoint, and, for a recipient, a waypoint, which has no shared page.
 
-**Waypoints** are the exception, since they are easy to avoid. With the pointer over a waypoint, or
-on a tap on one, the hint lists that waypoint alone, even if lines lie under it. A click or tap on
-a waypoint shows that hint, never the menu, and opens nothing.
+**Choosing:** a click with a mouse where one thing that opens a page lies opens it at once and
+shows no menu; where several lie, it opens a small menu at that point listing those that open a
+page, as the hint does but without a cap. A tap always opens the menu, even for a single thing,
+since the map shows no sign that a tap leads anywhere: it lists everything under the finger, with
+what opens nothing shown but not choosable, so a tap on the page's own track names it. A tap or
+click where nothing lies opens nothing. A menu taller than fits on the map scrolls. Pointing at
+an entry highlights its line, as pointing at the line does. Choosing an entry opens its page.
+Clicking elsewhere, Escape or moving the map closes the menu and opens nothing.
 
-**Decisions:** US-104 → ADR-0025 (Rust decides what the hint and the menu list, the script finds
-the lines under the pointer and draws them), ADR-0012 (the browser layer for the hint, the menu
-and a choice from it)
+**Decisions:** US-104 → ADR-0025 (Rust decides what the hint and the menu list and what each
+entry opens, the script finds what lies under the pointer and draws it), ADR-0012 (the browser
+layer for the hint, the menu and a choice from it)
 
 ## Sharing
 
