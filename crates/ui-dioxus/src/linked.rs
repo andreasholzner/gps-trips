@@ -492,7 +492,7 @@ fn LinkRow(
                 " "
                 button {
                     r#type: "button",
-                    class: "confirm",
+                    class: "confirm-link",
                     title: "Confirm the link to {row.name}",
                     aria_label: "Confirm the link to {row.name}",
                     onclick: move |_| on_confirm.call(pair),

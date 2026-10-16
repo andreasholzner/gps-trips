@@ -94,7 +94,7 @@ fn us103_a_proposed_row_is_confirmed_or_dismissed_and_a_link_only_removed() {
         html.contains("92 % of the plan · 85 % of the trip"),
         "{html}"
     );
-    assert_eq!(html.matches(r#"class="confirm""#).count(), 1, "{html}");
+    assert_eq!(html.matches(r#"class="confirm-link""#).count(), 1, "{html}");
     assert!(html.contains("Confirm the link to Plan 2"), "{html}");
     assert!(
         html.contains("Dismiss the proposed link to Plan 2"),
@@ -125,7 +125,7 @@ async fn us103_a_trips_section_lists_what_the_archive_proposed() {
         html.contains("100 % of the plan · 100 % of the trip"),
         "{html}"
     );
-    assert!(html.contains(r#"class="confirm""#), "{html}");
+    assert!(html.contains(r#"class="confirm-link""#), "{html}");
 }
 
 #[test]
