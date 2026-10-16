@@ -67,7 +67,7 @@ use api::ApiClient;
 use collection::{Collection, CollectionView};
 use collection_track::CollectionTrack;
 use collections::Collections;
-use detail::TripDetail;
+use detail::{Showing, TripDetail, TripShowing};
 use filters::Filters;
 use import::ImportTrip;
 use komoot::KomootSync;
@@ -140,6 +140,10 @@ enum Route {
     /// One trip, by id (US-42) — the target of every row in the list.
     #[route("/trips/:id")]
     TripDetail { id: i64 },
+    /// A trip with the other end of a proposed link already ticked on its
+    /// map (US-103) — where the Proposed links page leads.
+    #[route("/trips/:id/showing/:show")]
+    TripShowing { id: i64, show: Showing },
     /// Importing a trip (US-43/US-12). Where the server-rendered `/import`
     /// page used to be, and where it now redirects.
     #[route("/import")]

@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::test_support::{import_sample, render, render_against_archive, serve_test_archive};
-use trip_archive_types::{LinkedTrack, LinkedTrip, LinkedWaypoint, Proposal};
+use trip_archive_types::{LinkOther, LinkedTrack, LinkedTrip, LinkedWaypoint, Proposal};
 
 const COVERED: Proposal = Proposal {
     plan_covered: Some(0.92),
@@ -126,4 +126,51 @@ async fn us103_a_trips_section_lists_what_the_archive_proposed() {
         "{html}"
     );
     assert!(html.contains(r#"class="confirm""#), "{html}");
+}
+
+#[test]
+fn us103_the_item_a_page_opens_with_is_found_among_its_rows() {
+    let links = Links {
+        planned_trips: vec![a_trip(2, Some(COVERED))],
+        waypoints: vec![LinkedWaypoint {
+            id: 4,
+            name: Some("Pass".to_string()),
+            symbol: None,
+            collection_id: 7,
+            collection_name: "Book".to_string(),
+            proposal: Some(Proposal::default()),
+        }],
+        ..Links::default()
+    };
+    let groups = groups(LinkEnd::Trip(1), &links);
+
+    assert_eq!(
+        to_tick(LinkOther::Trip(2), &groups),
+        Some(Shown::Line(Kind::Planned, 2))
+    );
+    assert_eq!(
+        to_tick(LinkOther::Waypoint(4), &groups),
+        Some(Shown::Waypoint(4))
+    );
+    assert_eq!(to_tick(LinkOther::CollectionTrack(2), &groups), None);
+    assert_eq!(to_tick(LinkOther::Trip(3), &groups), None);
+}
+
+#[tokio::test]
+async fn us103_a_trip_page_opens_with_the_other_end_ticked() {
+    let (archive, _dir) = serve_test_archive().await;
+    let plan = import_sample(&archive, &[("kind", "planned"), ("name", "The plan")]).await;
+    let monday = import_sample(&archive, &[]).await;
+
+    let html = render_against_archive(
+        &archive,
+        move || {
+            let overlays = use_signal(Overlays::default);
+            rsx! { LinkedTo { end: LinkEnd::Trip(monday), overlays, show: Some(LinkOther::Trip(plan)) } }
+        },
+        |html| html.contains("checked"),
+    )
+    .await;
+
+    assert_eq!(html.matches("checked").count(), 1, "{html}");
 }

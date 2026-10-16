@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
 use trip_archive_types::{
-    ActivityType, Links, Proposal, RecordedTripFilter, SharedLinks, TripKind,
+    ActivityType, LinkOther, Links, Proposal, RecordedTripFilter, SharedLinks, TripKind,
 };
 
 use crate::activity_icon::ActivityIcon;
@@ -273,9 +273,14 @@ pub fn error_on(end: LinkEnd, error: &Option<(LinkEnd, String)>) -> Option<&str>
 /// The owner's section: what `end` is linked to. Nothing while it is read,
 /// nothing for no links, and nothing but a log line if it cannot be read —
 /// the page is about something else. What the owner ticks is put into
-/// `overlays`, for the page's map to draw.
+/// `overlays`, for the page's map to draw; `show`, the other end of a
+/// proposal the owner came from (US-103), is ticked once listed.
 #[component]
-pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
+pub fn LinkedTo(
+    end: LinkEnd,
+    overlays: Signal<Overlays>,
+    #[props(default)] show: Option<LinkOther>,
+) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     let changed = use_proposals_changed();
     // The end travels back with the answer: the router shows the next page
@@ -289,8 +294,8 @@ pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
     }));
     // A failed removal, with the page it failed on, for the same reason.
     let mut error = use_signal(|| None::<(LinkEnd, String)>);
-    let shown = use_shown(end, overlays, move || match &*links.read() {
-        Some((read_for, Ok(links))) => groups(*read_for, links),
+    let shown = use_shown(end, overlays, show, move || match &*links.read() {
+        Some((read_for, Ok(links))) if *read_for == end => groups(end, links),
         _ => Vec::new(),
     });
     let read = links.read_unchecked();
@@ -308,7 +313,9 @@ pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
             Ok(()) => {
                 error.set(None);
                 links.restart();
-                changed.map(|changed| changed.bump());
+                if let Some(changed) = changed {
+                    changed.bump();
+                }
             }
             Err(err) => error.set(Some((end, format!("Could not remove the link: {err}")))),
         }
@@ -318,7 +325,9 @@ pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
             Ok(()) => {
                 error.set(None);
                 links.restart();
-                changed.map(|changed| changed.bump());
+                if let Some(changed) = changed {
+                    changed.bump();
+                }
             }
             Err(err) => error.set(Some((end, format!("Could not confirm the link: {err}")))),
         }
@@ -340,9 +349,11 @@ pub fn SharedLinkedTo(token: String, id: i64, overlays: Signal<Overlays>) -> Ele
         (id, api::list_shared_trip_links(&archive(), id).await)
     }));
     let for_map = token.clone();
-    let shown = use_shown(LinkEnd::Trip(id), overlays, move || match &*links.read() {
-        Some((_, Ok(links))) => shared_groups(&for_map, links),
-        _ => Vec::new(),
+    let shown = use_shown(LinkEnd::Trip(id), overlays, None, move || {
+        match &*links.read() {
+            Some((_, Ok(links))) => shared_groups(&for_map, links),
+            _ => Vec::new(),
+        }
     });
     let groups = match &*links.read_unchecked() {
         Some((read_for, Ok(links))) if *read_for == id => shared_groups(&token, links),
@@ -356,17 +367,31 @@ pub fn SharedLinkedTo(token: String, id: i64, overlays: Signal<Overlays>) -> Ele
 /// What is ticked to be shown, emptied on a page of its own, and the
 /// overlays it comes to, read from the archive whenever either the ticks or
 /// the `listed` rows change — so an item whose link is removed leaves the
-/// map too.
+/// map too. `show` is ticked once, as soon as it is listed.
 fn use_shown(
     end: LinkEnd,
     mut overlays: Signal<Overlays>,
-    listed: impl Fn() -> Vec<Group> + 'static,
+    show: Option<LinkOther>,
+    listed: impl Fn() -> Vec<Group> + Clone + 'static,
 ) -> Signal<BTreeSet<Shown>> {
     let archive = use_context::<Signal<ApiClient>>();
     let mut shown = use_signal(BTreeSet::<Shown>::new);
+    // What `show` was ticked for, so unticking it sticks.
+    let mut ticked_for = use_signal(|| None::<(LinkEnd, LinkOther)>);
     use_effect(use_reactive!(|end| {
         let _ = end;
         shown.write().clear();
+    }));
+    let rows = listed.clone();
+    use_effect(use_reactive!(|end, show| {
+        let Some(other) = show else { return };
+        if *ticked_for.peek() == Some((end, other)) {
+            return;
+        }
+        if let Some(item) = to_tick(other, &rows()) {
+            shown.write().insert(item);
+            ticked_for.set(Some((end, other)));
+        }
     }));
     let _read = use_resource(move || {
         let ticked: Vec<Row> = listed()
@@ -377,6 +402,24 @@ fn use_shown(
         async move { overlays.set(overlays_of(&archive(), ticked).await) }
     });
     shown
+}
+
+/// The row of `other` among `groups`, as the map shows it.
+fn to_tick(other: LinkOther, groups: &[Group]) -> Option<Shown> {
+    groups
+        .iter()
+        .flat_map(|group| &group.rows)
+        .map(|row| row.shown)
+        .find(|shown| match (other, *shown) {
+            (LinkOther::Trip(id), Shown::Line(kind, line)) => {
+                kind != Kind::Collections && id == line
+            }
+            (LinkOther::CollectionTrack(id), Shown::Line(kind, line)) => {
+                kind == Kind::Collections && id == line
+            }
+            (LinkOther::Waypoint(id), Shown::Waypoint(waypoint)) => id == waypoint,
+            _ => false,
+        })
 }
 
 #[component]

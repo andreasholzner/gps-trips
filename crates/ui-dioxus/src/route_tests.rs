@@ -57,6 +57,16 @@ fn a_trips_url_round_trips_through_the_detail_route() {
 }
 
 #[test]
+fn us103_a_trips_url_carries_what_it_opens_with_ticked() {
+    let show = crate::detail::Showing(trip_archive_types::LinkOther::CollectionTrack(7));
+    let url = Route::TripShowing { id: 42, show }.to_string();
+    assert_eq!(url, "/trips/42/showing/track-7");
+
+    let parsed = Route::from_str(&url).expect("the router must parse a URL it just wrote");
+    assert_eq!(parsed, Route::TripShowing { id: 42, show });
+}
+
+#[test]
 fn the_komoot_url_round_trips_and_keeps_the_path_the_page_had() {
     // The server redirects `/komoot/sync` here, so this path is part of
     // that contract rather than an internal detail (US-44).

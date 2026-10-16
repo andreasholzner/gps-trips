@@ -13,22 +13,31 @@ use crate::photos::{self, PhotoView};
 use crate::placing::PlacePhoto;
 use crate::tagging::Tagging;
 use crate::viewer::PhotoViewer;
-use trip_archive_types::PhotoResponse;
+use trip_archive_types::{LinkOther, PhotoResponse};
 
 mod actions;
 mod climbs;
+mod showing;
 mod stats;
 mod track_views;
 
 use actions::TripActions;
 // Also what a share's recipient sees of a trip (US-53).
+pub use showing::Showing;
 pub use stats::TripStats;
 pub use track_views::{TrackSection, TrackViews};
 
-/// The screen. `id` comes from the route (`/trips/:id`), so a link, a
-/// bookmark and a reload all land on the same trip.
+/// The screen opened with `show` ticked on its map (US-103).
 #[component]
-pub fn TripDetail(id: i64) -> Element {
+pub fn TripShowing(id: i64, show: Showing) -> Element {
+    rsx! { TripDetail { id, show: Some(show.0) } }
+}
+
+/// The screen. `id` comes from the route (`/trips/:id`), so a link, a
+/// bookmark and a reload all land on the same trip; `show`, what its map
+/// opens with ticked beside it (US-103).
+#[component]
+pub fn TripDetail(id: i64, #[props(default)] show: Option<LinkOther>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
     // `id` is a plain prop, not a signal: navigating from one trip to
     // another reuses this component's scope, and a resource that only
@@ -135,7 +144,7 @@ pub fn TripDetail(id: i64) -> Element {
                         move |start| viewing.set(Some((views.clone(), start)))
                     },
                 }
-                LinkedTo { end: LinkEnd::Trip(id), overlays }
+                LinkedTo { end: LinkEnd::Trip(id), overlays, show }
                 TripActions {
                     trip: trip.clone(),
                     on_saved: move |_| trip_resource.restart(),
