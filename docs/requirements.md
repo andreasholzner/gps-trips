@@ -147,6 +147,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-103](#us-103--proposed-links)                             | ⏳     | Proposed links                               | [Trip page](#trip-page)                                             |
 | [US-104](#us-104--pick-from-stacked-lines)                    | ✅     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
+| [US-106](#us-106--mark-the-photos-still-to-be-placed)         | 📋     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
 
 ### Maintaining this file
 
@@ -1372,6 +1373,26 @@ not once per photo.
 offset it resolves *with* changes), ADR-0017 (the EXIF capture time and embedded offset it starts
 from), ADR-0012 (the border cases are unit-tested against bundled boundary data, with the
 no-crossing trip as the regression)
+
+### US-106 — Mark the photos still to be placed
+
+**Planned 📋** — As the owner, on a trip's page I see which photos still need placing, so once the
+"Unplaced photos" filter (US-66/US-101) has led me to a trip, I know which photo to place by hand
+(US-30).
+
+**Acceptance criteria:** The Photos section marks every photo the filter counts — one left unplaced
+and one Komoot put at the track's start or end (US-101) — with a badge in the thumbnail's top-left
+corner: a crossed-out map pin on a light disc. Every such photo gets the same badge; it does not say
+which of the two it is. The thumbnail's button names it as needing placing, so a screen reader says
+so too. The server tells which photos need placing, by the filter's own rule, so the filter and the
+badge never disagree — the gallery has no track to ask. Once a photo is placed by hand its badge
+goes without reloading the page. The order of the photos, the captions, the map and the viewer are
+unchanged. A share's recipient (US-53) sees no badge: only the owner can place a photo. Tested
+(ADR-0012) for a photo left unplaced, one at the start, one at the end, and one near the start but
+placed from EXIF, by timestamp or by hand, which gets none.
+
+**Decisions:** US-106 → ADR-0008 (whether a photo needs placing comes with it from the JSON API),
+ADR-0018 (the `LocationSource` set is unchanged)
 
 ## Tags
 
