@@ -144,7 +144,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-100](#us-100--tag-many-collections-at-once)               | ✅     | Tag many collections at once                 | [Tags](#tags)                                                       |
 | [US-101](#us-101--photos-komoot-parked-at-the-start-or-end)  | ✅     | Photos Komoot parked at the start or end     | [Trip list & map](#trip-list--map)                                  |
 | [US-102](#us-102--collection-track-tags-as-qmapshack-keywords) | ✅     | Collection-track tags as QMapShack keywords  | [QMapShack export](#qmapshack-export)                               |
-| [US-103](#us-103--proposed-links)                             | ⏳     | Proposed links                               | [Trip page](#trip-page)                                             |
+| [US-103](#us-103--proposed-links)                             | ✅     | Proposed links                               | [Trip page](#trip-page)                                             |
 | [US-104](#us-104--pick-from-stacked-lines)                    | ✅     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 | [US-106](#us-106--mark-the-photos-still-to-be-placed)         | 📋     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
@@ -1149,7 +1149,7 @@ stays where it is.
 
 ### US-103 — Proposed links
 
-**Backlog ⏳** — As the owner, the archive proposes links (US-99) between what I did and what I
+**Done ✅** — As the owner, the archive proposes links (US-99) between what I did and what I
 planned, from the tracks' geometry, and I confirm or dismiss each, so I don't link a guide book's
 125 stages by hand.
 
