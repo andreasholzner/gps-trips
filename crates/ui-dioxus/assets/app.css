@@ -692,3 +692,30 @@ nav.session {
 .recorded-mark {
   color: var(--pico-ins-color);
 }
+
+/* The Proposed links page (US-103): the selection's actions in one row,
+   then one plain line per proposal. */
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: var(--pico-spacing);
+}
+
+.proposal-actions label,
+.proposal-actions button {
+  margin-bottom: 0;
+}
+
+.proposals {
+  padding-left: 0;
+}
+
+.proposals li {
+  list-style: none;
+}
+
+.proposals input[type="checkbox"] {
+  margin: 0 0.5rem 0 0;
+}

@@ -11,8 +11,10 @@
 
 use dioxus::prelude::*;
 
+use crate::api::{self, ApiClient};
 use crate::filters::Filters;
 use crate::name_filter::NameFilter;
+use crate::proposals::{use_proposals_changed, ProposalsChanged};
 use crate::stats::StatsView;
 use crate::summary::SummaryView;
 use crate::Route;
@@ -24,11 +26,25 @@ use crate::Route;
 #[derive(Clone, Copy)]
 pub struct SignOut(pub Callback<()>);
 
-/// The shell every screen renders inside: the menu, then the screen.
+/// The shell every screen renders inside: the menu, then the screen. How
+/// many links the archive proposes (US-103) is read again on every change of
+/// screen — an import may have brought some — and whenever they change on
+/// one.
 #[component]
 pub fn AppShell() -> Element {
+    let archive = use_context::<Signal<ApiClient>>();
+    let changed = use_proposals_changed();
+    let route = use_route::<Route>();
+    let count = use_resource(use_reactive!(|route| {
+        let _ = route;
+        if let Some(ProposalsChanged(changed)) = changed {
+            changed.read();
+        }
+        async move { api::proposal_count(&archive()).await.ok() }
+    }));
+    let proposals = count.read().flatten();
     rsx! {
-        AppMenu {}
+        AppMenu { proposals }
         Outlet::<Route> {}
     }
 }
@@ -42,8 +58,10 @@ pub fn AppShell() -> Element {
 /// *between* the menu's own items, and telling that apart needs
 /// `relatedTarget`, which means `web-sys` — unavailable on Android
 /// (ADR-0025).
+///
+/// `proposals` is how many links the archive proposes, `None` until known.
 #[component]
-pub fn AppMenu() -> Element {
+pub fn AppMenu(#[props(default)] proposals: Option<i64>) -> Element {
     let mut open = use_signal(|| false);
     // Absent on the host target, on Android and in the web app installed
     // there, where signing out is not offered at all; `App` provides it in a
@@ -106,6 +124,15 @@ pub fn AppMenu() -> Element {
                     to: Route::ImportTrip {},
                     onclick: move |_| open.set(false),
                     "Import"
+                }
+                Link {
+                    to: Route::ProposedLinks {},
+                    onclick: move |_| open.set(false),
+                    if let Some(count) = proposals {
+                        "Proposed links ({count})"
+                    } else {
+                        "Proposed links"
+                    }
                 }
                 Link {
                     to: Route::KomootSync {},
@@ -175,6 +202,13 @@ mod tests {
         // US-97: every collection, right after the tags.
         assert!(position("Tags") < position("Collections"), "{html}");
         assert!(position("Collections") < position("Import"), "{html}");
+        // US-103: what the archive proposed, right after importing.
+        assert!(position("Import") < position("Proposed links"), "{html}");
+        assert!(
+            position("Proposed links") < position("Sync with Komoot"),
+            "{html}"
+        );
+        assert!(html.contains(r#"href="/proposed-links""#), "{html}");
         let tags = Route::Tags {
             view: NameFilter::default(),
         }
@@ -243,5 +277,12 @@ mod tests {
     fn SignOutProvider(children: Element) -> Element {
         use_context_provider(|| SignOut(Callback::new(|_| {})));
         rsx! { {children} }
+    }
+
+    #[test]
+    fn us103_the_menu_counts_the_proposed_links_in_parentheses() {
+        let html = render(|| rsx! { AppMenu { proposals: Some(3) } });
+
+        assert!(html.contains(">Proposed links (3)<"), "{html}");
     }
 }

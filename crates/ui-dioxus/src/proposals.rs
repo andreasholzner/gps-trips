@@ -7,6 +7,10 @@ use trip_archive_types::Proposal;
 
 use crate::api::{self, ApiClient, CheckFrom};
 
+mod page;
+
+pub use page::ProposedLinks;
+
 /// Bumped whenever proposals may have come or gone — confirmed, dismissed,
 /// or a check started — so the navigation's count is read again. Provided
 /// by the app; absent, nothing is told.

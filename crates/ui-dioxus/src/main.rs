@@ -75,6 +75,7 @@ use list::TripList;
 use login::Login;
 use menu::{AppShell, SignOut};
 use name_filter::NameFilter;
+use proposals::{ProposalsChanged, ProposedLinks};
 use shared::{Shared, SharedCollectionPage, SharedCollectionTrackPage, SharedTripDetail};
 use shares::Shares;
 use stats::{Statistics, StatsView};
@@ -148,6 +149,9 @@ enum Route {
     /// page used to be, and where it now redirects.
     #[route("/import")]
     ImportTrip {},
+    /// Every link the archive proposed, to confirm or dismiss (US-103).
+    #[route("/proposed-links")]
+    ProposedLinks {},
     /// Reviewing and running a Komoot sync (US-44) — the last screen the
     /// proof-of-concept UI still owned. Same path it had there, so its
     /// redirect is a straight move under `/app`.
@@ -287,6 +291,8 @@ fn App() -> Element {
     });
 
     use_context_provider(|| archive);
+    // Bumped when proposals may have changed, for the menu's count (US-103).
+    use_context_provider(|| ProposalsChanged(Signal::new(0)));
 
     let body = match access() {
         Access::Resolving => rsx! { p { "Starting…" } },
