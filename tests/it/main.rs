@@ -7,6 +7,7 @@ mod common;
 
 mod us100_bulk_tag_collections;
 mod us102_qmapshack_track_keywords;
+mod us103_proposed_links;
 mod us10_self_host;
 mod us11_activity_type;
 mod us12_staged_import;

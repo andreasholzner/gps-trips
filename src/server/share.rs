@@ -292,7 +292,8 @@ async fn shared_trips(
     trips: Vec<LinkedTrip>,
 ) -> Result<Vec<SharedLinkedTrip>, AppError> {
     let mut shared = Vec::with_capacity(trips.len());
-    for trip in trips {
+    // A proposal is the owner's alone (US-103).
+    for trip in trips.into_iter().filter(|trip| trip.proposal.is_none()) {
         if repo::share_covers_trip(&state.pool, share, trip.id).await? {
             shared.push(SharedLinkedTrip {
                 id: trip.id,

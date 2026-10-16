@@ -16,6 +16,7 @@ fn a_trip(id: i64, name: &str, date: Option<&str>) -> LinkedTrip {
         name: name.to_string(),
         activity_type: ActivityType::Hiking,
         start_date: date.map(str::to_string),
+        proposal: None,
     }
 }
 
@@ -26,6 +27,7 @@ fn a_track(id: i64) -> LinkedTrack {
         activity_type: ActivityType::Cycling,
         collection_id: 7,
         collection_name: "Book".to_string(),
+        proposal: None,
     }
 }
 
@@ -36,6 +38,7 @@ fn a_waypoint(id: i64, name: Option<&str>) -> LinkedWaypoint {
         symbol: Some("Summit".to_string()),
         collection_id: 7,
         collection_name: "Book".to_string(),
+        proposal: None,
     }
 }
 

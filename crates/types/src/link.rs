@@ -36,6 +36,20 @@ pub struct Links {
     pub waypoints: Vec<LinkedWaypoint>,
 }
 
+/// A link the archive proposed from the tracks' geometry and the owner has
+/// not confirmed yet (US-103, ADR-0030), with what it was proposed on, as
+/// shares from 0 to 1: a plan followed along its line has the first two, one
+/// judged by its own points the last, a waypoint passed none.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Proposal {
+    /// Of the plan's line, the length the trip ran along.
+    pub plan_covered: Option<f64>,
+    /// Of the trip's line, the length that ran along the plan.
+    pub trip_on_plan: Option<f64>,
+    /// Of the plan's own points, those the trip reached.
+    pub points_reached: Option<f64>,
+}
+
 /// A recorded or planned trip at the other end of a link.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LinkedTrip {
@@ -45,6 +59,9 @@ pub struct LinkedTrip {
     /// The local date it started on, as `TripSummary::start_date`; `None`
     /// for a track with no timestamps.
     pub start_date: Option<String>,
+    /// `None` for a link; a proposal until the owner confirms it.
+    #[serde(default)]
+    pub proposal: Option<Proposal>,
 }
 
 /// A collection track at the other end of a link.
@@ -56,6 +73,9 @@ pub struct LinkedTrack {
     pub activity_type: ActivityType,
     pub collection_id: i64,
     pub collection_name: String,
+    /// `None` for a link; a proposal until the owner confirms it.
+    #[serde(default)]
+    pub proposal: Option<Proposal>,
 }
 
 /// A waypoint at the other end of a link.
@@ -67,6 +87,9 @@ pub struct LinkedWaypoint {
     pub symbol: Option<String>,
     pub collection_id: i64,
     pub collection_name: String,
+    /// `None` for a link; a proposal until the owner confirms it.
+    #[serde(default)]
+    pub proposal: Option<Proposal>,
 }
 
 /// What a shared trip is linked to, as a share's recipient reads it: only

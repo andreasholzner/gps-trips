@@ -9,7 +9,9 @@ use sqlx::{sqlite::SqliteRow, Row, Sqlite, SqlitePool};
 
 use super::collection::TRACK_ACTIVITY;
 use super::trip::local_start_date;
-use crate::models::{LinkedTrack, LinkedTrip, LinkedWaypoint, Links, RecordedTripFilter, TripKind};
+use crate::models::{
+    LinkedTrack, LinkedTrip, LinkedWaypoint, Links, Proposal, RecordedTripFilter, TripKind,
+};
 use crate::server::db;
 
 /// Something a link can end at, other than the trip at its other end — or,
@@ -36,7 +38,8 @@ pub enum LinkOutcome {
 /// Link every pair the selection holds that can be linked: each recorded
 /// trip to each planned trip and collection track, each planned trip to each
 /// collection track. One transaction checks that everything exists and links
-/// it, all or nothing; a pair already linked stays one link.
+/// it, all or nothing; a pair already linked stays one link, and a proposed
+/// one is confirmed (US-103).
 pub async fn link_selection(
     pool: &SqlitePool,
     trip_ids: &[i64],
@@ -69,8 +72,8 @@ pub async fn link_selection(
     for &r in &recorded {
         for &p in &planned {
             sqlx::query(
-                "INSERT OR IGNORE INTO trip_trip_link (recorded_trip_id, planned_trip_id) \
-                 VALUES (?, ?)",
+                "INSERT INTO trip_trip_link (recorded_trip_id, planned_trip_id) VALUES (?, ?) \
+                 ON CONFLICT DO UPDATE SET proposed = 0",
             )
             .bind(r)
             .bind(p)
@@ -81,8 +84,8 @@ pub async fn link_selection(
     for &trip in recorded.iter().chain(&planned) {
         for &track in &tracks {
             sqlx::query(
-                "INSERT OR IGNORE INTO trip_track_link (trip_id, collection_track_id) \
-                 VALUES (?, ?)",
+                "INSERT INTO trip_track_link (trip_id, collection_track_id) VALUES (?, ?) \
+                 ON CONFLICT DO UPDATE SET proposed = 0",
             )
             .bind(trip)
             .bind(track)
@@ -107,11 +110,14 @@ pub async fn link_waypoint(
     {
         return Ok(false);
     }
-    sqlx::query("INSERT OR IGNORE INTO trip_waypoint_link (trip_id, waypoint_id) VALUES (?, ?)")
-        .bind(trip_id)
-        .bind(waypoint_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO trip_waypoint_link (trip_id, waypoint_id) VALUES (?, ?) \
+         ON CONFLICT DO UPDATE SET proposed = 0",
+    )
+    .bind(trip_id)
+    .bind(waypoint_id)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(true)
 }
@@ -206,7 +212,7 @@ async fn linked_trips(
     kind: TripKind,
 ) -> Result<Vec<LinkedTrip>, sqlx::Error> {
     let mut trips: Vec<(LinkedTrip, Option<String>)> = sqlx::query(&format!(
-        "SELECT t.id, t.name, t.activity_type, t.start_time, t.tz_name \
+        "SELECT t.id, t.name, t.activity_type, t.start_time, t.tz_name, {PROPOSAL} \
          FROM {from} AND t.trip_kind = ?"
     ))
     .bind(id)
@@ -219,6 +225,7 @@ async fn linked_trips(
             name: row.get("name"),
             activity_type: row.get("activity_type"),
             start_date: local_start_date(start_time.as_deref(), tz_name.as_deref()),
+            proposal: proposal(&row),
         };
         (trip, start_time)
     })
@@ -243,7 +250,7 @@ async fn linked_trips(
 async fn linked_tracks(pool: &SqlitePool, trip_id: i64) -> Result<Vec<LinkedTrack>, sqlx::Error> {
     let mut tracks = sqlx::query(&format!(
         "SELECT k.id, k.name, {TRACK_ACTIVITY} AS activity_type, \
-                c.id AS collection_id, c.name AS collection_name \
+                c.id AS collection_id, c.name AS collection_name, {PROPOSAL} \
          FROM trip_track_link l \
          JOIN collection_track k ON k.id = l.collection_track_id \
          JOIN collection c ON c.id = k.collection_id \
@@ -256,6 +263,7 @@ async fn linked_tracks(pool: &SqlitePool, trip_id: i64) -> Result<Vec<LinkedTrac
         activity_type: row.get("activity_type"),
         collection_id: row.get("collection_id"),
         collection_name: row.get("collection_name"),
+        proposal: proposal(&row),
     })
     .fetch_all(pool)
     .await?;
@@ -268,13 +276,14 @@ async fn linked_waypoints(
     pool: &SqlitePool,
     trip_id: i64,
 ) -> Result<Vec<LinkedWaypoint>, sqlx::Error> {
-    let mut waypoints = sqlx::query(
-        "SELECT w.id, w.name, w.symbol, c.id AS collection_id, c.name AS collection_name \
+    let mut waypoints = sqlx::query(&format!(
+        "SELECT w.id, w.name, w.symbol, c.id AS collection_id, c.name AS collection_name, \
+                {PROPOSAL} \
          FROM trip_waypoint_link l \
          JOIN waypoint w ON w.id = l.waypoint_id \
          JOIN collection c ON c.id = w.collection_id \
-         WHERE l.trip_id = ?",
-    )
+         WHERE l.trip_id = ?"
+    ))
     .bind(trip_id)
     .map(|row: SqliteRow| LinkedWaypoint {
         id: row.get("id"),
@@ -282,6 +291,7 @@ async fn linked_waypoints(
         symbol: row.get("symbol"),
         collection_id: row.get("collection_id"),
         collection_name: row.get("collection_name"),
+        proposal: proposal(&row),
     })
     .fetch_all(pool)
     .await?;
@@ -295,15 +305,27 @@ async fn linked_waypoints(
     Ok(waypoints)
 }
 
+/// What a link `l` was proposed on, for [`proposal`] to read.
+const PROPOSAL: &str = "l.proposed, l.plan_covered, l.trip_on_plan, l.points_reached";
+
+/// `None` for a link, what it was proposed on for a proposal (US-103).
+fn proposal(row: &SqliteRow) -> Option<Proposal> {
+    row.get::<bool, _>("proposed").then(|| Proposal {
+        plan_covered: row.get("plan_covered"),
+        trip_on_plan: row.get("trip_on_plan"),
+        points_reached: row.get("points_reached"),
+    })
+}
+
 /// True for the planned trip `t` when a recorded trip is linked to it, and
-/// never for a recorded one.
+/// never for a recorded one. A proposal (US-103) is not a link yet.
 pub(super) const TRIP_HAS_RECORDED_TRIP: &str =
-    "EXISTS (SELECT 1 FROM trip_trip_link rl WHERE rl.planned_trip_id = t.id)";
+    "EXISTS (SELECT 1 FROM trip_trip_link rl WHERE rl.planned_trip_id = t.id AND NOT rl.proposed)";
 
 /// True for the collection track `k` when a recorded trip is linked to it.
 pub(super) const TRACK_HAS_RECORDED_TRIP: &str = "EXISTS (SELECT 1 FROM trip_track_link rl \
      JOIN trip rt ON rt.id = rl.trip_id \
-     WHERE rl.collection_track_id = k.id AND rt.trip_kind = 'recorded')";
+     WHERE rl.collection_track_id = k.id AND rt.trip_kind = 'recorded' AND NOT rl.proposed)";
 
 /// Narrow a query over `trip t` to the planned trips `filter` asks for,
 /// leaving the recorded ones as they are.
@@ -341,7 +363,7 @@ pub(super) async fn waypoints_with_recorded_trip(
     sqlx::query_scalar(
         "SELECT w.id FROM waypoint w WHERE w.collection_id = ? AND EXISTS ( \
              SELECT 1 FROM trip_waypoint_link rl JOIN trip rt ON rt.id = rl.trip_id \
-             WHERE rl.waypoint_id = w.id AND rt.trip_kind = 'recorded') \
+             WHERE rl.waypoint_id = w.id AND rt.trip_kind = 'recorded' AND NOT rl.proposed) \
          ORDER BY w.position",
     )
     .bind(collection_id)

@@ -65,8 +65,8 @@ pub use komoot_sync::{
     SelectedTour, SyncCandidate, SyncCandidates, SyncPhase, SyncRequest, SyncResponse,
 };
 pub use link::{
-    CreateLinks, CreatedLinks, LinkedTrack, LinkedTrip, LinkedWaypoint, Links, RecordedTripFilter,
-    SharedLinkedTrip, SharedLinks,
+    CreateLinks, CreatedLinks, LinkedTrack, LinkedTrip, LinkedWaypoint, Links, Proposal,
+    RecordedTripFilter, SharedLinkedTrip, SharedLinks,
 };
 pub use location_source::LocationSource;
 pub use photo::Photo;

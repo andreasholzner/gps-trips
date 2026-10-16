@@ -314,6 +314,7 @@ async fn us99_waypoints_are_listed_on_the_trips_and_the_trips_on_the_waypoint() 
             symbol: Some("Summit".to_string()),
             collection_id: collection,
             collection_name: "Book".to_string(),
+            proposal: None,
         }
     );
     let on_hut = links(&db.pool, LinkEnd::Waypoint(hut)).await;
@@ -353,6 +354,7 @@ async fn us99_the_other_ends_are_named_as_their_pages_list_them() {
             activity_type: ActivityType::Cycling,
             collection_id: collection,
             collection_name: "Book".to_string(),
+            proposal: None,
         }
     );
 }
