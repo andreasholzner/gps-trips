@@ -14,6 +14,18 @@ use crate::models::{
 };
 use crate::server::db;
 
+mod candidates;
+mod proposal;
+
+pub use candidates::{
+    collection_item_ids, collection_items, tracks_near, trip_line, trips_near, waypoints_near,
+    Extent, Line, Place,
+};
+pub use proposal::{
+    confirm_proposals, count_proposals, dismiss_proposals, forget_proposals_of, list_proposals,
+    propose, ProposalPair,
+};
+
 /// Something a link can end at, other than the trip at its other end — or,
 /// for [`list_links`], whatever a page lists the links of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -393,4 +405,4 @@ where
 // ── Tests (written first — ADR-0012) ─────────────────────────────────────────
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

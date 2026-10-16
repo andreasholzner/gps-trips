@@ -9,7 +9,7 @@ mod bulk_edit;
 mod collection;
 mod export;
 pub mod komoot;
-mod link;
+pub(crate) mod link;
 mod moving_time;
 mod photo;
 mod share;
@@ -36,7 +36,12 @@ pub use collection::{
 };
 pub use collection::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};
 pub use export::{list_export_collections, list_export_trips};
-pub use link::{link_selection, link_waypoint, list_links, unlink, LinkEnd, LinkOutcome};
+pub use link::{
+    collection_item_ids, collection_items, confirm_proposals, count_proposals, dismiss_proposals,
+    forget_proposals_of, link_selection, link_waypoint, list_links, list_proposals, propose,
+    tracks_near, trip_line, trips_near, unlink, waypoints_near, Extent, Line, LinkEnd, LinkOutcome,
+    Place, ProposalPair,
+};
 pub use moving_time::backfill_moving_secs;
 pub use photo::{
     count_photos, insert_photo, list_photos, list_photos_without_taken_at, place_photo,

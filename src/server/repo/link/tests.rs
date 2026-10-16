@@ -14,7 +14,7 @@ use crate::server::repo::{
 
 const SAMPLE_GPX: &[u8] = include_bytes!("../../../../tests/fixtures/sample.gpx");
 
-async fn a_trip(pool: &SqlitePool, name: &str, trip_kind: TripKind) -> i64 {
+pub(super) async fn a_trip(pool: &SqlitePool, name: &str, trip_kind: TripKind) -> i64 {
     let track = parse_gpx(SAMPLE_GPX).unwrap();
     let stats = compute_stats(&track.points);
     let geojson = build_track_geojson(&track.points);
@@ -34,16 +34,16 @@ async fn a_trip(pool: &SqlitePool, name: &str, trip_kind: TripKind) -> i64 {
     .expect("insert_trip")
 }
 
-async fn recorded(pool: &SqlitePool, name: &str) -> i64 {
+pub(super) async fn recorded(pool: &SqlitePool, name: &str) -> i64 {
     a_trip(pool, name, TripKind::Recorded).await
 }
 
-async fn planned(pool: &SqlitePool, name: &str) -> i64 {
+pub(super) async fn planned(pool: &SqlitePool, name: &str) -> i64 {
     a_trip(pool, name, TripKind::Planned).await
 }
 
 /// When the trip started, so recorded trips list newest first.
-async fn started(pool: &SqlitePool, trip: i64, start_time: &str) {
+pub(super) async fn started(pool: &SqlitePool, trip: i64, start_time: &str) {
     sqlx::query("UPDATE trip SET start_time = ? WHERE id = ?")
         .bind(start_time)
         .bind(trip)
@@ -54,7 +54,11 @@ async fn started(pool: &SqlitePool, trip: i64, start_time: &str) {
 
 /// A collection named `name` with the tracks named, and two waypoints; its
 /// id, its tracks' ids and its waypoints' ids.
-async fn a_collection(pool: &SqlitePool, name: &str, tracks: &[&str]) -> (i64, Vec<i64>, Vec<i64>) {
+pub(super) async fn a_collection(
+    pool: &SqlitePool,
+    name: &str,
+    tracks: &[&str],
+) -> (i64, Vec<i64>, Vec<i64>) {
     let track = parse_gpx(SAMPLE_GPX).unwrap();
     let stats = compute_stats(&track.points);
     let geojson = build_track_geojson(&track.points);

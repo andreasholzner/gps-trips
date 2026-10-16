@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ActivityType;
+use crate::{ActivityType, TripKind};
 
 /// The `POST /api/links` body: what the trip list's selection holds (US-90).
 /// Every pair in it that can be linked is.
@@ -90,6 +90,72 @@ pub struct LinkedWaypoint {
     /// `None` for a link; a proposal until the owner confirms it.
     #[serde(default)]
     pub proposal: Option<Proposal>,
+}
+
+/// The end of a link other than its trip, as a request names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum LinkOther {
+    Trip(i64),
+    CollectionTrack(i64),
+    Waypoint(i64),
+}
+
+/// A link or proposal named by its two ends. Between two trips, either may
+/// be named first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct LinkPair {
+    pub trip_id: i64,
+    pub other: LinkOther,
+}
+
+/// The `POST /api/link-proposals/confirm` and `…/dismiss` body (US-103).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LinkPairs {
+    pub pairs: Vec<LinkPair>,
+}
+
+/// A proposal as the Proposed links page lists it (US-103). Its ends' own
+/// `proposal` is `None`: what it was proposed on is the entry's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProposedLink {
+    /// The pair's trip, whose page the entry opens: the recorded trip, or
+    /// the planned trip of a planned trip and a collection item.
+    pub trip: LinkedTrip,
+    pub trip_kind: TripKind,
+    pub other: ProposedEnd,
+    pub proposal: Proposal,
+}
+
+/// The other end of a proposal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProposedEnd {
+    PlannedTrip(LinkedTrip),
+    CollectionTrack(LinkedTrack),
+    Waypoint(LinkedWaypoint),
+}
+
+impl ProposedLink {
+    /// The pair, as confirming or dismissing it names it.
+    pub fn pair(&self) -> LinkPair {
+        let other = match &self.other {
+            ProposedEnd::PlannedTrip(trip) => LinkOther::Trip(trip.id),
+            ProposedEnd::CollectionTrack(track) => LinkOther::CollectionTrack(track.id),
+            ProposedEnd::Waypoint(waypoint) => LinkOther::Waypoint(waypoint.id),
+        };
+        LinkPair {
+            trip_id: self.trip.id,
+            other,
+        }
+    }
+}
+
+/// What `GET /api/link-proposals/count` answers with, and what a check the
+/// owner starts answers with: how many proposals.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProposalCount {
+    pub count: i64,
 }
 
 /// What a shared trip is linked to, as a share's recipient reads it: only
