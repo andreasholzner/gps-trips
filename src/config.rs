@@ -483,3 +483,46 @@ pub mod collection_match {
     /// them too.
     pub const ELEVATION_TOLERANCE_M: f64 = 1.0;
 }
+
+/// When a trip is proposed as having followed a plan or passed a waypoint
+/// (US-103, ADR-0030).
+pub mod link_proposal {
+    /// A trip runs along a plan's line where it lies within this many metres
+    /// of it: a recording strays from a path, a plan is drawn on it.
+    pub const LINE_TOLERANCE_M: f64 = 50.0;
+
+    /// Stretches near the other line shorter than this, in metres, count for
+    /// nothing, so crossing a line or touching it at a corner adds nothing.
+    pub const MIN_STRETCH_M: f64 = 200.0;
+
+    /// A plan this much of whose line the trip ran along was followed — a
+    /// whole stage, even within a longer day.
+    pub const PLAN_COVERED_SHARE: f64 = 0.8;
+
+    /// A trip this much of whose line ran along a plan followed it, if it
+    /// covered at least [`MIN_COVERED_M`] of it — one day of a multi-day plan.
+    pub const TRIP_ON_PLAN_SHARE: f64 = 0.7;
+
+    /// Metres of a plan a trip must cover to have followed part of it.
+    pub const MIN_COVERED_M: f64 = 3_000.0;
+
+    /// A plan's own point is reached when the trip comes within this many
+    /// metres: off paths a plan is a loose string of points.
+    pub const POINT_TOLERANCE_M: f64 = 100.0;
+
+    /// A plan this much of whose points the trip reached was followed.
+    pub const POINTS_REACHED_SHARE: f64 = 0.8;
+
+    /// Fewest points in a row reached for a plan to be followed by its
+    /// points, and fewest reached at all.
+    pub const MIN_POINT_RUN: usize = 3;
+
+    /// Between a plan's points the trip strays from its straight lines; for
+    /// one day of a multi-day plan judged by its points, the trip must run
+    /// within this many metres of them for [`TRIP_ON_PLAN_SHARE`] of its line.
+    pub const BAND_M: f64 = 300.0;
+
+    /// A trip passed a waypoint when any part of its line comes within this
+    /// many metres of it.
+    pub const WAYPOINT_DISTANCE_M: f64 = 50.0;
+}
