@@ -1152,29 +1152,66 @@ stays where it is.
 planned, from the tracks' geometry, and I confirm or dismiss each, so I don't link a guide book's
 125 stages by hand.
 
-**Notes:** **When it looks:** a recorded trip that enters the archive, whichever way — import
-(US-1), Komoot sync (US-20) — is checked against every planned trip, collection track and
-waypoint. A planned trip, or a collection's tracks and waypoints, entering the archive — including
-those a file adds to a collection (US-88) — are checked against every recorded trip. A trip or item
-whose track or position changes is checked again. The owner can also start a search from a recorded
-trip's, a planned trip's or a collection's page. A pair already linked is not proposed.
+**Acceptance criteria:**
 
-**What counts:** a recorded trip followed a planned trip or collection track when it runs along a
-relevant part of its line within a tolerance; a multi-day planned trip covered by six recorded
-trips is proposed with each of them. A track passed a waypoint when it comes within a distance of
-it — a tolerance of its own, likely smaller than the line's. The tolerances and what part is
-relevant are configuration.
+**When it looks:** whatever enters the archive is checked, within the request that brings it in,
+against everything it can be linked to (US-99), in every allowed pair: a recorded
+trip — imported (US-1/US-31) or synced from Komoot (US-22) — against planned trips, collection
+tracks and waypoints; a planned trip — imported or synced (US-29) — against recorded trips,
+collection tracks and waypoints; a collection's tracks and waypoints — imported (US-86) or added
+from a file (US-88) — against recorded and planned trips. A collection item replaced on re-import
+(US-88) is checked again; no other track or position changes. The owner can start the same check
+by hand from a recorded trip's, a planned trip's or a collection's page — as if the trip, or the
+collection's items, had just entered the archive. There is no search over the whole archive and no
+background job. A pair already linked, or already proposed, is not proposed again.
 
-**Confirming:** the owner confirms or dismisses each proposal; a confirmed one becomes a link. A
-dismissed one is not remembered: it comes back only from a search the owner starts or a changed
-track or position.
+**What counts:** whether a trip followed a planned trip or collection track is measured by two
+shares, each over the length within a tolerance of the other line, leaving out stretches shorter
+than a minimum so crossing a line adds nothing: *plan covered*, the share of the planned line's
+length near the trip, and *trip on plan*, the share of the trip's length near the planned line. A
+pair is proposed when the plan is mostly covered — the whole stage was followed, even within a
+longer trip — or when the trip ran mostly on the plan and covered at least a minimum length of it,
+so a multi-day planned trip covered by six recorded trips is proposed with each of them. A trip
+that only shares a short stretch of road with a stage is not proposed. The direction of travel does
+not matter.
 
-**Open:** where proposals wait and are confirmed, and whether they outlast a restart; how large a
-relevant part is; whether the direction of travel matters; whether a new planned trip is also
-checked against collections; whether one search over everything already archived is offered.
+**Plans without paths:** a ski tour or a hike off paths is planned as a loose string of points
+joined by straight lines (komoot's off-road sections) that the trip strays from between them. Such
+a pair is judged by the plan's points instead — the points of its line, not the GPX waypoints — by
+the same two rules: a pair is proposed when most of the plan's points lie within a wider tolerance
+of the trip, or when a run of consecutive points covering at least a minimum length of the plan does
+and the trip ran mostly within a wider corridor around the plan's line. Every pair is judged both
+ways, and proposed when either holds; nothing has to tell an off-path plan apart.
 
-**Decisions:** likely an ADR on matching a recorded track against a planned line — related to, but
-not the same as, ADR-0029's matching of a file against a collection.
+**Waypoints:** a recorded or planned trip passed a waypoint when any part of its line comes within
+a distance of it — a tolerance of its own.
+
+The tolerances, shares, minimum lengths and the run of points are set in `config.rs`. The rules are
+unit-tested against synthetic tracks, among them an off-path plan of a few points (ADR-0012).
+
+**Where proposals wait:** a proposal is a link (US-99) marked as proposed, stored like one, so it
+outlasts a restart. It shows in the lists of links on both ends' pages, marked as proposed, with
+controls to confirm or dismiss it. A proposed link is not a link yet: it does not make a planned
+trip, collection track or waypoint one *with a recorded trip*, and it counts toward no mark, count
+or filter.
+
+**The Proposed links page,** in the top-level navigation after *Import* with the number of
+proposed links in parentheses, lists every proposed link, each entry with its two ends and its
+coverage: both shares for a line (`92 % of the stage · 85 % of the trip`), the share of the plan's
+points reached for a plan judged by its points, nothing more for a waypoint. An entry opens the
+page of the pair's trip — the recorded trip, or the planned trip of a planned trip and a collection
+track or waypoint — with the other end already ticked on its map (US-99). Entries can be selected
+one by one or all at once, and the selection confirmed or dismissed in one action.
+
+**Confirming:** a confirmed proposal becomes a link. A dismissed one is deleted and not remembered:
+it comes back only from a check the owner starts or a re-imported collection item. A proposal goes
+when either end is deleted, as a link does.
+
+**Shares:** proposals are the owner's alone; a recipient never sees one.
+
+**Decisions:** US-103 → [ADR-0030](./adr/0030-proposed-links-from-coverage.md) (proposals from
+coverage both ways, by line and by points; the owner decides), ADR-0008 (the screens read and
+change proposals through the JSON API)
 
 ### US-105 — Ticking a link keeps the map still
 

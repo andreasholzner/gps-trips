@@ -35,6 +35,7 @@ komoot organization replacement). Each record follows the Michael Nygard format:
 | [0027](./0027-offline-place-name-database.md)        | Offline geodata from OSM and national name registers                        | Accepted                      |
 | [0028](./0028-collections-apart-from-trips.md)       | Collections are records of their own, apart from trips                      | Accepted                      |
 | [0029](./0029-collection-re-import-matching.md)      | Collection re-import: match within a tolerance; the owner decides           | Accepted                      |
+| [0030](./0030-proposed-links-from-coverage.md)       | Links proposed from coverage of the plan and the trip; the owner decides    | Accepted                      |
 
 ## Conventions
 
