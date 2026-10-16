@@ -1,15 +1,17 @@
 //! The occasional controls, in one quiet row at the foot of the detail screen
-//! (US-62): edit, add photos, share (US-53), download the original GPX, delete. Each used to
+//! (US-62): edit, add photos, share (US-53), download the original GPX, look
+//! for links to propose (US-103), delete. Each used to
 //! be a full-width primary button, with the add-photos form open besides; now
 //! nothing is open until it is asked for.
 
 use dioxus::prelude::*;
 use trip_archive_types::TripDetail as Trip;
 
-use crate::api::{self, ApiClient};
+use crate::api::{self, ApiClient, CheckFrom};
 use crate::delete::DeleteTrip;
 use crate::edit::EditTrip;
 use crate::photos::AddPhotos;
+use crate::proposals::LookForLinks;
 use crate::share::{ShareDialog, ShareTarget};
 
 /// The row, the add-photos form under it once asked for, and the share
@@ -51,6 +53,7 @@ pub fn TripActions(
                 "Share"
             }
             a { class: "quiet", href: api::original_gpx_url(&archive(), id), "Download original GPX" }
+            LookForLinks { from: CheckFrom::Trip(id) }
             DeleteTrip { id }
         }
         if adding_photos() {
@@ -89,6 +92,7 @@ mod tests {
             r#"id="add-photos""#,
             r#"id="share-trip""#,
             "/gpx",
+            r#"id="look-for-links""#,
             r#"id="delete-trip""#,
         ] {
             assert!(row.contains(control), "{control} in the row: {html}");

@@ -62,6 +62,8 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
     assert!(html.contains("Lakes 2"), "the unnamed track: {html}");
     assert!(html.contains(r#"id="edit-collection""#), "{html}");
     assert!(html.contains(r#"id="delete-collection""#), "{html}");
+    // US-103: a check for links started from here.
+    assert!(html.contains(r#"id="look-for-links""#), "{html}");
     // US-94: the whole collection is shared from here, and its tracks are
     // selected to share some of them.
     assert!(html.contains(r#"id="share-collection""#), "{html}");

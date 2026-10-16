@@ -231,6 +231,7 @@ fn us99_a_ticked_line_takes_its_activitys_color_and_its_kinds_style() {
         icon: RowIcon::Activity(activity),
         shown,
         unlink: None,
+        proposal: None,
     };
     let track = crate::track::Track {
         geometry: crate::track::Geometry {
@@ -292,6 +293,7 @@ async fn us99_what_is_ticked_is_read_for_the_map_in_list_order() {
             icon: RowIcon::Activity(ActivityType::Hiking),
             shown: Shown::Line(Kind::Planned, plan),
             unlink: None,
+            proposal: None,
         },
         Row {
             name: "Pass".to_string(),
@@ -300,6 +302,7 @@ async fn us99_what_is_ticked_is_read_for_the_map_in_list_order() {
             icon: RowIcon::Symbol(None),
             shown: Shown::Waypoint(waypoint.id),
             unlink: None,
+            proposal: None,
         },
     ];
 

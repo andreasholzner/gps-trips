@@ -42,6 +42,7 @@ mod pager;
 mod photos;
 mod picked;
 mod placing;
+mod proposals;
 mod rates;
 mod region;
 mod selection;

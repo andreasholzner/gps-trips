@@ -8,12 +8,15 @@
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, Links, RecordedTripFilter, SharedLinks, TripKind};
+use trip_archive_types::{
+    ActivityType, Links, Proposal, RecordedTripFilter, SharedLinks, TripKind,
+};
 
 use crate::activity_icon::ActivityIcon;
 use crate::api::{self, ApiClient, LinkEnd};
 use crate::interop::Overlays;
 use crate::kinds::Kind;
+use crate::proposals::{coverage, use_proposals_changed, ProposalsChanged};
 use crate::waypoint::UNNAMED;
 use crate::waypoint_icon::WaypointSymbol;
 use crate::Route;
@@ -41,6 +44,9 @@ pub struct Row {
     pub shown: Shown,
     /// The trip whose link removing it names, and the link's other end.
     pub unlink: Option<(i64, LinkEnd)>,
+    /// What it was proposed on, while it is a proposal (US-103); removing
+    /// one dismisses it.
+    pub proposal: Option<Proposal>,
 }
 
 /// What goes in front of a row's name.
@@ -75,6 +81,7 @@ fn trip_row(
     trip: (i64, &str, ActivityType, Option<&str>),
     to: Route,
     unlink: Option<(i64, LinkEnd)>,
+    proposal: Option<Proposal>,
 ) -> Row {
     let (id, name, activity, start_date) = trip;
     Row {
@@ -84,6 +91,7 @@ fn trip_row(
         icon: RowIcon::Activity(activity),
         shown: Shown::Line(Kind::of_trip(kind), id),
         unlink,
+        proposal,
     }
 }
 
@@ -114,6 +122,7 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
                     ),
                     Route::TripDetail { id: trip.id },
                     Some(unlink),
+                    trip.proposal,
                 )
             })
             .collect()
@@ -128,6 +137,7 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
             icon: RowIcon::Activity(track.activity_type),
             shown: Shown::Line(Kind::Collections, track.id),
             unlink: own_trip.map(|own| (own, LinkEnd::CollectionTrack(track.id))),
+            proposal: track.proposal,
         })
         .collect();
     let waypoints = links
@@ -140,6 +150,7 @@ pub fn groups(end: LinkEnd, links: &Links) -> Vec<Group> {
             icon: RowIcon::Symbol(waypoint.symbol.clone()),
             shown: Shown::Waypoint(waypoint.id),
             unlink: own_trip.map(|own| (own, LinkEnd::Waypoint(waypoint.id))),
+            proposal: waypoint.proposal,
         })
         .collect();
     [
@@ -184,6 +195,7 @@ pub fn shared_groups(token: &str, links: &SharedLinks) -> Vec<Group> {
                         token: token.to_string(),
                         id: trip.id,
                     },
+                    None,
                     None,
                 )
             })
@@ -265,10 +277,15 @@ pub fn error_on(end: LinkEnd, error: &Option<(LinkEnd, String)>) -> Option<&str>
 #[component]
 pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
     let archive = use_context::<Signal<ApiClient>>();
+    let changed = use_proposals_changed();
     // The end travels back with the answer: the router shows the next page
-    // of the same kind through this same scope.
-    let mut links = use_resource(use_reactive!(|end| async move {
-        (end, api::list_links(&archive(), end).await)
+    // of the same kind through this same scope. Read again when proposals
+    // change — a check started from the page's actions (US-103).
+    let mut links = use_resource(use_reactive!(|end| {
+        if let Some(ProposalsChanged(changed)) = changed {
+            changed.read();
+        }
+        async move { (end, api::list_links(&archive(), end).await) }
     }));
     // A failed removal, with the page it failed on, for the same reason.
     let mut error = use_signal(|| None::<(LinkEnd, String)>);
@@ -285,17 +302,29 @@ pub fn LinkedTo(end: LinkEnd, overlays: Signal<Overlays>) -> Element {
         }
         _ => Vec::new(),
     };
+    // Removing a proposal dismisses it, so either may change the count.
     let on_unlink = move |(trip, other): (i64, LinkEnd)| async move {
         match api::unlink(&archive(), trip, other).await {
             Ok(()) => {
                 error.set(None);
                 links.restart();
+                changed.map(|changed| changed.bump());
             }
             Err(err) => error.set(Some((end, format!("Could not remove the link: {err}")))),
         }
     };
+    let on_confirm = move |(trip, other): (i64, LinkEnd)| async move {
+        match api::confirm_proposals(&archive(), &[other.pair_with(trip)]).await {
+            Ok(()) => {
+                error.set(None);
+                links.restart();
+                changed.map(|changed| changed.bump());
+            }
+            Err(err) => error.set(Some((end, format!("Could not confirm the link: {err}")))),
+        }
+    };
     rsx! {
-        LinkGroups { groups, shown, on_unlink }
+        LinkGroups { groups, shown, on_unlink, on_confirm }
         if let Some(message) = error_on(end, &error.read()) {
             p { class: "error", "{message}" }
         }
@@ -355,6 +384,7 @@ fn LinkGroups(
     groups: Vec<Group>,
     shown: Signal<BTreeSet<Shown>>,
     on_unlink: EventHandler<(i64, LinkEnd)>,
+    #[props(default)] on_confirm: EventHandler<(i64, LinkEnd)>,
 ) -> Element {
     if groups.is_empty() {
         return rsx! {};
@@ -366,7 +396,7 @@ fn LinkGroups(
                 h3 { key: "{group.title}", "{group.title}" }
                 ul { class: "links",
                     for row in group.rows {
-                        LinkRow { row, shown, on_unlink }
+                        LinkRow { row, shown, on_unlink, on_confirm }
                     }
                 }
             }
@@ -379,6 +409,7 @@ fn LinkRow(
     row: Row,
     mut shown: Signal<BTreeSet<Shown>>,
     on_unlink: EventHandler<(i64, LinkEnd)>,
+    on_confirm: EventHandler<(i64, LinkEnd)>,
 ) -> Element {
     let item = row.shown;
     rsx! {
@@ -407,13 +438,31 @@ fn LinkRow(
             if let Some(detail) = &row.detail {
                 span { class: "muted", " · {detail}" }
             }
+            if let Some(proposal) = &row.proposal {
+                " "
+                span { class: "proposed", "proposed" }
+                if let Some(coverage) = coverage(proposal) {
+                    span { class: "muted", " · {coverage}" }
+                }
+            }
+            if let (Some(pair), Some(_)) = (row.unlink, row.proposal) {
+                " "
+                button {
+                    r#type: "button",
+                    class: "confirm",
+                    title: "Confirm the link to {row.name}",
+                    aria_label: "Confirm the link to {row.name}",
+                    onclick: move |_| on_confirm.call(pair),
+                    "✓"
+                }
+            }
             if let Some(unlink) = row.unlink {
                 " "
                 button {
                     r#type: "button",
                     class: "unlink",
-                    title: "Remove the link to {row.name}",
-                    aria_label: "Remove the link to {row.name}",
+                    title: if row.proposal.is_some() { "Dismiss the proposed link to {row.name}" } else { "Remove the link to {row.name}" },
+                    aria_label: if row.proposal.is_some() { "Dismiss the proposed link to {row.name}" } else { "Remove the link to {row.name}" },
                     onclick: move |_| on_unlink.call(unlink),
                     "×"
                 }
@@ -426,3 +475,6 @@ fn LinkRow(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod proposal_tests;

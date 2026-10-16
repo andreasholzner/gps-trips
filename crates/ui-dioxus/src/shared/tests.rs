@@ -132,6 +132,7 @@ async fn us53_a_share_of_one_trip_opens_on_it_read_only() {
         r#"id="edit-trip""#,
         r#"id="add-photos""#,
         r#"id="delete-trip""#,
+        r#"id="look-for-links""#,
         "trip-tags",
         "Tags",
     ] {

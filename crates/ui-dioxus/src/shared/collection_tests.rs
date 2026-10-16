@@ -38,6 +38,7 @@ fn assert_read_only(html: &str) {
         r#"id="share-collection""#,
         r#"id="edit-trip""#,
         r#"id="delete-trip""#,
+        r#"id="look-for-links""#,
         r#"type="checkbox""#,
         "/api/collection-files/",
     ] {

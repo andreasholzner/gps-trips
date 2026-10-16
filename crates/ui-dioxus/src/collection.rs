@@ -15,11 +15,12 @@ use trip_archive_types::{
 use crate::activity_color::{self, ActivityLegend};
 use crate::activity_icon::ActivityIcon;
 use crate::activity_select::{choices, ActivitySelect, Choice};
-use crate::api::{self, ApiClient, Tagged};
+use crate::api::{self, ApiClient, CheckFrom, Tagged};
 use crate::filters::Filters;
 use crate::interop::{self, MapWaypoint, OverviewEvent, OverviewLine};
 use crate::linked::RecordedTripChoice;
 use crate::overlay::Overlay;
+use crate::proposals::LookForLinks;
 use crate::share::{ShareButton, ShareTarget};
 use crate::tagging::Tagging;
 use crate::track;
@@ -105,6 +106,7 @@ pub fn Collection(id: i64, #[props(default)] view: CollectionView) -> Element {
                         id: "share-collection",
                         target: ShareTarget::Collections(vec![id]),
                     }
+                    LookForLinks { from: CheckFrom::Collection(id) }
                     DeleteCollection {
                         id,
                         tracks: detail.tracks.len(),

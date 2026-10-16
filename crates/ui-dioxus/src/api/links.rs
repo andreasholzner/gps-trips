@@ -2,7 +2,7 @@
 //! linked in one go, what a trip, a collection track or a waypoint is linked
 //! to, and a link removed from either end — always named from its trip's.
 
-use trip_archive_types::{CreateLinks, CreatedLinks, Links, SharedLinks};
+use trip_archive_types::{CreateLinks, CreatedLinks, LinkOther, LinkPair, Links, SharedLinks};
 
 use super::{get_json, ok_or_error, ApiClient, ApiError};
 
@@ -22,6 +22,17 @@ impl LinkEnd {
             LinkEnd::CollectionTrack(id) => format!("/api/collection-tracks/{id}"),
             LinkEnd::Waypoint(id) => format!("/api/waypoints/{id}"),
         }
+    }
+
+    /// The link or proposal between `trip_id` and this end, as confirming or
+    /// dismissing a proposal names it (US-103).
+    pub fn pair_with(self, trip_id: i64) -> LinkPair {
+        let other = match self {
+            LinkEnd::Trip(id) => LinkOther::Trip(id),
+            LinkEnd::CollectionTrack(id) => LinkOther::CollectionTrack(id),
+            LinkEnd::Waypoint(id) => LinkOther::Waypoint(id),
+        };
+        LinkPair { trip_id, other }
     }
 
     /// Its segment under a trip's `…/links/`.
