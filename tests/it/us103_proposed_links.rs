@@ -13,8 +13,20 @@
 //! * *a confirmed proposal becomes a link* —
 //!   `us103_linking_a_proposed_pair_by_hand_confirms_it`.
 //!
+//! * *whatever enters the archive is checked against everything it can be
+//!   linked to: a recorded or planned trip imported, a collection imported or
+//!   added to, a collection item replaced on re-import* —
+//!   `us103_an_imported_trip_is_checked_against_its_plans`,
+//!   `us103_a_trip_confirmed_from_a_staged_import_is_checked`,
+//!   `us103_an_imported_collection_is_checked_against_the_trips`,
+//!   `us103_what_a_file_adds_to_a_collection_is_checked`,
+//!   `us103_a_collection_item_replaced_on_re_import_is_checked_again`.
+//!   A tour synced from Komoot is checked as
+//!   `src/server/komoot_sync/tests/proposals.rs` asserts.
+//!
 //! Whether a trip followed a plan is unit-tested on synthetic tracks in
-//! `src/server/link_match/tests.rs`.
+//! `src/server/link_match/tests.rs`, every allowed pair of a check in
+//! `src/server/link_check/tests.rs`.
 
 use axum::{
     http::{Method, StatusCode},
@@ -24,11 +36,13 @@ use trip_archive::models::{
     CollectionDetail, CollectionSummary, CreatedShare, Links, Proposal, SharedLinks, TripSummary,
     Waypoint,
 };
-use trip_archive::server::db;
+use trip_archive::models::{CollectionImportReview, LinkOther, LinkPair, ProposedLink};
+use trip_archive::server::{db, repo};
 
 use crate::common::{
-    body_string, get, import_collection, import_request_with_fields, import_sample, json_request,
-    router_over, send, send_unauthenticated, trip_id_from_redirect, COLLECTION_GPX, SAMPLE_GPX,
+    body_string, collection_files_request, confirm_import_request, get, import, import_collection,
+    import_request_with_fields, import_sample, json_request, router_over, send,
+    send_unauthenticated, stage_import, trip_id_from_redirect, COLLECTION_GPX, SAMPLE_GPX,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -114,6 +128,42 @@ async fn link(app: &Router, trip_ids: &[i64], track_ids: &[i64]) {
     let body = serde_json::json!({ "trip_ids": trip_ids, "collection_track_ids": track_ids });
     let request = json_request(Method::POST, "/api/links", &body.to_string());
     assert_eq!(send(app, request).await.status(), StatusCode::OK);
+}
+
+/// A GPX of one track through `points`, `(lat, lon)`, without times.
+fn gpx_through(points: &[(f64, f64)]) -> Vec<u8> {
+    let points: String = points
+        .iter()
+        .map(|(lat, lon)| format!(r#"<trkpt lat="{lat}" lon="{lon}"><ele>1000</ele></trkpt>"#))
+        .collect();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>Walk</name><trkseg>{points}</trkseg></trk>
+</gpx>
+"#
+    )
+    .into_bytes()
+}
+
+/// Along the collection fixture's "Stage 1: Splügen", to San Bernardino Pass.
+fn along_stage_1() -> Vec<u8> {
+    gpx_through(&[(46.55, 9.32), (46.53, 9.30), (46.4958, 9.1705)])
+}
+
+async fn proposed(pool: &sqlx::SqlitePool) -> Vec<LinkPair> {
+    let mut pairs: Vec<LinkPair> = repo::list_proposals(pool)
+        .await
+        .unwrap()
+        .iter()
+        .map(ProposedLink::pair)
+        .collect();
+    pairs.sort();
+    pairs
+}
+
+fn pair(trip_id: i64, other: LinkOther) -> LinkPair {
+    LinkPair { trip_id, other }
 }
 
 fn has_recorded_trip(trips: &[TripSummary], id: i64) -> bool {
@@ -227,4 +277,109 @@ async fn us103_linking_a_proposed_pair_by_hand_confirms_it() {
         .await
         .unwrap();
     assert_eq!(proposed, 0);
+}
+
+#[tokio::test]
+async fn us103_an_imported_trip_is_checked_against_its_plans() {
+    let (app, pool, _dir) = app().await;
+    let plan = planned(&app).await;
+
+    let monday = import_sample(&app).await;
+
+    assert_eq!(
+        proposed(&pool).await,
+        vec![pair(monday, LinkOther::Trip(plan))]
+    );
+}
+
+#[tokio::test]
+async fn us103_a_trip_confirmed_from_a_staged_import_is_checked() {
+    let (app, pool, _dir) = app().await;
+    let plan = planned(&app).await;
+    let staged = stage_import(&app, SAMPLE_GPX).await;
+
+    let response = send(&app, confirm_import_request(staged.staging_id, "{}")).await;
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let pairs = proposed(&pool).await;
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].other, LinkOther::Trip(plan));
+}
+
+#[tokio::test]
+async fn us103_an_imported_collection_is_checked_against_the_trips() {
+    let (app, pool, _dir) = app().await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+
+    let (_, tracks, waypoints) = a_collection(&app).await;
+
+    // Stage 1 and the pass at its end; Stage 2 only starts there.
+    assert_eq!(
+        proposed(&pool).await,
+        vec![
+            pair(monday, LinkOther::CollectionTrack(tracks[0])),
+            pair(monday, LinkOther::Waypoint(waypoints[0])),
+        ]
+    );
+}
+
+/// Add `gpx` to the collection `book` as the review proposes.
+async fn add_file(app: &Router, book: i64, gpx: &[u8]) {
+    let id = book.to_string();
+    let response = send(
+        app,
+        collection_files_request(
+            "/api/collection-imports",
+            &[("more.gpx", gpx)],
+            &[("collection_id", id.as_str())],
+        ),
+    )
+    .await;
+    let review: CollectionImportReview =
+        serde_json::from_str(&body_string(response).await).unwrap();
+    let body = serde_json::json!({ "decisions": {}, "held_digest": review.held_digest });
+    let uri = format!("/api/collection-imports/{}/confirm", review.staging_id);
+    let response = send(app, json_request(Method::POST, &uri, &body.to_string())).await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn us103_what_a_file_adds_to_a_collection_is_checked() {
+    let (app, pool, _dir) = app().await;
+    let book = import_collection(&app, &gpx_through(&[(46.0, 9.0), (46.01, 9.0)]), &[]).await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+    assert!(proposed(&pool).await.is_empty());
+
+    add_file(&app, book, COLLECTION_GPX).await;
+
+    let detail: CollectionDetail = read_json(&app, &format!("/api/collections/{book}")).await;
+    let stage_1 = detail
+        .tracks
+        .iter()
+        .find(|t| t.name.starts_with("Stage 1"))
+        .unwrap();
+    let pairs = proposed(&pool).await;
+    assert!(
+        pairs.contains(&pair(monday, LinkOther::CollectionTrack(stage_1.id))),
+        "{pairs:?}"
+    );
+}
+
+#[tokio::test]
+async fn us103_a_collection_item_replaced_on_re_import_is_checked_again() {
+    let (app, pool, _dir) = app().await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+    let (book, tracks, _) = a_collection(&app).await;
+    let to_stage_1 = pair(monday, LinkOther::CollectionTrack(tracks[0]));
+    assert!(repo::dismiss_proposals(&pool, &[to_stage_1]).await.unwrap());
+    // A corrected file, a point of Stage 1 moved some 55 m — beyond the
+    // tolerance of the same track (ADR-0029), so it is replaced.
+    let corrected = String::from_utf8(COLLECTION_GPX.to_vec()).unwrap().replace(
+        r#"lat="46.5300" lon="9.3000""#,
+        r#"lat="46.5305" lon="9.3000""#,
+    );
+
+    add_file(&app, book, corrected.as_bytes()).await;
+
+    assert!(proposed(&pool).await.contains(&to_stage_1));
 }

@@ -26,6 +26,7 @@ use crate::server::{
     geojson::build_track_geojson,
     gpx::compute_stats,
     import::resolve_activity_type,
+    link_check,
     repo::{self, CollectionChange, CollectionTrackChange},
     state::AppState,
     track_files::{geojson_track, gpx_download},
@@ -199,6 +200,9 @@ async fn handle_create(
         },
     )
     .await?;
+    if let Ok(Some((tracks, waypoints))) = repo::collection_item_ids(&state.pool, id).await {
+        link_check::after_items_entered(&state.pool, &tracks, &waypoints).await;
+    }
     Ok((StatusCode::CREATED, Json(CreatedCollection { id })).into_response())
 }
 

@@ -71,14 +71,14 @@ pub async fn trip_line(
     pool: &SqlitePool,
     id: i64,
 ) -> Result<Option<(TripKind, Line)>, sqlx::Error> {
-    let row: Option<(TripKind, String)> = sqlx::query_as(
+    let row: Option<(TripKind, Option<String>)> = sqlx::query_as(
         "SELECT t.trip_kind, json_extract(k.geojson, '$.geometry.coordinates') \
          FROM trip t JOIN track k ON k.trip_id = t.id WHERE t.id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
-    row.map(|(kind, positions)| Ok((kind, line(id, &positions)?)))
+    row.map(|(kind, positions)| Ok((kind, line(id, positions.as_deref())?)))
         .transpose()
 }
 
@@ -90,7 +90,7 @@ pub async fn collection_items(
 ) -> Result<(Vec<Line>, Vec<Place>), sqlx::Error> {
     let mut tracks = Vec::with_capacity(track_ids.len());
     for &id in track_ids {
-        let positions: Option<String> = sqlx::query_scalar(
+        let positions: Option<Option<String>> = sqlx::query_scalar(
             "SELECT json_extract(geojson, '$.geometry.coordinates') FROM collection_track \
              WHERE id = ?",
         )
@@ -98,7 +98,7 @@ pub async fn collection_items(
         .fetch_optional(pool)
         .await?;
         if let Some(positions) = positions {
-            tracks.push(line(id, &positions)?);
+            tracks.push(line(id, positions.as_deref())?);
         }
     }
     let mut waypoints = Vec::with_capacity(waypoint_ids.len());
@@ -168,7 +168,7 @@ async fn lines_near(
     kind: Option<TripKind>,
     extent: Extent,
 ) -> Result<Vec<Line>, sqlx::Error> {
-    let mut query = sqlx::query_as::<_, (i64, String)>(sql);
+    let mut query = sqlx::query_as::<_, (i64, Option<String>)>(sql);
     if let Some(kind) = kind {
         query = query.bind(kind);
     }
@@ -180,7 +180,7 @@ async fn lines_near(
         .fetch_all(pool)
         .await?
         .into_iter()
-        .map(|(id, positions)| line(id, &positions))
+        .map(|(id, positions)| line(id, positions.as_deref()))
         .collect()
 }
 
@@ -202,7 +202,15 @@ pub async fn waypoints_near(pool: &SqlitePool, extent: Extent) -> Result<Vec<Pla
         .collect())
 }
 
-fn line(id: i64, positions: &str) -> Result<Line, sqlx::Error> {
+/// A line read from a track's coordinates; one without any — a track
+/// stored without a line — has no points, and is never judged followed.
+fn line(id: i64, positions: Option<&str>) -> Result<Line, sqlx::Error> {
+    let Some(positions) = positions else {
+        return Ok(Line {
+            id,
+            line: Vec::new(),
+        });
+    };
     let line = track_positions(id, positions)?
         .coordinates
         .into_iter()

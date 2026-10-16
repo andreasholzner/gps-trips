@@ -37,6 +37,7 @@ use crate::server::{
         date_prefix, derive_track, read_gpx_field, resolve_activity_type, resolve_name,
         resolve_trip_kind,
     },
+    link_check,
     repo::{self, insert_trip_in_tx, NewStagedImport, NewTrip},
     state::AppState,
     suggestion,
@@ -174,6 +175,7 @@ pub async fn handle_confirm_import(
     )
     .await?;
     tx.commit().await?;
+    link_check::after_trip_entered(&state.pool, trip_id).await;
 
     Ok((
         StatusCode::CREATED,

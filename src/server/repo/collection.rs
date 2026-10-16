@@ -140,14 +140,14 @@ pub(super) async fn insert_track(
     Ok(id)
 }
 
-/// Add a waypoint after the collection's last one.
+/// Add a waypoint after the collection's last one; returns its id.
 pub(super) async fn insert_waypoint(
     tx: &mut Transaction<'_, Sqlite>,
     collection_id: i64,
     waypoint: &NewWaypoint<'_>,
     track_id: Option<i64>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
+) -> Result<i64, sqlx::Error> {
+    let id = sqlx::query(
         "INSERT INTO waypoint \
              (collection_id, collection_track_id, position, name, description, lat, lon, ele, \
               symbol) \
@@ -164,8 +164,9 @@ pub(super) async fn insert_waypoint(
     .bind(waypoint.ele)
     .bind(waypoint.symbol)
     .execute(&mut **tx)
-    .await?;
-    Ok(())
+    .await?
+    .last_insert_rowid();
+    Ok(id)
 }
 
 /// A collection with its tracks in file order, or `None` if there is none.
@@ -531,7 +532,8 @@ pub use files::{get_collection_file, list_collection_files, NewCollectionFile};
 pub use import::{
     apply_collection_import, delete_collection_import, get_collection_import,
     insert_collection_import, load_held, sweep_collection_imports, take_collection_import_in_tx,
-    CollectionImportPlan, PlannedTrack, PlannedWaypoint, StagedCollectionImport, TrackRef,
+    ChangedItems, CollectionImportPlan, PlannedTrack, PlannedWaypoint, StagedCollectionImport,
+    TrackRef,
 };
 pub use list::{count_collections, list_collection_tracks_by_id, list_collections, TrackFilter};
 pub use waypoint::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};

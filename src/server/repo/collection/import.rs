@@ -224,14 +224,21 @@ pub struct CollectionImportPlan<'a> {
     pub files: &'a [NewCollectionFile<'a>],
 }
 
+/// The tracks and waypoints an outcome inserted or updated, by id.
+#[derive(Debug, Default, PartialEq)]
+pub struct ChangedItems {
+    pub tracks: Vec<i64>,
+    pub waypoints: Vec<i64>,
+}
+
 /// Store the outcome on the caller's transaction: all of it or, with the
 /// transaction rolled back, none (ADR-0029). Only rows of `collection_id`
-/// are touched.
+/// are touched. Returns what it inserted or updated.
 pub async fn apply_collection_import(
     tx: &mut Transaction<'_, Sqlite>,
     collection_id: i64,
     plan: &CollectionImportPlan<'_>,
-) -> Result<(), sqlx::Error> {
+) -> Result<ChangedItems, sqlx::Error> {
     if plan.replace_all {
         for table in ["collection_track", "waypoint", "collection_file"] {
             sqlx::query(&format!("DELETE FROM {table} WHERE collection_id = ?"))
@@ -255,15 +262,21 @@ pub async fn apply_collection_import(
         }
     }
 
+    let mut changed = ChangedItems::default();
     let mut track_ids = Vec::with_capacity(plan.tracks.len());
     for track in plan.tracks {
         let id = match track {
             PlannedTrack::Keep(id) => *id,
             PlannedTrack::Update(id, track) => {
                 update_track(tx, collection_id, *id, track).await?;
+                changed.tracks.push(*id);
                 *id
             }
-            PlannedTrack::Insert(track) => insert_track(tx, collection_id, track).await?,
+            PlannedTrack::Insert(track) => {
+                let id = insert_track(tx, collection_id, track).await?;
+                changed.tracks.push(id);
+                id
+            }
         };
         track_ids.push(id);
     }
@@ -275,13 +288,17 @@ pub async fn apply_collection_import(
         match waypoint {
             PlannedWaypoint::Update(id, waypoint, track) => {
                 update_waypoint(tx, collection_id, *id, waypoint, resolve(*track)).await?;
+                changed.waypoints.push(*id);
             }
             PlannedWaypoint::Insert(waypoint, track) => {
-                insert_waypoint(tx, collection_id, waypoint, resolve(*track).flatten()).await?;
+                let track = resolve(*track).flatten();
+                let id = insert_waypoint(tx, collection_id, waypoint, track).await?;
+                changed.waypoints.push(id);
             }
         }
     }
-    insert_files(tx, collection_id, plan.files).await
+    insert_files(tx, collection_id, plan.files).await?;
+    Ok(changed)
 }
 
 async fn update_track(

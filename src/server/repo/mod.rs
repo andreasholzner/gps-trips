@@ -29,10 +29,10 @@ pub use collection::{
     last_collection_track_position, list_collection_files, list_collection_track_positions,
     list_collection_track_waypoints, list_collection_tracks_by_id, list_collection_waypoints,
     list_collections, list_waypoints_of_collections, load_held, sweep_collection_imports,
-    take_collection_import_in_tx, update_collection, update_collection_track, CollectionChange,
-    CollectionError, CollectionImportPlan, CollectionTrackChange, NewCollection, NewCollectionFile,
-    NewCollectionTrack, NewWaypoint, PlannedTrack, PlannedWaypoint, StagedCollectionImport,
-    TrackFilter, TrackRef,
+    take_collection_import_in_tx, update_collection, update_collection_track, ChangedItems,
+    CollectionChange, CollectionError, CollectionImportPlan, CollectionTrackChange, NewCollection,
+    NewCollectionFile, NewCollectionTrack, NewWaypoint, PlannedTrack, PlannedWaypoint,
+    StagedCollectionImport, TrackFilter, TrackRef,
 };
 pub use collection::{delete_waypoint, get_waypoint, update_waypoint, WaypointChange};
 pub use export::{list_export_collections, list_export_trips};

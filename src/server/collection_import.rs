@@ -28,6 +28,7 @@ use crate::server::{
     collections::{fallback_name, optional_activity},
     db,
     error::{AppError, ImportError},
+    link_check,
     repo::{self, GpxDownload, NewCollectionFile},
     state::AppState,
     track_files::gpx_download,
@@ -367,7 +368,7 @@ async fn store(
             .await?
         }
     };
-    repo::apply_collection_import(
+    let changed = repo::apply_collection_import(
         &mut tx,
         id,
         &repo::CollectionImportPlan {
@@ -382,6 +383,7 @@ async fn store(
     )
     .await?;
     tx.commit().await?;
+    link_check::after_items_entered(&state.pool, &changed.tracks, &changed.waypoints).await;
     Ok(id)
 }
 

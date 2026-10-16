@@ -93,6 +93,21 @@ async fn links(app: &Router, uri: &str) -> Links {
     read_json(app, &format!("{uri}/links")).await
 }
 
+/// The links alone, without what the archive proposed (US-103) — the sample
+/// trips here all follow one another.
+async fn confirmed_links(app: &Router, uri: &str) -> Links {
+    let mut links = links(app, uri).await;
+    links.recorded_trips.retain(|trip| trip.proposal.is_none());
+    links.planned_trips.retain(|trip| trip.proposal.is_none());
+    links
+        .collection_tracks
+        .retain(|track| track.proposal.is_none());
+    links
+        .waypoints
+        .retain(|waypoint| waypoint.proposal.is_none());
+    links
+}
+
 fn ids<T>(items: &[T], id: impl Fn(&T) -> i64) -> Vec<i64> {
     let mut ids: Vec<i64> = items.iter().map(id).collect();
     ids.sort();
@@ -170,7 +185,7 @@ async fn us99_a_selection_without_a_pair_to_link_is_refused() {
         assert!(!error_message(response).await.is_empty());
     }
     assert_eq!(
-        links(&app, &format!("/api/trips/{monday}")).await,
+        confirmed_links(&app, &format!("/api/trips/{monday}")).await,
         Links::default()
     );
 }
@@ -191,7 +206,7 @@ async fn us99_a_selection_naming_something_missing_links_nothing() {
         StatusCode::NOT_FOUND
     );
     assert_eq!(
-        links(&app, &format!("/api/trips/{monday}")).await,
+        confirmed_links(&app, &format!("/api/trips/{monday}")).await,
         Links::default()
     );
 }

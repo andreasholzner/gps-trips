@@ -11,6 +11,7 @@ use crate::server::{
     error::{AppError, ImportError},
     geojson::{self, build_track_geojson},
     gpx::{self, compute_stats, parse_gpx, TimedPoint, TrackPoint, TrackStats},
+    link_check,
     photos::{prepare_photos, store_photos, UploadedPhoto},
     placement::TripPhotoContext,
     repo::{self, insert_trip_in_tx, NewTrip},
@@ -134,6 +135,7 @@ pub async fn handle_import(
     let ctx = TripPhotoContext::new(&derived.timed_points, Some(&tz_name));
     store_photos(&mut tx, &state.store, trip_id, &ctx, photos).await?;
     tx.commit().await?;
+    link_check::after_trip_entered(&state.pool, trip_id).await;
 
     Ok(Redirect::to(&format!("/app/trips/{trip_id}")))
 }

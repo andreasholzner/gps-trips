@@ -571,3 +571,8 @@ mod privacy;
 // Split out into tests/downscale.rs to keep this file under the repo's 500-line cap.
 
 mod downscale;
+
+// ── Proposed links (US-103) ─────────────────────────────────────────────
+// Split out into tests/proposals.rs to keep this file under the repo's 500-line cap.
+
+mod proposals;

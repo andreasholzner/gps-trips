@@ -27,7 +27,7 @@ use crate::server::{
     error::AppError,
     import::derive_track,
     komoot::{KomootClient, KomootError, KomootPhoto, KomootTourSummary, TourUpdate},
-    komoot_sport,
+    komoot_sport, link_check,
     photos::{prepare_photo, store_photos, UploadedPhoto},
     placement::TripPhotoContext,
     repo,
@@ -436,6 +436,7 @@ async fn sync_one_tour(
     .await?;
     store_photos(&mut tx, store, trip_id, &ctx, prepared_photos).await?;
     tx.commit().await?;
+    link_check::after_trip_entered(pool, trip_id).await;
 
     Ok(trip_id)
 }

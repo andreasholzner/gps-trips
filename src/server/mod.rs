@@ -24,6 +24,7 @@ pub mod komoot;
 pub mod komoot_sport;
 pub mod komoot_sync;
 pub mod line_grid;
+pub mod link_check;
 pub mod link_match;
 pub mod links;
 pub mod location;
