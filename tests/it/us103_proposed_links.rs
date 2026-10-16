@@ -24,6 +24,18 @@
 //!   A tour synced from Komoot is checked as
 //!   `src/server/komoot_sync/tests/proposals.rs` asserts.
 //!
+//! * *the owner can start the same check by hand from a recorded trip's, a
+//!   planned trip's or a collection's page* —
+//!   `us103_the_owner_starts_a_check_from_a_trip_or_a_collection`,
+//!   `us103_a_check_of_something_missing_is_not_found`.
+//! * *the Proposed links page lists every proposed link with its coverage,
+//!   and the navigation the number of them* —
+//!   `us103_every_proposal_is_listed_and_counted`.
+//! * *a selection confirmed or dismissed in one action; a confirmed proposal
+//!   becomes a link, a dismissed one is deleted* —
+//!   `us103_a_selection_of_proposals_is_confirmed_or_dismissed_at_once`,
+//!   `us103_settling_something_not_proposed_changes_nothing`.
+//!
 //! Whether a trip followed a plan is unit-tested on synthetic tracks in
 //! `src/server/link_match/tests.rs`, every allowed pair of a check in
 //! `src/server/link_check/tests.rs`.
@@ -36,7 +48,9 @@ use trip_archive::models::{
     CollectionDetail, CollectionSummary, CreatedShare, Links, Proposal, SharedLinks, TripSummary,
     Waypoint,
 };
-use trip_archive::models::{CollectionImportReview, LinkOther, LinkPair, ProposedLink};
+use trip_archive::models::{
+    CollectionImportReview, LinkOther, LinkPair, ProposalCount, ProposedLink,
+};
 use trip_archive::server::{db, repo};
 
 use crate::common::{
@@ -382,4 +396,144 @@ async fn us103_a_collection_item_replaced_on_re_import_is_checked_again() {
     add_file(&app, book, corrected.as_bytes()).await;
 
     assert!(proposed(&pool).await.contains(&to_stage_1));
+}
+
+// ── The API ──────────────────────────────────────────────────────────────────
+
+async fn post_json(app: &Router, uri: &str, body: &serde_json::Value) -> axum::response::Response {
+    send(app, json_request(Method::POST, uri, &body.to_string())).await
+}
+
+async fn proposal_count(app: &Router) -> i64 {
+    read_json::<ProposalCount>(app, "/api/link-proposals/count")
+        .await
+        .count
+}
+
+#[tokio::test]
+async fn us103_every_proposal_is_listed_and_counted() {
+    let (app, _pool, _dir) = app().await;
+    let plan = planned(&app).await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+    let tuesday = import_sample(&app).await;
+    let (_, tracks, _) = a_collection(&app).await;
+
+    let listed: Vec<ProposedLink> = read_json(&app, "/api/link-proposals").await;
+
+    assert_eq!(proposal_count(&app).await, 3);
+    let pairs: Vec<LinkPair> = listed.iter().map(ProposedLink::pair).collect();
+    assert!(pairs.contains(&pair(tuesday, LinkOther::Trip(plan))));
+    assert!(pairs.contains(&pair(monday, LinkOther::CollectionTrack(tracks[0]))));
+    let to_stage = listed
+        .iter()
+        .find(|p| p.pair() == pair(monday, LinkOther::CollectionTrack(tracks[0])))
+        .unwrap();
+    assert!(to_stage.proposal.plan_covered.unwrap() > 0.9);
+    assert!(to_stage.proposal.trip_on_plan.unwrap() > 0.9);
+}
+
+#[tokio::test]
+async fn us103_a_selection_of_proposals_is_confirmed_or_dismissed_at_once() {
+    let (app, _pool, _dir) = app().await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+    let (_, tracks, waypoints) = a_collection(&app).await;
+    let to_stage = pair(monday, LinkOther::CollectionTrack(tracks[0]));
+    let to_pass = pair(monday, LinkOther::Waypoint(waypoints[0]));
+
+    let confirmed = post_json(
+        &app,
+        "/api/link-proposals/confirm",
+        &serde_json::json!({ "pairs": [to_stage] }),
+    )
+    .await;
+    let dismissed = post_json(
+        &app,
+        "/api/link-proposals/dismiss",
+        &serde_json::json!({ "pairs": [to_pass] }),
+    )
+    .await;
+
+    assert_eq!(confirmed.status(), StatusCode::NO_CONTENT);
+    assert_eq!(dismissed.status(), StatusCode::NO_CONTENT);
+    assert_eq!(proposal_count(&app).await, 0);
+    let on_monday: Links = read_json(&app, &format!("/api/trips/{monday}/links")).await;
+    assert_eq!(on_monday.collection_tracks.len(), 1);
+    assert_eq!(on_monday.collection_tracks[0].proposal, None);
+    assert!(on_monday.waypoints.is_empty());
+}
+
+#[tokio::test]
+async fn us103_settling_something_not_proposed_changes_nothing() {
+    let (app, _pool, _dir) = app().await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+    let (_, tracks, _) = a_collection(&app).await;
+    let to_stage = pair(monday, LinkOther::CollectionTrack(tracks[0]));
+    let to_stage_2 = pair(monday, LinkOther::CollectionTrack(tracks[1]));
+
+    for action in ["confirm", "dismiss"] {
+        let uri = format!("/api/link-proposals/{action}");
+        let body = serde_json::json!({ "pairs": [to_stage, to_stage_2] });
+        let response = post_json(&app, &uri, &body).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{action}");
+        let empty = post_json(&app, &uri, &serde_json::json!({ "pairs": [] })).await;
+        assert_eq!(empty.status(), StatusCode::BAD_REQUEST, "{action}");
+    }
+    assert_eq!(proposal_count(&app).await, 2);
+}
+
+#[tokio::test]
+async fn us103_the_owner_starts_a_check_from_a_trip_or_a_collection() {
+    let (app, pool, _dir) = app().await;
+    let monday = trip_id_from_redirect(&import(&app, &along_stage_1()).await);
+    let plan = planned(&app).await;
+    let (book, tracks, waypoints) = a_collection(&app).await;
+    let to_stage = pair(monday, LinkOther::CollectionTrack(tracks[0]));
+    let to_pass = pair(monday, LinkOther::Waypoint(waypoints[0]));
+    assert!(repo::dismiss_proposals(&pool, &[to_stage, to_pass])
+        .await
+        .unwrap());
+
+    let response = post_json(
+        &app,
+        &format!("/api/collections/{book}/link-check"),
+        &serde_json::json!({}),
+    )
+    .await;
+    let status = response.status();
+    let found: ProposalCount = serde_json::from_str(&body_string(response).await).unwrap();
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(found.count, 2);
+    assert!(repo::dismiss_proposals(&pool, &[to_stage, to_pass])
+        .await
+        .unwrap());
+
+    let response = post_json(
+        &app,
+        &format!("/api/trips/{monday}/link-check"),
+        &serde_json::json!({}),
+    )
+    .await;
+    let found: ProposalCount = serde_json::from_str(&body_string(response).await).unwrap();
+    assert_eq!(found.count, 2);
+    let response = post_json(
+        &app,
+        &format!("/api/trips/{plan}/link-check"),
+        &serde_json::json!({}),
+    )
+    .await;
+    let found: ProposalCount = serde_json::from_str(&body_string(response).await).unwrap();
+    assert_eq!(found.count, 0, "the planned trip follows nothing here");
+}
+
+#[tokio::test]
+async fn us103_a_check_of_something_missing_is_not_found() {
+    let (app, _pool, _dir) = app().await;
+
+    for uri in [
+        "/api/trips/9999/link-check",
+        "/api/collections/9999/link-check",
+    ] {
+        let response = post_json(&app, uri, &serde_json::json!({})).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+    }
 }
