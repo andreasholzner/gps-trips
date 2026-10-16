@@ -9,6 +9,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  /* Not Pico's focus ring around the whole `role="group"`, which lingers
+     after a click; a toggle reached by keyboard is ringed alone instead. */
+  box-shadow: none;
+}
+
+.kind-toggles .kind-toggle:focus-visible {
+  box-shadow: 0 0 0 var(--pico-outline-width) var(--pico-primary-focus);
 }
 
 .kind-toggle {
@@ -28,9 +35,14 @@
   cursor: default;
 }
 
+/* Room for three digits whether the kind is on (counted) or off (empty),
+   so toggling never resizes the buttons. */
 .kind-count {
   font-size: 0.8125em;
   opacity: 0.85;
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* A kind's line style, as a short stroke (the `.swatch` of the legend). */

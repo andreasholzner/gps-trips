@@ -124,8 +124,12 @@ fn KindToggles(filters: Signal<Filters>, matched: Vec<(Kind, usize)>) -> Element
                     },
                     LineSwatch { kind }
                     "{kind.label()}"
-                    if let Some((_, count)) = matched.iter().find(|(k, _)| *k == kind) {
-                        span { class: "kind-count", "{count}" }
+                    // Empty when off rather than left out, so its room is
+                    // kept and the toggle does not change size.
+                    span { class: "kind-count",
+                        if let Some((_, count)) = matched.iter().find(|(k, _)| *k == kind) {
+                            "{count}"
+                        }
                     }
                 }
             }
@@ -283,6 +287,10 @@ mod tests {
         let planned = toggle("Planned");
         assert!(planned.contains(r#"aria-pressed="false""#), "{html}");
         assert!(!planned.contains("disabled"), "{html}");
+        assert!(
+            planned.contains(r#"class="kind-count"></span>"#),
+            "an empty count keeps its size when off: {html}"
+        );
         assert!(planned.contains(r#"stroke-dasharray="8 6""#), "{html}");
         assert!(toggle("Collections").contains(r#"stroke-dasharray="1 7""#));
     }

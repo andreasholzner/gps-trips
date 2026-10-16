@@ -186,7 +186,7 @@ async fn us90_the_toggles_say_how_many_of_each_kind_on_match() {
     };
     assert_eq!(count("Recorded").as_deref(), Some("1"), "{html}");
     assert_eq!(count("Collections").as_deref(), Some("0"), "{html}");
-    assert_eq!(count("Planned"), None, "off: {html}");
+    assert_eq!(count("Planned").as_deref(), Some(""), "off: {html}");
 }
 
 #[tokio::test]
