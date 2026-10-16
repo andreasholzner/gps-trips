@@ -22,7 +22,12 @@ use crate::waypoint_icon::WaypointSymbol;
 use crate::Route;
 
 mod overlays;
-use overlays::overlays_of;
+mod proposal;
+mod shown;
+use proposal::SettleTicked;
+#[cfg(test)]
+use proposal::{ticked_proposals, to_tick};
+use shown::use_shown;
 
 /// One kind of other end, as its heading names it.
 #[derive(Clone, PartialEq)]
@@ -320,20 +325,34 @@ pub fn LinkedTo(
             Err(err) => error.set(Some((end, format!("Could not remove the link: {err}")))),
         }
     };
-    let on_confirm = move |(trip, other): (i64, LinkEnd)| async move {
-        match api::confirm_proposals(&archive(), &[other.pair_with(trip)]).await {
-            Ok(()) => {
-                error.set(None);
-                links.restart();
-                if let Some(changed) = changed {
-                    changed.bump();
-                }
+    // Confirming or dismissing one proposal, or every one ticked (US-103).
+    let on_settle = move |(confirm, ends): (bool, Vec<(i64, LinkEnd)>)| async move {
+        let pairs: Vec<_> = ends
+            .iter()
+            .map(|(trip, other)| other.pair_with(*trip))
+            .collect();
+        let settled = if confirm {
+            api::confirm_proposals(&archive(), &pairs).await
+        } else {
+            api::dismiss_proposals(&archive(), &pairs).await
+        };
+        match settled {
+            Ok(()) => error.set(None),
+            Err(err) => {
+                let what = if confirm { "confirm" } else { "dismiss" };
+                error.set(Some((
+                    end,
+                    format!("Could not {what} the proposals: {err}"),
+                )));
             }
-            Err(err) => error.set(Some((end, format!("Could not confirm the link: {err}")))),
+        }
+        links.restart();
+        if let Some(changed) = changed {
+            changed.bump();
         }
     };
     rsx! {
-        LinkGroups { groups, shown, on_unlink, on_confirm }
+        LinkGroups { groups, shown, on_unlink, on_settle }
         if let Some(message) = error_on(end, &error.read()) {
             p { class: "error", "{message}" }
         }
@@ -364,74 +383,17 @@ pub fn SharedLinkedTo(token: String, id: i64, overlays: Signal<Overlays>) -> Ele
     }
 }
 
-/// What is ticked to be shown, emptied on a page of its own, and the
-/// overlays it comes to, read from the archive whenever either the ticks or
-/// the `listed` rows change — so an item whose link is removed leaves the
-/// map too. `show` is ticked once, as soon as it is listed.
-fn use_shown(
-    end: LinkEnd,
-    mut overlays: Signal<Overlays>,
-    show: Option<LinkOther>,
-    listed: impl Fn() -> Vec<Group> + Clone + 'static,
-) -> Signal<BTreeSet<Shown>> {
-    let archive = use_context::<Signal<ApiClient>>();
-    let mut shown = use_signal(BTreeSet::<Shown>::new);
-    // What `show` was ticked for, so unticking it sticks.
-    let mut ticked_for = use_signal(|| None::<(LinkEnd, LinkOther)>);
-    use_effect(use_reactive!(|end| {
-        let _ = end;
-        shown.write().clear();
-    }));
-    let rows = listed.clone();
-    use_effect(use_reactive!(|end, show| {
-        let Some(other) = show else { return };
-        if *ticked_for.peek() == Some((end, other)) {
-            return;
-        }
-        if let Some(item) = to_tick(other, &rows()) {
-            shown.write().insert(item);
-            ticked_for.set(Some((end, other)));
-        }
-    }));
-    let _read = use_resource(move || {
-        let ticked: Vec<Row> = listed()
-            .into_iter()
-            .flat_map(|group| group.rows)
-            .filter(|row| shown.read().contains(&row.shown))
-            .collect();
-        async move { overlays.set(overlays_of(&archive(), ticked).await) }
-    });
-    shown
-}
-
-/// The row of `other` among `groups`, as the map shows it.
-fn to_tick(other: LinkOther, groups: &[Group]) -> Option<Shown> {
-    groups
-        .iter()
-        .flat_map(|group| &group.rows)
-        .map(|row| row.shown)
-        .find(|shown| match (other, *shown) {
-            (LinkOther::Trip(id), Shown::Line(kind, line)) => {
-                kind != Kind::Collections && id == line
-            }
-            (LinkOther::CollectionTrack(id), Shown::Line(kind, line)) => {
-                kind == Kind::Collections && id == line
-            }
-            (LinkOther::Waypoint(id), Shown::Waypoint(waypoint)) => id == waypoint,
-            _ => false,
-        })
-}
-
 #[component]
 fn LinkGroups(
     groups: Vec<Group>,
     shown: Signal<BTreeSet<Shown>>,
     on_unlink: EventHandler<(i64, LinkEnd)>,
-    #[props(default)] on_confirm: EventHandler<(i64, LinkEnd)>,
+    #[props(default)] on_settle: EventHandler<(bool, Vec<(i64, LinkEnd)>)>,
 ) -> Element {
     if groups.is_empty() {
         return rsx! {};
     }
+    let all = groups.clone();
     rsx! {
         section { id: "links",
             h2 { "Linked" }
@@ -439,10 +401,11 @@ fn LinkGroups(
                 h3 { key: "{group.title}", "{group.title}" }
                 ul { class: "links",
                     for row in group.rows {
-                        LinkRow { row, shown, on_unlink, on_confirm }
+                        LinkRow { row, shown, on_unlink, on_settle }
                     }
                 }
             }
+            SettleTicked { groups: all, shown, on_settle }
         }
     }
 }
@@ -452,7 +415,7 @@ fn LinkRow(
     row: Row,
     mut shown: Signal<BTreeSet<Shown>>,
     on_unlink: EventHandler<(i64, LinkEnd)>,
-    on_confirm: EventHandler<(i64, LinkEnd)>,
+    on_settle: EventHandler<(bool, Vec<(i64, LinkEnd)>)>,
 ) -> Element {
     let item = row.shown;
     rsx! {
@@ -495,7 +458,7 @@ fn LinkRow(
                     class: "confirm-link",
                     title: "Confirm the link to {row.name}",
                     aria_label: "Confirm the link to {row.name}",
-                    onclick: move |_| on_confirm.call(pair),
+                    onclick: move |_| on_settle.call((true, vec![pair])),
                     "✓"
                 }
             }

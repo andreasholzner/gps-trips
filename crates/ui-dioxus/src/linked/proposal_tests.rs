@@ -86,7 +86,7 @@ fn us103_a_proposed_row_is_confirmed_or_dismissed_and_a_link_only_removed() {
 
     let html = render(move || {
         let shown = use_signal(BTreeSet::new);
-        rsx! { LinkGroups { groups: groups.clone(), shown, on_unlink: |_| {}, on_confirm: |_| {} } }
+        rsx! { LinkGroups { groups: groups.clone(), shown, on_unlink: |_| {}, on_settle: |_| {} } }
     });
 
     assert_eq!(html.matches(r#"class="proposed""#).count(), 1, "{html}");
@@ -173,4 +173,72 @@ async fn us103_a_trip_page_opens_with_the_other_end_ticked() {
     .await;
 
     assert_eq!(html.matches("checked").count(), 1, "{html}");
+}
+
+fn proposed_row(id: i64, proposal: Option<Proposal>) -> Row {
+    Row {
+        name: format!("Plan {id}"),
+        detail: None,
+        to: Route::TripDetail { id },
+        icon: RowIcon::Activity(ActivityType::Hiking),
+        shown: Shown::Line(Kind::Planned, id),
+        unlink: Some((1, LinkEnd::Trip(id))),
+        proposal,
+    }
+}
+
+#[test]
+fn us103_the_proposals_ticked_on_the_map_are_the_ones_settled_together() {
+    let groups = vec![Group {
+        title: "Planned trips",
+        rows: vec![
+            proposed_row(2, Some(COVERED)),
+            proposed_row(3, Some(COVERED)),
+            proposed_row(4, None),
+        ],
+    }];
+    let shown: BTreeSet<Shown> = [2, 4]
+        .into_iter()
+        .map(|id| Shown::Line(Kind::Planned, id))
+        .collect();
+
+    assert_eq!(
+        ticked_proposals(&groups, &shown),
+        vec![(1, LinkEnd::Trip(2))]
+    );
+    assert!(ticked_proposals(&groups, &BTreeSet::new()).is_empty());
+}
+
+#[test]
+fn us103_ticked_proposals_are_confirmed_or_dismissed_below_the_list() {
+    let groups = vec![Group {
+        title: "Planned trips",
+        rows: vec![proposed_row(2, Some(COVERED)), proposed_row(3, None)],
+    }];
+
+    let html = render(move || {
+        let shown = use_signal(BTreeSet::new);
+        rsx! { LinkGroups { groups: groups.clone(), shown, on_unlink: |_| {} } }
+    });
+
+    let below = html.split("</ul>").last().unwrap();
+    assert!(below.contains(r#"id="confirm-ticked""#), "{html}");
+    assert!(below.contains(r#"id="dismiss-ticked""#), "{html}");
+    // Nothing ticked yet, so nothing to settle.
+    assert_eq!(html.matches("disabled").count(), 2, "{html}");
+}
+
+#[test]
+fn us103_without_a_proposal_there_is_nothing_to_settle_together() {
+    let groups = vec![Group {
+        title: "Planned trips",
+        rows: vec![proposed_row(3, None)],
+    }];
+
+    let html = render(move || {
+        let shown = use_signal(BTreeSet::new);
+        rsx! { LinkGroups { groups: groups.clone(), shown, on_unlink: |_| {} } }
+    });
+
+    assert!(!html.contains(r#"id="confirm-ticked""#), "{html}");
 }

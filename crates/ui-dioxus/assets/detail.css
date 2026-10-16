@@ -443,7 +443,12 @@
 }
 
 /* What a page is linked to (US-99): one plain list per kind, each entry's
-   remove control a glyph, as a tag chip's is. */
+   remove control a glyph, as a tag chip's is. A little apart from the
+   gallery above it. */
+#links {
+  margin-top: 2rem;
+}
+
 #links h3 {
   font-size: 1rem;
   margin: 0.75rem 0 0.25rem;
@@ -472,6 +477,18 @@
   background: none;
   color: inherit;
   line-height: 1;
+}
+
+/* Confirming or dismissing every proposal ticked on the map (US-103), in one
+   row below the lists. */
+#links .settle-ticked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+#links .settle-ticked button {
+  margin-bottom: 0;
 }
 
 /* A link the archive proposed (US-103): named as such until confirmed. */
