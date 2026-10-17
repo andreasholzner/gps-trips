@@ -250,3 +250,53 @@ fn us103_the_configured_rules_are_the_ones_used() {
     );
     assert_eq!(Rules::CONFIGURED.min_point_run, configured::MIN_POINT_RUN);
 }
+
+// Plans drawn off paths, as komoot exports them: its straight lines filled in
+// with a point about every 95 m, which the trip strays well over a hundred
+// metres from between the corners. Judged by the configured rules, so the
+// thresholds in `config.rs` are held to these shapes.
+
+/// A corner every 2 km along `from..to` km east, alternately 150 m north
+/// and south of the plan's straight line: the way the trip went.
+fn straying(from_km: i32, to_km: i32) -> Vec<(f64, f64)> {
+    (from_km..=to_km)
+        .map(|km| {
+            let y = if km % 2 == 0 { 150.0 } else { -150.0 };
+            (f64::from(km) * 1_000.0, y)
+        })
+        .collect()
+}
+
+#[test]
+fn us103_a_coarse_off_path_plan_is_followed_by_the_configured_rules() {
+    let plan = path(&[(0.0, 0.0), (5_000.0, 400.0), (10_000.0, 0.0)], 95.0);
+    let trip = path(
+        &[
+            (0.0, 150.0),
+            (2_500.0, 50.0),
+            (5_000.0, 550.0),
+            (7_500.0, 50.0),
+            (10_000.0, -150.0),
+        ],
+        10.0,
+    );
+
+    let coverage = followed(&trip, &plan, &Rules::CONFIGURED).expect("followed");
+
+    assert_eq!(coverage.judged, Judged::Points);
+}
+
+#[test]
+fn us103_a_short_day_of_a_coarse_off_path_plan_is_followed_by_the_configured_rules() {
+    // 50 km planned; the day covers about 2.5 km of it.
+    let plan = path(&[(0.0, 0.0), (50_000.0, 0.0)], 95.0);
+    let day = path(&straying(20, 22), 10.0);
+    let day: Vec<Position> = day
+        .into_iter()
+        .chain(path(&[(22_000.0, 150.0), (22_500.0, 0.0)], 10.0))
+        .collect();
+
+    let coverage = followed(&day, &plan, &Rules::CONFIGURED).expect("followed");
+
+    assert_eq!(coverage.judged, Judged::Points);
+}

@@ -503,12 +503,15 @@ pub mod link_proposal {
     /// covered at least [`MIN_COVERED_M`] of it — one day of a multi-day plan.
     pub const TRIP_ON_PLAN_SHARE: f64 = 0.7;
 
-    /// Metres of a plan a trip must cover to have followed part of it.
-    pub const MIN_COVERED_M: f64 = 3_000.0;
+    /// Metres of a plan a trip must cover to have followed part of it — a
+    /// short day of a multi-day ski tour covers little more than 2 km.
+    pub const MIN_COVERED_M: f64 = 2_000.0;
 
     /// A plan's own point is reached when the trip comes within this many
-    /// metres: off paths a plan is a loose string of points.
-    pub const POINT_TOLERANCE_M: f64 = 100.0;
+    /// metres: off paths a plan is a loose string of points. Komoot fills in
+    /// its straight lines with a point about every 95 m, and a ski tour strays
+    /// from them by one to two hundred metres between the corners.
+    pub const POINT_TOLERANCE_M: f64 = 200.0;
 
     /// A plan this much of whose points the trip reached was followed.
     pub const POINTS_REACHED_SHARE: f64 = 0.8;
