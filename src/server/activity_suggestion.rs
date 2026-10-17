@@ -1,8 +1,9 @@
 //! The activity type suggestion (US-76): what a track is, from what it runs
 //! on, how steep it is and how fast it went. First match wins:
 //!
-//! 1. a winter trip is a ski trip — cross-country skiing if fast, ski
-//!    touring if slow — even across frozen lakes;
+//! 1. a winter trip — one in a winter month, starting in the north
+//!    (US-109) — is a ski trip: cross-country skiing if fast, ski touring
+//!    if slow — even across frozen lakes;
 //! 2. a track mostly on water is kayaking;
 //! 3. one mostly on roads or good paths is cycling if fast, bikepacking if
 //!    slow;
@@ -17,7 +18,7 @@ use time::Month;
 
 use crate::config::activity_suggestion::{
     CROSS_COUNTRY_MIN_KMH, CYCLING_MIN_KMH, MAJORITY, MOVING_MIN_KMH, STEEP_GRADIENT_PCT,
-    STEEP_SHARE, WINTER_MONTHS,
+    STEEP_SHARE, WINTER_MIN_LAT, WINTER_MONTHS,
 };
 use crate::models::{ActivityType, INCLINE_WINDOW_M};
 use crate::server::{moving_time, profile::Profile};
@@ -40,6 +41,8 @@ pub struct Facts {
     pub ground: Ground,
     /// The month the trip started in, where the track says when.
     pub start_month: Option<Month>,
+    /// The latitude the trip started at, where the track has points.
+    pub start_lat: Option<f64>,
     /// The average speed in motion, in km/h, where the track has times.
     pub moving_kmh: Option<f64>,
     /// The share of the track at least `STEEP_GRADIENT_PCT` steep.
@@ -53,10 +56,11 @@ pub fn suggest(facts: &Facts) -> Option<ActivityType> {
         return None;
     }
     let fast = |min_kmh: f64| facts.moving_kmh.map(|kmh| kmh >= min_kmh);
-    if facts
+    let winter = facts
         .start_month
         .is_some_and(|month| WINTER_MONTHS.contains(&month))
-    {
+        && facts.start_lat.is_some_and(|lat| lat >= WINTER_MIN_LAT);
+    if winter {
         return Some(match fast(CROSS_COUNTRY_MIN_KMH) {
             Some(true) => ActivityType::CrossCountrySkiing,
             Some(false) | None => ActivityType::SkiTouring,
@@ -124,6 +128,7 @@ mod tests {
                 unknown: 1.0 - water - road - off_road,
             },
             start_month: Some(Month::July),
+            start_lat: Some(69.0),
             moving_kmh: Some(4.0),
             steep_share: 0.0,
         }
@@ -154,6 +159,35 @@ mod tests {
             suggest(&at(3.5, in_month(Month::February, tracks))),
             Some(ActivityType::SkiTouring)
         );
+    }
+
+    fn starting_at(lat: f64, facts: Facts) -> Facts {
+        Facts {
+            start_lat: Some(lat),
+            ..facts
+        }
+    }
+
+    #[test]
+    fn us109_a_winter_trip_starts_in_the_north() {
+        let ride = at(18.0, in_month(Month::March, on(0.0, 0.95, 0.05)));
+        assert_eq!(
+            suggest(&starting_at(WINTER_MIN_LAT, ride)),
+            Some(ActivityType::CrossCountrySkiing)
+        );
+        assert_eq!(
+            suggest(&starting_at(WINTER_MIN_LAT - 0.01, ride)),
+            Some(ActivityType::Cycling)
+        );
+    }
+
+    #[test]
+    fn us109_without_a_start_there_is_no_winter_trip() {
+        let facts = Facts {
+            start_lat: None,
+            ..in_month(Month::January, on(0.0, 0.1, 0.9))
+        };
+        assert_eq!(suggest(&facts), Some(ActivityType::Hiking));
     }
 
     #[test]

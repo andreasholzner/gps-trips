@@ -438,6 +438,11 @@ pub mod activity_suggestion {
         Month::April,
     ];
 
+    /// A winter month makes a winter trip only of one starting at or north
+    /// of this latitude (US-109): about the southern tip of Norway. South
+    /// of it, snow is not to be counted on.
+    pub const WINTER_MIN_LAT: f64 = 58.0;
+
     /// A share of the track at least this large is "mostly".
     pub const MAJORITY: f64 = 0.5;
 

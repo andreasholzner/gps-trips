@@ -88,6 +88,7 @@ pub async fn suggest_activity(ground: Option<&GroundDb>, trip: &Trip<'_>) -> Opt
     activity_suggestion::suggest(&Facts {
         ground: data.ground_of(&coords),
         start_month,
+        start_lat: coords.first().map(|start| start.y),
         moving_kmh: profile.as_ref().and_then(activity_suggestion::moving_kmh),
         steep_share: profile
             .as_ref()

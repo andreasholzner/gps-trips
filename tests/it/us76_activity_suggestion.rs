@@ -28,6 +28,9 @@ const KAYAKING: &[u8] = include_bytes!("../fixtures/activities/kayaking.gpx");
 const CROSS_COUNTRY_SKIING: &[u8] =
     include_bytes!("../fixtures/activities/cross_country_skiing.gpx");
 const SKI_TOURING: &[u8] = include_bytes!("../fixtures/activities/ski_touring.gpx");
+/// US-109: a ride through Munich in March.
+const CYCLING_SOUTH_IN_WINTER: &[u8] =
+    include_bytes!("../fixtures/activities/cycling_munich_march.gpx");
 
 /// Stage and confirm `gpx` with `activity_type`; the new trip's id.
 async fn import_as(app: &axum::Router, gpx: &[u8], activity_type: &str) -> i64 {
@@ -61,6 +64,18 @@ async fn us76_the_staged_parse_suggests_the_activity_the_track_looks_like() {
         let staged = stage_import(&app, gpx).await;
         assert_eq!(staged.suggested_activity, Some(expected));
     }
+}
+
+#[tokio::test]
+async fn us109_a_winter_month_south_of_the_snow_is_no_ski_trip() {
+    let (app, _dir) = test_app_with_ground().await;
+
+    assert_eq!(
+        stage_import(&app, CYCLING_SOUTH_IN_WINTER)
+            .await
+            .suggested_activity,
+        Some(ActivityType::Cycling)
+    );
 }
 
 #[tokio::test]

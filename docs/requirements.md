@@ -150,6 +150,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-106](#us-106--mark-the-photos-still-to-be-placed)         | ✅     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
 | [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | ✅     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
 | [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | ✅     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
+| [US-109](#us-109--winter-trips-only-in-the-north)             | ✅     | Winter trips only in the north               | [Import](#import)                                                   |
 
 ### Maintaining this file
 
@@ -316,6 +317,22 @@ no real track of the owner's is checked in.
 **Decisions:** US-76 → ADR-0018 (the suggestion is one of the closed set of activities),
 [ADR-0027](./adr/0027-offline-place-name-database.md) (the offline way and water data), ADR-0012
 (the rules are unit-tested)
+
+**Superseded in part by US-109:** a trip in a winter month is a winter trip only where it starts
+in the north.
+
+### US-109 — Winter trips only in the north
+
+**Done ✅** — As the owner, a bike ride through Munich in March is offered *Cycling*, not
+*Cross-country skiing*, so the activity suggestion (US-76) fits trips where winter brings no snow.
+
+**Acceptance criteria:** US-76's winter rule applies only to a trip that starts at or north of a
+latitude set in `config.rs` (58° N, about the southern tip of Norway); a trip starting south of it
+goes through the other rules whatever its month. Without a start, as without a date, there is no
+winter trip. Tested (ADR-0012) with unit tests over the rule, for a winter trip just north and just
+south of the latitude, and through the staged parse with a road track south of it in a winter month.
+
+**Decisions:** US-109 → ADR-0012 (the rule is unit-tested)
 
 ## Komoot sync
 

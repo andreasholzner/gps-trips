@@ -145,8 +145,8 @@ async fn us76_a_fixture_keeps_what_is_around_its_tracks() {
 
     assert_eq!(data.surface_at(points[0]), Surface::Water);
     assert_eq!(data.surface_at(points[1]), Surface::Road);
-    // Cut away, so nothing there, though still covered.
-    assert_eq!(data.surface_at(points[2]), Surface::OffRoad);
+    // Cut away: the fixture covers only what it kept.
+    assert_eq!(data.surface_at(points[2]), Surface::Unknown);
 }
 
 #[tokio::test]

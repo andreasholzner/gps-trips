@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use geo::{BoundingRect, Coord, MultiPolygon, Polygon, Rect};
-use sqlx::{Row, SqliteConnection, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, SqliteConnection, SqlitePool};
 
 use super::{tile::cells_along, water, Cell, GroundData, Tile, Way};
 use crate::server::geodata;
@@ -56,18 +56,7 @@ impl GroundDb {
             .fetch_all(&pool)
             .await?
             .iter()
-            .map(|row| {
-                Rect::new(
-                    Coord {
-                        x: row.get("min_lon"),
-                        y: row.get("min_lat"),
-                    },
-                    Coord {
-                        x: row.get("max_lon"),
-                        y: row.get("max_lat"),
-                    },
-                )
-            })
+            .map(coverage_rect)
             .collect();
         Ok(Some(Self { pool, coverage }))
     }
@@ -194,10 +183,23 @@ impl GroundWriter {
     }
 
     /// Copies what the database at `source` knows within `boxes`: a test
-    /// fixture cut from the real database. Its coverage is copied whole.
+    /// fixture cut from the real database. It covers only those boxes, so
+    /// a track beside them reads as beyond the data, not as off road.
     pub async fn copy_within(&mut self, source: &Path, boxes: &[Rect]) -> Result<(), sqlx::Error> {
         geodata::attach_source(&mut self.conn, source).await?;
+        let covered: Vec<Rect> =
+            sqlx::query("SELECT min_lon, min_lat, max_lon, max_lat FROM src.coverage")
+                .fetch_all(&mut self.conn)
+                .await?
+                .iter()
+                .map(coverage_rect)
+                .collect();
         for rect in boxes {
+            for cover in &covered {
+                if let Some(both) = intersection(rect, cover) {
+                    self.add_coverage(both).await?;
+                }
+            }
             // Rows count southwards: the box's north-east corner has the
             // lower one.
             let (x0, y1) = Cell::at(rect.min()).tile_xy();
@@ -236,12 +238,6 @@ impl GroundWriter {
         )
         .execute(&mut self.conn)
         .await?;
-        sqlx::query(
-            "INSERT INTO coverage SELECT * FROM src.coverage \
-             WHERE NOT EXISTS (SELECT 1 FROM coverage)",
-        )
-        .execute(&mut self.conn)
-        .await?;
         geodata::detach_source(&mut self.conn).await
     }
 
@@ -272,4 +268,31 @@ impl GroundWriter {
         self.flush_tiles().await?;
         geodata::finish(self.conn).await
     }
+}
+
+/// The box a `coverage` row holds.
+fn coverage_rect(row: &SqliteRow) -> Rect {
+    Rect::new(
+        Coord {
+            x: row.get("min_lon"),
+            y: row.get("min_lat"),
+        },
+        Coord {
+            x: row.get("max_lon"),
+            y: row.get("max_lat"),
+        },
+    )
+}
+
+/// Where `a` and `b` overlap, if they do.
+fn intersection(a: &Rect, b: &Rect) -> Option<Rect> {
+    let min = Coord {
+        x: a.min().x.max(b.min().x),
+        y: a.min().y.max(b.min().y),
+    };
+    let max = Coord {
+        x: a.max().x.min(b.max().x),
+        y: a.max().y.min(b.max().y),
+    };
+    (min.x <= max.x && min.y <= max.y).then(|| Rect::new(min, max))
 }
