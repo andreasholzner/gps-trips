@@ -528,4 +528,9 @@ pub mod link_proposal {
     /// A trip passed a waypoint when any part of its line comes within this
     /// many metres of it.
     pub const WAYPOINT_DISTANCE_M: f64 = 50.0;
+
+    /// A trip that ran along this many metres of a plan followed it, whatever
+    /// share of either that is — two tours that go their own ways to and from
+    /// a long stretch they share.
+    pub const MIN_SHARED_M: f64 = 30_000.0;
 }

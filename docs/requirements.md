@@ -1172,9 +1172,10 @@ than a minimum so crossing a line adds nothing: *plan covered*, the share of the
 length near the trip, and *trip on plan*, the share of the trip's length near the planned line. A
 pair is proposed when the plan is mostly covered — the whole stage was followed, even within a
 longer trip — or when the trip ran mostly on the plan and covered at least a minimum length of it,
-so a multi-day planned trip covered by six recorded trips is proposed with each of them. A trip
-that only shares a short stretch of road with a stage is not proposed. The direction of travel does
-not matter.
+so a multi-day planned trip covered by six recorded trips is proposed with each of them — or when
+the trip ran along a long stretch of the plan, whatever share of either that is, as two tours
+that go their own ways to and from a stretch they share. A trip that only shares a short stretch
+of road with a stage is not proposed. The direction of travel does not matter.
 
 **Plans without paths:** a ski tour or a hike off paths is planned as a loose string of points
 joined by straight lines (komoot's off-road sections) that the trip strays from between them. Such
@@ -1187,7 +1188,7 @@ ways, and proposed when either holds; nothing has to tell an off-path plan apart
 **Waypoints:** a recorded or planned trip passed a waypoint when any part of its line comes within
 a distance of it — a tolerance of its own.
 
-The tolerances, shares, minimum lengths and the run of points are set in `config.rs`. The rules are
+The tolerances, shares, minimum and shared lengths and the run of points are set in `config.rs`. The rules are
 unit-tested against synthetic tracks, among them an off-path plan of a few points (ADR-0012).
 
 **Where proposals wait:** a proposal is a link (US-99) marked as proposed, stored like one, so it

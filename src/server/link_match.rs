@@ -19,6 +19,7 @@ pub struct Rules {
     pub min_point_run: usize,
     pub band_m: f64,
     pub waypoint_distance_m: f64,
+    pub min_shared_m: f64,
 }
 
 impl Rules {
@@ -34,6 +35,7 @@ impl Rules {
         min_point_run: configured::MIN_POINT_RUN,
         band_m: configured::BAND_M,
         waypoint_distance_m: configured::WAYPOINT_DISTANCE_M,
+        min_shared_m: configured::MIN_SHARED_M,
     };
 }
 
@@ -83,10 +85,12 @@ pub fn followed(trip: &[Position], plan: &[Position], rules: &Rules) -> Option<C
         points_reached,
         judged,
     };
-    // The plan mostly covered — or the trip mostly on it, over enough of it.
+    // The plan mostly covered — or the trip mostly on it, over enough of it
+    // — or a long stretch of it shared, whatever the shares.
     let by_line = plan_run.share() >= rules.plan_covered_share
         || (trip_run.share() >= rules.trip_on_plan_share
-            && plan_run.covered_m >= rules.min_covered_m);
+            && plan_run.covered_m >= rules.min_covered_m)
+        || plan_run.covered_m >= rules.min_shared_m;
     if by_line {
         return Some(coverage(Judged::Line));
     }

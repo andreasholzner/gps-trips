@@ -16,6 +16,7 @@ const RULES: Rules = Rules {
     min_point_run: 3,
     band_m: 300.0,
     waypoint_distance_m: 50.0,
+    min_shared_m: 30_000.0,
 };
 
 const METRES_PER_DEGREE: f64 = 111_195.08;
@@ -104,6 +105,44 @@ fn us103_a_trip_sharing_a_short_stretch_of_road_is_not_proposed() {
     );
 
     assert_eq!(followed(&trip, &stage, &RULES), None);
+}
+
+#[test]
+fn us103_a_trip_sharing_a_long_stretch_of_a_plan_is_proposed_whatever_the_shares() {
+    // 100 km planned; the trip shares 40 km of it, from its own start and
+    // to its own end far off — under half of either.
+    let plan = path(&[(0.0, 0.0), (100_000.0, 0.0)], 25.0);
+    let trip = path(
+        &[
+            (-30_000.0, 30_000.0),
+            (20_000.0, 10.0),
+            (60_000.0, 10.0),
+            (60_000.0, 40_000.0),
+        ],
+        20.0,
+    );
+
+    let coverage = followed(&trip, &plan, &RULES).expect("followed");
+
+    assert_eq!(coverage.judged, Judged::Line);
+    assert_near(coverage.plan_covered, 0.4);
+    assert!(coverage.trip_on_plan < 0.4, "{coverage:?}");
+}
+
+#[test]
+fn us103_a_trip_sharing_a_shorter_stretch_of_a_long_plan_is_not_proposed() {
+    let plan = path(&[(0.0, 0.0), (100_000.0, 0.0)], 25.0);
+    let trip = path(
+        &[
+            (-30_000.0, 30_000.0),
+            (20_000.0, 10.0),
+            (40_000.0, 10.0),
+            (40_000.0, 40_000.0),
+        ],
+        20.0,
+    );
+
+    assert_eq!(followed(&trip, &plan, &RULES), None);
 }
 
 #[test]
