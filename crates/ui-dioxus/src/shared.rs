@@ -271,6 +271,7 @@ pub fn as_trip_detail(trip: &SharedTrip) -> TripDetail {
         id: trip.id,
         name: trip.name.clone(),
         activity_type: trip.activity_type,
+        trip_kind: trip.trip_kind,
         tz_name: trip.tz_name.clone(),
         start_time: trip.start_time.clone(),
         start_date: trip.start_date.clone(),

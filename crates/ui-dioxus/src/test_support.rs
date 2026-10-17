@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use trip_archive_types::{ActivityType, LocationSource, PhotoResponse, TripDetail};
+use trip_archive_types::{ActivityType, LocationSource, PhotoResponse, TripDetail, TripKind};
 
 use crate::api::ApiClient;
 
@@ -387,6 +387,7 @@ pub fn a_trip(name: &str) -> TripDetail {
         id: 1,
         name: name.to_string(),
         activity_type: ActivityType::Hiking,
+        trip_kind: TripKind::Recorded,
         tz_name: Some("Europe/Oslo".to_string()),
         start_time: Some("2026-07-11T09:30:00Z".to_string()),
         start_date: Some("2026-07-11".to_string()),

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{ActivityType, KomootLink};
+use crate::{ActivityType, KomootLink, TripKind};
 
 /// Full trip metadata. The track geometry (a GeoJSON blob) lives in a separate
 /// table and is not part of this struct (ADR-0003). `PartialEq` because
@@ -10,6 +10,8 @@ pub struct TripDetail {
     pub id: i64,
     pub name: String,
     pub activity_type: ActivityType,
+    /// Recorded or only planned (US-31), named on the trip's page (US-108).
+    pub trip_kind: TripKind,
     /// The trip's assumed IANA timezone (US-4, ADR-0009/0019), used to place
     /// non-geotagged photos by timestamp. `None` only for trips imported
     /// before this existed — lazily backfilled the first time photos are

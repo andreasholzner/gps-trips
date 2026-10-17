@@ -304,7 +304,6 @@ async fn us53_the_recipient_sees_no_tags_and_no_komoot_link() {
         let body = common::body_string(visit(&app, &uri).await).await;
         assert!(!body.contains("secret-tag"), "{uri}: {body}");
         assert!(!body.contains("komoot"), "{uri}: {body}");
-        assert!(!body.contains("trip_kind"), "{uri}: {body}");
     }
     assert_like_no_route(
         visit(&app, &format!("/s/{token}/api/trips/{id}/tags")).await,

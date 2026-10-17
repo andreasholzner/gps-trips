@@ -10,6 +10,7 @@ fn a_trip(activity: ActivityType, komoot: Option<KomootLink>) -> Trip {
         id: 1,
         name: "Oslo Hills Walk".to_string(),
         activity_type: activity,
+        trip_kind: trip_archive_types::TripKind::Recorded,
         tz_name: None,
         start_time: None,
         start_date: None,

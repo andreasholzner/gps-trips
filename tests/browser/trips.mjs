@@ -34,13 +34,14 @@ export async function chooseActivity(page, id, value) {
 /// Import a trip through the real API and return its id, from the redirect —
 /// which US-42 repointed at the SPA's own screen. Without an `activity` (its
 /// wire value), the trip's activity is left unspecified; without a `gpx`, it
-/// is the sample walk.
-export async function importTrip(request, name, activity, gpx = SAMPLE_GPX) {
+/// is the sample walk; without a `kind`, it is recorded (US-31).
+export async function importTrip(request, name, activity, gpx = SAMPLE_GPX, kind) {
   const multipart = {
     gpx: { name: "track.gpx", mimeType: "application/gpx+xml", buffer: gpx },
     name,
   };
   if (activity) multipart.activity_type = activity;
+  if (kind) multipart.kind = kind;
   const response = await request.post("/api/import", { maxRedirects: 0, multipart });
   expect(response.status(), `importing ${name}`).toBe(303);
   return Number(response.headers()["location"].replace("/app/trips/", ""));
@@ -58,12 +59,13 @@ export function ownTrips(test) {
       await request.delete(`/api/trips/${id}`);
     }
   });
-  return async (request, label, activity, gpx) => {
+  return async (request, label, activity, gpx, kind) => {
     const id = await importTrip(
       request,
       `${label} ${Math.random().toString(36).slice(2, 8)}`,
       activity,
       gpx,
+      kind,
     );
     created.push(id);
     return id;

@@ -2,9 +2,11 @@
 
 use dioxus::prelude::*;
 // The screen is `TripDetail`; so is the shape it shows.
-use trip_archive_types::{ActivityType, TripDetail as Trip};
+use trip_archive_types::{ActivityType, TripDetail as Trip, TripKind};
 
 use crate::activity_icon::ActivityIcon;
+use crate::kinds::Kind;
+use crate::list_table::KindSwatch;
 use crate::{format, rates};
 
 /// The trip's name and its stats — every one of them computed at import and
@@ -15,10 +17,14 @@ use crate::{format, rates};
 /// day it was is what that line is for, and times are read where they
 /// explain something, under the chart and the photos.
 ///
+/// The heading names the trip's kind (US-108): its line style before the
+/// name, as the list shows it (US-90), and spelled out beneath it.
+///
 /// Each pair sits in a `div` of its own, which a `dl` allows, so the list can
 /// lay out as a grid of label-over-value pairs (`app.css`).
 #[component]
 pub fn TripStats(trip: Trip) -> Element {
+    let kind_name = kind_name(trip.trip_kind);
     let date = trip
         .start_date
         .as_deref()
@@ -44,8 +50,10 @@ pub fn TripStats(trip: Trip) -> Element {
                 if trip.activity_type != ActivityType::Unknown {
                     ActivityIcon { activity: trip.activity_type }
                 }
+                KindSwatch { kind: Kind::of_trip(trip.trip_kind), activity: trip.activity_type, name: kind_name }
                 "{trip.name}"
             }
+            p { id: "trip-kind", "{kind_name}" }
             if let Some(date) = date {
                 p { id: "trip-date", "{date}" }
             }
@@ -84,6 +92,15 @@ pub fn TripStats(trip: Trip) -> Element {
                 dd { {format::duration(trip.duration_secs)} }
             }
         }
+    }
+}
+
+/// What the heading calls a trip of `kind` (US-108) — both kinds named, so
+/// the absence of a note never has to be read.
+fn kind_name(kind: TripKind) -> &'static str {
+    match kind {
+        TripKind::Recorded => "Recorded trip",
+        TripKind::Planned => "Planned trip",
     }
 }
 
@@ -241,6 +258,79 @@ mod tests {
         let html = render(move || rsx! { TripStats { trip: trip.clone() } });
 
         assert!(!html.contains("trip-date"), "{html}");
+    }
+
+    // ── US-108: recorded or planned ──────────────────────────────────────
+
+    #[test]
+    fn us108_the_heading_names_the_trips_kind_between_its_activity_and_its_name() {
+        for (kind, dash, name) in [
+            (
+                TripKind::Recorded,
+                r#"stroke-dasharray="none""#,
+                "Recorded trip",
+            ),
+            (
+                TripKind::Planned,
+                r#"stroke-dasharray="8 6""#,
+                "Planned trip",
+            ),
+        ] {
+            let trip = Trip {
+                trip_kind: kind,
+                ..a_trip("Oslo Hills Walk")
+            };
+
+            let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+            let heading = &html[html.find(r#"id="trip-name""#).unwrap()..];
+            let heading = &heading[..heading.find("</h1>").unwrap()];
+            let activity = heading.find(r#"title="Hiking""#).expect("activity icon");
+            let swatch = heading.find("kind-swatch").expect("kind icon");
+            assert!(activity < swatch, "{heading}");
+            assert!(
+                heading[swatch..].contains(&format!(r#"title="{name}""#)),
+                "{heading}"
+            );
+            assert!(
+                heading[swatch..].contains(&format!(r#"aria-label="{name}""#)),
+                "{heading}"
+            );
+            assert!(heading[swatch..].contains(dash), "{heading}");
+            assert!(heading.ends_with("Oslo Hills Walk"), "{heading}");
+            assert!(
+                html.contains(&format!(r#"id="trip-kind">{name}<"#)),
+                "{html}"
+            );
+        }
+    }
+
+    #[test]
+    fn us108_the_kind_line_follows_the_name_and_the_date_follows_it() {
+        let trip = a_trip("Oslo Hills Walk");
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        let name = html.find("</h1>").unwrap();
+        let kind = html.find(r#"id="trip-kind""#).unwrap();
+        let date = html.find(r#"id="trip-date""#).unwrap();
+        assert!(name < kind && kind < date, "{html}");
+    }
+
+    #[test]
+    fn us108_an_unspecified_activity_leaves_the_kind_icon_alone_before_the_name() {
+        let trip = Trip {
+            activity_type: ActivityType::Unknown,
+            trip_kind: TripKind::Planned,
+            ..a_trip("Oslo Hills Walk")
+        };
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(!html.contains("activity-icon"), "{html}");
+        assert!(html.contains("kind-swatch"), "{html}");
+        // In the unspecified activity's own grey, as in the list (US-90).
+        assert!(html.contains(r##"stroke="#6b6b6b""##), "{html}");
     }
 
     // ── US-80: the average speed in motion ──────────────────────────────

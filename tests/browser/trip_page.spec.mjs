@@ -319,3 +319,19 @@ test("a photo the map could not place is placed without a warning (US-30)", asyn
   expect(placed.location_source).toBe("manual");
   await expect.poll(() => markerPositions(page)).toEqual([[placed.lat, placed.lon]]);
 });
+
+// What `document::eval` draws: the page's own track in its kind's line style
+// (US-108) — a plan dashed, a recorded trip solid.
+test("a trip's own track is drawn in its kind's line style (US-108)", async ({ page, request }) => {
+  const recorded = await ownTrip(request, "Solid Trip", "hiking");
+  const planned = await ownTrip(request, "Dashed Plan", "hiking", undefined, "planned");
+  const line = page.locator("#track-map path.leaflet-interactive");
+
+  await page.goto(`/app/trips/${recorded}`);
+  await expect(line).toHaveCount(1);
+  await expect(line).not.toHaveAttribute("stroke-dasharray");
+
+  await page.goto(`/app/trips/${planned}`);
+  await expect(line).toHaveCount(1);
+  await expect(line).toHaveAttribute("stroke-dasharray", "8 6");
+});

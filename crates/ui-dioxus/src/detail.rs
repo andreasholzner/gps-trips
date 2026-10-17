@@ -131,6 +131,7 @@ pub fn TripDetail(id: i64, #[props(default)] show: Option<LinkOther>) -> Element
                     id,
                     name: trip.name.clone(),
                     activity: trip.activity_type,
+                    kind: trip.trip_kind,
                     markers: photos::photo_markers(archive().base_url(), photos.as_deref().unwrap_or(&[])),
                     overlays: overlays(),
                     on_open_photos: move |opened| viewing.set(Some(opened)),
@@ -440,6 +441,28 @@ mod tests {
         let links = html.find(r#"id="links""#).unwrap();
         let actions = html.find(r#"id="delete-trip""#).unwrap();
         assert!(photos < links && links < actions, "{html}");
+    }
+
+    // US-108: the heading names the trip's kind, for either kind.
+    #[tokio::test]
+    async fn us108_the_screen_names_the_trips_kind() {
+        let (archive, _dir) = serve_test_archive().await;
+        for (kind, name) in [("recorded", "Recorded trip"), ("planned", "Planned trip")] {
+            let id = import_sample(&archive, &[("kind", kind)]).await;
+
+            let html = render_against_archive(
+                &archive,
+                move || rsx! { TripDetail { id } },
+                |html| html.contains("trip-kind"),
+            )
+            .await;
+
+            assert!(
+                html.contains(&format!(r#"id="trip-kind">{name}<"#)),
+                "{html}"
+            );
+            assert!(html.contains(&format!(r#"aria-label="{name}""#)), "{html}");
+        }
     }
 
     #[tokio::test]

@@ -160,6 +160,29 @@ async fn us80_a_shared_trip_shows_its_average_speed() {
     assert!(html.contains(&kmh), "{kmh}: {html}");
 }
 
+// US-108: the recipient's page names the trip's kind as the owner's does.
+#[tokio::test]
+async fn us108_a_shared_trips_page_names_its_kind() {
+    let (archive, _dir) = serve_test_archive().await;
+    for (kind, name) in [("recorded", "Recorded trip"), ("planned", "Planned trip")] {
+        let id = import_sample(&archive, &[("kind", kind), ("activity_type", "hiking")]).await;
+        let (recipient, token) = shared(&archive, vec![id], None).await;
+
+        let html = render_against_archive(
+            &recipient,
+            move || rsx! { Shared { token: token.clone() } },
+            |html| html.contains("track-map"),
+        )
+        .await;
+
+        assert!(
+            html.contains(&format!(r#"id="trip-kind">{name}<"#)),
+            "{html}"
+        );
+        assert!(html.contains(&format!(r#"aria-label="{name}""#)), "{html}");
+    }
+}
+
 async fn archive_trip(archive: &ApiClient, id: i64) -> trip_archive_types::TripDetail {
     crate::api::get_trip(archive, id)
         .await

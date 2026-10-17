@@ -62,6 +62,7 @@ pub fn SharedTripView(token: String, id: i64, overview: ShareOverview) -> Elemen
                     id,
                     name: trip.name.clone(),
                     activity: trip.activity_type,
+                    kind: trip.trip_kind,
                     markers: photos::photo_markers(&base_url, photos.as_deref().unwrap_or(&[])),
                     overlays: overlays(),
                     on_open_photos: move |opened| viewing.set(Some(opened)),

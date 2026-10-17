@@ -239,6 +239,25 @@ test("trips of one activity are told apart, and a row and its line point at each
   await recipient.close();
 });
 
+test("a shared plan's page names it and draws its track dashed (US-108)", async ({
+  request,
+  browser,
+  baseURL,
+}) => {
+  const id = await trip(request, "Shared Plan", "hiking", undefined, "planned");
+  const created = await request.post("/api/shares", { data: { trip_ids: [id] } });
+  expect(created.status(), "creating the share").toBe(201);
+  const { token } = await created.json();
+
+  const recipient = await recipientPage(browser, baseURL);
+  await recipient.page.goto(`/app/s/${token}`);
+  await expect(recipient.page.locator("#trip-kind")).toHaveText("Planned trip");
+  const line = recipient.page.locator("#track-map path.leaflet-interactive");
+  await expect(line).toHaveCount(1);
+  await expect(line).toHaveAttribute("stroke-dasharray", "8 6");
+  await recipient.close();
+});
+
 test("a trip's name on the share's map is shown as text, never run as markup (US-53)", async ({
   request,
   browser,

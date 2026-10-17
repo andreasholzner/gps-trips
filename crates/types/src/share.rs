@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ActivityType, SharedCollection, SharedCollectionTrack};
+use crate::{ActivityType, SharedCollection, SharedCollectionTrack, TripKind};
 
 /// How long a share lasts. A closed set on the wire, so an enum (ADR-0018);
 /// how long each one is lives in the server's configuration.
@@ -226,6 +226,8 @@ pub struct SharedTrip {
     pub id: i64,
     pub name: String,
     pub activity_type: ActivityType,
+    /// Recorded or planned, as the owner's page names it (US-108).
+    pub trip_kind: TripKind,
     /// Which zone the trip's times are shown in (US-62).
     pub tz_name: Option<String>,
     pub start_time: Option<String>,

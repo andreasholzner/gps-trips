@@ -56,6 +56,17 @@
   height: 0.375rem;
 }
 
+/* In a trip's heading, between its activity's icon and its name (US-108):
+   sized to the heading's text, as the icon before it is. */
+h1 > .kind-swatch {
+  margin-inline-end: 0.35em;
+}
+
+h1 > .kind-swatch .swatch {
+  width: 1.5em;
+  height: 0.375em;
+}
+
 /* The name is the third column here, after the kind: it is the one kept
    from being squeezed (as `.table-scroll td:nth-child(2)` keeps a name in
    the other tables), not the kind's icon. */

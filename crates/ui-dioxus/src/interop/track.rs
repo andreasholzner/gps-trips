@@ -150,7 +150,11 @@ const TRACK_MAP_SCRIPT: &str = r##"
 
     const points = view.points || [];
     if (points.length > 0) {
-      map.trackLine = L.polyline(points, { color: view.color, weight: 3 }).addTo(map);
+      map.trackLine = L.polyline(points, {
+        color: view.color,
+        weight: 3,
+        dashArray: view.dash || null,
+      }).addTo(map);
     }
 
     // What the pointer can be over (US-104): the page's own track, named
@@ -263,6 +267,8 @@ pub struct OwnTrack {
     /// Its activity's color (US-75).
     pub color: &'static str,
     pub icon: Option<MapIcon>,
+    /// Its kind's Leaflet `dashArray` (US-108); `None` for a solid line.
+    pub dash: Option<&'static str>,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
 }
@@ -333,6 +339,7 @@ pub(super) fn start(script: &str, payload: impl serde::Serialize, what: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kinds::Kind;
     use crate::photos::PopupTap;
 
     #[test]
@@ -363,6 +370,7 @@ mod tests {
                 name: "Albula".to_string(),
                 color: "#b2182b",
                 icon: None,
+                dash: None,
                 points: vec![[46.5, 9.8]],
             },
             markers: Vec::new(),
@@ -376,5 +384,26 @@ mod tests {
         assert_eq!(sent["color"], "#b2182b");
         assert_eq!(sent["points"], serde_json::json!([[46.5, 9.8]]));
         assert!(sent["icon"].is_null());
+        assert!(sent["dash"].is_null(), "solid unless told otherwise");
+    }
+
+    #[test]
+    fn us108_a_planned_trips_own_track_reaches_the_map_dashed() {
+        let view = TrackMapView {
+            line: OwnTrack {
+                name: "Albula".to_string(),
+                color: "#b2182b",
+                icon: None,
+                dash: Kind::Planned.dash(),
+                points: vec![[46.5, 9.8]],
+            },
+            markers: Vec::new(),
+            waypoints: Vec::new(),
+            overlays: Overlays::default(),
+        };
+
+        let sent = serde_json::to_value(&view).unwrap();
+
+        assert_eq!(sent["dash"], "8 6");
     }
 }

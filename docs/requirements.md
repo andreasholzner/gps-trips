@@ -149,7 +149,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 | [US-106](#us-106--mark-the-photos-still-to-be-placed)         | 📋     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
 | [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | 📋     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
-| [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | 📋     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
+| [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | ✅     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -1229,7 +1229,7 @@ never count toward it.
 
 ### US-108 — Recorded or planned on the trip page
 
-**Planned 📋** — As the owner, a trip's page tells me whether the trip was recorded or only planned
+**Done ✅** — As the owner, a trip's page tells me whether the trip was recorded or only planned
 (US-31), so I never mistake a plan for something I did — as a collection track's page already says
 which collection it is from (US-93).
 

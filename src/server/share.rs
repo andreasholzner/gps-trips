@@ -400,6 +400,7 @@ fn shared_trip(trip: TripDetail) -> SharedTrip {
         id: trip.id,
         name: trip.name,
         activity_type: trip.activity_type,
+        trip_kind: trip.trip_kind,
         tz_name: trip.tz_name,
         start_time: trip.start_time,
         start_date: trip.start_date,

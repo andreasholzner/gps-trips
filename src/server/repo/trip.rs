@@ -479,7 +479,7 @@ pub async fn delete_trip(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error
 pub async fn get_trip(pool: &SqlitePool, id: i64) -> Result<Option<TripDetail>, sqlx::Error> {
     sqlx::query(
         r#"SELECT t.id AS id, t.name AS name, t.activity_type AS activity_type,
-                  t.tz_name AS tz_name, t.start_time AS start_time, t.end_time AS end_time,
+                  t.trip_kind AS trip_kind, t.tz_name AS tz_name, t.start_time AS start_time, t.end_time AS end_time,
                   t.distance_m AS distance_m, t.ascent_m AS ascent_m, t.descent_m AS descent_m,
                   t.duration_secs AS duration_secs, t.moving_secs AS moving_secs,
                   t.moving_distance_m AS moving_distance_m,
@@ -597,6 +597,7 @@ fn row_to_detail(row: SqliteRow) -> TripDetail {
         id: row.get("id"),
         name: row.get("name"),
         activity_type: row.get("activity_type"),
+        trip_kind: row.get("trip_kind"),
         tz_name,
         start_time,
         start_date,

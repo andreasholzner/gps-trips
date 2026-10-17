@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use trip_archive_types::{ActivityType, Climb};
+use trip_archive_types::{ActivityType, Climb, TripKind};
 
 use super::climbs::ClimbsList;
 use crate::activity_color;
@@ -11,6 +11,7 @@ use crate::activity_icon;
 use crate::api::{self, ApiClient};
 use crate::format;
 use crate::interop::{self, MapWaypoint, Overlays, OwnTrack, TrackMapEvent};
+use crate::kinds::Kind;
 use crate::photos::{self, PhotoMarker, PhotoView};
 use crate::track::{self, Track};
 use crate::Route;
@@ -23,14 +24,15 @@ use crate::Route;
 ///
 /// `on_open_photos` is told the set a photo tapped in a marker's popup opens
 /// the viewer on, and where in it to start (US-62). `activity` colors the
-/// line (US-75), and with `name` names it in the map's hint (US-104).
-/// `overlays` are what the page is linked to that the owner ticked to see on
+/// line (US-75), and with `name` names it in the map's hint (US-104);
+/// `kind` gives it its line style (US-108). `overlays` are what the page is linked to that the owner ticked to see on
 /// the map (US-99).
 #[component]
 pub fn TrackSection(
     id: i64,
     name: String,
     activity: ActivityType,
+    kind: TripKind,
     markers: Vec<PhotoMarker>,
     #[props(default)] overlays: Overlays,
     on_open_photos: EventHandler<(Vec<PhotoView>, usize)>,
@@ -63,6 +65,7 @@ pub fn TrackSection(
                     track: track.clone(),
                     name: name.clone(),
                     activity,
+                    dash: Kind::of_trip(kind).dash(),
                     climbs,
                     markers: markers.clone(),
                     overlays: overlays.clone(),
@@ -77,7 +80,8 @@ pub fn TrackSection(
 /// fetch above so each starts its script exactly once, when it mounts with
 /// the values it draws — never on a re-render of the screen around it — and
 /// so a track that is not a trip's, a collection's (US-86), is drawn by the
-/// same views, with its `waypoints` on the map.
+/// same views, with its `waypoints` on the map. `dash` is the line style of
+/// the page's own track (US-108), solid by default.
 ///
 /// This is also where the hover (US-59) turns around: the chart reports the
 /// index the cursor is on, and the index is resolved *here*, in Rust, into
@@ -89,6 +93,7 @@ pub fn TrackViews(
     track: Track,
     name: String,
     activity: ActivityType,
+    #[props(default)] dash: Option<&'static str>,
     climbs: Vec<Climb>,
     markers: Vec<PhotoMarker>,
     #[props(default)] waypoints: Vec<MapWaypoint>,
@@ -111,6 +116,7 @@ pub fn TrackViews(
                 name,
                 color: activity_color::color(activity),
                 icon: activity_icon::map_icon(activity),
+                dash,
                 points,
             },
             markers,
