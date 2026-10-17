@@ -226,10 +226,12 @@ suggested. They are no part of the archive ([ADR-0027](./adr/0027-offline-place-
 built on the laptop from open data, never in the backup, and rebuilt rather than migrated. Place
 names and ways change slowly; rebuilding them once a year or so is plenty.
 
-`scripts/update-geo.sh` does all of what follows: it fetches the sources that changed, rebuilds
-both databases (or only those named, `places` or `ground`), and with `--upload` puts them on the
-volume (`FLY_APP` set as for a deploy). `--no-download` builds from the sources already there;
-`--no-build` only uploads the databases already in `data/`.
+`scripts/update-geo.sh` does all of what follows, for both databases or only those named (`places`
+or `ground`): it fetches the sources that changed, rebuilds a database that is missing or older
+than one of its sources, and puts the databases on the volume (`FLY_APP` set as for a deploy). It
+first lists what it will do, from the files already here, and asks. `--no-fetch` builds from the
+sources already there; `--no-upload` keeps the databases on the laptop. A change to how a database
+is built is not noticed: delete it from `data/` to have it rebuilt.
 
 Their sources, downloaded into `data/geo-src/` (which git ignores):
 
