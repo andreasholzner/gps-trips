@@ -172,7 +172,9 @@ test("ticking a linked item shows it without moving or zooming the map (US-105)"
     });
   const before = await view();
 
-  const stage = page.getByRole("checkbox", { name: /^Show .* on the map$/ });
+  // By its name: the suite's other trips on the same walk may be proposed
+  // as links too (US-103), each with a checkbox of its own.
+  const stage = page.getByRole("checkbox", { name: `Show ${tracks[0].name} on the map` });
   await stage.check();
   await expect(lines).toHaveCount(2);
   await expect(page.locator("#track-map .leaflet-map-pane")).not.toHaveClass(/leaflet-zoom-anim/);
