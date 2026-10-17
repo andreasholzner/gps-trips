@@ -27,6 +27,7 @@ fn tag(name: &str, trip_ids: &[i64], undated: u32) -> TagTrips {
         name: name.to_string(),
         trip_ids: trip_ids.to_vec(),
         undated,
+        ..TagTrips::default()
     }
 }
 
@@ -42,6 +43,7 @@ fn archive() -> TagSummaries {
             trip(4, Hiking, "2024-07-04", "2024-07-04", 8.0),
             trip(5, Kayaking, "2024-08-10", "2024-08-10", 15.0),
         ],
+        ..TagSummaries::default()
     }
 }
 

@@ -83,7 +83,9 @@ pub use shared_collection::{
     SharedCollectionTrackDetail, SharedWaypoint,
 };
 pub use staged_import::{ConfirmImport, ImportedTrip, StagedImport};
-pub use stats_trips::{StatsTrip, StatsTrips, TagSummaries, TagTrips};
+pub use stats_trips::{
+    StatsTrip, StatsTrips, SummaryCollection, SummaryTrack, TagSummaries, TagTrips, UncountedTrip,
+};
 pub use tag::{normalize_tag_name, Tag, TagOverview, TagShare};
 pub use trip_detail::TripDetail;
 pub use trip_kind::TripKind;

@@ -12,14 +12,11 @@ pub async fn stats_trips(archive: &ApiClient) -> Result<StatsTrips, ApiError> {
 }
 
 /// `GET /api/stats/tags?tags=…` — the dated recorded trips under any of
-/// `tags`, and which tag holds which. No tags ask for nothing, without a
-/// request.
+/// `tags`, and which tag holds which, with what else they hold (US-107). No
+/// tags ask for nothing, without a request.
 pub async fn tag_summaries(archive: &ApiClient, tags: &[String]) -> Result<TagSummaries, ApiError> {
     if tags.is_empty() {
-        return Ok(TagSummaries {
-            tags: Vec::new(),
-            trips: Vec::new(),
-        });
+        return Ok(TagSummaries::default());
     }
     let tags = encode(&tags.join(","));
     get_json(

@@ -58,7 +58,7 @@ pub use staging::{
     delete_staged_import, insert_staged_import, sweep_staged_imports, take_staged_import_in_tx,
     NewStagedImport,
 };
-pub use stats::{list_stats_trips, list_tag_summaries};
+pub use stats::{add_tag_holdings, list_stats_trips, list_tag_summaries};
 pub use tag::{
     add_tag, add_tag_named, bulk_add_tags, create_tag, delete_tag, find_tag_ids, get_or_create_tag,
     list_all_tags, list_tag_overview, list_tags_of, remove_tag, rename_tag, tagged_exists,

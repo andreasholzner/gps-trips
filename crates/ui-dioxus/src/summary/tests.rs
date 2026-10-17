@@ -5,7 +5,8 @@
 
 use super::*;
 use crate::test_support::{
-    import_gpx, import_sample, render_against_archive, serve_test_archive, tag_trip,
+    import_collection, import_gpx, import_sample, render_against_archive, serve_test_archive,
+    tag_trip, COLLECTION_GPX,
 };
 
 const UNTIMED_GPX: &[u8] = include_bytes!("../../../../tests/fixtures/untimed.gpx");
@@ -91,10 +92,15 @@ async fn us78_one_tag_shows_its_figures_its_map_and_what_was_left_out() {
         trips.contains(&format!(r#"href="/trips/{ride}""#)),
         "{trips}"
     );
-    // Each trip's activity as its icon alone.
+    // Each trip's activity as its icon alone — the undated one's too,
+    // listed though not counted (US-107).
     assert_eq!(
         trips.matches(r#"class="activity-icon""#).count(),
-        2,
+        3,
+        "{trips}"
+    );
+    assert!(
+        trips.contains(&format!(r#"href="/trips/{undated}""#)),
         "{trips}"
     );
     assert!(html.contains(r#"id="overview-map""#), "{html}");
@@ -128,9 +134,9 @@ async fn us82_the_owner_can_share_the_summary_shown() {
 }
 
 #[tokio::test]
-async fn us78_a_tag_without_recorded_trips_says_so_instead_of_showing_zeros() {
+async fn us107_a_tag_without_recorded_trips_says_so_but_lists_and_draws_what_it_holds() {
     let (archive, _dir) = serve_test_archive().await;
-    let planned = import_sample(&archive, &[("kind", "planned")]).await;
+    let planned = import_sample(&archive, &[("name", "Someday Walk"), ("kind", "planned")]).await;
     tag_trip(&archive, planned, "someday").await;
 
     let html = render_against_archive(
@@ -145,7 +151,42 @@ async fn us78_a_tag_without_recorded_trips_says_so_instead_of_showing_zeros() {
         "{html}"
     );
     assert!(!html.contains("summary-figures"), "{html}");
-    assert!(!html.contains(r#"id="overview-map""#), "{html}");
+    assert!(html.contains(r#"id="overview-map""#), "{html}");
+    let trips = html
+        .split(r#"id="summary-trips""#)
+        .nth(1)
+        .expect("the trip list");
+    assert!(trips.contains("Someday Walk"), "{trips}");
+    assert!(trips.contains("not counted"), "{trips}");
+}
+
+#[tokio::test]
+async fn us107_a_tag_lists_its_collections_and_tracks_beside_its_trips() {
+    let (archive, _dir) = serve_test_archive().await;
+    let walk = import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+    tag_trip(&archive, walk, "alps").await;
+    let (collection, _) = import_collection(&archive, COLLECTION_GPX, &[("name", "Lakes")]).await;
+    api::add_tag(&archive, api::Tagged::Collection(collection), "alps")
+        .await
+        .unwrap();
+
+    let html = render_against_archive(
+        &archive,
+        || rsx! { Summary { view: view(&["alps"]) } },
+        |html| html.contains("summary-figures"),
+    )
+    .await;
+
+    let trips = html
+        .split(r#"id="summary-trips""#)
+        .nth(1)
+        .expect("the trip list");
+    assert!(trips.contains("Oslo Hills Walk"), "{trips}");
+    assert!(
+        trips.contains(&format!(r#"href="/collections/{collection}"#)),
+        "{trips}"
+    );
+    assert!(trips.contains("Stage 1: Splügen"), "{trips}");
 }
 
 #[tokio::test]

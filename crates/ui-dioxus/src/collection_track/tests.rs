@@ -59,7 +59,7 @@ async fn us86_the_screen_shows_the_track_its_collection_and_its_figures() {
     assert!(html.contains(r#"id="share-collection-track""#), "{html}");
 }
 
-// US-93: tagged as a trip is, its tags leading nowhere.
+// US-93: tagged as a trip is; US-107: each tag leading to its summary.
 #[tokio::test]
 async fn us93_the_screen_shows_the_tracks_own_tags() {
     let (archive, _dir) = serve_test_archive().await;
@@ -79,7 +79,8 @@ async fn us93_the_screen_shows_the_tracks_own_tags() {
     )
     .await;
 
-    assert!(html.contains(r#"<span class="chip">pass "#), "{html}");
+    assert!(html.contains(r#"href="/summary?tags=pass""#), "{html}");
+    assert!(html.contains(r#"title="Remove pass""#), "{html}");
     assert!(
         !html.contains("lakes"),
         "the collection's tag is its own: {html}"

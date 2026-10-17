@@ -3,22 +3,24 @@
 //! whole — or several tags side by side, to compare one with another.
 //!
 //! The archive hands over the chosen tags' dated recorded trips once
-//! (`GET /api/stats/tags`); [`figures`] adds them up and [`lines`] decides
-//! the map's lines, so everything shown is unit-tested on the host. The
+//! (`GET /api/stats/tags`), with what else they hold (US-107); [`figures`]
+//! adds the trips up, and [`entries`] and [`lines`] decide what is listed
+//! and drawn, so everything shown is unit-tested on the host. The
 //! owner can share what is shown (US-82); its recipient sees the same body,
 //! with each trip opening as a shared one.
 
 use dioxus::prelude::*;
-use trip_archive_types::{ActivityType, Tag, TagSummaries};
+use trip_archive_types::{Tag, TagSummaries};
 
-use crate::activity_color::{ActivityLegend, Swatch};
+use crate::activity_color::Swatch;
 use crate::api::{self, ApiClient};
-use crate::interop::{self, OverviewEvent};
 use crate::share::{ShareDialog, ShareTarget};
 use crate::Route;
 
+mod entries;
 mod figures;
 mod lines;
+mod map;
 mod table;
 mod trips;
 mod view;
@@ -26,6 +28,7 @@ mod view;
 pub use view::SummaryView;
 
 use figures::TagSummary;
+use map::SummaryMap;
 use table::FiguresTable;
 use trips::TripsByTag;
 
@@ -238,9 +241,13 @@ pub fn SummaryBody(summary: TagSummaries, viewer: Viewer) -> Element {
         for tag in summaries.iter().filter(|tag| tag.undated > 0) {
             p { key: "undated-{tag.name}", class: "muted summary-undated", {undated(tag)} }
         }
-        if !with_trips.is_empty() {
+        // A tag holding no counted trip still lists and draws what it holds
+        // (US-107).
+        if !entries::groups(&summary).is_empty() {
             SummaryMap { summary: summary.clone(), viewer: viewer.clone() }
-            FiguresTable { tags: with_trips, colors, viewer: viewer.clone() }
+            if !with_trips.is_empty() {
+                FiguresTable { tags: with_trips, colors, viewer: viewer.clone() }
+            }
             TripsByTag { summary: summary.clone(), viewer }
         }
     }
@@ -257,53 +264,6 @@ fn undated(tag: &TagSummary) -> String {
             "{count} recorded trips tagged {} have no dates and are not counted.",
             tag.name
         ),
-    }
-}
-
-/// Every trip under the chosen tags on one map, as a share's overview map
-/// draws them (US-53); clicking one opens that trip as `viewer` sees it.
-/// With one tag, which color is which activity sits under it (US-75); with
-/// several, each tag's color sits beside its name instead.
-#[component]
-fn SummaryMap(summary: TagSummaries, viewer: Viewer) -> Element {
-    let archive = use_context::<Signal<ApiClient>>();
-    let mut shown = use_signal(Vec::<ActivityType>::new);
-    let one_tag = summary.tags.len() == 1;
-    let _draw = use_resource(use_reactive!(|summary, viewer| async move {
-        let ids: Vec<i64> = summary.trips.iter().map(|trip| trip.id).collect();
-        // One that cannot be read is absent from the answer and leaves its
-        // line off the map; a request that fails outright leaves the map
-        // without lines, and the figures still stand.
-        let tracks = api::list_tracks(&archive(), &ids)
-            .await
-            .unwrap_or_else(|err| {
-                dioxus::logger::tracing::error!("could not read the tracks: {err}");
-                Vec::new()
-            });
-        shown.set(
-            summary
-                .trips
-                .iter()
-                .filter(|trip| tracks.iter().any(|track| track.id == trip.id))
-                .map(|trip| trip.activity_type)
-                .collect(),
-        );
-        let mut map = interop::start_overview_map(
-            lines::lines(&summary, &tracks),
-            Vec::new(),
-            Default::default(),
-        );
-        while let Ok(event) = map.recv::<OverviewEvent>().await {
-            if let OverviewEvent::Open(id) = event {
-                navigator().push(viewer.trip_route(id));
-            }
-        }
-    }));
-    rsx! {
-        div { id: "overview-map", class: "overview-map" }
-        if one_tag {
-            ActivityLegend { shown: shown() }
-        }
     }
 }
 

@@ -273,10 +273,13 @@ test("a collection and its track are tagged as a trip is, each with its own tags
   expect(await (await request.get(`/api/collections/${id}/tags`)).json()).toEqual([]);
   await page.getByRole("button", { name: "Create it" }).click();
 
-  // Summaries are about trips: the chip leads nowhere.
+  // The chip leads to the tag's summary (US-107).
   const chip = page.locator(".trip-tags .chip", { hasText: name });
   await expect(chip).toBeVisible();
-  await expect(chip.locator("a")).toHaveCount(0);
+  await expect(chip.locator("a")).toHaveAttribute(
+    "href",
+    new RegExp(`/app/summary\\?tags=${name}$`),
+  );
 
   // The track has none of its collection's; a known name needs no
   // confirmation.

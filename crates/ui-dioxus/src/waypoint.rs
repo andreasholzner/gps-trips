@@ -123,6 +123,8 @@ fn WaypointMap(detail: WaypointDetail, overlays: Overlays) -> Element {
                     name: track.name.clone(),
                     color: activity_color::color(track.activity_type),
                     icon: crate::activity_icon::map_icon(track.activity_type),
+                    dash: None,
+                    source: None,
                     points: track::polyline(&geometry),
                 }),
                 Err(err) => dioxus::logger::tracing::error!("could not read the track: {err}"),
@@ -138,7 +140,8 @@ fn WaypointMap(detail: WaypointDetail, overlays: Overlays) -> Element {
                 OverviewEvent::Open(track) => Some(Route::CollectionTrack { id: track }),
                 OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
                 OverviewEvent::OpenOverlay(n) => overlays.route(n),
-                OverviewEvent::Hover(_) => None,
+                // Its lines are given no source.
+                OverviewEvent::Hover(_) | OverviewEvent::OpenItem(_) => None,
             };
             if let Some(to) = to {
                 navigator().push(to);

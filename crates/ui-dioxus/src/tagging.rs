@@ -117,9 +117,6 @@ pub fn Tagging(tagged: Tagged) -> Element {
                 Some(tags) => rsx! {
                     TagChips {
                         tags,
-                        // Summaries are about trips (US-78): a collection's
-                        // tag leads nowhere.
-                        to_summary: matches!(tagged, Tagged::Trip(_)),
                         on_remove: move |tag_id| async move {
                             match api::remove_tag(&archive(), tagged, tag_id).await {
                                 Ok(()) => {
@@ -178,10 +175,11 @@ pub fn Tagging(tagged: Tagged) -> Element {
     }
 }
 
-/// One removable chip per tag, its name leading to the tag's summary
-/// (US-78) when `to_summary`; nothing at all for no tags.
+/// One removable chip per tag, its name leading to the tag's summary — a
+/// trip's (US-78), a collection's or a collection track's (US-107);
+/// nothing at all for no tags.
 #[component]
-fn TagChips(tags: Vec<Tag>, to_summary: bool, on_remove: EventHandler<i64>) -> Element {
+fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
     rsx! {
         // None: nothing in their place, the "Add tag" button beside them
         // says enough.
@@ -189,13 +187,9 @@ fn TagChips(tags: Vec<Tag>, to_summary: bool, on_remove: EventHandler<i64>) -> E
             div { class: "chips",
                 for tag in tags {
                     span { key: "{tag.id}", class: "chip",
-                        if to_summary {
-                            Link {
-                                to: Route::Summary { view: SummaryView::of(&tag.name) },
-                                title: "Summary of {tag.name}",
-                                "{tag.name}"
-                            }
-                        } else {
+                        Link {
+                            to: Route::Summary { view: SummaryView::of(&tag.name) },
+                            title: "Summary of {tag.name}",
                             "{tag.name}"
                         }
                         " "
@@ -313,7 +307,6 @@ mod tests {
             rsx! {
                 TagChips {
                     tags: tags(&["alpine", "summer"]),
-                    to_summary: true,
                     on_remove: move |_| {},
                 }
             }
@@ -334,7 +327,6 @@ mod tests {
             rsx! {
                 TagChips {
                     tags: tags(&["alpine"]),
-                    to_summary: true,
                     on_remove: move |_| {},
                 }
             }
@@ -348,28 +340,10 @@ mod tests {
     }
 
     #[test]
-    fn us93_a_collections_tags_lead_nowhere_and_can_be_taken_off() {
-        // Summaries are about trips: there is none to lead to.
-        let html = render(move || {
-            rsx! {
-                TagChips {
-                    tags: tags(&["alpine"]),
-                    to_summary: false,
-                    on_remove: move |_| {},
-                }
-            }
-        });
-
-        assert!(html.contains("alpine"), "{html}");
-        assert!(!html.contains("href"), "{html}");
-        assert!(html.contains(r#"title="Remove alpine""#), "{html}");
-    }
-
-    #[test]
     fn a_trip_with_no_tags_shows_nothing_in_their_place() {
         // The "Add tag" button beside them says enough.
         let html = render(|| {
-            rsx! { TagChips { tags: Vec::new(), to_summary: true, on_remove: move |_| {} } }
+            rsx! { TagChips { tags: Vec::new(), on_remove: move |_| {} } }
         });
 
         assert!(html.is_empty(), "{html}");

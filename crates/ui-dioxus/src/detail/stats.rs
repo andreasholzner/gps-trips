@@ -4,6 +4,7 @@ use dioxus::prelude::*;
 // The screen is `TripDetail`; so is the shape it shows.
 use trip_archive_types::{ActivityType, TripDetail as Trip, TripKind};
 
+use crate::activity_color;
 use crate::activity_icon::ActivityIcon;
 use crate::kinds::Kind;
 use crate::list_table::KindSwatch;
@@ -50,7 +51,7 @@ pub fn TripStats(trip: Trip) -> Element {
                 if trip.activity_type != ActivityType::Unknown {
                     ActivityIcon { activity: trip.activity_type }
                 }
-                KindSwatch { kind: Kind::of_trip(trip.trip_kind), activity: trip.activity_type, name: kind_name }
+                KindSwatch { kind: Kind::of_trip(trip.trip_kind), color: activity_color::color(trip.activity_type), name: kind_name }
                 "{trip.name}"
             }
             p { id: "trip-kind", "{kind_name}" }

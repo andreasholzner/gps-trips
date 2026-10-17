@@ -33,13 +33,20 @@ pub struct TagsQuery {
 }
 
 /// GET `/api/stats/tags?tags=…` — the dated recorded trips under any of the
-/// chosen tags, and which tag holds which (US-78). No tags ask for nothing;
-/// 400 for a malformed tag name, while an unknown one just has no trips.
+/// chosen tags, and which tag holds which (US-78), with what they hold
+/// besides that is not counted (US-107). No tags ask for nothing; 400 for a
+/// malformed tag name, while an unknown one just holds nothing.
 pub async fn handle_tag_summaries(
     State(state): State<AppState>,
     Query(query): Query<TagsQuery>,
 ) -> Result<Json<TagSummaries>, AppError> {
     let tags = parse_tags(query.tags.as_deref())?;
     let (tags, trips) = repo::list_tag_summaries(&state.pool, &tags).await?;
-    Ok(Json(TagSummaries { tags, trips }))
+    let mut summary = TagSummaries {
+        tags,
+        trips,
+        ..TagSummaries::default()
+    };
+    repo::add_tag_holdings(&state.pool, &mut summary).await?;
+    Ok(Json(summary))
 }

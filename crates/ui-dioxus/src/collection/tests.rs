@@ -70,7 +70,7 @@ async fn us86_the_page_shows_the_details_the_map_and_the_tracks() {
     assert!(html.contains(r#"aria-label="Select all""#), "{html}");
 }
 
-// US-93: tagged as a trip is, its tags leading nowhere.
+// US-93: tagged as a trip is; US-107: each tag leading to its summary.
 #[tokio::test]
 async fn us93_the_page_shows_the_collections_own_tags() {
     let (archive, _dir) = serve_test_archive().await;
@@ -89,7 +89,8 @@ async fn us93_the_page_shows_the_collections_own_tags() {
     )
     .await;
 
-    assert!(html.contains(r#"<span class="chip">lakes "#), "{html}");
+    assert!(html.contains(r#"href="/summary?tags=lakes""#), "{html}");
+    assert!(html.contains(r#"title="Remove lakes""#), "{html}");
     assert!(!html.contains("pass"), "a track's tag is its own: {html}");
     assert!(html.contains(r#"id="add-tag""#), "{html}");
 }

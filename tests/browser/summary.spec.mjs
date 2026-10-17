@@ -9,8 +9,39 @@
 import { expect, signIn, test } from "./session.mjs";
 import { clickLine, menuEntries } from "./map.mjs";
 import { ownTrips } from "./trips.mjs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const ownTrip = ownTrips(test);
+
+/// One short tour near Innsbruck, whose two waypoints belong to its track.
+const COLLECTION_SINGLE_GPX = readFileSync(
+  fileURLToPath(new URL("../fixtures/collection_single.gpx", import.meta.url)),
+);
+
+/// Every collection these tests create, taken away again afterwards.
+const collections = [];
+
+test.afterAll(async ({ request }) => {
+  for (const id of collections.splice(0)) {
+    await request.delete(`/api/collections/${id}`);
+  }
+});
+
+/// Seed a collection of this run's own and return its id and its track's.
+async function ownCollection(request) {
+  const response = await request.post("/api/collections", {
+    multipart: {
+      gpx: { name: "book.gpx", mimeType: "application/gpx+xml", buffer: COLLECTION_SINGLE_GPX },
+      name: fresh("Karwendel"),
+    },
+  });
+  expect(response.status(), "importing a collection").toBe(201);
+  const { id } = await response.json();
+  collections.push(id);
+  const { tracks } = await (await request.get(`/api/collections/${id}`)).json();
+  return { id, track: tracks[0].id };
+}
 
 test.beforeEach(async ({ page }) => {
   await signIn(page.request);
@@ -19,9 +50,9 @@ test.beforeEach(async ({ page }) => {
 /// A tag name of this run's own: the suite shares one archive.
 const fresh = (label) => `${label}-${Math.random().toString(36).slice(2, 8)}`;
 
-async function tag(request, id, name) {
-  const response = await request.post(`/api/trips/${id}/tags`, { data: { name } });
-  expect(response.status(), `tagging ${id} ${name}`).toBe(201);
+async function tag(request, id, name, on = "trips") {
+  const response = await request.post(`/api/${on}/${id}/tags`, { data: { name } });
+  expect(response.status(), `tagging ${on} ${id} ${name}`).toBe(201);
 }
 
 /// Choose `name` in the search box, as typing it and pressing Enter does.
@@ -106,6 +137,68 @@ test("a tag on a trip's page opens its summary (US-78)", async ({ page, request 
 
   await expect(page).toHaveURL(new RegExp(`/app/summary\\?tags=${alps}$`));
   await expect(page.locator("#summary-figures")).toBeVisible();
+});
+
+test("a tag's plans and collection tracks are drawn in their kinds' styles, and a dotted line opens its track (US-107)", async ({
+  page,
+  request,
+}) => {
+  const alps = fresh("alps");
+  const walk = await ownTrip(request, "Done Walk", "hiking");
+  const plan = await ownTrip(request, "Planned Walk", "hiking", undefined, "planned");
+  const { id: collection, track } = await ownCollection(request);
+  await tag(request, walk, alps);
+  await tag(request, plan, alps);
+  await tag(request, collection, alps, "collections");
+  await page.goto(`/app/summary?tags=${alps}`);
+
+  // The figures count the recorded walk alone; the list holds all three.
+  await expect(page.locator("#summary-figures")).toBeVisible();
+  await expect(page.locator("#summary-trips tbody tr")).toHaveCount(4);
+  await expect(lines(page)).toHaveCount(3);
+  await expect(
+    page.locator("#overview-map path.leaflet-interactive:not([stroke-dasharray])"),
+  ).toHaveCount(1);
+  await expect(page.locator('#overview-map path[stroke-dasharray="8 6"]')).toHaveCount(1);
+  const dotted = page.locator('#overview-map path[stroke-dasharray="1 7"]');
+  await expect(dotted).toHaveCount(1);
+  // And its waypoints with it.
+  await expect(page.locator("#overview-map .leaflet-marker-icon")).toHaveCount(2);
+
+  // On a map of the tour alone, so its line is long enough to aim at: a
+  // click on it opens its track, straight away or from the menu it shares
+  // with the track's waypoints (US-104).
+  const tour = fresh("tour");
+  await tag(request, collection, tour, "collections");
+  await page.goto(`/app/summary?tags=${tour}`);
+  await expect(dotted).toHaveCount(1);
+  await clickLine(page, dotted);
+  const entry = menuEntries(page, "overview-map").filter({ hasText: "Nordkette" });
+  await Promise.race([
+    page.waitForURL(/collection-tracks/),
+    entry.click({ timeout: 5000 }).catch(() => {}),
+  ]);
+  await expect(page).toHaveURL(new RegExp(`/app/collection-tracks/${track}$`));
+});
+
+test("a tag on a collection's page and on a collection track's page opens its summary (US-107)", async ({
+  page,
+  request,
+}) => {
+  const [lakes, pass] = [fresh("lakes"), fresh("pass")];
+  const { id, track } = await ownCollection(request);
+  await tag(request, id, lakes, "collections");
+  await tag(request, track, pass, "collection-tracks");
+
+  await page.goto(`/app/collections/${id}`);
+  await page.locator(".trip-tags .chip a", { hasText: lakes }).click();
+  await expect(page).toHaveURL(new RegExp(`/app/summary\\?tags=${lakes}$`));
+  await expect(page.locator("#summary-trips")).toContainText("not counted");
+
+  await page.goto(`/app/collection-tracks/${track}`);
+  await page.locator(".trip-tags .chip a", { hasText: pass }).click();
+  await expect(page).toHaveURL(new RegExp(`/app/summary\\?tags=${pass}$`));
+  await expect(page.locator("#summary-trips")).toContainText("not counted");
 });
 
 // Layout, which only a browser computes: the search box shares the heading's

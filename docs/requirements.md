@@ -148,7 +148,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-104](#us-104--pick-from-stacked-lines)                    | ✅     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 | [US-106](#us-106--mark-the-photos-still-to-be-placed)         | ✅     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
-| [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | 📋     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
+| [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | ✅     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
 | [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | ✅     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
@@ -2087,7 +2087,7 @@ collections and the collection tracks under the chosen tags; the figures stay re
 
 ### US-107 — Plans and collection tracks in a tag summary
 
-**Planned 📋** — As the owner, I see everything a tag holds on its summary (US-78) — the trips I
+**Done ✅** — As the owner, I see everything a tag holds on its summary (US-78) — the trips I
 planned and the guide-book collections and tracks I tagged (US-93) beside the trips I recorded — so
 a vacation's summary shows what I meant to do next to what I did.
 

@@ -6,7 +6,8 @@ use super::*;
 use crate::api::{create_share, ApiClient};
 use crate::shared::{Shared, SharedTripDetail};
 use crate::test_support::{
-    anonymous, import_sample, render_against_archive, serve_test_archive, tag_trip,
+    anonymous, import_collection, import_sample, render_against_archive, serve_test_archive,
+    tag_trip, COLLECTION_GPX,
 };
 use trip_archive_types::{CreateShare, ShareExpiry};
 
@@ -140,4 +141,30 @@ async fn us82_a_trip_of_a_shared_summary_leads_back_to_it() {
         html.contains(&format!(r#"href="/s/{token}">alps</a>"#)),
         "{html}"
     );
+}
+
+#[tokio::test]
+async fn us107_the_recipient_sees_neither_planned_trips_nor_collections() {
+    let (archive, _dir) = serve_test_archive().await;
+    let walk = import_sample(&archive, &[("name", "Oslo Hills Walk")]).await;
+    let plan = import_sample(&archive, &[("name", "Someday Walk"), ("kind", "planned")]).await;
+    tag_trip(&archive, walk, "alps").await;
+    tag_trip(&archive, plan, "alps").await;
+    let (collection, _) = import_collection(&archive, COLLECTION_GPX, &[("name", "Lakes")]).await;
+    crate::api::add_tag(&archive, crate::api::Tagged::Collection(collection), "alps")
+        .await
+        .unwrap();
+    let (recipient, token) = shared(&archive, &["alps"], None).await;
+
+    let html = render_against_archive(
+        &recipient,
+        move || rsx! { Shared { token: token.clone() } },
+        |html| html.contains("summary-figures"),
+    )
+    .await;
+
+    assert!(html.contains("Oslo Hills Walk"), "{html}");
+    assert!(!html.contains("Someday Walk"), "{html}");
+    assert!(!html.contains("Lakes"), "{html}");
+    assert!(!html.contains("not counted"), "{html}");
 }

@@ -37,6 +37,8 @@ pub fn as_tag_summaries(shared: &SharedSummary) -> TagSummaries {
                 name: tag.name.clone(),
                 trip_ids: tag.trip_ids.clone(),
                 undated: tag.undated,
+                // A share holds recorded trips alone (US-107).
+                ..TagTrips::default()
             })
             .collect(),
         trips: shared
@@ -57,6 +59,7 @@ pub fn as_tag_summaries(shared: &SharedSummary) -> TagSummaries {
                 climb_secs: trip.climb_secs,
             })
             .collect(),
+        ..TagSummaries::default()
     }
 }
 

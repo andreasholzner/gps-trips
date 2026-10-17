@@ -112,7 +112,7 @@ fn TripRow(trip: TripSummary, picked: Signal<BTreeSet<Picked>>) -> Element {
     rsx! {
         tr {
             td { PickOne { pick: trip_pick(&trip), picked } }
-            td { KindSwatch { kind: Kind::of_trip(trip.trip_kind), activity: trip.activity_type, name } }
+            td { KindSwatch { kind: Kind::of_trip(trip.trip_kind), color: activity_color::color(trip.activity_type), name } }
             td {
                 // A router `Link`, so the detail screen (US-42) is reached
                 // without a page load — and so the href picks up the
@@ -147,7 +147,7 @@ fn CollectionRows(
     rsx! {
         tr { class: "collection-group",
             td { PickOne { pick: Picked::Collection(id), picked } }
-            td { KindSwatch { kind: Kind::Collections, activity, name: "Collection" } }
+            td { KindSwatch { kind: Kind::Collections, color: activity_color::color(activity), name: "Collection" } }
             td {
                 button {
                     r#type: "button",
@@ -185,7 +185,7 @@ fn TrackRow(track: CollectionTrackMark, picked: Signal<BTreeSet<Picked>>) -> Ele
     rsx! {
         tr { class: "collection-track",
             td { PickOne { pick: Picked::Track(track.id), picked } }
-            td { KindSwatch { kind: Kind::Collections, activity: track.activity_type, name: "Collection track" } }
+            td { KindSwatch { kind: Kind::Collections, color: activity_color::color(track.activity_type), name: "Collection track" } }
             td {
                 Link { to: Route::CollectionTrack { id: track.id }, "{track.name}" }
                 if track.has_recorded_trip {
@@ -204,13 +204,13 @@ fn TrackRow(track: CollectionTrackMark, picked: Signal<BTreeSet<Picked>>) -> Ele
 }
 
 /// A short stroke in the line style `kind` is drawn in on the map (US-90),
-/// in `activity`'s color; `name` says what it stands for on hover and to a
-/// screen reader.
+/// in its line's `color`, or the text's for `None`; `name` says what it
+/// stands for on hover and to a screen reader.
 #[component]
-pub fn KindSwatch(kind: Kind, activity: ActivityType, name: &'static str) -> Element {
+pub fn KindSwatch(kind: Kind, color: Option<&'static str>, name: &'static str) -> Element {
     rsx! {
         span { class: "kind-swatch", role: "img", title: name, aria_label: name,
-            LineSwatch { kind, color: activity_color::color(activity) }
+            LineSwatch { kind, color }
         }
     }
 }

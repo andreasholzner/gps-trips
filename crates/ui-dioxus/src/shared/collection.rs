@@ -236,9 +236,11 @@ pub fn SharedMap(
                 OverviewEvent::Open(track) => {
                     navigator().push(track_route(Some(&token), track));
                 }
-                // A recipient's waypoints open nothing, and nothing is
-                // linked to a collection.
-                OverviewEvent::OpenWaypoint(_) | OverviewEvent::OpenOverlay(_) => {}
+                // A recipient's waypoints open nothing, nothing is linked to
+                // a collection, and its lines are given no source.
+                OverviewEvent::OpenWaypoint(_)
+                | OverviewEvent::OpenOverlay(_)
+                | OverviewEvent::OpenItem(_) => {}
                 OverviewEvent::Hover(track) => {
                     if let Some(map) = handle.read().as_ref() {
                         interop::highlight_on_overview_map(map, track);

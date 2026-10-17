@@ -1,12 +1,14 @@
-//! The tag summary's map (US-78): every trip under the chosen tags as a
-//! line, as a share's overview map draws them (US-53). Which line is which
-//! color is decided here, where `cargo test` reaches it; the script only
-//! draws what it is handed (ADR-0025).
+//! The tag summary's map (US-78): everything listed under the chosen tags
+//! as a line (US-107), as a share's overview map draws them (US-53). Which
+//! line is which color is decided in [`entries`](super::entries) and here,
+//! where `cargo test` reaches it; the script only draws what it is handed
+//! (ADR-0025).
 
-use trip_archive_types::{TagSummaries, TripTrack};
+use trip_archive_types::TripTrack;
 
-use crate::activity_color;
+use super::entries::Entry;
 use crate::interop::OverviewLine;
+use crate::map_items::MapSource;
 use crate::track;
 
 /// The tags' colors, as light/dark pairs: the reference categorical
@@ -37,41 +39,30 @@ pub fn tag_color(index: usize) -> &'static str {
     SLOTS[index % SLOTS.len()].0
 }
 
-/// Each trip's color, in the order of `data.trips`: with one tag, a shade of
-/// its activity's color in date order, as a share's trips get (US-72); with
-/// several, the color of the first chosen tag it is under. The map's lines
-/// and the trip list's rows both take theirs from here.
-pub fn trip_colors(data: &TagSummaries) -> Vec<&'static str> {
-    if data.tags.len() == 1 {
-        return activity_color::in_list_order(data.trips.iter().map(|trip| trip.activity_type));
-    }
-    data.trips
+/// One line per drawn entry whose track was read, in its color and its
+/// kind's line style (US-107), opened by its source: a trip and a collection
+/// track may share an id. `trips` and `collection_tracks` are the tracks
+/// read for each.
+pub fn lines(
+    entries: &[Entry],
+    trips: &[TripTrack],
+    collection_tracks: &[TripTrack],
+) -> Vec<OverviewLine> {
+    entries
         .iter()
-        .map(|trip| {
-            let first = data
-                .tags
-                .iter()
-                .position(|tag| tag.trip_ids.contains(&trip.id))
-                .unwrap_or(0);
-            tag_color(first)
-        })
-        .collect()
-}
-
-/// One line per trip whose track was read, each drawn once, in its
-/// [`trip_colors`] color. The colors are taken over every trip, so one whose
-/// track could not be read shifts no other.
-pub fn lines(data: &TagSummaries, tracks: &[TripTrack]) -> Vec<OverviewLine> {
-    data.trips
-        .iter()
-        .zip(trip_colors(data))
-        .filter_map(|(trip, color)| {
-            let track = tracks.iter().find(|track| track.id == trip.id)?;
+        .filter_map(|entry| {
+            let tracks = match entry.source {
+                MapSource::Trips => trips,
+                MapSource::CollectionTracks => collection_tracks,
+            };
+            let track = tracks.iter().find(|track| track.id == entry.id)?;
             Some(OverviewLine {
-                id: trip.id,
-                name: trip.name.clone(),
-                color,
-                icon: crate::activity_icon::map_icon(trip.activity_type),
+                id: entry.id,
+                name: entry.name.clone(),
+                color: entry.color,
+                icon: crate::activity_icon::map_icon(entry.activity),
+                dash: entry.kind.dash(),
+                source: Some(entry.source),
                 points: track::lat_lon(&track.coordinates),
             })
         })
@@ -83,92 +74,87 @@ pub fn lines(data: &TagSummaries, tracks: &[TripTrack]) -> Vec<OverviewLine> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use trip_archive_types::{ActivityType, StatsTrip, TagTrips};
+    use crate::kinds::Kind;
+    use trip_archive_types::ActivityType;
 
-    use ActivityType::{Cycling, Hiking};
-
-    fn trip(id: i64, activity: ActivityType) -> StatsTrip {
-        StatsTrip {
+    fn entry(kind: Kind, source: MapSource, id: i64, color: &'static str) -> Entry {
+        Entry {
+            kind,
+            source,
             id,
-            name: format!("Trip {id}"),
-            activity_type: activity,
-            start_date: "2024-07-01".to_string(),
-            end_date: "2024-07-01".to_string(),
+            name: format!("Entry {id}"),
+            activity: ActivityType::Cycling,
+            date: None,
             distance_m: 1000.0,
-            ascent_m: None,
-            descent_m: None,
-            moving_secs: None,
-            moving_distance_m: None,
-            climb_gain_m: None,
-            climb_secs: None,
+            uncounted: None,
+            color,
         }
     }
 
-    fn tag(name: &str, trip_ids: &[i64]) -> TagTrips {
-        TagTrips {
-            name: name.to_string(),
-            trip_ids: trip_ids.to_vec(),
-            undated: 0,
-        }
-    }
-
-    fn track(id: i64) -> TripTrack {
+    fn track(id: i64, lon: f64) -> TripTrack {
         TripTrack {
             id,
-            coordinates: vec![[10.0, 60.0], [10.1, 60.1]],
+            coordinates: vec![[lon, 60.0], [lon + 0.1, 60.1]],
         }
     }
 
-    fn colors(lines: &[OverviewLine]) -> Vec<(i64, &'static str)> {
-        lines.iter().map(|line| (line.id, line.color)).collect()
-    }
-
     #[test]
-    fn us78_with_one_tag_each_trip_gets_a_shade_of_its_activity_in_date_order() {
-        let data = TagSummaries {
-            tags: vec![tag("alps", &[1, 2, 3])],
-            trips: vec![trip(1, Hiking), trip(2, Cycling), trip(3, Hiking)],
-        };
+    fn us107_each_entry_is_drawn_from_its_own_sources_track_in_its_kinds_style() {
+        let entries = [
+            entry(Kind::Recorded, MapSource::Trips, 1, "#111111"),
+            entry(Kind::Planned, MapSource::Trips, 2, "#222222"),
+            entry(Kind::Collections, MapSource::CollectionTracks, 1, "#333333"),
+        ];
 
-        let lines = lines(&data, &[track(1), track(2), track(3)]);
-
-        let hiking = activity_color::shades(Hiking);
-        let cycling = activity_color::shades(Cycling);
-        assert_eq!(
-            colors(&lines),
-            [(1, hiking[0]), (2, cycling[0]), (3, hiking[1])]
+        let lines = lines(
+            &entries,
+            &[track(1, 10.0), track(2, 11.0)],
+            &[track(1, 12.0)],
         );
-        assert_eq!(lines[0].name, "Trip 1");
-        assert_eq!(lines[0].points[0], [60.0, 10.0]);
+
+        let drawn: Vec<_> = lines
+            .iter()
+            .map(|line| (line.source, line.id, line.color, line.dash, line.points[0]))
+            .collect();
+        assert_eq!(
+            drawn,
+            [
+                (Some(MapSource::Trips), 1, "#111111", None, [60.0, 10.0]),
+                (
+                    Some(MapSource::Trips),
+                    2,
+                    "#222222",
+                    Some("8 6"),
+                    [60.0, 11.0]
+                ),
+                (
+                    Some(MapSource::CollectionTracks),
+                    1,
+                    "#333333",
+                    Some("1 7"),
+                    [60.0, 12.0]
+                ),
+            ]
+        );
+        assert_eq!(lines[0].name, "Entry 1");
         // US-104: named in the map's hint after its activity's icon.
-        assert_eq!(lines[1].icon, crate::activity_icon::map_icon(Cycling));
-    }
-
-    #[test]
-    fn us78_with_several_tags_a_trip_is_drawn_once_in_its_first_chosen_tags_color() {
-        let data = TagSummaries {
-            tags: vec![tag("norway", &[2, 3]), tag("alps", &[1, 2])],
-            trips: vec![trip(1, Hiking), trip(2, Cycling), trip(3, Hiking)],
-        };
-
-        let lines = lines(&data, &[track(1), track(2), track(3)]);
-
         assert_eq!(
-            colors(&lines),
-            [(1, tag_color(1)), (2, tag_color(0)), (3, tag_color(0))]
+            lines[0].icon,
+            crate::activity_icon::map_icon(ActivityType::Cycling)
         );
     }
 
     #[test]
-    fn us78_a_trip_without_a_track_shifts_no_other_trips_color() {
-        let data = TagSummaries {
-            tags: vec![tag("alps", &[1, 2])],
-            trips: vec![trip(1, Hiking), trip(2, Hiking)],
-        };
+    fn us78_an_entry_without_a_track_is_left_off_the_map() {
+        let entries = [
+            entry(Kind::Recorded, MapSource::Trips, 1, "#111111"),
+            entry(Kind::Recorded, MapSource::Trips, 2, "#222222"),
+        ];
 
-        let lines = lines(&data, &[track(2)]);
+        let lines = lines(&entries, &[track(2, 10.0)], &[]);
 
-        assert_eq!(colors(&lines), [(2, activity_color::shades(Hiking)[1])]);
+        assert_eq!(lines.len(), 1);
+        assert_eq!((lines[0].id, lines[0].color), (2, "#222222"));
     }
 
     #[test]

@@ -81,3 +81,14 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* A collection's tracks sit in under its row (US-107). */
+.summary-collection-track .summary-trip-name {
+  padding-inline-start: 1.75rem;
+}
+
+/* The note on a row the figures leave out, small beside the figures. */
+.summary-not-counted {
+  font-size: 0.875em;
+  white-space: nowrap;
+}

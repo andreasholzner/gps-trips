@@ -7,8 +7,10 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::overlays::{with_overlays, Overlays};
+use super::region::Opened;
 use super::waypoints::MapWaypoint;
 use crate::activity_icon::MapIcon;
+use crate::map_items::MapSource;
 
 /// Draws into `#overview-map`, over OSM tiles, one line per trip in the
 /// color it is given, and sends back what is chosen of what lies under the
@@ -66,9 +68,17 @@ const OVERVIEW_MAP_SCRIPT: &str = r##"
     const picks = [];
     for (const line of view.lines || []) {
       if (line.points.length === 0) continue;
-      const path = L.polyline(line.points, { color: line.color, weight: WEIGHT }).addTo(map);
+      // In its kind's line style (US-107), as the region map draws it.
+      const path = L.polyline(line.points, {
+        color: line.color,
+        weight: WEIGHT,
+        dashArray: line.dash || null,
+      }).addTo(map);
+      // A line with a source is opened by it: a trip and a collection track
+      // may share an id (US-107).
+      const opens = line.source ? { open_item: { source: line.source, id: line.id } } : { open: line.id };
       // Pointed at, it says so; Rust decides what stands out (US-72).
-      picks.push(pickLine(path, line, { open: line.id }, (on) => report({ hover: on ? line.id : null })));
+      picks.push(pickLine(path, line, opens, (on) => report({ hover: on ? line.id : null })));
       drawn.set(line.id, path);
       bounds.extend(path.getBounds());
     }
@@ -117,6 +127,12 @@ pub struct OverviewLine {
     pub color: &'static str,
     /// What leads its name in the map's hint and menu (US-104).
     pub icon: Option<MapIcon>,
+    /// Its kind's Leaflet `dashArray` (US-107); `None` for a solid line.
+    pub dash: Option<&'static str>,
+    /// Where it comes from, on a map holding trips and collection tracks
+    /// alike (US-107): choosing it then reports [`OverviewEvent::OpenItem`].
+    /// `None` reports [`OverviewEvent::Open`] with its id alone.
+    pub source: Option<MapSource>,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
 }
@@ -133,6 +149,9 @@ pub enum OverviewEvent {
     OpenWaypoint(i64),
     /// The `n`th line a ticked link put there was chosen (US-104).
     OpenOverlay(usize),
+    /// A line with a source was chosen: open its trip or collection track
+    /// (US-107).
+    OpenItem(Opened),
 }
 
 /// What Rust tells the map once it is drawn.
@@ -180,6 +199,7 @@ pub fn highlight_on_overview_map(map: &document::Eval, id: Option<i64>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kinds::Kind;
 
     #[test]
     fn the_map_reports_a_click_and_a_hover_apart() {
@@ -204,6 +224,40 @@ mod tests {
 
         assert_eq!(waypoint, OverviewEvent::OpenWaypoint(4));
         assert_eq!(overlay, OverviewEvent::OpenOverlay(1));
+    }
+
+    #[test]
+    fn us107_a_line_reaches_the_map_in_its_kinds_style_and_with_its_source() {
+        let line = OverviewLine {
+            id: 7,
+            name: "Stage 1".to_string(),
+            color: "#1f4e9c",
+            icon: None,
+            dash: Kind::Collections.dash(),
+            source: Some(MapSource::CollectionTracks),
+            points: vec![[46.5, 9.1]],
+        };
+
+        let sent = serde_json::to_value(&line).unwrap();
+
+        assert_eq!(sent["dash"], "1 7");
+        assert_eq!(sent["source"], "collection_tracks");
+    }
+
+    #[test]
+    fn us107_a_line_with_a_source_is_reported_by_it_when_chosen() {
+        let opened: OverviewEvent = serde_json::from_value(serde_json::json!({
+            "open_item": { "source": "collection_tracks", "id": 7 }
+        }))
+        .unwrap();
+
+        assert_eq!(
+            opened,
+            OverviewEvent::OpenItem(Opened {
+                source: MapSource::CollectionTracks,
+                id: 7,
+            })
+        );
     }
 
     #[test]

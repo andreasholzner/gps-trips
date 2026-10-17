@@ -8,6 +8,10 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use crate::models::{StatsTrip, TagTrips, TripKind};
 use crate::server::import::date_prefix;
 
+mod holdings;
+
+pub use holdings::add_tag_holdings;
+
 /// The `trip` columns a [`StatsTrip`] is read from.
 const COLUMNS: &str = "trip.id, trip.name, trip.activity_type, trip.start_time, trip.end_time, \
     trip.tz_name, trip.distance_m, trip.ascent_m, trip.descent_m, trip.moving_secs, \
@@ -47,8 +51,7 @@ pub async fn list_tag_summaries(
         .iter()
         .map(|name| TagTrips {
             name: name.clone(),
-            trip_ids: Vec::new(),
-            undated: 0,
+            ..TagTrips::default()
         })
         .collect();
     if tags.is_empty() {

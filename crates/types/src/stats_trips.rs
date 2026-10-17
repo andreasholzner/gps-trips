@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::ActivityType;
+use crate::{ActivityType, TripKind};
 
 /// What `GET /api/stats/trips` answers (US-77): every recorded trip with
 /// dates, reduced to what the statistics screen adds up. The figures
@@ -46,17 +46,30 @@ pub struct StatsTrip {
 
 /// What `GET /api/stats/tags?tags=…` answers (US-78): the dated recorded
 /// trips under any of the chosen tags, each once, and which tag holds which.
-/// The figures are the SPA's to work out, as [`StatsTrips`]' are.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The figures are the SPA's to work out, as [`StatsTrips`]' are. Beside
+/// them, what the tags hold that the figures do not count (US-107), each
+/// once too.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TagSummaries {
     /// One per chosen tag, in the order asked.
     pub tags: Vec<TagTrips>,
     /// Oldest first.
     pub trips: Vec<StatsTrip>,
+    /// Planned trips and recorded ones without timestamps: the dated ones
+    /// oldest first, then the others by name.
+    #[serde(default)]
+    pub uncounted: Vec<UncountedTrip>,
+    /// The collections carrying a tag, by name.
+    #[serde(default)]
+    pub collections: Vec<SummaryCollection>,
+    /// The collection tracks carrying a tag their collection does not, by
+    /// collection name, then in file order.
+    #[serde(default)]
+    pub collection_tracks: Vec<SummaryTrack>,
 }
 
 /// One chosen tag's part of [`TagSummaries`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TagTrips {
     /// Normalized, as the archive stores it.
     pub name: String,
@@ -64,4 +77,46 @@ pub struct TagTrips {
     pub trip_ids: Vec<i64>,
     /// Its recorded trips without timestamps, left out of `trip_ids`.
     pub undated: u32,
+    /// Its trips in [`TagSummaries::uncounted`], in that order (US-107).
+    #[serde(default)]
+    pub uncounted_trip_ids: Vec<i64>,
+    /// The collections carrying it, by name.
+    #[serde(default)]
+    pub collection_ids: Vec<i64>,
+    /// The collection tracks carrying it whose collection does not.
+    #[serde(default)]
+    pub collection_track_ids: Vec<i64>,
+}
+
+/// A trip a tag summary lists without counting it (US-107).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UncountedTrip {
+    pub id: i64,
+    pub name: String,
+    pub activity_type: ActivityType,
+    pub trip_kind: TripKind,
+    /// The local date it starts on, as [`StatsTrip::start_date`]; `None` for
+    /// a track without timestamps.
+    pub start_date: Option<String>,
+    pub distance_m: f64,
+}
+
+/// A collection a tag summary lists (US-107), with all its tracks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SummaryCollection {
+    pub id: i64,
+    pub name: String,
+    /// In file order.
+    pub tracks: Vec<SummaryTrack>,
+}
+
+/// A collection track a tag summary lists (US-107).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SummaryTrack {
+    pub id: i64,
+    pub name: String,
+    pub collection_name: String,
+    /// Its own, else its collection's (US-86).
+    pub activity_type: ActivityType,
+    pub distance_m: f64,
 }

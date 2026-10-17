@@ -190,6 +190,8 @@ pub fn collection_lines(
                 name: track.name.clone(),
                 color,
                 icon: crate::activity_icon::map_icon(track.activity_type),
+                dash: None,
+                source: None,
                 points: track::lat_lon(&read.coordinates),
             })
         })
@@ -245,8 +247,9 @@ fn CollectionMap(
                 OverviewEvent::OpenWaypoint(id) => {
                     navigator().push(Route::Waypoint { id });
                 }
-                // Nothing is linked to a collection itself.
-                OverviewEvent::OpenOverlay(_) => {}
+                // Nothing is linked to a collection itself, and its lines
+                // are given no source.
+                OverviewEvent::OpenOverlay(_) | OverviewEvent::OpenItem(_) => {}
                 OverviewEvent::Hover(track) => {
                     if let Some(map) = handle.read().as_ref() {
                         interop::highlight_on_overview_map(map, track);
