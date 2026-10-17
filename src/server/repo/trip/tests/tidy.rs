@@ -1,6 +1,7 @@
 //! US-66 — find the trips still to tidy up: those without a proper name, and
 //! those with photos left unplaced; US-101 — or with photos Komoot parked at
-//! the track's start or end. A sibling of `filter.rs` rather than part of it,
+//! the track's start or end; US-106 — and which of a trip's photos those
+//! are, by the same rule. A sibling of `filter.rs` rather than part of it,
 //! to keep both under the repo's 500-line cap.
 
 use std::collections::HashSet;
@@ -8,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
 use crate::models::LocationSource;
-use crate::server::repo::{insert_photo, place_photo, NewPhoto};
+use crate::server::repo::{insert_photo, photos_to_place, place_photo, NewPhoto};
 
 async fn trip_named(pool: &SqlitePool, name: &str) -> i64 {
     trip_with_geojson(pool, name, "{}").await
@@ -45,9 +46,9 @@ async fn trip_with_geojson(pool: &SqlitePool, name: &str, geojson: &str) -> i64 
 
 /// A placed photo goes far off `TRACK`'s ends, so whether it counts as
 /// parked (US-101) never depends on the trip it is added to.
-async fn add_photo(pool: &SqlitePool, trip_id: i64, location_source: LocationSource) {
+async fn add_photo(pool: &SqlitePool, trip_id: i64, location_source: LocationSource) -> i64 {
     let placed = location_source != LocationSource::None;
-    add_photo_at(pool, trip_id, location_source, placed.then_some(ELSEWHERE)).await;
+    add_photo_at(pool, trip_id, location_source, placed.then_some(ELSEWHERE)).await
 }
 
 async fn add_photo_at(
@@ -328,4 +329,107 @@ async fn us101_only_the_trips_asked_about_are_looked_at() {
         .await
         .unwrap();
     assert_eq!(to_place, HashSet::from([parked, unplaced]));
+}
+
+// ── US-106: which of a trip's photos are still to place ─────────────────
+
+#[tokio::test]
+async fn us106_the_photos_to_place_are_the_unplaced_ones_and_those_parked_at_either_end() {
+    let db = TestDb::new().await;
+    let trip = trip_with_track(&db.pool, "2024-01-01 Mixed").await;
+    let unplaced = add_photo(&db.pool, trip, LocationSource::None).await;
+    let at_start = add_photo_at(&db.pool, trip, LocationSource::Provided, Some(START)).await;
+    let at_end = add_photo_at(&db.pool, trip, LocationSource::Provided, Some(END)).await;
+    add_photo_at(&db.pool, trip, LocationSource::Provided, Some(MIDDLE)).await;
+    // Near the start, but meant there.
+    for source in [
+        LocationSource::Exif,
+        LocationSource::Interpolated,
+        LocationSource::Manual,
+    ] {
+        add_photo_at(&db.pool, trip, source, Some(START)).await;
+    }
+
+    assert_eq!(
+        photos_to_place(&db.pool, trip).await.unwrap(),
+        HashSet::from([unplaced, at_start, at_end])
+    );
+}
+
+#[tokio::test]
+async fn us106_a_parked_photo_placed_by_hand_is_no_longer_to_place() {
+    let db = TestDb::new().await;
+    let trip = trip_with_track(&db.pool, "2024-01-01 Placed").await;
+    let photo = add_photo_at(&db.pool, trip, LocationSource::Provided, Some(END)).await;
+    place_photo(&db.pool, trip, photo, END.0, END.1)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(photos_to_place(&db.pool, trip).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn us106_on_a_trip_without_a_track_only_unplaced_photos_are_to_place() {
+    let db = TestDb::new().await;
+    let trip = trip_with_track(&db.pool, "2024-01-01 Trackless").await;
+    sqlx::query("DELETE FROM track")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    add_photo_at(&db.pool, trip, LocationSource::Provided, Some(START)).await;
+    let unplaced = add_photo(&db.pool, trip, LocationSource::None).await;
+
+    assert_eq!(
+        photos_to_place(&db.pool, trip).await.unwrap(),
+        HashSet::from([unplaced])
+    );
+}
+
+#[tokio::test]
+async fn us106_only_the_trips_own_photos_are_to_place() {
+    let db = TestDb::new().await;
+    let trip = trip_with_track(&db.pool, "2024-01-01 Own").await;
+    let other = trip_with_track(&db.pool, "2024-01-01 Other").await;
+    let own = add_photo(&db.pool, trip, LocationSource::None).await;
+    add_photo(&db.pool, other, LocationSource::None).await;
+    add_photo_at(&db.pool, other, LocationSource::Provided, Some(START)).await;
+
+    assert_eq!(
+        photos_to_place(&db.pool, trip).await.unwrap(),
+        HashSet::from([own])
+    );
+}
+
+#[tokio::test]
+async fn us106_the_filter_lists_exactly_the_trips_with_a_photo_to_place() {
+    // The badge and the filter must never disagree: the trips the filter
+    // keeps are those with at least one photo the gallery marks.
+    let db = TestDb::new().await;
+    let mut trips = Vec::new();
+    for (name, source, position) in [
+        ("2024-01-01 Unplaced", LocationSource::None, None),
+        ("2024-01-01 At start", LocationSource::Provided, Some(START)),
+        ("2024-01-01 At end", LocationSource::Provided, Some(END)),
+        (
+            "2024-01-01 In middle",
+            LocationSource::Provided,
+            Some(MIDDLE),
+        ),
+        ("2024-01-01 From EXIF", LocationSource::Exif, Some(START)),
+        ("2024-01-01 By hand", LocationSource::Manual, Some(END)),
+    ] {
+        let trip = trip_with_track(&db.pool, name).await;
+        add_photo_at(&db.pool, trip, source, position).await;
+        trips.push((name.to_string(), trip));
+    }
+
+    let mut marked = Vec::new();
+    for (name, trip) in trips {
+        if !photos_to_place(&db.pool, trip).await.unwrap().is_empty() {
+            marked.push(name);
+        }
+    }
+    marked.sort();
+    assert_eq!(names(&db.pool, &unplaced_filter()).await, marked);
 }

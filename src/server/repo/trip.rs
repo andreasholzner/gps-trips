@@ -18,6 +18,7 @@ use super::to_rfc3339;
 mod proper_name;
 mod unplaced;
 use proper_name::has_proper_name;
+pub use unplaced::photos_to_place;
 use unplaced::trips_with_photos_to_place;
 
 /// Fields for a new trip + its derived geometry and original GPX file

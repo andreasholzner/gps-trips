@@ -39,12 +39,19 @@ pub struct PhotoResponse {
     pub lat: Option<f64>,
     pub lon: Option<f64>,
     pub location_source: LocationSource,
+    /// Whether the photo still needs placing by hand (US-106): left
+    /// unplaced, or parked by Komoot at its track's start or end — the
+    /// "Unplaced photos" filter's own rule (US-101), decided by the server
+    /// because the gallery has no track to ask. Always `false` for a share's
+    /// recipient, who cannot place a photo.
+    pub needs_placing: bool,
 }
 
 impl PhotoResponse {
     /// Project a stored record into its wire shape, with the serving URLs the
     /// blob store computed, and the offset the photo was taken
-    /// at — which needs the server's timezone lookups (US-62). Field by field on purpose: a new field on either
+    /// at — which needs the server's timezone lookups (US-62) — and whether
+    /// it needs placing, which needs its track (US-106). Field by field on purpose: a new field on either
     /// type is a compile error here until it is decided which side it belongs
     /// to (ADR-0015).
     pub fn from_photo(
@@ -52,6 +59,7 @@ impl PhotoResponse {
         url: String,
         thumbnail_url: String,
         taken_offset_secs: Option<i32>,
+        needs_placing: bool,
     ) -> Self {
         Self {
             id: photo.id,
@@ -67,6 +75,7 @@ impl PhotoResponse {
             lat: photo.lat,
             lon: photo.lon,
             location_source: photo.location_source,
+            needs_placing,
         }
     }
 }

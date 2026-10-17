@@ -66,8 +66,8 @@ pub use tag::{
 };
 pub use trip::{
     delete_trip, get_original_gpx, get_track_geojson, get_trip, insert_trip, insert_trip_in_tx,
-    list_track_positions, list_trips, local_start_date, set_trip_timezone, update_trip,
-    GpxDownload, NewTrip, TripEdit, TripFilter,
+    list_track_positions, list_trips, local_start_date, photos_to_place, set_trip_timezone,
+    update_trip, GpxDownload, NewTrip, TripEdit, TripFilter,
 };
 
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};

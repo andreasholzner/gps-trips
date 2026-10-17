@@ -1,15 +1,21 @@
 //! The trip's photos as a gallery on the detail screen (US-7), every one by
-//! its thumbnail (US-5).
+//! its thumbnail (US-5), those still to place marked (US-106).
 
 use dioxus::prelude::*;
 use trip_archive_types::PhotoResponse;
 
 use crate::photos::{absolute, caption, captions_need_dates};
 
+/// A map pin (`mdiMapMarker`, Material Design Icons by Pictogrammers,
+/// Apache-2.0, `@mdi/js` 7.4.47); the badge strikes it out (US-106).
+const PIN: &str = "M12,11.5A2.5,2.5 0 0,1 9.5,9A2.5,2.5 0 0,1 12,6.5A2.5,2.5 0 0,1 14.5,9A2.5,2.5 0 0,1 12,11.5M12,2A7,7 0 0,0 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9A7,7 0 0,0 12,2Z";
+
 /// The gallery: every photo as a thumbnail (US-5 guarantees there is always
 /// one to use — the full-size image stands in when none could be made),
 /// captioned with when it was taken (US-62). A thumbnail is a button:
-/// `on_open` is told which photo to open the viewer on.
+/// `on_open` is told which photo to open the viewer on. A photo the server
+/// says needs placing (US-106) carries a crossed-out pin in its corner,
+/// inside the button so it names the button too.
 ///
 /// `photos` is `None` until the trip's photos have been read — distinct from
 /// an empty list, because "no photos yet" is a claim about the trip and a
@@ -44,11 +50,18 @@ pub fn PhotoGallery(
                             figure { key: "{photo.id}",
                                 button {
                                     r#type: "button",
-                                    title: "Open {photo.original_name}",
+                                    title: if photo.needs_placing {
+                                        "Open {photo.original_name} — needs placing"
+                                    } else {
+                                        "Open {photo.original_name}"
+                                    },
                                     onclick: move |_| on_open.call(index),
                                     img {
                                         src: absolute(&base_url, &photo.thumbnail_url),
                                         alt: "{photo.original_name}",
+                                    }
+                                    if photo.needs_placing {
+                                        NeedsPlacing {}
                                     }
                                 }
                                 if let Some(caption) = caption(&photo, with_date) {
@@ -58,6 +71,22 @@ pub fn PhotoGallery(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The badge of a photo still to place: a crossed-out map pin on a light
+/// disc. The stroke under the strike, in the disc's color, keeps it apart
+/// from the pin.
+#[component]
+fn NeedsPlacing() -> Element {
+    rsx! {
+        span { class: "needs-placing", role: "img", aria_label: "needs placing",
+            svg { view_box: "0 0 24 24", "aria-hidden": "true",
+                path { d: PIN, fill: "currentColor" }
+                line { class: "gap", x1: "3", y1: "3", x2: "21", y2: "21" }
+                line { x1: "3", y1: "3", x2: "21", y2: "21" }
             }
         }
     }
@@ -204,5 +233,59 @@ mod tests {
             "{html}"
         );
         assert!(html.contains(r#"title="Open first.jpg""#), "{html}");
+    }
+
+    // ── US-106: the photos still to place ────────────────────────────────
+
+    fn to_place(photo: PhotoResponse) -> PhotoResponse {
+        PhotoResponse {
+            needs_placing: true,
+            ..photo
+        }
+    }
+
+    #[test]
+    fn us106_a_photo_to_place_is_badged_and_named_as_needing_placing() {
+        let photos = vec![
+            to_place(a_photo(1, "unplaced.jpg", None)),
+            a_photo(2, "placed.jpg", Some((59.91, 10.75))),
+        ];
+
+        let html = render(move || {
+            rsx! { PhotoGallery { photos: Some(photos.clone()), base_url: String::new() } }
+        });
+
+        assert_eq!(
+            html.matches(r#"class="needs-placing""#).count(),
+            1,
+            "{html}"
+        );
+        // Inside the thumbnail's button, so a screen reader names the button
+        // by it too.
+        let unplaced = html.find("thumb-unplaced.jpg").unwrap();
+        let badge = html.find(r#"class="needs-placing""#).unwrap();
+        let placed = html.find("thumb-placed.jpg").unwrap();
+        assert!(unplaced < badge && badge < placed, "{html}");
+        assert!(html.contains(r#"aria-label="needs placing""#), "{html}");
+        assert!(
+            html.contains(r#"title="Open unplaced.jpg — needs placing""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"title="Open placed.jpg""#), "{html}");
+    }
+
+    #[test]
+    fn us106_a_gallery_with_nothing_to_place_has_no_badge() {
+        let photos = vec![
+            a_photo(1, "first.jpg", Some((59.91, 10.75))),
+            taken(a_photo(2, "second.jpg", None), "2024-06-01T08:15:00Z"),
+        ];
+
+        let html = render(move || {
+            rsx! { PhotoGallery { photos: Some(photos.clone()), base_url: String::new() } }
+        });
+
+        assert!(!html.contains("needs-placing"), "{html}");
+        assert!(!html.contains("needs placing"), "{html}");
     }
 }

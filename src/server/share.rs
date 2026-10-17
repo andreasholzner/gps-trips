@@ -375,7 +375,8 @@ async fn photos(
         repo::list_photos(&state.pool, id)
             .await?
             .into_iter()
-            .map(|photo| respond_under(&state, &prefix, photo, trip.tz_name.as_deref()))
+            // Only the owner can place a photo (US-106).
+            .map(|photo| respond_under(&state, &prefix, photo, trip.tz_name.as_deref(), false))
             .collect(),
     ))
 }

@@ -2,19 +2,20 @@
 //! unplaced, or one Komoot parked at the trip's start or end — where Komoot
 //! puts a photo it could not place, so it still needs placing although it
 //! has a position. Only a position Komoot provided counts as parked: EXIF,
-//! timestamp and hand placements are meant, wherever they lie.
+//! timestamp and hand placements are meant, wherever they lie. The trip's
+//! page marks those same photos (US-106).
 
 use std::collections::HashSet;
 
 use geo::HaversineDistance;
-use sqlx::{QueryBuilder, Sqlite, SqliteConnection};
+use sqlx::{QueryBuilder, Sqlite, SqliteConnection, SqlitePool};
 
 use crate::config::unplaced_photos::PARKED_REACH_M;
 use crate::models::LocationSource;
 
-/// A Komoot-provided photo's trip, `lat` and `lon`, and its track's first and
-/// last positions as JSON text.
-type ProvidedPhoto = (i64, f64, f64, Option<String>, Option<String>);
+/// A Komoot-provided photo's id, trip, `lat` and `lon`, and its track's
+/// first and last positions as JSON text.
+type ProvidedPhoto = (i64, i64, f64, f64, Option<String>, Option<String>);
 
 /// Narrow the list query to the trips that may have a photo to place: one
 /// unplaced or provided. `EXISTS` rather than a join, so a trip with several
@@ -32,20 +33,45 @@ pub(super) fn push_candidates(query: &mut QueryBuilder<'_, Sqlite>) {
         .push("))");
 }
 
-/// Which of the trips `ids` hold a photo left unplaced, or one at Komoot's
-/// provided position within [`PARKED_REACH_M`] of their track's first or last
-/// point. A trip without a track has neither, nor has a track whose first or
-/// last entry is not a position.
-///
-/// SQLite picks only the two endpoints out of each track, once per trip; the
-/// distance is measured here, as the bundled SQLite has no trigonometry.
+/// Which of the trips `ids` hold a photo still to place (see
+/// [`photos_in`]).
 pub(super) async fn trips_with_photos_to_place(
     conn: &mut SqliteConnection,
     ids: &[i64],
 ) -> Result<HashSet<i64>, sqlx::Error> {
+    Ok(photos_in(conn, ids)
+        .await?
+        .into_iter()
+        .map(|(_, trip_id)| trip_id)
+        .collect())
+}
+
+/// Which of trip `trip_id`'s photos are still to place (US-106) — by the
+/// same rule as the filter, so a trip it lists always has one to mark.
+pub async fn photos_to_place(pool: &SqlitePool, trip_id: i64) -> Result<HashSet<i64>, sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    Ok(photos_in(&mut conn, &[trip_id])
+        .await?
+        .into_iter()
+        .map(|(photo_id, _)| photo_id)
+        .collect())
+}
+
+/// The photos of the trips `ids` still to place, as `(photo, trip)`: each
+/// left unplaced, or at Komoot's provided position within
+/// [`PARKED_REACH_M`] of its track's first or last point. A trip without a
+/// track has no such position, nor has a track whose first or last entry is
+/// not a position.
+///
+/// SQLite picks only the two endpoints out of each track, once per trip; the
+/// distance is measured here, as the bundled SQLite has no trigonometry.
+async fn photos_in(
+    conn: &mut SqliteConnection,
+    ids: &[i64],
+) -> Result<Vec<(i64, i64)>, sqlx::Error> {
     let ids = serde_json::to_string(ids).map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
-    let unplaced: Vec<i64> = sqlx::query_scalar(
-        "SELECT DISTINCT trip_id FROM photo WHERE location_source = ? \
+    let unplaced: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT id, trip_id FROM photo WHERE location_source = ? \
          AND trip_id IN (SELECT value FROM json_each(?))",
     )
     .bind(LocationSource::None)
@@ -62,7 +88,7 @@ pub(super) async fn trips_with_photos_to_place(
            FROM track tr WHERE tr.trip_id IN (SELECT value FROM json_each(?)) \
              AND EXISTS (SELECT 1 FROM photo p \
                WHERE p.trip_id = tr.trip_id AND p.location_source = ?)) \
-         SELECT p.trip_id, p.lat, p.lon, e.first, e.last \
+         SELECT p.id, p.trip_id, p.lat, p.lon, e.first, e.last \
          FROM photo p JOIN ends e ON e.trip_id = p.trip_id \
          WHERE p.location_source = ? AND p.lat IS NOT NULL AND p.lon IS NOT NULL",
     )
@@ -74,14 +100,14 @@ pub(super) async fn trips_with_photos_to_place(
 
     let parked = provided
         .into_iter()
-        .filter(|(_, lat, lon, first, last)| {
+        .filter(|(_, _, lat, lon, first, last)| {
             let photo = geo::Point::new(*lon, *lat);
             [first, last]
                 .into_iter()
                 .filter_map(|end| point(end.as_deref()?))
                 .any(|end| photo.haversine_distance(&end) <= PARKED_REACH_M)
         })
-        .map(|(trip_id, ..)| trip_id);
+        .map(|(photo_id, trip_id, ..)| (photo_id, trip_id));
     Ok(unplaced.into_iter().chain(parked).collect())
 }
 

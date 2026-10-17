@@ -429,5 +429,6 @@ pub fn a_photo(id: i64, name: &str, at: Option<(f64, f64)>) -> PhotoResponse {
             Some(_) => LocationSource::Exif,
             None => LocationSource::None,
         },
+        needs_placing: false,
     }
 }

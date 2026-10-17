@@ -292,7 +292,7 @@ test("a geotagged photo is moved by hand, after a warning (US-30)", async ({ pag
   await expect.poll(() => markerPositions(page)).toEqual([[after.lat, after.lon]]);
 });
 
-test("a photo the map could not place is placed without a warning (US-30)", async ({
+test("a photo the map could not place is placed without a warning, and loses its badge (US-30, US-106)", async ({
   page,
   request,
 }) => {
@@ -301,6 +301,11 @@ test("a photo the map could not place is placed without a warning (US-30)", asyn
   await page.goto(`/app/trips/${id}`);
   await expect(page.locator("#track-map.leaflet-container")).toBeVisible();
   expect(await markerPositions(page)).toEqual([]);
+  // US-106: the gallery marks it as still to place, in the button's name.
+  const thumbnail = page
+    .locator(".gallery")
+    .getByRole("button", { name: "lost.jpg needs placing" });
+  await expect(thumbnail.locator(".needs-placing")).toBeVisible();
 
   // From the gallery: it is on no marker to be opened from.
   await page.getByTitle("Open lost.jpg").click();
@@ -318,6 +323,8 @@ test("a photo the map could not place is placed without a warning (US-30)", asyn
   const placed = await storedPhoto(request, id, "lost.jpg");
   expect(placed.location_source).toBe("manual");
   await expect.poll(() => markerPositions(page)).toEqual([[placed.lat, placed.lon]]);
+  // And the badge went, without reloading the page.
+  await expect(page.locator(".gallery .needs-placing")).toHaveCount(0);
 });
 
 // What `document::eval` draws: the page's own track in its kind's line style

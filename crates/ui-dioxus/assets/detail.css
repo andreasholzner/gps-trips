@@ -238,6 +238,7 @@
 }
 
 .gallery button {
+  position: relative;
   display: block;
   width: auto;
   margin: 0;
@@ -251,6 +252,33 @@
   display: block;
   max-height: 200px;
   width: auto;
+}
+
+/* A photo still to place (US-106): a crossed-out pin on a light disc in the
+   thumbnail's top-left corner, light whatever the theme so it reads on any
+   photo. */
+.gallery .needs-placing {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  display: flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0.25rem;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.85);
+  color: #b3261e;
+}
+
+.gallery .needs-placing line {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.gallery .needs-placing line.gap {
+  stroke: rgb(255 255 255);
+  stroke-width: 5;
 }
 
 .gallery figcaption {

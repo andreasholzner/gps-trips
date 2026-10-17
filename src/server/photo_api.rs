@@ -17,8 +17,9 @@ use crate::server::{
 };
 
 /// GET `/api/trips/:id/photos` — the trip's photos as JSON (US-2/US-7).
-/// Each photo includes a `url` the gallery can use to fetch the image bytes.
-/// 404 if the trip does not exist.
+/// Each photo includes a `url` the gallery can use to fetch the image bytes,
+/// and whether it still needs placing (US-106). 404 if the trip does not
+/// exist.
 pub async fn list_trip_photos(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -26,10 +27,14 @@ pub async fn list_trip_photos(
     let trip = repo::get_trip(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
+    let to_place = repo::photos_to_place(&state.pool, id).await?;
     let photos = repo::list_photos(&state.pool, id)
         .await?
         .into_iter()
-        .map(|p| respond(&state, p, trip.tz_name.as_deref()))
+        .map(|p| {
+            let needs_placing = to_place.contains(&p.id);
+            respond(&state, p, trip.tz_name.as_deref(), needs_placing)
+        })
         .collect();
     Ok(Json(photos))
 }
@@ -64,13 +69,27 @@ pub async fn handle_place_photo(
     let trip = repo::get_trip(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
-    Ok(Json(respond(&state, photo, trip.tz_name.as_deref())))
+    // By the rule rather than assumed: placed by hand, it never needs placing.
+    let needs_placing = repo::photos_to_place(&state.pool, id)
+        .await?
+        .contains(&photo.id);
+    Ok(Json(respond(
+        &state,
+        photo,
+        trip.tz_name.as_deref(),
+        needs_placing,
+    )))
 }
 
 /// A stored photo in its wire shape: the serving URLs from the blob store,
-/// and the offset its caption is shown in.
-fn respond(state: &AppState, photo: Photo, tz_name: Option<&str>) -> PhotoResponse {
-    respond_under(state, "", photo, tz_name)
+/// the offset its caption is shown in, and whether it needs placing.
+fn respond(
+    state: &AppState,
+    photo: Photo,
+    tz_name: Option<&str>,
+    needs_placing: bool,
+) -> PhotoResponse {
+    respond_under(state, "", photo, tz_name, needs_placing)
 }
 
 /// [`respond`], with the serving URLs under `prefix` — a share's own
@@ -80,6 +99,7 @@ pub(crate) fn respond_under(
     prefix: &str,
     photo: Photo,
     tz_name: Option<&str>,
+    needs_placing: bool,
 ) -> PhotoResponse {
     let url = format!("{prefix}{}", state.store.url_for(&photo.blob_key));
     let thumbnail_url = photo
@@ -88,7 +108,7 @@ pub(crate) fn respond_under(
         .map(|k| format!("{prefix}{}", state.store.url_for(k)))
         .unwrap_or_else(|| url.clone());
     let taken_offset_secs = taken_offset(&photo, tz_name);
-    PhotoResponse::from_photo(photo, url, thumbnail_url, taken_offset_secs)
+    PhotoResponse::from_photo(photo, url, thumbnail_url, taken_offset_secs, needs_placing)
 }
 
 /// The offset a photo's caption is shown in (US-62, `timezone::photo_offset`),

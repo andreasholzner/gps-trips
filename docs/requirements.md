@@ -147,7 +147,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-103](#us-103--proposed-links)                             | 🚧     | Proposed links                               | [Trip page](#trip-page)                                             |
 | [US-104](#us-104--pick-from-stacked-lines)                    | ✅     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
-| [US-106](#us-106--mark-the-photos-still-to-be-placed)         | 📋     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
+| [US-106](#us-106--mark-the-photos-still-to-be-placed)         | ✅     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
 | [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | 📋     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
 | [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | ✅     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
 
@@ -1399,7 +1399,7 @@ no-crossing trip as the regression)
 
 ### US-106 — Mark the photos still to be placed
 
-**Planned 📋** — As the owner, on a trip's page I see which photos still need placing, so once the
+**Done ✅** — As the owner, on a trip's page I see which photos still need placing, so once the
 "Unplaced photos" filter (US-66/US-101) has led me to a trip, I know which photo to place by hand
 (US-30).
 
