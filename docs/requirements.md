@@ -1238,8 +1238,11 @@ and the name, the kind's icon from the trip list (US-90) — its line style, sol
 activity's color — named on hover and to screen readers. Beneath the name, where a collection
 track's page says "From the collection …", a line reads "Recorded trip" or "Planned trip"; the date
 stays where US-62 puts it. The kind is shown for both kinds, not only for plans, so the absence of a
-note never has to be read. A share's recipient (US-53) sees the same on a shared trip's page.
-Tested (ADR-0012) for a recorded and a planned trip, on the owner's page and on a shared one.
+note never has to be read. The page's map draws the trip's own track in its kind's line style
+(US-90) — a planned trip's dashed, a recorded trip's solid as today — so a recorded trip linked to a
+plan and ticked onto its map (US-99) stands apart from the plan. A share's recipient (US-53) sees
+the same on a shared trip's page. Tested (ADR-0012) for a recorded and a planned trip, on the
+owner's page and on a shared one.
 
 **Decisions:** US-108 → ADR-0008 (the kind comes with the trip from the JSON API), ADR-0015 (the
 recipient's own response types carry it too)
