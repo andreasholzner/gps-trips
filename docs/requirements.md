@@ -148,6 +148,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-104](#us-104--pick-from-stacked-lines)                    | ✅     | Pick from stacked lines                      | [Maps](#maps)                                                       |
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 | [US-106](#us-106--mark-the-photos-still-to-be-placed)         | 📋     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
+| [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | 📋     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
 
 ### Maintaining this file
 
@@ -1495,6 +1496,10 @@ tag summaries (US-78) and summary shares (US-82) reach trips only.
 **Decisions:** US-93 → ADR-0028 (tags reach collections and their tracks through links of their
 own), ADR-0008 (the screens read and change the tags through the JSON API)
 
+**Superseded in part by US-107:** a tag summary (US-78) also lists and draws the collections and
+collection tracks carrying its tags, without counting them, and a tag's name on a collection's or
+collection track's page links to its summary; summary shares still reach trips only.
+
 ### US-100 — Tag many collections at once
 
 **Done ✅** — As the owner, I select several collections and tag them together, so organizing a
@@ -2055,6 +2060,57 @@ each group is headed by its tag's name and color.
 
 **Decisions:** US-78 → ADR-0025 (Rust adds the figures up and decides the lines, the script draws
 them), ADR-0008 (the screen reads its trips from the JSON API)
+
+**Superseded in part by US-107:** the trip list and the map also show the planned trips, the
+collections and the collection tracks under the chosen tags; the figures stay recorded trips only.
+
+### US-107 — Plans and collection tracks in a tag summary
+
+**Planned 📋** — As the owner, I see everything a tag holds on its summary (US-78) — the trips I
+planned and the guide-book collections and tracks I tagged (US-93) beside the trips I recorded — so
+a vacation's summary shows what I meant to do next to what I did.
+
+**Acceptance criteria:**
+
+**Figures unchanged.** The figures — dates spanned, per-activity totals, longest day — still count
+recorded trips with timestamps only, as US-78 does. A tag holding no recorded trips still says so in
+place of the figures, but its list and map show what it does hold.
+
+**Trips.** The list under the figures holds, per chosen tag, its recorded and planned trips, the
+collections carrying it and the collection tracks carrying it. Each entry has its kind in front as
+on the trip list (US-90) — its line style in the entry's color, named on hover and to screen
+readers. The trips come first, oldest first, a planned trip by its date; then the collections by
+name, each listing all its tracks in file order; then the collection tracks the tag reaches on their
+own, by collection name and file order. A collection track has its activity and distance and no
+date. A trip or track under more than one chosen tag is listed under each, as before.
+
+**Not counted.** Every entry that adds nothing to the figures — a planned trip, a collection, a
+collection track, and a recorded trip without timestamps — carries a short "not counted" note in the
+row, whose hover and screen-reader text says why: planned, from a collection, or without
+timestamps. A recorded trip that is counted carries none, so the rows behind the figures stand out
+by having no note.
+
+**Map.** The map draws every listed entry, a collection with all its tracks and its waypoints, in
+the tag's color with several tags or the activity's color with one, and in its kind's line style —
+recorded solid, planned dashed, collection tracks dotted (US-90). It is zoomed so that all of it is
+in view. An entry under more than one chosen tag is drawn once. Clicking a line opens that trip's or
+track's page, as on the trip list (US-104).
+
+**Tag links.** On a collection's page and a collection track's page, each tag links to the Summary
+screen with that tag chosen, as it does on a trip's page (US-78).
+
+**Shares unchanged.** A summary share (US-82) still reaches recorded trips only: its recipient sees
+neither planned trips nor collections or their tracks, in the list or on the map.
+
+Tested (ADR-0012) for a tag holding a recorded trip, a recorded trip without timestamps, a planned
+trip, a tagged collection and a tagged track of an untagged collection: all listed and drawn in
+their line styles, only the first counted and without a note, and a summary share of the tag
+showing the recorded trips alone; and for a tag on a collection's and a track's page linking to the
+summary with that tag chosen.
+
+**Decisions:** US-107 → ADR-0025 (Rust adds the figures up, decides what is listed, drawn and noted,
+the script draws it), ADR-0028 (trips and collection items stay records of their own; only the view
+is shared), ADR-0008 (the screen reads its entries from the JSON API)
 
 ## Export
 
