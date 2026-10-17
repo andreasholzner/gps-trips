@@ -54,9 +54,13 @@ pub fn TripStats(trip: Trip) -> Element {
                 KindSwatch { kind: Kind::of_trip(trip.trip_kind), color: activity_color::color(trip.activity_type), name: kind_name }
                 "{trip.name}"
             }
-            p { id: "trip-kind", "{kind_name}" }
-            if let Some(date) = date {
-                p { id: "trip-date", "{date}" }
+            // The kind and the date share one line, saving a line's height.
+            p { id: "trip-kind-line",
+                span { id: "trip-kind", "{kind_name}" }
+                if let Some(date) = date {
+                    " · "
+                    span { id: "trip-date", "{date}" }
+                }
             }
         }
         dl { class: "stats",
@@ -316,6 +320,35 @@ mod tests {
         let kind = html.find(r#"id="trip-kind""#).unwrap();
         let date = html.find(r#"id="trip-date""#).unwrap();
         assert!(name < kind && kind < date, "{html}");
+    }
+
+    #[test]
+    fn us108_the_date_shares_the_kind_line_to_save_space() {
+        let trip = a_trip("Oslo Hills Walk");
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        let line = html
+            .split(r#"<p id="trip-kind-line">"#)
+            .nth(1)
+            .and_then(|rest| rest.split("</p>").next())
+            .expect("one line beneath the name");
+        assert!(line.contains(r#"id="trip-kind""#), "{line}");
+        assert!(line.contains(r#"id="trip-date""#), "{line}");
+        assert!(line.contains(" · "), "{line}");
+    }
+
+    #[test]
+    fn us108_without_a_date_the_kind_line_holds_the_kind_alone() {
+        let trip = Trip {
+            start_date: None,
+            ..a_trip("Oslo Hills Walk")
+        };
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(html.contains(r#"id="trip-kind""#), "{html}");
+        assert!(!html.contains(" · "), "{html}");
     }
 
     #[test]

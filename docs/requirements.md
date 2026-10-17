@@ -1236,8 +1236,8 @@ which collection it is from (US-93).
 **Acceptance criteria:** The trip's heading names its kind. In the title, between the activity icon
 and the name, the kind's icon from the trip list (US-90) — its line style, solid or dashed, in the
 activity's color — named on hover and to screen readers. Beneath the name, where a collection
-track's page says "From the collection …", a line reads "Recorded trip" or "Planned trip"; the date
-stays where US-62 puts it. The kind is shown for both kinds, not only for plans, so the absence of a
+track's page says "From the collection …", a line reads "Recorded trip" or "Planned trip", followed
+on the same line by the date US-62 shows, when it shows one ("Recorded trip · 1. Jun. 2024"). The kind is shown for both kinds, not only for plans, so the absence of a
 note never has to be read. The page's map draws the trip's own track in its kind's line style
 (US-90) — a planned trip's dashed, a recorded trip's solid as today — so a recorded trip linked to a
 plan and ticked onto its map (US-99) stands apart from the plan. A share's recipient (US-53) sees
