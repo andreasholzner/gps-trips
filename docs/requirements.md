@@ -149,6 +149,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-105](#us-105--ticking-a-link-keeps-the-map-still)         | ✅     | Ticking a link keeps the map still           | [Trip page](#trip-page)                                             |
 | [US-106](#us-106--mark-the-photos-still-to-be-placed)         | 📋     | Mark the photos still to be placed           | [Photos](#photos)                                                   |
 | [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | 📋     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
+| [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | 📋     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -1225,6 +1226,23 @@ where it is, so the part of the track I zoomed into stays in view.
 it without moving or zooming the map, even when it lies partly or wholly outside the view. What a
 page frames when it opens — its own track, photos and waypoints — is unchanged; the ticked items
 never count toward it.
+
+### US-108 — Recorded or planned on the trip page
+
+**Planned 📋** — As the owner, a trip's page tells me whether the trip was recorded or only planned
+(US-31), so I never mistake a plan for something I did — as a collection track's page already says
+which collection it is from (US-93).
+
+**Acceptance criteria:** The trip's heading names its kind. In the title, between the activity icon
+and the name, the kind's icon from the trip list (US-90) — its line style, solid or dashed, in the
+activity's color — named on hover and to screen readers. Beneath the name, where a collection
+track's page says "From the collection …", a line reads "Recorded trip" or "Planned trip"; the date
+stays where US-62 puts it. The kind is shown for both kinds, not only for plans, so the absence of a
+note never has to be read. A share's recipient (US-53) sees the same on a shared trip's page.
+Tested (ADR-0012) for a recorded and a planned trip, on the owner's page and on a shared one.
+
+**Decisions:** US-108 → ADR-0008 (the kind comes with the trip from the JSON API), ADR-0015 (the
+recipient's own response types carry it too)
 
 ## Photos
 
