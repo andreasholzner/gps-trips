@@ -10,6 +10,10 @@ use crate::kinds::Kind;
 use crate::list_table::KindSwatch;
 use crate::{format, rates};
 
+/// Komoot's own favicon (from komoot.de), bundled because the page's CSP
+/// loads images only from the archive itself.
+const KOMOOT_ICON: Asset = asset!("/assets/komoot.svg");
+
 /// The trip's name and its stats — every one of them computed at import and
 /// never entered by hand (US-8); this screen only reports them.
 ///
@@ -19,7 +23,8 @@ use crate::{format, rates};
 /// explain something, under the chart and the photos.
 ///
 /// The heading names the trip's kind (US-108): its line style before the
-/// name, as the list shows it (US-90), and spelled out beneath it.
+/// name, as the list shows it (US-90), and spelled out beneath it — followed,
+/// for a trip linked to a Komoot tour, by the tour's privacy there (US-111).
 ///
 /// Each pair sits in a `div` of its own, which a `dl` allows, so the list can
 /// lay out as a grid of label-over-value pairs (`app.css`).
@@ -57,6 +62,12 @@ pub fn TripStats(trip: Trip) -> Element {
             // The kind and the date share one line, saving a line's height.
             p { id: "trip-kind-line",
                 span { id: "trip-kind", "{kind_name}" }
+                if let Some(link) = &trip.komoot {
+                    " ("
+                    img { class: "komoot-icon", src: KOMOOT_ICON, alt: "Komoot", title: "Privacy on Komoot" }
+                    span { id: "trip-privacy", {format::privacy(link.privacy)} }
+                    ")"
+                }
                 if let Some(date) = date {
                     " · "
                     span { id: "trip-date", "{date}" }
@@ -126,7 +137,7 @@ fn leads_with_a_date(name: &str) -> bool {
 mod tests {
     use super::*;
     use crate::test_support::{a_trip, render};
-    use trip_archive_types::ActivityType;
+    use trip_archive_types::{ActivityType, KomootLink, KomootPrivacy};
 
     // US-7: the trip's own numbers, around the map and the gallery that
     // follow in later phases. US-8 computed them at import; the screen
@@ -365,6 +376,62 @@ mod tests {
         assert!(html.contains("kind-swatch"), "{html}");
         // In the unspecified activity's own grey, as in the list (US-90).
         assert!(html.contains(r##"stroke="#6b6b6b""##), "{html}");
+    }
+
+    // ── US-111: a linked trip's privacy on Komoot ─────────────────────
+
+    fn linked(privacy: Option<KomootPrivacy>) -> Trip {
+        Trip {
+            komoot: Some(KomootLink {
+                tour_id: "123".to_string(),
+                privacy,
+            }),
+            ..a_trip("Oslo Hills Walk")
+        }
+    }
+
+    #[test]
+    fn us111_a_linked_trips_privacy_follows_its_kind_in_parentheses_led_by_komoots_icon() {
+        let trip = linked(Some(KomootPrivacy::Public));
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        let line = html
+            .split(r#"<p id="trip-kind-line">"#)
+            .nth(1)
+            .and_then(|rest| rest.split("</p>").next())
+            .expect("one line beneath the name");
+        let kind = line.find(r#"id="trip-kind""#).unwrap();
+        let open = line.find(" (").expect("an opening parenthesis");
+        let icon = line.find(r#"alt="Komoot""#).expect("Komoot's icon");
+        let privacy = line.find(">Public<").expect("the privacy");
+        let close = line.find(")").expect("a closing parenthesis");
+        let date = line.find(r#"id="trip-date""#).unwrap();
+        assert!(
+            kind < open && open < icon && icon < privacy && privacy < close && close < date,
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn us111_a_privacy_komoot_reported_unmappably_shows_as_unknown() {
+        // The archive never pretends to know a privacy it couldn't map
+        // (ADR-0021).
+        let trip = linked(Some(KomootPrivacy::Unknown));
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(html.contains(">Unknown<"), "{html}");
+    }
+
+    #[test]
+    fn us111_a_trip_that_never_came_from_komoot_shows_no_privacy() {
+        let trip = a_trip("Oslo Hills Walk");
+
+        let html = render(move || rsx! { TripStats { trip: trip.clone() } });
+
+        assert!(!html.contains("Komoot"), "{html}");
+        assert!(!html.contains(" ("), "{html}");
     }
 
     // ── US-80: the average speed in motion ──────────────────────────────

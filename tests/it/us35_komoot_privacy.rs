@@ -1,8 +1,8 @@
 //! US-35 — control a linked Komoot tour's privacy_status from the archive.
 //!
-//! The list screen's Privacy column is the SPA's (US-41):
-//! `crates/ui-dioxus/src/trip_table.rs` asserts the dash, the value and the
-//! "Unknown" case. What stays here is where each privacy comes from and where
+//! The privacy is shown on the trip page since US-111:
+//! `crates/ui-dioxus/src/detail/stats.rs` asserts the value, the "Unknown"
+//! case and its absence for an unlinked trip. What stays here is where each privacy comes from and where
 //! it goes — asserted through `GET /api/trips`.
 //!
 //! Acceptance criteria: the privacy_status is visible on the list page, and

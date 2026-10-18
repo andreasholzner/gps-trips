@@ -68,7 +68,7 @@ pub fn ListTable(
         .collect();
 
     rsx! {
-        // Nine columns don't fit a phone: the table scrolls inside this
+        // Eight columns don't fit a phone: the table scrolls inside this
         // box so the page itself never scrolls sideways (US-41), at the
         // width its columns need rather than squeezed to the box's (US-63).
         div { class: "table-scroll",
@@ -83,7 +83,6 @@ pub fn ListTable(
                     th { "Distance" }
                     th { "Ascent" }
                     th { "Duration" }
-                    th { "Privacy" }
                 }
             }
             tbody {
@@ -128,7 +127,6 @@ fn TripRow(trip: TripSummary, picked: Signal<BTreeSet<Picked>>) -> Element {
             td { class: "num", {format::km(trip.distance_m)} }
             td { class: "num", {format::metres(trip.ascent_m)} }
             td { class: "num", {format::duration(trip.duration_secs)} }
-            td { {format::privacy(trip.privacy_status)} }
         }
     }
 }

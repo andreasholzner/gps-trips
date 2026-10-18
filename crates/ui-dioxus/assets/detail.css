@@ -2,6 +2,15 @@
    so neither file outgrows the repo's size cap. Loaded right after it, so the
    same order against the vendored Leaflet and uPlot sheets holds. */
 
+/* Komoot's icon before a linked trip's privacy (US-111), the height of the
+   line's text. */
+.komoot-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  margin-inline-end: 0.25em;
+}
+
 /* The numbers at a glance (US-62): label over value, two pairs to a row on a
    phone and all five on one row from the width the header switches at
    (US-60). Each pair is a `div` inside the `dl`, which is what lets a pair

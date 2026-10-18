@@ -124,41 +124,17 @@ fn a_rows_name_links_to_the_trips_detail_screen() {
     );
 }
 
-// US-35's Privacy column. A linked trip's privacy is a stored value the row
-// displays, so the component layer covers it (ADR-0012).
+// US-111: a linked trip's privacy moved to its page; the list has no
+// column for it.
 #[test]
-fn the_privacy_column_shows_a_linked_trips_privacy() {
+fn us111_the_list_has_no_privacy_column() {
     let html = trips_only(vec![TripSummary {
         privacy_status: Some(KomootPrivacy::Public),
         ..a_trip(1, "Komoot Trip")
     }]);
 
-    assert!(html.contains("Privacy"), "{html}");
-    assert!(html.contains(KomootPrivacy::Public.label()), "{html}");
-}
-
-#[test]
-fn a_privacy_komoot_reported_unmappably_shows_as_unknown() {
-    // The archive never pretends to know a privacy it couldn't map
-    // (ADR-0021); it shows it, and the push side leaves it alone.
-    let html = trips_only(vec![TripSummary {
-        privacy_status: Some(KomootPrivacy::Unknown),
-        ..a_trip(1, "Odd Privacy")
-    }]);
-
-    assert!(html.contains(KomootPrivacy::Unknown.label()), "{html}");
-}
-
-#[test]
-fn a_trip_that_never_came_from_komoot_shows_no_privacy() {
-    let html = trips_only(vec![a_trip(1, "Local Trip")]);
-
-    assert!(
-        html.contains("Privacy"),
-        "the column is always there: {html}"
-    );
+    assert!(!html.contains("Privacy"), "{html}");
     assert!(!html.contains(KomootPrivacy::Public.label()), "{html}");
-    assert!(!html.contains(KomootPrivacy::Private.label()), "{html}");
 }
 
 #[test]

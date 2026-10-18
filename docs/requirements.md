@@ -152,6 +152,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | ✅     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
 | [US-109](#us-109--winter-trips-only-in-the-north)             | ✅     | Winter trips only in the north               | [Import](#import)                                                   |
 | [US-110](#us-110--date-range-slider)                          | ✅     | Date range slider                            | [Trip list & map](#trip-list--map)                                  |
+| [US-111](#us-111--komoot-privacy-on-the-trip-page)            | ✅     | Komoot privacy on the trip page              | [Trip page](#trip-page)                                             |
 
 ### Maintaining this file
 
@@ -464,6 +465,8 @@ trip. The chosen value is stored on `trip_komoot_link` and pushed to Komoot by t
 push phase, like name/activity_type edits (US-20). A privacy Komoot reports that the archive can't
 map is shown as "Unknown" and never pushed back; a privacy edit on an unlinked trip, or an
 unrecognized value, 400s (ADR-0021).
+
+**Superseded in part by US-111:** the privacy is shown on the trip page instead of in a list column.
 
 ### Background: determining the import pipeline
 
@@ -1297,6 +1300,19 @@ owner's page and on a shared one.
 
 **Decisions:** US-108 → ADR-0008 (the kind comes with the trip from the JSON API), ADR-0015 (the
 recipient's own response types carry it too)
+
+### US-111 — Komoot privacy on the trip page
+
+**Done ✅** — As the owner, I see a linked Komoot tour's privacy (US-35) on its trip's page, where
+I change it, rather than in a list column that costs width on every row.
+
+**Acceptance criteria:** The trip list has no Privacy column. On a linked trip's page, the line
+beneath the name reads the kind followed by, in parentheses, Komoot's favicon (from komoot.de,
+bundled with the app) and the privacy ("Recorded trip ([Komoot icon] Public) · 1. Jun. 2024"); a privacy Komoot
+reported unmappably shows as "Unknown", one no sync has read yet as a dash. A trip that never came
+from Komoot shows no parentheses. Tested at the component layer (ADR-0012).
+
+**Decisions:** US-111 → ADR-0021 (Unknown is shown, never guessed)
 
 ## Photos
 
@@ -2641,6 +2657,8 @@ plus US-35's Privacy column. US-14's region filter is deliberately *not* here �
 completion rule above applies to those criteria, but the server-rendered list page was not deleted
 here: the region filter rode on that same page, so it stayed until US-52 had moved US-14's
 assertions too.
+
+**Superseded in part by US-111:** the list no longer has US-35's Privacy column.
 
 **Decisions:** US-41/42/43/44/52 → ADR-0024 (the SPA these screens are built in), ADR-0012 (the
 migration rule and the test layers that carry the criteria over), ADR-0025 (US-42's map and chart;

@@ -8,7 +8,6 @@ use crate::test_support::{
     import_gpx, import_sample, render, render_against_archive, serve_test_archive, tag_trip,
     ALPS_GPX,
 };
-use trip_archive_types::KomootPrivacy;
 
 // ── US-61's counts ───────────────────────────────────────────────────
 
@@ -381,10 +380,6 @@ async fn the_list_screen_shows_an_imported_trip() {
     assert!(html.contains("Oslo Hills Walk"), "{html}");
     assert!(html.contains(" km"), "{html}");
     assert!(html.contains("Hiking"), "{html}");
-    // US-35: an imported trip never came from Komoot, so its privacy
-    // cell is a dash rather than a claim.
-    assert!(html.contains("Privacy"), "{html}");
-    assert!(!html.contains(KomootPrivacy::Public.label()), "{html}");
 }
 
 // Exemplar for the whole-screen layer (ADR-0012, 2026-08-26a): the fetch
