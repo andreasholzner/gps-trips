@@ -465,12 +465,11 @@ async fn us36_creates_rolling_backup_and_prunes_by_retention() {
         std::fs::write(dir.path().join(&file), name).expect("seed backup");
         seeded_recent.push(file);
     }
+    let mut seeded_ancient = Vec::new();
     for stamp in ["20220101T000000", "20230101T000000", "20240101T000000"] {
-        std::fs::write(
-            dir.path().join(format!("export.backup-{stamp}.db")),
-            "ancient",
-        )
-        .expect("seed backup");
+        let file = format!("export.backup-{stamp}.db");
+        std::fs::write(dir.path().join(&file), "ancient").expect("seed backup");
+        seeded_ancient.push(file);
     }
 
     // Second run backs up the existing target, then prunes: the union of
@@ -484,12 +483,9 @@ async fn us36_creates_rolling_backup_and_prunes_by_retention() {
     for file in &seeded_recent {
         assert!(survivors.contains(file), "{file} kept: {survivors:?}");
     }
-    assert!(
-        !survivors
-            .iter()
-            .any(|n| n.contains("2022") || n.contains("2023")),
-        "ancient backups pruned: {survivors:?}"
-    );
+    for file in &seeded_ancient {
+        assert!(!survivors.contains(file), "{file} pruned: {survivors:?}");
+    }
 }
 
 #[tokio::test]
