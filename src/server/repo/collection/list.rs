@@ -11,6 +11,7 @@ use crate::models::{
 };
 
 use super::super::link::{push_track_filter, TRACK_HAS_RECORDED_TRIP};
+use super::super::tag::{split_tag_names, tag_names_column};
 use super::super::trip::track_positions;
 use super::TRACK_ACTIVITY;
 
@@ -80,12 +81,14 @@ pub async fn list_collections(
                     AS track_count, \
                 (SELECT COUNT(*) FROM collection_track k \
                  WHERE k.collection_id = c.id AND {TRACK_HAS_RECORDED_TRIP}) \
-                    AS tracks_with_recorded_trip \
+                    AS tracks_with_recorded_trip, \
+                {} AS tags \
          FROM collection c LEFT JOIN ( \
              SELECT collection_id, COUNT(*) AS n, MIN(lon) AS west, MIN(lat) AS south, \
                     MAX(lon) AS east, MAX(lat) AS north \
              FROM waypoint GROUP BY collection_id \
-         ) w ON w.collection_id = c.id"
+         ) w ON w.collection_id = c.id",
+        tag_names_column("collection_tag", "collection_id", "c.id"),
     ));
     if tracks.region.is_some() || tracks.narrows_tracks() {
         query.push(
@@ -122,6 +125,7 @@ pub async fn list_collections(
             track_count: row.get("track_count"),
             tracks_with_recorded_trip: row.get("tracks_with_recorded_trip"),
             tracks: Vec::new(),
+            tags: split_tag_names(row.get("tags")),
             waypoint_bounds: match (
                 row.get("west"),
                 row.get("south"),
@@ -171,9 +175,10 @@ async fn list_track_marks(
     let mut query = sqlx::QueryBuilder::new(format!(
         "SELECT k.collection_id, k.id, k.name, {TRACK_ACTIVITY} AS activity_type, \
                 k.distance_m, k.ascent_m, k.min_lat, k.min_lon, k.max_lat, k.max_lon, \
-                {TRACK_HAS_RECORDED_TRIP} AS has_recorded_trip \
+                {TRACK_HAS_RECORDED_TRIP} AS has_recorded_trip, {} AS tags \
          FROM collection_track k JOIN collection c ON c.id = k.collection_id \
-         WHERE k.collection_id IN (SELECT value FROM json_each("
+         WHERE k.collection_id IN (SELECT value FROM json_each(",
+        tag_names_column("collection_track_tag", "collection_track_id", "k.id"),
     ));
     query.push_bind(ids).push("))");
     filter.push_conditions(&mut query);
@@ -195,6 +200,7 @@ async fn list_track_marks(
                 max_lat: row.get("max_lat"),
                 max_lon: row.get("max_lon"),
                 has_recorded_trip: row.get("has_recorded_trip"),
+                tags: split_tag_names(row.get("tags")),
             });
     }
     Ok(by_collection)

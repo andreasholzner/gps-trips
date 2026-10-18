@@ -9,6 +9,7 @@ use trip_archive_types::KomootPrivacy;
 
 fn a_trip(id: i64, name: &str) -> TripSummary {
     TripSummary {
+        tags: Vec::new(),
         id,
         name: name.to_string(),
         activity_type: ActivityType::Hiking,
@@ -31,6 +32,7 @@ fn a_trip(id: i64, name: &str) -> TripSummary {
 
 fn a_track(id: i64, name: &str) -> CollectionTrackMark {
     CollectionTrackMark {
+        tags: Vec::new(),
         id,
         name: name.to_string(),
         activity_type: ActivityType::Cycling,
@@ -46,6 +48,7 @@ fn a_track(id: i64, name: &str) -> CollectionTrackMark {
 
 fn a_collection(id: i64, name: &str, tracks: Vec<CollectionTrackMark>) -> CollectionSummary {
     CollectionSummary {
+        tags: Vec::new(),
         id,
         name: name.to_string(),
         activity_type: Some(ActivityType::Cycling),
@@ -344,5 +347,102 @@ fn us99_a_planned_trip_or_a_track_with_a_recorded_trip_is_marked() {
             !row(&html, unmarked).contains("Has a recorded trip"),
             "{html}"
         );
+    }
+}
+
+// ── US-113: the activity before the name, the tags after it ──────────────────
+
+/// The columns a row spans, counting a `colspan` as that many.
+fn spanned(row: &str) -> usize {
+    row.split("<td")
+        .skip(1)
+        .map(|cell| {
+            let tag = &cell[..cell.find('>').unwrap()];
+            tag.split(r#"colspan=""#)
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .map_or(1, |n| n.parse().unwrap())
+        })
+        .sum()
+}
+
+fn tagged(tags: &[&str]) -> Vec<String> {
+    tags.iter().map(|tag| tag.to_string()).collect()
+}
+
+fn summary_of(tag: &str) -> String {
+    Route::Summary { view: crate::SummaryView::of(tag) }.to_string()
+}
+
+#[test]
+fn us113_the_activity_comes_before_the_name_and_the_tags_after_it() {
+    let html = trips_only(vec![a_trip(1, "Oslo Hills Walk")]);
+
+    let head = &html[..html.find("</thead>").unwrap()];
+    let kind = head.find(">Kind<").unwrap();
+    let activity = head.find(">Activity<").unwrap();
+    let name = head.find(">Name<").unwrap();
+    let tags = head.find(">Tags<").unwrap();
+    let date = head.find(">Date<").unwrap();
+    assert!(kind < activity && activity < name && name < tags && tags < date, "{head}");
+
+    let row = row(&html, "Oslo Hills Walk");
+    let icon = row.find(r#"title="Hiking""#).unwrap();
+    let link = row.find(r#"href="/trips/1""#).unwrap();
+    assert!(icon < link, "{row}");
+}
+
+#[test]
+fn us113_a_trips_tags_link_to_their_summaries() {
+    let html = trips_only(vec![TripSummary {
+        tags: tagged(&["alpine", "summer"]),
+        ..a_trip(1, "Oslo Hills Walk")
+    }]);
+
+    let row = row(&html, "Oslo Hills Walk");
+    let name = row.find("Oslo Hills Walk").unwrap();
+    for tag in ["alpine", "summer"] {
+        let link = format!(r#"href="{}""#, summary_of(tag));
+        let at = row.find(&link).unwrap_or_else(|| panic!("{link}: {row}"));
+        assert!(name < at, "{row}");
+    }
+    let alpine = row.find(&summary_of("alpine")).unwrap();
+    let summer = row.find(&summary_of("summer")).unwrap();
+    assert!(alpine < summer, "in the order they came: {row}");
+}
+
+#[test]
+fn us113_collections_and_their_tracks_show_their_own_tags() {
+    let collection = CollectionSummary {
+        tags: tagged(&["guidebook"]),
+        ..a_collection(
+            3,
+            "Alpencross",
+            vec![CollectionTrackMark {
+                tags: tagged(&["ridge"]),
+                ..a_track(4, "Etappe 6")
+            }],
+        )
+    };
+
+    let html = table(Vec::new(), vec![collection], &[], &[3]);
+
+    let group = row(&html, "Alpencross");
+    assert!(group.contains(&summary_of("guidebook")), "{group}");
+    assert!(!group.contains(&summary_of("ridge")), "{group}");
+    let track = row(&html, "Etappe 6");
+    assert!(track.contains(&summary_of("ridge")), "{track}");
+    assert!(!track.contains(&summary_of("guidebook")), "{track}");
+}
+
+#[test]
+fn us113_every_row_spans_as_many_columns_as_the_header() {
+    let collection = a_collection(3, "Alpencross", vec![a_track(4, "Etappe 6")]);
+
+    let html = table(vec![a_trip(1, "Oslo Hills Walk")], vec![collection], &[], &[3]);
+
+    let columns = html[..html.find("</thead>").unwrap()].matches("</th>").count();
+    for name in ["Oslo Hills Walk", "Alpencross", "Etappe 6"] {
+        assert_eq!(spanned(row(&html, name)), columns, "{name}: {html}");
     }
 }

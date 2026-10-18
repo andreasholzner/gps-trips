@@ -53,6 +53,7 @@ fn us90_a_kind_that_could_not_be_read_fails_the_list() {
 #[test]
 fn us90_the_trips_are_counted_by_kind_from_one_read() {
     let trip = |trip_kind| TripSummary {
+        tags: Vec::new(),
         id: 1,
         name: "Trip".to_string(),
         activity_type: trip_archive_types::ActivityType::Hiking,

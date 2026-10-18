@@ -54,6 +54,9 @@ pub struct CollectionSummary {
     /// The rectangle around every waypoint, `[west, south, east, north]`;
     /// `None` for a collection without waypoints.
     pub waypoint_bounds: Option<[f64; 4]>,
+    /// The names of its own tags, alphabetically (US-113) — not its
+    /// tracks' (US-93).
+    pub tags: Vec<String>,
 }
 
 /// One collection's waypoints, as `GET /api/collection-waypoints?ids=…`
@@ -90,6 +93,8 @@ pub struct CollectionTrackMark {
     pub max_lon: f64,
     /// Whether a recorded trip is linked to it (US-99).
     pub has_recorded_trip: bool,
+    /// The names of its own tags, alphabetically (US-113).
+    pub tags: Vec<String>,
 }
 
 /// A collection track's page (US-86): only distance, ascent and descent —

@@ -10,6 +10,7 @@ use crate::test_support::{
 
 fn a_collection(id: i64, name: &str) -> CollectionSummary {
     CollectionSummary {
+        tags: Vec::new(),
         id,
         name: name.to_string(),
         activity_type: None,

@@ -13,6 +13,7 @@ use crate::server::gpx::TrackStats;
 use crate::server::import::date_prefix;
 
 use super::link::{push_trip_filter, TRIP_HAS_RECORDED_TRIP};
+use super::tag::{split_tag_names, tag_names_column};
 use super::to_rfc3339;
 
 mod proper_name;
@@ -247,8 +248,9 @@ pub async fn list_trips(
          t.duration_secs AS duration_secs, t.trip_kind AS trip_kind, \
          l.privacy_status AS privacy_status, \
          t.min_lat AS min_lat, t.min_lon AS min_lon, t.max_lat AS max_lat, t.max_lon AS max_lon, \
-         {TRIP_HAS_RECORDED_TRIP} AS has_recorded_trip \
-         FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id WHERE 1 = 1"
+         {TRIP_HAS_RECORDED_TRIP} AS has_recorded_trip, {} AS tags \
+         FROM trip t LEFT JOIN trip_komoot_link l ON l.trip_id = t.id WHERE 1 = 1",
+        tag_names_column("trip_tag", "trip_id", "t.id"),
     ));
     if let Some(activity_type) = filter.activity_type {
         query
@@ -359,6 +361,7 @@ pub async fn list_trips(
                 max_lat: row.get("max_lat"),
                 max_lon: row.get("max_lon"),
                 has_recorded_trip: row.get("has_recorded_trip"),
+                tags: split_tag_names(row.get("tags")),
             }
         })
         .fetch_all(&mut *tx)

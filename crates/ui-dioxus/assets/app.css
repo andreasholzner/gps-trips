@@ -466,7 +466,7 @@ nav.pager {
   margin: 0;
 }
 
-/* Staged tag names, before they are applied (US-34). */
+/* Tags as chips: a trip's (US-33) and a row's on the trip list (US-113). */
 .chips {
   display: flex;
   flex-wrap: wrap;

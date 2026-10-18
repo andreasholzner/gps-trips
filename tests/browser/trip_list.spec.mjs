@@ -407,7 +407,7 @@ test("on a phone the table scrolls sideways and the page does not (US-63)", asyn
   expect(pageOverflow, "the page itself does not scroll sideways").toBeLessThanOrEqual(0);
 
   // A number stays on one line rather than wrapping into a column of digits.
-  for (const column of [4, 5, 6, 7]) {
+  for (const column of [5, 6, 7, 8]) {
     await expect(rows(page).first().locator("td").nth(column)).toHaveCSS("white-space", "nowrap");
   }
 });

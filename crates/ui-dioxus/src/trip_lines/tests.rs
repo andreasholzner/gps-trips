@@ -11,6 +11,7 @@ fn trip(id: i64, activity_type: ActivityType, bbox: Option<[f64; 4]>) -> MapItem
         None => [None; 4],
     };
     MapItem::from(&TripSummary {
+        tags: Vec::new(),
         id,
         name: format!("Trip {id}"),
         activity_type,

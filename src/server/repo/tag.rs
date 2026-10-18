@@ -47,6 +47,28 @@ impl Tagged {
     }
 }
 
+/// A list query's column of the tags each row carries (US-113): the names
+/// joined by commas, which a tag name never holds (US-33), or NULL for none.
+/// `link` and `column` are [`Tagged::link`]'s; `row_id` is the listed row's
+/// id in the query.
+pub fn tag_names_column(link: &str, column: &str, row_id: &str) -> String {
+    format!(
+        "(SELECT group_concat(tag.name, ',') FROM {link} \
+         JOIN tag ON tag.id = {link}.tag_id WHERE {link}.{column} = {row_id})"
+    )
+}
+
+/// The names [`tag_names_column`] joined, alphabetically.
+pub fn split_tag_names(joined: Option<String>) -> Vec<String> {
+    let mut names: Vec<String> = joined
+        .iter()
+        .flat_map(|joined| joined.split(','))
+        .map(str::to_string)
+        .collect();
+    names.sort_unstable();
+    names
+}
+
 /// Whether what is to be tagged exists, on the pool or a transaction.
 pub async fn tagged_exists<'e, E>(executor: E, tagged: Tagged) -> Result<bool, sqlx::Error>
 where

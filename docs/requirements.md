@@ -154,6 +154,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-110](#us-110--date-range-slider)                          | ✅     | Date range slider                            | [Trip list & map](#trip-list--map)                                  |
 | [US-111](#us-111--komoot-privacy-on-the-trip-page)            | ✅     | Komoot privacy on the trip page              | [Trip page](#trip-page)                                             |
 | [US-112](#us-112--add-a-tag-to-the-selection-in-one-step)     | ✅     | Add a tag to the selection in one step       | [Tags](#tags)                                                       |
+| [US-113](#us-113--tags-in-the-trip-list)                      | ✅     | Tags in the trip list                        | [Trip list & map](#trip-list--map)                                  |
 
 ### Maintaining this file
 
@@ -849,6 +850,19 @@ other filters, handle position to `from`/`to` and back
 including the ends, a day-exact date from a link, and the rendered slider.
 
 **Decisions:** US-110 → ADR-0011 (date filtering unchanged), ADR-0012 (tested as listed)
+
+### US-113 — Tags in the trip list
+
+**Done ✅** — As the owner, I see in the trip list what each entry is tagged with, and reach a tag's
+summary (US-78) from there, without opening the entry's page.
+
+**Acceptance criteria:** The trip list's activity column comes before the name, and a Tags column
+follows the name. Each trip, collection and collection track lists its own tags there (US-93: a
+collection's are not its tracks'), alphabetically, each linking to that tag's summary as a tag on a
+trip's page does. The tags come with the rows from the JSON API (ADR-0008). Tested (ADR-0012) at the
+API and the component layer.
+
+**Decisions:** US-113 → ADR-0008 (the rows carry their tags), ADR-0028 (each kind's tags are its own)
 
 ## Trip page
 

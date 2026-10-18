@@ -120,6 +120,7 @@ mod tests {
             None => [None; 4],
         };
         MapItem::from(&TripSummary {
+            tags: Vec::new(),
             id: 1,
             name: "Trip".to_string(),
             activity_type: ActivityType::Hiking,

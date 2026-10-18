@@ -13,6 +13,7 @@ const TODAY: Date = date!(2026 - 10 - 17);
 
 fn a_trip(start_date: Option<&str>, trip_kind: TripKind) -> TripSummary {
     TripSummary {
+        tags: Vec::new(),
         id: 1,
         name: "A trip".to_string(),
         activity_type: ActivityType::Hiking,

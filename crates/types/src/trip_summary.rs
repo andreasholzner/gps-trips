@@ -36,4 +36,6 @@ pub struct TripSummary {
     /// A planned trip a recorded trip is linked to (US-99); never a recorded
     /// one.
     pub has_recorded_trip: bool,
+    /// The names of the tags it carries, alphabetically (US-113).
+    pub tags: Vec<String>,
 }

@@ -11,6 +11,7 @@ use trip_archive_types::{TripKind, TripSummary};
 /// A trip near Oslo, so it gets a mark.
 fn a_trip(activity_type: ActivityType) -> TripSummary {
     TripSummary {
+        tags: Vec::new(),
         id: 1,
         name: "Trip".to_string(),
         activity_type,

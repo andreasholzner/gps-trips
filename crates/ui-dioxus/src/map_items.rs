@@ -146,6 +146,7 @@ mod tests {
             None => [None; 4],
         };
         TripSummary {
+            tags: Vec::new(),
             id,
             name: format!("Trip {id}"),
             activity_type: ActivityType::Hiking,
@@ -166,6 +167,7 @@ mod tests {
 
     fn a_track(id: i64, activity_type: ActivityType) -> CollectionTrackMark {
         CollectionTrackMark {
+            tags: Vec::new(),
             id,
             name: format!("Stage {id}"),
             activity_type,
@@ -184,6 +186,7 @@ mod tests {
         waypoint_bounds: Option<[f64; 4]>,
     ) -> CollectionSummary {
         CollectionSummary {
+            tags: Vec::new(),
             id: 1,
             name: "Book".to_string(),
             activity_type: None,

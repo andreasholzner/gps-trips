@@ -79,6 +79,7 @@ mod tests {
 
     fn a_track(id: i64) -> CollectionTrackMark {
         CollectionTrackMark {
+            tags: Vec::new(),
             id,
             name: format!("Stage {id}"),
             activity_type: ActivityType::Cycling,
@@ -94,6 +95,7 @@ mod tests {
 
     fn a_collection(id: i64, name: &str, activity_type: Option<ActivityType>) -> CollectionSummary {
         CollectionSummary {
+            tags: Vec::new(),
             id,
             name: name.to_string(),
             activity_type,

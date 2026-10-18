@@ -19,7 +19,7 @@ use crate::kinds::Kind;
 use crate::linked::RecordedTripMark;
 use crate::pager;
 use crate::picked::Picked;
-use crate::Route;
+use crate::{Route, SummaryView};
 
 /// Which trips and which collections `page` shows. Paging counts trips and
 /// collections alike, never the tracks inside a group (US-90), and the
@@ -68,7 +68,7 @@ pub fn ListTable(
         .collect();
 
     rsx! {
-        // Eight columns don't fit a phone: the table scrolls inside this
+        // Nine columns don't fit a phone: the table scrolls inside this
         // box so the page itself never scrolls sideways (US-41), at the
         // width its columns need rather than squeezed to the box's (US-63).
         div { class: "table-scroll",
@@ -77,8 +77,9 @@ pub fn ListTable(
                 tr {
                     th { PickAll { listed, picked } }
                     th { span { class: "visually-hidden", "Kind" } }
-                    th { "Name" }
                     th { "Activity" }
+                    th { "Name" }
+                    th { "Tags" }
                     th { "Date" }
                     th { "Distance" }
                     th { "Ascent" }
@@ -112,6 +113,7 @@ fn TripRow(trip: TripSummary, picked: Signal<BTreeSet<Picked>>) -> Element {
         tr {
             td { PickOne { pick: trip_pick(&trip), picked } }
             td { KindSwatch { kind: Kind::of_trip(trip.trip_kind), color: activity_color::color(trip.activity_type), name } }
+            td { ActivityIcon { activity: trip.activity_type } }
             td {
                 // A router `Link`, so the detail screen (US-42) is reached
                 // without a page load — and so the href picks up the
@@ -122,7 +124,7 @@ fn TripRow(trip: TripSummary, picked: Signal<BTreeSet<Picked>>) -> Element {
                     RecordedTripMark {}
                 }
             }
-            td { ActivityIcon { activity: trip.activity_type } }
+            td { RowTags { tags: trip.tags } }
             td { class: "num", {format::or_dash(trip.start_date.as_deref())} }
             td { class: "num", {format::km(trip.distance_m)} }
             td { class: "num", {format::metres(trip.ascent_m)} }
@@ -147,6 +149,11 @@ fn CollectionRows(
             td { PickOne { pick: Picked::Collection(id), picked } }
             td { KindSwatch { kind: Kind::Collections, color: activity_color::color(activity), name: "Collection" } }
             td {
+                if let Some(activity) = collection.activity_type {
+                    ActivityIcon { activity }
+                }
+            }
+            td {
                 button {
                     r#type: "button",
                     class: "fold",
@@ -163,12 +170,8 @@ fn CollectionRows(
                 }
                 Link { to: collection_route(id), "{collection.name}" }
             }
-            td {
-                if let Some(activity) = collection.activity_type {
-                    ActivityIcon { activity }
-                }
-            }
-            td { colspan: "5", class: "group-counts", {group_counts(&collection)} }
+            td { RowTags { tags: collection.tags.clone() } }
+            td { colspan: "4", class: "group-counts", {group_counts(&collection)} }
         }
         if open {
             for track in collection.tracks {
@@ -184,19 +187,40 @@ fn TrackRow(track: CollectionTrackMark, picked: Signal<BTreeSet<Picked>>) -> Ele
         tr { class: "collection-track",
             td { PickOne { pick: Picked::Track(track.id), picked } }
             td { KindSwatch { kind: Kind::Collections, color: activity_color::color(track.activity_type), name: "Collection track" } }
+            td { ActivityIcon { activity: track.activity_type } }
             td {
                 Link { to: Route::CollectionTrack { id: track.id }, "{track.name}" }
                 if track.has_recorded_trip {
                     RecordedTripMark {}
                 }
             }
-            td { ActivityIcon { activity: track.activity_type } }
+            td { RowTags { tags: track.tags } }
             // A guide book's timestamps are not when anyone went (US-86).
             td { class: "num", {format::or_dash(None)} }
             td { class: "num", {format::km(track.distance_m)} }
             td { class: "num", {format::metres(Some(track.ascent_m))} }
             td { class: "num", {format::duration(None)} }
-            td {}
+        }
+    }
+}
+
+/// A row's tags (US-113), each leading to its summary as a tag on a trip's
+/// page does.
+#[component]
+fn RowTags(tags: Vec<String>) -> Element {
+    rsx! {
+        if !tags.is_empty() {
+            div { class: "chips row-tags",
+                for tag in tags {
+                    span { key: "{tag}", class: "chip",
+                        Link {
+                            to: Route::Summary { view: SummaryView::of(&tag) },
+                            title: "Summary of {tag}",
+                            "{tag}"
+                        }
+                    }
+                }
+            }
         }
     }
 }
