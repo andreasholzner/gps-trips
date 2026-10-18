@@ -168,7 +168,7 @@ test("the occasional filters open on demand and stay open (US-61)", async ({ pag
   // Closed to begin with, so the table starts near the top of the screen.
   const disclosure = page.locator("details", { hasText: "More filters" }).first();
   await expect(disclosure).not.toHaveAttribute("open", /.*/);
-  await expect(page.getByLabel("From")).toBeHidden();
+  await expect(page.getByRole("slider", { name: "Earliest month" })).toBeHidden();
 
   // The controls the owner reaches for constantly are not behind it.
   await expect(page.getByRole("searchbox")).toBeVisible();
@@ -184,13 +184,13 @@ test("the occasional filters open on demand and stay open (US-61)", async ({ pag
   expect(indent).toBeGreaterThanOrEqual(16);
 
   await page.getByText("More filters").click();
-  await expect(page.getByLabel("From")).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Earliest month" })).toBeVisible();
 
   // Still open after the list re-queries: filtering as you type re-renders
   // this whole screen, and an element rebuilt each keystroke would snap shut.
   await page.getByRole("searchbox").fill("inn");
   await expect(rows(page)).toHaveCount(1);
-  await expect(page.getByLabel("From")).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Earliest month" })).toBeVisible();
 });
 
 // US-61: the two numbers above the table. They are read off fetches that

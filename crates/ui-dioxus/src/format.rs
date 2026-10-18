@@ -174,6 +174,12 @@ pub fn day(date: &str) -> String {
     }
 }
 
+/// A month as the owner reads one, `Jul. 2026` — [`day`] without its day
+/// (US-110).
+pub fn month(date: Date) -> String {
+    format!("{}. {}", short_month(date), date.year())
+}
+
 fn short_month(date: Date) -> String {
     date.month().to_string().chars().take(3).collect()
 }
@@ -398,6 +404,11 @@ mod tests {
     fn a_date_is_shown_as_the_owner_reads_one() {
         assert_eq!(day("2026-07-11"), "11. Jul. 2026");
         assert_eq!(day("sometime"), "sometime");
+    }
+
+    #[test]
+    fn us110_a_month_is_shown_as_a_date_is_without_its_day() {
+        assert_eq!(month(time::macros::date!(2019 - 04 - 01)), "Apr. 2019");
     }
 
     #[test]

@@ -10,6 +10,7 @@ use trip_archive_types::{CollectionSummary, TripKind, TripSummary, VERSION};
 
 use crate::api::{self, ApiClient};
 use crate::collection_table::NO_COLLECTIONS;
+use crate::date_range::{self, Months};
 use crate::filter_bar::FilterBar;
 use crate::filters::Filters;
 use crate::format;
@@ -54,7 +55,8 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // How many of each kind on there are in all (US-61), counted with every
     // filter dropped: the trips of both kinds from one unfiltered read, the
     // collections by the archive — a listed collection comes with its
-    // tracks' marks.
+    // tracks' marks. The unfiltered trips are the date slider's bars too
+    // (US-110).
     //
     // Each read only when its side is switched on: scoped by memos rather
     // than the filters themselves, so neither a typed character nor
@@ -62,16 +64,13 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // numbers each time.
     let has_trips = use_memo(move || kinds().has_trips());
     let has_collections = use_memo(move || kinds().has_collections());
-    let trip_count = use_resource(move || async move {
+    let all_trips = use_resource(move || async move {
         if !has_trips() {
             return None;
         }
-        Some(
-            api::list_trips(&archive(), String::new())
-                .await
-                .map(|trips| trip_totals(&trips)),
-        )
+        Some(api::list_trips(&archive(), String::new()).await)
     });
+    let mut dateless = date_range::use_dateless_trips(filters);
     let collection_count = use_resource(move || async move {
         if !has_collections() {
             return None;
@@ -80,13 +79,14 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     });
     // A failure here costs the count line, not the list — the same trade the
     // tags make above.
+    let all_trips = all_trips.read_unchecked();
+    let all_trips = all_trips
+        .as_ref()
+        .and_then(Option::as_ref)
+        .and_then(|trips| trips.as_ref().ok());
     let totals = totals(
         kinds(),
-        trip_count
-            .read_unchecked()
-            .clone()
-            .flatten()
-            .and_then(Result::ok),
+        all_trips.map(|trips| trip_totals(trips)),
         collection_count
             .read_unchecked()
             .clone()
@@ -130,6 +130,24 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     // the page the table shows.
     let mapped = rows.map(Listed::mapped);
     let matched = rows.map(|rows| rows.matched(kinds())).unwrap_or_default();
+    // What the other filters match, for the date slider's bars (US-110):
+    // with no date set, the list itself; with one, the read without it. Until
+    // that read answers, the list stands in — still the one from before the
+    // date was set, as a resource keeps its last answer while it reads anew.
+    let listed_trips = rows.map(|rows| rows.trips.as_slice());
+    let dateless_trips = dateless.read_unchecked();
+    let dateless_trips = dateless_trips
+        .as_ref()
+        .and_then(Option::as_ref)
+        .and_then(|trips| trips.as_ref().ok())
+        .map(Vec::as_slice)
+        .filter(|_| date_range::has_dates(&filters.read()));
+    let months = Months::of(
+        date_range::today(),
+        kinds(),
+        all_trips.map(Vec::as_slice),
+        dateless_trips.or(listed_trips).unwrap_or_default(),
+    );
     // Whether a deploy has happened since this page loaded (US-68). Until
     // the server answers, or if it cannot, nothing says so.
     let server_version = use_resource(move || async move { api::server_version(&archive()).await });
@@ -146,7 +164,7 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
             h1 { "Trips" }
             VersionLabel { outdated }
         }
-        FilterBar { filters, all_tags: all_tags.clone(), matched: matched.clone() }
+        FilterBar { filters, all_tags: all_tags.clone(), matched: matched.clone(), months }
         RegionFilter { filters, mapped }
         if let (Some(rows), Some(totals)) = (rows, totals) {
             ListCounts { counts: counts(&matched, &totals), rows: rows.len(), page: page() }
@@ -162,7 +180,10 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
                 tag_resource.restart();
                 // A tag- or activity-filtered list may no longer hold them.
                 match of {
-                    Selected::Trips => trips.restart(),
+                    Selected::Trips => {
+                        trips.restart();
+                        dateless.restart();
+                    }
                     Selected::Collections | Selected::CollectionTracks => collections.restart(),
                 }
             },
@@ -433,6 +454,8 @@ fn EmptyState(filters: Signal<Filters>) -> Element {
 
 #[cfg(test)]
 mod collections_tests;
+#[cfg(test)]
+mod dates_tests;
 #[cfg(test)]
 mod kinds_tests;
 #[cfg(test)]

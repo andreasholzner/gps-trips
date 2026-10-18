@@ -151,6 +151,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-107](#us-107--plans-and-collection-tracks-in-a-tag-summary) | ✅     | Plans and collection tracks in a tag summary | [Statistics](#statistics)                                           |
 | [US-108](#us-108--recorded-or-planned-on-the-trip-page)       | ✅     | Recorded or planned on the trip page         | [Trip page](#trip-page)                                             |
 | [US-109](#us-109--winter-trips-only-in-the-north)             | ✅     | Winter trips only in the north               | [Import](#import)                                                   |
+| [US-110](#us-110--date-range-slider)                          | ✅     | Date range slider                            | [Trip list & map](#trip-list--map)                                  |
 
 ### Maintaining this file
 
@@ -811,6 +812,39 @@ gallery are unchanged: such a photo is still shown where Komoot put it.
 
 **Decisions:** US-101 → ADR-0011 (filtering on SQLite), ADR-0018 (the `LocationSource` set is
 unchanged; `provided` is told apart by position, not by a new value)
+
+### US-110 — Date range slider
+
+**Done ✅** — As the owner, I narrow the trip list to a stretch of time by dragging the two ends
+of one slider, and see where my trips cluster while I do, instead of picking two dates.
+
+**Acceptance criteria:** Under "More filters" (US-61), the From and To date fields become one
+"Dates" slider with two handles that move in whole months. Its left end is the month of the oldest
+trip of the kinds on (US-90), its right end the current month, labelled "today". Above the track, a
+bar per month: its full height is how many trips of the kinds on started in that month, counted
+from the unfiltered read the trip counts already make (US-61), so the bars keep their scale while
+other filters change; its lower part, in a stronger shade, is how many of those match every other
+filter — all but the dates. With no other filter set, the whole bar is the stronger shade. The
+bars between the handles are in two shades of the accent blue, those outside in two shades of
+gray; both shades stay clearly visible against the background, and dark mode has its own set, the
+matching part still the one that stands out. No new API is needed: the matching counts come
+from the trips the list reads when no date is set, and from a second read with the same query
+without `from` and `to` while one is. The chosen range is shown as
+text above the slider ("Apr 2019 – today"), "Any date" while both handles sit at the ends. A handle
+at an end means no limit on that side: its `from` or `to` is left out of the query and the URL
+(US-52), so "Clear filters" and a link without dates put both handles at the ends, and a planned
+trip dated after today is still listed. Moved inward, the left handle sets `from` to the first day
+of its month and the right one `to` to the last day of its month; what a date filter matches is
+unchanged (US-13). A date arriving in a link that is not a month boundary keeps filtering by that
+exact day, with its handle on the month holding it, until the handle is moved; a date outside the
+slider's span puts its handle at the nearer end. Each handle can be moved with the arrow keys, a
+month per press, and is named with its month to screen readers. Until the trips are read the slider
+is shown without bars; with no dated trip of the kinds on, it spans the current month alone. Tested
+(ADR-0012): the span and the months' total and matching counts from the trips, with and without
+other filters, handle position to `from`/`to` and back
+including the ends, a day-exact date from a link, and the rendered slider.
+
+**Decisions:** US-110 → ADR-0011 (date filtering unchanged), ADR-0012 (tested as listed)
 
 ## Trip page
 

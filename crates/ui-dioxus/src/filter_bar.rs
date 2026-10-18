@@ -15,6 +15,7 @@ use dioxus::prelude::*;
 use trip_archive_types::{ActivityType, Tag};
 
 use crate::activity_select::{choices, ActivitySelect, Choice};
+use crate::date_range::{DateRange, Months};
 use crate::filters::Filters;
 use crate::kinds::Kind;
 use crate::linked::RecordedTripChoice;
@@ -31,12 +32,14 @@ use crate::list_table::LineSwatch;
 /// The filters behind the disclosure are about trips alone: with no kind of
 /// trip on (US-87, US-90) they are not rendered, and keep their values for
 /// when the owner switches one back on. `matched` says how many of each kind
-/// on the filters match, once read.
+/// on the filters match, once read; `months` what the date slider draws
+/// (US-110).
 #[component]
 pub fn FilterBar(
     filters: Signal<Filters>,
     all_tags: Vec<Tag>,
     #[props(default)] matched: Vec<(Kind, usize)>,
+    months: Months,
 ) -> Element {
     let about_trips = filters.read().kinds.has_trips();
     rsx! {
@@ -79,7 +82,7 @@ pub fn FilterBar(
         if about_trips {
             details {
                 summary { "More filters" }
-                MoreFilters { filters, all_tags }
+                MoreFilters { filters, all_tags, months }
             }
         }
     }
@@ -141,25 +144,10 @@ fn KindToggles(filters: Signal<Filters>, matched: Vec<(Kind, usize)>) -> Element
 /// filter arriving in a shared link (US-52) already shows its value the
 /// moment the owner opens it.
 #[component]
-fn MoreFilters(filters: Signal<Filters>, all_tags: Vec<Tag>) -> Element {
+fn MoreFilters(filters: Signal<Filters>, all_tags: Vec<Tag>, months: Months) -> Element {
     rsx! {
         div { class: "filter-fields",
-            label {
-                "From "
-                input {
-                    r#type: "date",
-                    value: "{filters.read().from}",
-                    oninput: move |event| filters.write().from = event.value(),
-                }
-            }
-            label {
-                "To "
-                input {
-                    r#type: "date",
-                    value: "{filters.read().to}",
-                    oninput: move |event| filters.write().to = event.value(),
-                }
-            }
+            DateRange { filters, months }
             label {
                 "Min km "
                 input {
@@ -248,6 +236,16 @@ mod tests {
     use crate::test_support::render;
     use trip_archive_types::RecordedTripFilter;
 
+    /// The date slider's months before any trip is read (US-110).
+    fn no_months() -> Months {
+        Months::of(
+            time::macros::date!(2026 - 10 - 17),
+            crate::kinds::Kinds::default(),
+            None,
+            &[],
+        )
+    }
+
     fn some_tags() -> Vec<Tag> {
         vec![
             Tag {
@@ -304,7 +302,7 @@ mod tests {
                 q: "oslo".to_string(),
                 ..Default::default()
             });
-            rsx! { FilterBar { filters, all_tags: some_tags() } }
+            rsx! { FilterBar { filters, all_tags: some_tags(), months: no_months() } }
         });
 
         let toolbar = html
@@ -335,14 +333,15 @@ mod tests {
     fn the_occasional_filters_sit_behind_the_disclosure() {
         let html = render(|| {
             let filters = Signal::new(Filters::default());
-            rsx! { FilterBar { filters, all_tags: some_tags() } }
+            rsx! { FilterBar { filters, all_tags: some_tags(), months: no_months() } }
         });
 
         let disclosure = html.split_once("<details").expect("no disclosure").1;
         assert!(disclosure.contains("More filters"), "{html}");
         for expected in [
-            "From",
-            "To",
+            "Dates",
+            "Earliest month",
+            "Latest month",
             "Min km",
             "Max km",
             "Unnamed",
@@ -371,10 +370,10 @@ mod tests {
                 tags: vec!["alpine".to_string()],
                 ..Default::default()
             });
-            rsx! { FilterBar { filters, all_tags: some_tags() } }
+            rsx! { FilterBar { filters, all_tags: some_tags(), months: no_months() } }
         });
 
-        assert!(html.contains("2026-07-01"), "{html}");
+        assert!(html.contains("Jul. 2026 – today"), "{html}");
         assert!(html.contains("42"), "{html}");
         assert!(html.contains("checked"), "the chosen tag is ticked: {html}");
     }
@@ -390,7 +389,7 @@ mod tests {
                     unplaced,
                     ..Default::default()
                 });
-                rsx! { FilterBar { filters, all_tags: Vec::new() } }
+                rsx! { FilterBar { filters, all_tags: Vec::new(), months: no_months() } }
             });
 
             let ticked = html
@@ -414,7 +413,7 @@ mod tests {
     fn us99_the_recorded_trip_filter_is_offered_with_planned_trips_or_collections() {
         let recorded_only = render(|| {
             let filters = Signal::new(Filters::default());
-            rsx! { FilterBar { filters, all_tags: some_tags() } }
+            rsx! { FilterBar { filters, all_tags: some_tags(), months: no_months() } }
         });
         let planned = render(|| {
             let filters = Signal::new(Filters {
@@ -422,7 +421,7 @@ mod tests {
                 recorded_trip: Some(RecordedTripFilter::Without),
                 ..Default::default()
             });
-            rsx! { FilterBar { filters, all_tags: some_tags() } }
+            rsx! { FilterBar { filters, all_tags: some_tags(), months: no_months() } }
         });
 
         assert!(
@@ -451,13 +450,13 @@ mod tests {
                 from: "2026-07-01".to_string(),
                 ..Default::default()
             });
-            rsx! { FilterBar { filters, all_tags: some_tags() } }
+            rsx! { FilterBar { filters, all_tags: some_tags(), months: no_months() } }
         });
 
         for expected in ["Collections", "Search", "alp", "Activity", "Clear filters"] {
             assert!(html.contains(expected), "missing {expected}: {html}");
         }
-        for hidden in ["More filters", "2026-07-01", "alpine"] {
+        for hidden in ["More filters", "Jul. 2026", "alpine"] {
             assert!(!html.contains(hidden), "{hidden} is about trips: {html}");
         }
     }

@@ -17,6 +17,7 @@ mod collection_table;
 mod collection_track;
 mod collections;
 mod config;
+mod date_range;
 mod delete;
 mod detail;
 mod edit;

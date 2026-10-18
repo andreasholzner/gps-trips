@@ -132,3 +132,133 @@ h1 > .kind-swatch .swatch {
   background: transparent;
   color: var(--pico-primary);
 }
+
+/* The date filter as one slider over the trips' months (US-110), across the
+   whole row of `.filter-fields`. Its handles are Pico's own range thumbs on
+   two range inputs laid over one another; the inputs let clicks through
+   to each other and only their thumbs catch the pointer, and the track
+   between the handles is drawn underneath. The bars' shades: every trip of
+   a month and, stronger, the ones the other filters match — blue between
+   the handles, gray outside, the matching part the one that stands out in
+   either theme. */
+.filter-fields > .date-range {
+  grid-column: 1 / -1;
+  margin-bottom: var(--pico-spacing);
+}
+
+.date-range {
+  --date-thumb: 1.25rem;
+  --date-bar: #bcc3cf;
+  --date-bar-match: #6b7383;
+  --date-bar-in: #9ccbe8;
+  --date-bar-in-match: #1f78b4;
+}
+
+@media only screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .date-range {
+    --date-bar: #3a4352;
+    --date-bar-match: #8f99a8;
+    --date-bar-in: #1e4f72;
+    --date-bar-in-match: #4fb3e8;
+  }
+}
+
+.date-range legend {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.date-range legend output {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The bars and the year marks span what the track does, between the
+   handles' centres at either end; the first and last bar reach half a month
+   past it. */
+.date-bars {
+  display: block;
+  width: calc(100% - var(--date-thumb));
+  height: 4rem;
+  margin: 0 calc(var(--date-thumb) / 2) 0.25rem;
+  overflow: visible;
+}
+
+.date-bars .bar .total {
+  fill: var(--date-bar);
+}
+
+.date-bars .bar .match {
+  fill: var(--date-bar-match);
+}
+
+.date-bars .bar.in .total {
+  fill: var(--date-bar-in);
+}
+
+.date-bars .bar.in .match {
+  fill: var(--date-bar-in-match);
+}
+
+.date-slider {
+  position: relative;
+  height: var(--date-thumb);
+}
+
+.date-track {
+  position: absolute;
+  left: calc(var(--date-thumb) / 2);
+  top: calc(50% - 0.1875rem);
+  width: calc(100% - var(--date-thumb));
+  height: 0.375rem;
+  border-radius: var(--pico-border-radius);
+  fill: var(--pico-range-border-color);
+}
+
+.date-track .date-fill {
+  fill: var(--pico-primary);
+}
+
+.date-slider input[type="range"] {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  margin: 0;
+  pointer-events: none;
+}
+
+.date-slider input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.date-slider input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.date-slider input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+}
+
+.date-slider input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+}
+
+.date-slider input.on-top {
+  z-index: 1;
+}
+
+.date-ticks {
+  display: block;
+  width: calc(100% - var(--date-thumb));
+  height: 1.25rem;
+  margin: 0 calc(var(--date-thumb) / 2);
+  overflow: visible;
+  font-size: 0.75rem;
+  fill: var(--pico-muted-color);
+  text-anchor: middle;
+  dominant-baseline: hanging;
+}
