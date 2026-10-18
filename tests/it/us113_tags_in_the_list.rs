@@ -48,7 +48,12 @@ async fn us113_a_listed_collection_and_its_tracks_come_with_their_own_tags() {
     let track = detail.tracks[0].id;
     tag(&app, &format!("/api/collections/{id}/tags"), "guidebook").await;
     tag(&app, &format!("/api/collections/{id}/tags"), "alps").await;
-    tag(&app, &format!("/api/collection-tracks/{track}/tags"), "ridge").await;
+    tag(
+        &app,
+        &format!("/api/collection-tracks/{track}/tags"),
+        "ridge",
+    )
+    .await;
 
     let collections: Vec<CollectionSummary> = read_json(&app, "/api/collections").await;
 

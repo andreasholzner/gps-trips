@@ -371,7 +371,10 @@ fn tagged(tags: &[&str]) -> Vec<String> {
 }
 
 fn summary_of(tag: &str) -> String {
-    Route::Summary { view: crate::SummaryView::of(tag) }.to_string()
+    Route::Summary {
+        view: crate::SummaryView::of(tag),
+    }
+    .to_string()
 }
 
 /// The cells of a row, as their inner HTML.
@@ -393,19 +396,31 @@ fn us113_the_activity_comes_before_the_name_and_the_tags_after_it() {
     let tags = head.find(">Tags<").unwrap();
     let date = head.find(">Date<").unwrap();
     assert!(activity < name && name < tags && tags < date, "{head}");
-    assert!(cells(row(&html, "Oslo Hills Walk"))[2].contains(r#"href="/trips/1""#), "{html}");
+    assert!(
+        cells(row(&html, "Oslo Hills Walk"))[2].contains(r#"href="/trips/1""#),
+        "{html}"
+    );
 }
 
 #[test]
 fn us113_the_kinds_line_follows_the_activitys_icon_in_its_cell() {
     // In the order a trip's heading has them (US-108).
     let collection = a_collection(3, "Alpencross", vec![a_track(4, "Etappe 6")]);
-    let html = table(vec![a_trip(1, "Oslo Hills Walk")], vec![collection], &[], &[3]);
+    let html = table(
+        vec![a_trip(1, "Oslo Hills Walk")],
+        vec![collection],
+        &[],
+        &[3],
+    );
 
     for name in ["Oslo Hills Walk", "Alpencross", "Etappe 6"] {
         let cell = cells(row(&html, name))[1];
-        let icon = cell.find("activity-icon").unwrap_or_else(|| panic!("{name}: {cell}"));
-        let swatch = cell.find("kind-swatch").unwrap_or_else(|| panic!("{name}: {cell}"));
+        let icon = cell
+            .find("activity-icon")
+            .unwrap_or_else(|| panic!("{name}: {cell}"));
+        let swatch = cell
+            .find("kind-swatch")
+            .unwrap_or_else(|| panic!("{name}: {cell}"));
         assert!(icon < swatch, "{name}: {cell}");
     }
 }
@@ -471,9 +486,16 @@ fn us113_collections_and_their_tracks_show_their_own_tags() {
 fn us113_every_row_spans_as_many_columns_as_the_header() {
     let collection = a_collection(3, "Alpencross", vec![a_track(4, "Etappe 6")]);
 
-    let html = table(vec![a_trip(1, "Oslo Hills Walk")], vec![collection], &[], &[3]);
+    let html = table(
+        vec![a_trip(1, "Oslo Hills Walk")],
+        vec![collection],
+        &[],
+        &[3],
+    );
 
-    let columns = html[..html.find("</thead>").unwrap()].matches("</th>").count();
+    let columns = html[..html.find("</thead>").unwrap()]
+        .matches("</th>")
+        .count();
     for name in ["Oslo Hills Walk", "Alpencross", "Etappe 6"] {
         assert_eq!(spanned(row(&html, name)), columns, "{name}: {html}");
     }

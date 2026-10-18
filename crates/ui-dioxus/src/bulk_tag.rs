@@ -187,8 +187,14 @@ mod tests {
         // The same rules the server enforces (US-33/US-38), applied through
         // the shared normalizer rather than mirrored by hand — so a name the
         // client accepts can't be one the server 400s.
-        assert!(matches!(classify("day trip", &known_tags()), Typed::Invalid(_)));
-        assert!(matches!(classify("day,trip", &known_tags()), Typed::Invalid(_)));
+        assert!(matches!(
+            classify("day trip", &known_tags()),
+            Typed::Invalid(_)
+        ));
+        assert!(matches!(
+            classify("day,trip", &known_tags()),
+            Typed::Invalid(_)
+        ));
         assert!(matches!(classify("   ", &known_tags()), Typed::Invalid(_)));
     }
 
