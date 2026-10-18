@@ -49,7 +49,7 @@ async fn a_pending_edit(
 }
 
 /// Like `a_pending_edit`, but the trip is stored as `Planned` (US-29) — used
-/// to prove the push never rewrites a planned route's sport.
+/// to prove the push never sends a planned route's sport.
 async fn a_pending_planned_edit(
     pool: &SqlitePool,
     tour_id: &str,
@@ -91,18 +91,17 @@ async fn a_pending_planned_edit(
 }
 
 #[tokio::test]
-async fn push_pending_edits_never_changes_a_planned_routes_sport_even_when_activity_type_changed() {
+async fn push_pending_edits_never_sends_a_planned_routes_sport_even_when_activity_type_changed() {
     let db = TestDb::new().await;
-    // A planned route whose live Komoot sport is `mtb`; the owner changed its
-    // in-archive activity_type to Hiking. For a *recorded* trip the push would
-    // remap to `hike`, but a planned route's sport drives Komoot's routing, so
-    // it must be resent unchanged (`mtb`) — only the name goes across.
+    // The owner changed a planned route's in-archive activity_type to Hiking.
+    // For a *recorded* trip the push would remap to `hike`, but Komoot rejects
+    // any `sport` on a planned tour (400 "Sport can't be updated for planned
+    // tours"), so the field is left out — only the name goes across. No
+    // `tour_details` are configured: the live sport isn't needed, so the push
+    // must not fetch it.
     let trip_id = a_pending_planned_edit(&db.pool, "555", "New Name", ActivityType::Hiking).await;
 
-    let mock = Arc::new(MockKomootClient {
-        tour_details: HashMap::from([("555".to_string(), a_tour("555", "irrelevant", "mtb"))]),
-        ..Default::default()
-    });
+    let mock = Arc::new(MockKomootClient::default());
     let client: Arc<dyn KomootClient> = mock.clone();
 
     let summary = push_pending_edits(&db.pool, client).await.unwrap();
@@ -112,13 +111,8 @@ async fn push_pending_edits_never_changes_a_planned_routes_sport_even_when_activ
     let calls = mock.update_tour_calls.lock().unwrap();
     assert_eq!(
         *calls,
-        vec![(
-            "555".to_string(),
-            "New Name".to_string(),
-            "mtb".to_string(),
-            None
-        )],
-        "planned route's sport must be resent unchanged, name updated"
+        vec![("555".to_string(), "New Name".to_string(), None, None)],
+        "planned route's sport must be omitted, name updated"
     );
 }
 
@@ -146,7 +140,7 @@ async fn push_pending_edits_reuses_the_live_sport_when_activity_type_is_unchange
         vec![(
             "555".to_string(),
             "New Name".to_string(),
-            "mtb".to_string(),
+            Some("mtb".to_string()),
             None
         )]
     );
@@ -176,7 +170,7 @@ async fn push_pending_edits_remaps_the_sport_when_activity_type_actually_changed
         vec![(
             "555".to_string(),
             "New Name".to_string(),
-            "hike".to_string(),
+            Some("hike".to_string()),
             None
         )]
     );

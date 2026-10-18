@@ -4,9 +4,10 @@
 
 use super::*;
 
-/// One recorded `update_tour` call: tour id, name, sport, and the `status`
-/// (privacy) the push sent — `None` when it deliberately omitted the field.
-pub(super) type UpdateTourCall = (String, String, String, Option<String>);
+/// One recorded `update_tour` call: tour id, name, and the `sport` and
+/// `status` (privacy) the push sent — each `None` when it deliberately
+/// omitted the field.
+pub(super) type UpdateTourCall = (String, String, Option<String>, Option<String>);
 
 #[derive(Default)]
 pub(super) struct MockKomootClient {
@@ -149,7 +150,7 @@ impl KomootClient for MockKomootClient {
         self.update_tour_calls.lock().unwrap().push((
             tour_id.to_string(),
             update.name.to_string(),
-            update.sport.to_string(),
+            update.sport.map(str::to_string),
             update.status.map(str::to_string),
         ));
         if self.fail_update_tour_for.contains(tour_id) {

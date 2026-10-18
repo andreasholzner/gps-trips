@@ -111,9 +111,8 @@ background daemon — so ingestion must be a **pull triggered by an explicit act
   table, no schema change. An edit or delete of a planned trip in the archive therefore syncs back
   to Komoot through the same push machinery as a recorded one.
   - **`sport` is never pushed for planned trips.** A tour's `sport` drives Komoot's route planning
-    for a planned route, so pushing a remapped sport could silently re-route a plan; the push phase
-    always resends a planned trip's live Komoot `sport` unchanged. Name edits and deletes push
-    normally.
+    for a planned route, so pushing a remapped sport could silently re-route a plan. Name edits and
+    deletes push normally.
   - **Triggers:** planned tours appear as selectable candidates on the "Sync now" review page
     alongside recorded ones, labeled by kind, and `komoot_backfill --planned` pulls them in bulk
     from the terminal. Each review-page selection carries its kind back to the server, so an import

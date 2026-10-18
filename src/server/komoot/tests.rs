@@ -71,3 +71,15 @@ fn cover_images_response_parses_a_photo_whose_dimensions_are_null() {
     let photo = &parsed.embedded.items[0];
     assert_eq!((photo.width_px, photo.height_px), (None, None));
 }
+
+#[test]
+fn update_tour_request_omits_sport_when_none() {
+    // Komoot rejects any `sport` on a planned tour with a 400 ("Sport can't
+    // be updated for planned tours"), even an unchanged one.
+    let body = UpdateTourRequest {
+        sport: None,
+        name: "Loop",
+        status: None,
+    };
+    assert_eq!(serde_json::to_string(&body).unwrap(), r#"{"name":"Loop"}"#);
+}

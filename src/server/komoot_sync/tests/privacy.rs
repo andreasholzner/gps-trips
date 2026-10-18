@@ -134,7 +134,7 @@ async fn push_pending_edits_sends_the_chosen_privacy_as_status() {
         vec![(
             "555".to_string(),
             "Original Name".to_string(),
-            "hike".to_string(),
+            Some("hike".to_string()),
             Some("public".to_string())
         )]
     );
@@ -212,19 +212,13 @@ async fn push_pending_edits_sends_privacy_for_a_planned_route_too() {
     .await
     .unwrap();
 
-    let mock = Arc::new(MockKomootClient {
-        tour_details: HashMap::from([(
-            "777".to_string(),
-            a_tour_with_status("777", "irrelevant", "mtb", "public"),
-        )]),
-        ..Default::default()
-    });
+    let mock = Arc::new(MockKomootClient::default());
     let client: Arc<dyn KomootClient> = mock.clone();
 
     push_pending_edits(&db.pool, client).await.unwrap();
 
     let calls = mock.update_tour_calls.lock().unwrap();
-    assert_eq!(calls[0].2, "mtb", "planned sport still resent unchanged");
+    assert_eq!(calls[0].2, None, "planned sport still omitted");
     assert_eq!(calls[0].3, Some("private".to_string()));
 }
 

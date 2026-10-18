@@ -469,8 +469,10 @@ pub async fn push_pending_edits(
     Ok(summary)
 }
 
-/// Push one trip's pending edit to Komoot. Reads the tour's *live* current
-/// sport first and only sends a remapped sport (via
+/// Push one trip's pending edit to Komoot. A planned route's sport is never
+/// sent (US-29): Komoot rejects any `sport` on a planned tour, even an
+/// unchanged one. For a recorded tour, reads the tour's *live* current sport
+/// first and only sends a remapped sport (via
 /// `komoot_sport::activity_to_sport`) when it actually disagrees with the
 /// trip's local `activity_type` — otherwise resends the live sport
 /// unchanged, so an edit that only touched the name doesn't downgrade a
@@ -480,13 +482,6 @@ async fn push_one_edit(
     client: &Arc<dyn KomootClient>,
     edit: &repo::komoot::EditPending,
 ) -> Result<(), AppError> {
-    let live = blocking_call({
-        let client = Arc::clone(client);
-        let tour_id = edit.komoot_tour_id.clone();
-        move || client.get_tour(&tour_id)
-    })
-    .await?;
-
     // Only ever push a privacy this app understands (ADR-0021): an `unknown`
     // (or absent) one omits Komoot's `status` field entirely, so an edit that
     // was really about the name can't overwrite a privacy state the archive
@@ -494,14 +489,19 @@ async fn push_one_edit(
     let outgoing_status = edit.privacy.and_then(|p| p.komoot_status());
 
     let outgoing_sport = if edit.trip_kind == TripKind::Planned {
-        // Never change a planned route's sport (US-29) — it drives Komoot's
-        // route planning, so resend whatever Komoot currently has regardless
-        // of any in-archive activity_type edit.
-        live.sport
-    } else if komoot_sport::map_sport(&live.sport) == edit.activity_type {
-        live.sport
+        None
     } else {
-        komoot_sport::activity_to_sport(edit.activity_type).to_string()
+        let live = blocking_call({
+            let client = Arc::clone(client);
+            let tour_id = edit.komoot_tour_id.clone();
+            move || client.get_tour(&tour_id)
+        })
+        .await?;
+        if komoot_sport::map_sport(&live.sport) == edit.activity_type {
+            Some(live.sport)
+        } else {
+            Some(komoot_sport::activity_to_sport(edit.activity_type).to_string())
+        }
     };
 
     blocking_call({
@@ -513,7 +513,7 @@ async fn push_one_edit(
                 &tour_id,
                 &TourUpdate {
                     name: &name,
-                    sport: &outgoing_sport,
+                    sport: outgoing_sport.as_deref(),
                     status: outgoing_status,
                 },
             )

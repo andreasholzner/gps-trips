@@ -225,10 +225,11 @@ pub trait KomootClient: Send + Sync {
     /// send for `Cycling`.
     fn get_tour(&self, tour_id: &str) -> Result<KomootTourSummary, KomootError>;
 
-    /// Updates a tour's name, sport and (optionally) privacy
+    /// Updates a tour's name and (optionally) sport and privacy
     /// (`PATCH /v007/tours/{tour_id}`, US-20/US-35) — the push half of
-    /// ADR-0021's edit sync. A `TourUpdate` with `status: None` omits the
-    /// privacy field entirely, leaving whatever Komoot has untouched.
+    /// ADR-0021's edit sync. A `TourUpdate` with `sport: None` or
+    /// `status: None` omits that field entirely, leaving whatever Komoot has
+    /// untouched.
     fn update_tour(&self, tour_id: &str, update: &TourUpdate<'_>) -> Result<(), KomootError>;
 
     /// Deletes a tour (`DELETE /v007/tours/{tour_id}`, US-24) — the push half
@@ -508,19 +509,22 @@ impl KomootClient for KomootHttpClient {
 /// call site can't silently swap `name` and `sport`, or `sport` and `status`.
 pub struct TourUpdate<'a> {
     pub name: &'a str,
-    pub sport: &'a str,
+    /// The sport to set, or `None` to leave Komoot's alone — Komoot rejects
+    /// any `sport` on a planned tour, even an unchanged one (US-29).
+    pub sport: Option<&'a str>,
     /// The privacy to set, or `None` to leave Komoot's alone — the archive
     /// only ever sends a privacy it understands (ADR-0021).
     pub status: Option<&'a str>,
 }
 
-/// The `PATCH /v007/tours/{tour_id}` request body (US-20/US-35). `status` is
-/// dropped from the JSON entirely when there's nothing to say about privacy,
-/// rather than sent as `null` — the field is optional on Komoot's side
+/// The `PATCH /v007/tours/{tour_id}` request body (US-20/US-35). `sport` and
+/// `status` are dropped from the JSON entirely when there's nothing to say,
+/// rather than sent as `null` — both are optional on Komoot's side
 /// (`docs/komoot-api.md`), and a `null` might well be read as "clear it".
 #[derive(serde::Serialize)]
 struct UpdateTourRequest<'a> {
-    sport: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sport: Option<&'a str>,
     name: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<&'a str>,

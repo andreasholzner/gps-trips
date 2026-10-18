@@ -364,10 +364,13 @@ GPX/FIT bytes.
 PATCH /v007/tours/{tour_id}
 Auth: Basic
 Headers: Content-Type: application/json
-Body: { "sport": "...", "name": "...", "status"?: "..." }
+Body: { "sport"?: "...", "name": "...", "status"?: "..." }
 ```
 
 - `200` — success.
+- `400` — `{"status":400,"error":"Validation","message":"Sport can't be updated for planned tours"}`
+  when `sport` is sent for a planned tour, even with its current value. Omitting `sport` leaves it
+  untouched.
 
 `status` is the tour's privacy. Two values are confirmed against a real account: `private` and
 `public` — both as read from the list/detail responses and as written here. Komoot may have others;
