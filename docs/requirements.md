@@ -856,11 +856,12 @@ including the ends, a day-exact date from a link, and the rendered slider.
 **Done ✅** — As the owner, I see in the trip list what each entry is tagged with, and reach a tag's
 summary (US-78) from there, without opening the entry's page.
 
-**Acceptance criteria:** The trip list's activity column comes before the name, and a Tags column
-follows the name. Each trip, collection and collection track lists its own tags there (US-93: a
-collection's are not its tracks'), alphabetically, each linking to that tag's summary as a tag on a
-trip's page does. The tags come with the rows from the JSON API (ADR-0008). Tested (ADR-0012) at the
-API and the component layer.
+**Acceptance criteria:** The trip list's activity column comes before the name and holds the kind's
+line style (US-90) after the activity icon, in the order a trip's heading has them (US-108), so the
+kind needs no column of its own; a Tags column follows the name. Each trip, collection and
+collection track lists its own tags there (US-93: a collection's are not its tracks'),
+alphabetically, each linking to that tag's summary as a tag on a trip's page does. The tags come
+with the rows from the JSON API (ADR-0008). Tested (ADR-0012) at the API and the component layer.
 
 **Decisions:** US-113 → ADR-0008 (the rows carry their tags), ADR-0028 (each kind's tags are its own)
 

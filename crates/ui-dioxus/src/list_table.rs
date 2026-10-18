@@ -68,7 +68,7 @@ pub fn ListTable(
         .collect();
 
     rsx! {
-        // Nine columns don't fit a phone: the table scrolls inside this
+        // Eight columns don't fit a phone: the table scrolls inside this
         // box so the page itself never scrolls sideways (US-41), at the
         // width its columns need rather than squeezed to the box's (US-63).
         div { class: "table-scroll",
@@ -76,7 +76,6 @@ pub fn ListTable(
             thead {
                 tr {
                     th { PickAll { listed, picked } }
-                    th { span { class: "visually-hidden", "Kind" } }
                     th { "Activity" }
                     th { "Name" }
                     th { "Tags" }
@@ -112,8 +111,12 @@ fn TripRow(trip: TripSummary, picked: Signal<BTreeSet<Picked>>) -> Element {
     rsx! {
         tr {
             td { PickOne { pick: trip_pick(&trip), picked } }
-            td { KindSwatch { kind: Kind::of_trip(trip.trip_kind), color: activity_color::color(trip.activity_type), name } }
-            td { ActivityIcon { activity: trip.activity_type } }
+            td {
+                span { class: "activity-kind",
+                    ActivityIcon { activity: trip.activity_type }
+                    KindSwatch { kind: Kind::of_trip(trip.trip_kind), color: activity_color::color(trip.activity_type), name }
+                }
+            }
             td {
                 // A router `Link`, so the detail screen (US-42) is reached
                 // without a page load — and so the href picks up the
@@ -147,10 +150,12 @@ fn CollectionRows(
     rsx! {
         tr { class: "collection-group",
             td { PickOne { pick: Picked::Collection(id), picked } }
-            td { KindSwatch { kind: Kind::Collections, color: activity_color::color(activity), name: "Collection" } }
             td {
-                if let Some(activity) = collection.activity_type {
-                    ActivityIcon { activity }
+                span { class: "activity-kind",
+                    if let Some(activity) = collection.activity_type {
+                        ActivityIcon { activity }
+                    }
+                    KindSwatch { kind: Kind::Collections, color: activity_color::color(activity), name: "Collection" }
                 }
             }
             td {
@@ -186,8 +191,12 @@ fn TrackRow(track: CollectionTrackMark, picked: Signal<BTreeSet<Picked>>) -> Ele
     rsx! {
         tr { class: "collection-track",
             td { PickOne { pick: Picked::Track(track.id), picked } }
-            td { KindSwatch { kind: Kind::Collections, color: activity_color::color(track.activity_type), name: "Collection track" } }
-            td { ActivityIcon { activity: track.activity_type } }
+            td {
+                span { class: "activity-kind",
+                    ActivityIcon { activity: track.activity_type }
+                    KindSwatch { kind: Kind::Collections, color: activity_color::color(track.activity_type), name: "Collection track" }
+                }
+            }
             td {
                 Link { to: Route::CollectionTrack { id: track.id }, "{track.name}" }
                 if track.has_recorded_trip {

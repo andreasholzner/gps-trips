@@ -67,14 +67,28 @@ h1 > .kind-swatch .swatch {
   height: 0.375em;
 }
 
-/* The name is the fourth column here, after the kind and the activity: it
+/* A row's activity and, after it, its kind's line (US-113), side by side
+   and in the order a trip's heading has them (US-108); the icon at the size
+   it has standing alone in a cell. */
+.activity-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.activity-kind .activity-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* The name is the third column here, after the activity and the kind: it
    is the one kept from being squeezed (as `.table-scroll td:nth-child(2)`
-   keeps a name in the other tables), not the kind's icon. */
+   keeps a name in the other tables), not the icons. */
 .list-table td:nth-child(2) {
   min-width: 0;
 }
 
-.list-table td:nth-child(4) {
+.list-table td:nth-child(3) {
   min-width: 12ch;
 }
 
@@ -99,7 +113,7 @@ h1 > .kind-swatch .swatch {
   color: var(--pico-muted-color);
 }
 
-.list-table tr.collection-track td:nth-child(4) {
+.list-table tr.collection-track td:nth-child(3) {
   padding-left: 2.5rem;
 }
 

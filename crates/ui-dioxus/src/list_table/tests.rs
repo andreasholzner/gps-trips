@@ -350,7 +350,7 @@ fn us99_a_planned_trip_or_a_track_with_a_recorded_trip_is_marked() {
     }
 }
 
-// ── US-113: the activity before the name, the tags after it ──────────────────
+// ── US-113: the activity and the kind before the name, the tags after it ─────
 
 /// The columns a row spans, counting a `colspan` as that many.
 fn spanned(row: &str) -> usize {
@@ -374,22 +374,54 @@ fn summary_of(tag: &str) -> String {
     Route::Summary { view: crate::SummaryView::of(tag) }.to_string()
 }
 
+/// The cells of a row, as their inner HTML.
+fn cells(row: &str) -> Vec<&str> {
+    row.split("<td")
+        .skip(1)
+        .map(|cell| &cell[cell.find('>').unwrap() + 1..cell.find("</td>").unwrap()])
+        .collect()
+}
+
 #[test]
 fn us113_the_activity_comes_before_the_name_and_the_tags_after_it() {
     let html = trips_only(vec![a_trip(1, "Oslo Hills Walk")]);
 
     let head = &html[..html.find("</thead>").unwrap()];
-    let kind = head.find(">Kind<").unwrap();
+    assert!(!head.contains(">Kind<"), "no column of its own: {head}");
     let activity = head.find(">Activity<").unwrap();
     let name = head.find(">Name<").unwrap();
     let tags = head.find(">Tags<").unwrap();
     let date = head.find(">Date<").unwrap();
-    assert!(kind < activity && activity < name && name < tags && tags < date, "{head}");
+    assert!(activity < name && name < tags && tags < date, "{head}");
+    assert!(cells(row(&html, "Oslo Hills Walk"))[2].contains(r#"href="/trips/1""#), "{html}");
+}
 
-    let row = row(&html, "Oslo Hills Walk");
-    let icon = row.find(r#"title="Hiking""#).unwrap();
-    let link = row.find(r#"href="/trips/1""#).unwrap();
-    assert!(icon < link, "{row}");
+#[test]
+fn us113_the_kinds_line_follows_the_activitys_icon_in_its_cell() {
+    // In the order a trip's heading has them (US-108).
+    let collection = a_collection(3, "Alpencross", vec![a_track(4, "Etappe 6")]);
+    let html = table(vec![a_trip(1, "Oslo Hills Walk")], vec![collection], &[], &[3]);
+
+    for name in ["Oslo Hills Walk", "Alpencross", "Etappe 6"] {
+        let cell = cells(row(&html, name))[1];
+        let icon = cell.find("activity-icon").unwrap_or_else(|| panic!("{name}: {cell}"));
+        let swatch = cell.find("kind-swatch").unwrap_or_else(|| panic!("{name}: {cell}"));
+        assert!(icon < swatch, "{name}: {cell}");
+    }
+}
+
+#[test]
+fn us113_a_collection_without_an_activity_has_its_kinds_line_alone() {
+    let collection = CollectionSummary {
+        activity_type: None,
+        ..a_collection(3, "Alpencross", Vec::new())
+    };
+
+    let html = table(Vec::new(), vec![collection], &[], &[]);
+
+    let cell = cells(row(&html, "Alpencross"))[1];
+    assert!(!cell.contains("activity-icon"), "{cell}");
+    assert!(cell.contains("kind-swatch"), "{cell}");
 }
 
 #[test]
