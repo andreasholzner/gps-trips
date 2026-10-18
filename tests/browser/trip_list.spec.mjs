@@ -412,34 +412,44 @@ test("on a phone the table scrolls sideways and the page does not (US-63)", asyn
   }
 });
 
-test("selected trips are tagged in one go, after confirming a new tag (US-34)", async ({
+test("Add tags the selected trips at once, a new tag after confirming it (US-34, US-112)", async ({
   page,
+  request,
 }) => {
-  // Needs the whole click sequence: select, stage, confirm, apply. The
-  // request itself is covered by the api tests in `crates/ui-dioxus`; what
-  // is only reachable here is that the screen's controls actually drive it.
+  // Needs the whole click sequence: select, add, confirm. The request
+  // itself is covered by the api tests in `crates/ui-dioxus`; what is only
+  // reachable here is that the screen's controls actually drive it.
+
+  // A tag that exists but no trip carries yet (US-83), so the trips it
+  // ends up on are only the ones Add put it on.
+  const existing = `${NEW_TAG}-old`;
+  expect((await request.post("/api/tags", { data: { name: existing } })).status()).toBe(201);
   await page.goto("/app/");
   await expect(rows(page)).toHaveCount(2);
 
   // Select every listed trip at once, and open tagging (US-90).
   await page.locator("table thead input[type=checkbox]").check();
   await page.getByRole("button", { name: "Tag…" }).click();
-  await expect(page.getByRole("button", { name: "Apply to 2 selected" })).toBeVisible();
 
-  // A tag that does not exist yet must be confirmed before it is staged, so
-  // a typo cannot quietly become a tag (US-33).
+  // An existing tag: Add alone tags them.
+  await page.getByPlaceholder("add a tag").fill(existing);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText(`Added "${existing}" to 2 selected.`)).toBeVisible();
+
+  // A tag that does not exist yet must be confirmed first, so a typo cannot
+  // quietly become a tag (US-33); confirming adds it too.
   await page.getByPlaceholder("add a tag").fill(NEW_TAG);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(`Tag "${NEW_TAG}" doesn't exist yet`)).toBeVisible();
   await page.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByText(`Added "${NEW_TAG}" to 2 selected.`)).toBeVisible();
 
-  await page.getByRole("button", { name: "Apply to 2 selected" }).click();
-
-  // The panel goes away with the selection, and the new tag is now a filter
-  // choice that lists exactly the trips it was applied to.
-  await expect(page.getByRole("button", { name: /Apply to/ })).toBeHidden();
+  // The selection stays for the next tag, and both tags are filter choices
+  // that list exactly the trips they were added to.
+  await expect(page.locator("table tbody input[type=checkbox]:checked")).toHaveCount(2);
   await page.getByText("More filters").click();
-  await page.getByRole("checkbox", { name: NEW_TAG }).check();
+  await page.getByRole("checkbox", { name: existing }).check();
+  await page.getByRole("checkbox", { name: NEW_TAG, exact: true }).check();
   await expect(rows(page)).toHaveCount(2);
 });
 

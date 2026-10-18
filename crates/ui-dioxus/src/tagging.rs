@@ -193,9 +193,8 @@ fn TagChips(tags: Vec<Tag>, on_remove: EventHandler<i64>) -> Element {
                             "{tag.name}"
                         }
                         " "
-                        // A glyph, like the staged chips on the list screen
-                        // — with the name spelled out for anyone who cannot
-                        // see which chip it belongs to.
+                        // A glyph — with the name spelled out for anyone who
+                        // cannot see which chip it belongs to.
                         button {
                             r#type: "button",
                             onclick: move |_| on_remove.call(tag.id),

@@ -50,9 +50,8 @@ pub fn Collections(#[props(default)] view: NameFilter) -> Element {
         Some(Ok(collections)) => collections.clone(),
         _ => Vec::new(),
     });
-    let mut selected = use_signal(BTreeSet::new);
-    // The names staged to tag the selection with, and the tags suggested.
-    let staged = use_signal(Vec::new);
+    let selected = use_signal(BTreeSet::new);
+    // The tags suggested when tagging the selection.
     let mut tags = use_resource(move || async move { api::list_tags(&archive()).await });
     let all_tags = match &*tags.read_unchecked() {
         Some(Ok(tags)) => tags.clone(),
@@ -66,14 +65,10 @@ pub fn Collections(#[props(default)] view: NameFilter) -> Element {
         div { class: "bulk-panels",
             BulkTagPanel {
                 ids: ids.clone(),
-                staged,
                 all_tags,
                 of: BulkTagged::Collections,
                 // A new tag may now exist: the suggestions are out of date.
-                on_applied: move |_| {
-                    selected.write().clear();
-                    tags.restart();
-                },
+                on_added: move |_| tags.restart(),
             }
             ShareSelectedPanel { ids, of: Selected::Collections }
         }

@@ -1,112 +1,108 @@
 //! Bulk-tagging the trips selected on the list screen (US-34), or the
-//! collections selected on either list of them (US-100): names are staged
-//! first, then applied to everything selected in one request.
+//! collections selected on either list of them (US-100): Add tags everything
+//! selected with the typed name in one request — at once for a tag that
+//! exists, after a confirmation for a new one (US-112).
 //!
-//! Staging is deliberately a pure function ([`stage`]) so the rules — the
-//! confirm-before-creating-a-new-tag step (US-33) and what counts as a valid
-//! name — are unit-tested without a browser. It reaches those rules through
-//! the shared crate's `normalize_tag_name`, the same function the server
-//! validates with, so a name this screen accepts is never one the server
-//! rejects.
+//! Deciding which is deliberately a pure function ([`classify`]) so the
+//! rules — the confirm-before-creating-a-new-tag step (US-33) and what counts
+//! as a valid name — are unit-tested without a browser. It reaches those
+//! rules through the shared crate's `normalize_tag_name`, the same function
+//! the server validates with, so a name this screen accepts is never one the
+//! server rejects.
 
 use dioxus::prelude::*;
 use trip_archive_types::{normalize_tag_name, Tag};
 
 use crate::api::{self, ApiClient, BulkTagged};
 
-/// What typing a tag name into the panel should do.
+/// What adding a typed tag name should do.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Staged {
-    /// A tag that already exists — stage it as typed.
+pub enum Typed {
+    /// A tag that already exists — add it as typed.
     Known(String),
     /// Valid, but no such tag yet: US-33's confirm-before-create step, so a
     /// typo can't quietly become a new tag.
     New(String),
-    /// Already staged; nothing to do.
-    Duplicate,
     /// Rejected by the shared normalizer, carrying its message.
     Invalid(String),
 }
 
-/// Decide what to do with a typed tag name, given the tags that exist and
-/// the names already staged. Normalizes (trim, lowercase) exactly as the
-/// server does.
-pub fn stage(raw: &str, known: &[Tag], staged: &[String]) -> Staged {
+/// Decide what to do with a typed tag name, given the tags that exist.
+/// Normalizes (trim, lowercase) exactly as the server does.
+pub fn classify(raw: &str, known: &[Tag]) -> Typed {
     let name = match normalize_tag_name(raw) {
         Ok(name) => name,
-        Err(message) => return Staged::Invalid(message),
+        Err(message) => return Typed::Invalid(message),
     };
-    if staged.contains(&name) {
-        Staged::Duplicate
-    } else if known.iter().any(|tag| tag.name == name) {
-        Staged::Known(name)
+    if known.iter().any(|tag| tag.name == name) {
+        Typed::Known(name)
     } else {
-        Staged::New(name)
+        Typed::New(name)
     }
 }
 
 /// The bulk-tag panel (US-34). Appears only once something is selected —
-/// trips, or collections (US-100) as `of` says; stages names as removable
-/// chips and applies all of them to everything selected in one request.
-/// `on_applied` lets the list clear its selection and refresh itself once
-/// the request has succeeded.
+/// trips, or collections (US-100) as `of` says. Each tag is added to
+/// everything selected as soon as it is added (US-112); the selection stays,
+/// so the next tag goes onto the same items. `on_added` lets the list refresh
+/// what a new tag changed.
 #[component]
 pub fn BulkTagPanel(
     ids: Vec<i64>,
-    staged: Signal<Vec<String>>,
     all_tags: Vec<Tag>,
     of: BulkTagged,
-    on_applied: EventHandler<()>,
+    on_added: EventHandler<()>,
 ) -> Element {
     let mut typed = use_signal(String::new);
     // A new tag waiting for the owner's go-ahead (US-33).
     let mut awaiting_confirmation = use_signal(|| None::<String>);
     let mut message = use_signal(|| None::<String>);
+    // What the last add did, until the selection changes under it.
+    let mut added = use_signal(|| None::<String>);
+    use_effect(use_reactive!(|ids| {
+        let _ = ids;
+        added.set(None);
+    }));
     let archive = use_context::<Signal<ApiClient>>();
 
-    let count = ids.len();
-    if count == 0 {
+    // Adding a name, once it is either known or confirmed. The request is
+    // spawned rather than returned: this is called from a plain click
+    // handler, which would drop a future rather than run it.
+    let add = use_callback({
+        let ids = ids.clone();
+        move |name: String| {
+            let ids = ids.clone();
+            spawn(async move {
+                match api::bulk_add_tags(&archive(), of, &ids, std::slice::from_ref(&name)).await {
+                    Ok(_) => {
+                        typed.set(String::new());
+                        message.set(None);
+                        added.set(Some(format!("Added \"{name}\" to {} selected.", ids.len())));
+                        on_added.call(());
+                    }
+                    Err(err) => message.set(Some(err.to_string())),
+                }
+            });
+        }
+    });
+
+    if ids.is_empty() {
         return rsx! {};
     }
 
-    // Cloned out of the signal: the chips loop below writes back into it,
-    // which a live read guard would deadlock on.
-    let chips = staged.read().clone();
     let known = all_tags.clone();
-    let mut add_typed = move || {
-        let raw = typed();
-        // Scoped so the read guard is gone before an arm writes back.
-        let outcome = {
-            let current = staged.read();
-            stage(&raw, &known, &current)
-        };
-        match outcome {
-            Staged::Known(name) => {
-                staged.write().push(name);
-                typed.set(String::new());
-                message.set(None);
-            }
-            Staged::New(name) => awaiting_confirmation.set(Some(name)),
-            Staged::Duplicate => typed.set(String::new()),
-            Staged::Invalid(problem) => message.set(Some(problem)),
+    let mut add_typed = move || match classify(&typed(), &known) {
+        Typed::Known(name) => {
+            awaiting_confirmation.set(None);
+            add(name);
         }
+        Typed::New(name) => awaiting_confirmation.set(Some(name)),
+        Typed::Invalid(problem) => message.set(Some(problem)),
     };
 
     rsx! {
         fieldset {
             legend { "Tag selected {of.plural()}" }
-            div { class: "chips",
-                for name in chips {
-                    span { key: "{name}", class: "chip",
-                        "{name}"
-                        button {
-                            r#type: "button",
-                            onclick: move |_| staged.write().retain(|staged| staged != &name),
-                            "×"
-                        }
-                    }
-                }
-            }
             datalist { id: "bulk-tag-suggestions",
                 for tag in all_tags.clone() {
                     option { key: "{tag.id}", value: "{tag.name}" }
@@ -129,10 +125,8 @@ pub fn BulkTagPanel(
                     button {
                         r#type: "button",
                         onclick: move |_| {
-                            staged.write().push(name.clone());
                             awaiting_confirmation.set(None);
-                            typed.set(String::new());
-                            message.set(None);
+                            add(name.clone());
                         },
                         "Create"
                     }
@@ -144,26 +138,9 @@ pub fn BulkTagPanel(
                 }
             }
 
-            button {
-                r#type: "button",
-                disabled: staged.read().is_empty(),
-                onclick: move |_| {
-                    let ids = ids.clone();
-                    let names = staged.read().clone();
-                    spawn(async move {
-                        match api::bulk_add_tags(&archive(), of, &ids, &names).await {
-                            Ok(_) => {
-                                staged.write().clear();
-                                message.set(None);
-                                on_applied.call(());
-                            }
-                            Err(err) => message.set(Some(err.to_string())),
-                        }
-                    });
-                },
-                "Apply to {count} selected"
+            if let Some(added) = added() {
+                p { class: "added", "{added}" }
             }
-
             if let Some(message) = message() {
                 p { class: "error", "{message}" }
             }
@@ -187,11 +164,11 @@ mod tests {
     }
 
     #[test]
-    fn an_existing_tag_stages_without_confirmation() {
+    fn an_existing_tag_is_added_without_confirmation() {
         // Casing collapses the same way the server normalizes it (US-33).
         assert_eq!(
-            stage("Alpine", &known_tags(), &[]),
-            Staged::Known("alpine".to_string())
+            classify("Alpine", &known_tags()),
+            Typed::Known("alpine".to_string())
         );
     }
 
@@ -200,16 +177,8 @@ mod tests {
         // US-33/US-34: using a new tag creates it on demand, after
         // confirmation — the owner should never make a tag by typo.
         assert_eq!(
-            stage("summer", &known_tags(), &[]),
-            Staged::New("summer".to_string())
-        );
-    }
-
-    #[test]
-    fn a_tag_already_staged_is_not_staged_twice() {
-        assert_eq!(
-            stage("alpine", &known_tags(), &["alpine".to_string()]),
-            Staged::Duplicate
+            classify("summer", &known_tags()),
+            Typed::New("summer".to_string())
         );
     }
 
@@ -218,62 +187,48 @@ mod tests {
         // The same rules the server enforces (US-33/US-38), applied through
         // the shared normalizer rather than mirrored by hand — so a name the
         // client accepts can't be one the server 400s.
-        assert!(matches!(
-            stage("day trip", &known_tags(), &[]),
-            Staged::Invalid(_)
-        ));
-        assert!(matches!(
-            stage("day,trip", &known_tags(), &[]),
-            Staged::Invalid(_)
-        ));
-        assert!(matches!(
-            stage("   ", &known_tags(), &[]),
-            Staged::Invalid(_)
-        ));
+        assert!(matches!(classify("day trip", &known_tags()), Typed::Invalid(_)));
+        assert!(matches!(classify("day,trip", &known_tags()), Typed::Invalid(_)));
+        assert!(matches!(classify("   ", &known_tags()), Typed::Invalid(_)));
     }
 
+    // US-112: Add tags the selection itself; there is no separate apply step.
     #[test]
-    fn the_panel_shows_the_staged_tags_and_how_many_trips_they_apply_to() {
+    fn us112_the_panel_adds_with_no_apply_step() {
         let html = render(|| {
-            let staged = Signal::new(vec!["alpine".to_string(), "summer".to_string()]);
             let ids = vec![1_i64, 2, 3];
-            rsx! { BulkTagPanel { ids, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
+            rsx! { BulkTagPanel { ids, all_tags: known_tags(), of: BulkTagged::Trips, on_added: |_| {} } }
         });
 
-        assert!(html.contains("alpine"), "{html}");
-        assert!(html.contains("summer"), "{html}");
         assert!(html.contains("Tag selected trips"), "{html}");
-        assert!(html.contains("Apply to 3 selected"), "{html}");
+        assert!(html.contains(">Add<"), "{html}");
+        assert!(!html.contains("Apply"), "{html}");
     }
 
     #[test]
     fn us100_the_panel_says_it_tags_the_selected_collections() {
         let html = render(|| {
-            let staged = Signal::new(vec!["shelf".to_string()]);
             let ids = vec![1_i64, 2];
             rsx! {
                 BulkTagPanel {
                     ids,
-                    staged,
                     all_tags: known_tags(),
                     of: BulkTagged::Collections,
-                    on_applied: |_| {},
+                    on_added: |_| {},
                 }
             }
         });
 
         assert!(html.contains("Tag selected collections"), "{html}");
-        assert!(html.contains("Apply to 2 selected"), "{html}");
     }
 
     #[test]
     fn the_panel_stays_out_of_the_way_until_trips_are_selected() {
         let html = render(|| {
-            let staged = Signal::new(Vec::new());
             let ids = Vec::<i64>::new();
-            rsx! { BulkTagPanel { ids, staged, all_tags: known_tags(), of: BulkTagged::Trips, on_applied: |_| {} } }
+            rsx! { BulkTagPanel { ids, all_tags: known_tags(), of: BulkTagged::Trips, on_added: |_| {} } }
         });
 
-        assert!(!html.contains("Apply to"), "{html}");
+        assert!(!html.contains("Tag selected"), "{html}");
     }
 }

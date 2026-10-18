@@ -153,6 +153,7 @@ Stories are grouped by the part of the archive they are about; a story's ID neve
 | [US-109](#us-109--winter-trips-only-in-the-north)             | ✅     | Winter trips only in the north               | [Import](#import)                                                   |
 | [US-110](#us-110--date-range-slider)                          | ✅     | Date range slider                            | [Trip list & map](#trip-list--map)                                  |
 | [US-111](#us-111--komoot-privacy-on-the-trip-page)            | ✅     | Komoot privacy on the trip page              | [Trip page](#trip-page)                                             |
+| [US-112](#us-112--add-a-tag-to-the-selection-in-one-step)     | ✅     | Add a tag to the selection in one step       | [Tags](#tags)                                                       |
 
 ### Maintaining this file
 
@@ -1508,6 +1509,8 @@ new-tag confirmation as US-33) and then applied to every selected trip in one re
 selected trip ids include one that no longer exists, the whole request 404s and nothing is created
 or linked (all-or-nothing); an invalid tag name 400s the same way US-33's does.
 
+**Superseded in part by US-112:** names are no longer staged; Add tags the selection with each name at once.
+
 ### US-38 — Filter by tag
 
 **Done ✅** — As the owner, I can filter trips by tag in the trip list
@@ -1601,8 +1604,22 @@ that no longer exists, the whole request 404s and nothing is created or linked; 
 name 400s. Only the collections are tagged, never their tracks (US-93). Afterwards the tag
 suggestions offer the new tags, and each collection's page (US-86) shows them.
 
+**Superseded in part by US-112:** names are no longer staged; Add tags the selection with each name at once.
+
 **Decisions:** US-100 → ADR-0028 (tags reach collections through links of their own), ADR-0008 (the
 screens change the tags through the JSON API)
+
+### US-112 — Add a tag to the selection in one step
+
+**Done ✅** — As the owner, I tag the trips or collections I selected with fewer clicks: one for a
+tag that exists, two for a new one.
+
+**Acceptance criteria:** In the bulk-tag panel (US-34, US-100), Add tags everything selected with
+the typed tag at once, in one request; there is no staging and no separate apply step. A tag that
+does not exist yet still asks first (US-33), and confirming it creates the tag and tags the
+selection. The panel says what was added and to how many; the selection and the panel stay, so the
+next tag goes onto the same items. The all-or-nothing and invalid-name rules of US-34 and US-100
+are unchanged. Tested (ADR-0012) on the trip list and the Collections page.
 
 ## Collections
 

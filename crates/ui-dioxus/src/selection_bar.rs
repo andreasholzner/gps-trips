@@ -19,11 +19,11 @@ use crate::share::{Selected, ShareDialog};
 
 /// Nothing until something is selected. `on_applied` says what an applied
 /// tag or activity changed, for the list to read it anew; the selection is
-/// cleared here first.
+/// cleared here first — except after a tag, which leaves it for the next
+/// one (US-112).
 #[component]
 pub fn SelectionBar(
     picked: Signal<BTreeSet<Picked>>,
-    staged: Signal<Vec<String>>,
     all_tags: Vec<Tag>,
     on_applied: EventHandler<Selected>,
 ) -> Element {
@@ -87,10 +87,9 @@ pub fn SelectionBar(
                     div { class: "bulk-panels",
                         BulkTagPanel {
                             ids,
-                            staged,
                             all_tags,
                             of: if of == Selected::Collections { BulkTagged::Collections } else { BulkTagged::Trips },
-                            on_applied: move |_| applied(&[of]),
+                            on_added: move |_| on_applied.call(of),
                         }
                     }
                 },
@@ -126,8 +125,7 @@ mod tests {
         let picked: BTreeSet<Picked> = picked.iter().copied().collect();
         render(move || {
             let picked = use_signal(|| picked.clone());
-            let staged = use_signal(Vec::new);
-            rsx! { SelectionBar { picked, staged, all_tags: Vec::new(), on_applied: |_| {} } }
+            rsx! { SelectionBar { picked, all_tags: Vec::new(), on_applied: |_| {} } }
         })
     }
 

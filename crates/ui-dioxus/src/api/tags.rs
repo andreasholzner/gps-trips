@@ -83,7 +83,7 @@ struct BulkAddCollectionTags<'a> {
 }
 
 /// `POST /api/trips/tags` or `POST /api/collections/tags` — tag everything
-/// selected, `ids` of `of`, with every staged name (US-34, US-100).
+/// selected, `ids` of `of`, with every name in `names` (US-34, US-100).
 /// All-or-nothing: if any id no longer exists the server tags nothing, which
 /// this reports as such rather than as a bare 404. Other failures carry the
 /// server's own message (an invalid name, US-33's rules) so the owner reads

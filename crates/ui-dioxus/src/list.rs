@@ -100,8 +100,6 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         let kinds = kinds();
         picked.with_mut(|picked| picked::retain_kinds(picked, kinds));
     });
-    // The names staged to tag the selection with (US-34, US-100).
-    let staged = use_signal(Vec::new);
     // The collections whose tracks are folded out: none to begin with.
     let expanded = use_signal(BTreeSet::<i64>::new);
     // Which page of the list the table shows (US-63). Back to the first
@@ -173,7 +171,6 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
         // (US-53/94) or set the trips' activity (US-63).
         SelectionBar {
             picked,
-            staged,
             all_tags,
             on_applied: move |of: Selected| {
                 // A new tag may now exist: the suggestions are out of date.

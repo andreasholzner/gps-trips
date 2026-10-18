@@ -103,7 +103,7 @@ test("changing the filter goes back to the first page (US-97)", async ({ page, r
   await expect(rows(page).first()).toContainText(`${prefix}-00`);
 });
 
-test("the selected collections are tagged in one go, after confirming a new tag (US-100)", async ({
+test("Add tags the selected collections at once, a new tag after confirming it (US-100, US-112)", async ({
   page,
   request,
 }) => {
@@ -122,12 +122,10 @@ test("the selected collections are tagged in one go, after confirming a new tag 
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(`Tag "${NEW_TAG}" doesn't exist yet`)).toBeVisible();
   await page.getByRole("button", { name: "Create" }).click();
-  await page.getByRole("button", { name: "Apply to 2 selected" }).click();
+  await expect(page.getByText(`Added "${NEW_TAG}" to 2 selected.`)).toBeVisible();
 
-  // The panel goes with the selection, and the suggestions now offer the tag.
-  await expect(page.getByRole("button", { name: /Apply to/ })).toBeHidden();
-  await expect(page.locator("table tbody input[type=checkbox]:checked")).toHaveCount(0);
-  await rows(page).first().getByRole("checkbox").check();
+  // The selection stays, and the suggestions now offer the tag.
+  await expect(page.locator("table tbody input[type=checkbox]:checked")).toHaveCount(2);
   await expect(page.locator(`#bulk-tag-suggestions option[value="${NEW_TAG}"]`)).toHaveCount(1);
 
   // A tagged collection's page shows it; one not selected does not carry it.
