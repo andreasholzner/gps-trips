@@ -242,6 +242,31 @@ jobs:
           set -euo pipefail
           lcov --quiet -a lcov-unit.info -a lcov-browser.info -o lcov.info
           lines() { lcov --summary "$1" 2>&1 | sed -n 's/^ *lines\.*: //p'; }
+          # The per-file table straight from the tracefile's LF/LH counts: Ubuntu's `lcov --list` prints shifted columns
+          # (hit counts as totals, rates above 100%).
+          per_file() {
+            awk -v root="$GITHUB_WORKSPACE/" '
+              function rate(hit, found) {
+                return found ? sprintf("%.1f%%", 100 * hit / found) : "-"
+              }
+              /^SF:/  { f = substr($0, 4)
+                        if (index(f, root) == 1) f = substr(f, length(root) + 1)
+                        files[f] = 1
+                        if (length(f) > w) w = length(f) }
+              /^LF:/  { lf[f] += substr($0, 4) }
+              /^LH:/  { lh[f] += substr($0, 4) }
+              END {
+                fmt = "%-" w "s | %6s %6s\n"
+                printf fmt, "Filename", "Lines", "Num"
+                fflush()
+                for (f in files) {
+                  printf fmt, f, rate(lh[f], lf[f]), lf[f] + 0 | "sort"
+                  LF += lf[f]; LH += lh[f]
+                }
+                close("sort")
+                printf fmt, "Total", rate(LH, LF), LF
+              }' "$1"
+          }
           {
             echo "## Line coverage"
             echo
@@ -254,7 +279,7 @@ jobs:
             echo "<details><summary>Per file</summary>"
             echo
             echo '```'
-            lcov --list lcov.info
+            per_file lcov.info
             echo '```'
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
