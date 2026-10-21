@@ -59,24 +59,30 @@ fn us92_the_rectangle_and_its_buttons_are_gone() {
 }
 
 #[test]
-fn us92_filtering_to_the_map_is_on_exactly_when_the_filters_hold_a_region() {
-    // The checkbox has no state of its own: a region in the URL ticks
-    // it, and "Clear filters" unticks it.
-    let off = render(|| {
-        let filters = Signal::new(Filters::default());
-        rsx! { RegionFilter { filters, mapped: None } }
+fn us115_filtering_to_the_map_is_on_unless_unticked() {
+    // The checkbox has no state of its own: ticked by default, before the
+    // map has fitted and given it a region as after (US-115), and unticked
+    // by `bbox=off` in the URL and by "Clear filters".
+    let rendered = |filters: Filters| {
+        render(move || {
+            let filters = Signal::new(filters.clone());
+            rsx! { RegionFilter { filters, mapped: None } }
+        })
+    };
+    let pending = rendered(Filters::default());
+    let on = rendered(Filters {
+        bbox: "10.75,59.91,11.25,60.12".to_string(),
+        ..Filters::default()
     });
-    let on = render(|| {
-        let filters = Signal::new(Filters {
-            bbox: "10.75,59.91,11.25,60.12".to_string(),
-            ..Filters::default()
-        });
-        rsx! { RegionFilter { filters, mapped: None } }
+    let off = rendered(Filters {
+        unfollowed: true,
+        ..Filters::default()
     });
 
-    assert!(off.contains(r#"id="region-follow""#), "{off}");
-    assert!(!off.contains("checked"), "{off}");
+    assert!(pending.contains(r#"id="region-follow""#), "{pending}");
+    assert!(pending.contains("checked"), "{pending}");
     assert!(on.contains("checked"), "{on}");
+    assert!(!off.contains("checked"), "{off}");
 }
 
 #[test]
@@ -91,7 +97,19 @@ fn us92_filtering_to_the_map_waits_until_the_map_says_where_it_is() {
 }
 
 fn view(bounds: [f64; 4]) -> Viewport {
-    Viewport { zoom: 9.0, bounds }
+    Viewport {
+        zoom: 9.0,
+        bounds,
+        fitted: true,
+    }
+}
+
+/// Filters holding `bbox`, ticked.
+fn region(bbox: &str) -> Filters {
+    Filters {
+        bbox: bbox.to_string(),
+        ..Filters::default()
+    }
 }
 
 #[test]
@@ -125,14 +143,36 @@ fn us92_a_view_wider_than_the_world_covers_every_longitude() {
 
 #[test]
 fn us92_with_filtering_off_the_view_narrows_nothing() {
-    assert_eq!(followed("", &view([10.5, 59.8, 11.0, 60.0])), None);
+    let off = Filters {
+        unfollowed: true,
+        ..Filters::default()
+    };
+
+    assert_eq!(followed(&off, &view([10.5, 59.8, 11.0, 60.0])), None);
 }
 
 #[test]
 fn us92_with_filtering_on_the_region_follows_the_view() {
     assert_eq!(
-        followed("-30,30,-20,40", &view([10.5, 59.8, 11.0, 60.0])),
+        followed(&region("-30,30,-20,40"), &view([10.5, 59.8, 11.0, 60.0])),
         Some("10.500000,59.800000,11.000000,60.000000".to_string())
+    );
+}
+
+#[test]
+fn us115_on_by_default_the_region_waits_for_the_map_to_fit_the_items() {
+    // Before, the view is the map's default Europe, which would hide
+    // every trip outside it; the fitted view then becomes the region.
+    let bounds = [10.5, 59.8, 11.0, 60.0];
+    let unfitted = Viewport {
+        fitted: false,
+        ..view(bounds)
+    };
+
+    assert_eq!(followed(&Filters::default(), &unfitted), None);
+    assert_eq!(
+        followed(&Filters::default(), &view(bounds)),
+        Some(interop::bbox_param(bounds))
     );
 }
 
@@ -142,7 +182,7 @@ fn us92_a_view_that_did_not_move_changes_nothing() {
     let bounds = [10.5, 59.8, 11.0, 60.0];
     let held = interop::bbox_param(bounds);
 
-    assert_eq!(followed(&held, &view(bounds)), None);
+    assert_eq!(followed(&region(&held), &view(bounds)), None);
 }
 
 #[test]

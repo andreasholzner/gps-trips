@@ -43,7 +43,11 @@ fn a_track(id: i64) -> TripTrack {
 }
 
 fn view(bounds: [f64; 4]) -> Viewport {
-    Viewport { zoom: 12.0, bounds }
+    Viewport {
+        zoom: 12.0,
+        bounds,
+        fitted: true,
+    }
 }
 
 fn ids(trips: &[&MapItem]) -> Vec<i64> {
@@ -53,7 +57,7 @@ fn ids(trips: &[&MapItem]) -> Vec<i64> {
 #[test]
 fn the_map_reports_where_it_is_looking() {
     let viewport: Viewport = serde_json::from_value(serde_json::json!({
-        "zoom": 11, "bounds": [10.0, 59.0, 11.0, 60.0]
+        "zoom": 11, "bounds": [10.0, 59.0, 11.0, 60.0], "fitted": true
     }))
     .unwrap();
 
@@ -61,7 +65,8 @@ fn the_map_reports_where_it_is_looking() {
         viewport,
         Viewport {
             zoom: 11.0,
-            bounds: [10.0, 59.0, 11.0, 60.0]
+            bounds: [10.0, 59.0, 11.0, 60.0],
+            fitted: true,
         }
     );
 }
@@ -71,6 +76,7 @@ fn lines_are_drawn_from_the_threshold_on() {
     let at = |zoom| Viewport {
         zoom,
         bounds: [0.0; 4],
+        fitted: true,
     };
 
     assert!(!shows_lines(&at(LINES_FROM_ZOOM - 1.0)));

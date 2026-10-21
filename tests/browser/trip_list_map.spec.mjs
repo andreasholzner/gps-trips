@@ -9,6 +9,9 @@ import { seedTripList } from "./trips.mjs";
 
 const rows = (page) => page.locator("table tbody tr");
 
+/// A region in the URL, as against none or `bbox=off` (US-115).
+const REGION = /[?&]bbox=-?\d/;
+
 test.beforeEach(async ({ page }) => {
   await signIn(page.request);
 });
@@ -23,9 +26,10 @@ test("with Filter to map on, panning and zooming move the region (US-92)", async
   // Fitted to the fixture's short walk — every fixture trip is the same one.
   await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
 
+  // On from the start (US-115).
   const follow = page.locator("#region-follow");
-  await follow.check();
-  await expect(page).toHaveURL(/[?&]bbox=/);
+  await expect(follow).toBeChecked();
+  await expect(page).toHaveURL(REGION);
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
 
   // Panned off the walk, the list follows the view.
@@ -43,14 +47,14 @@ test("with Filter to map on, panning and zooming move the region (US-92)", async
   // The region outlives a toggled kind, like every other filter (US-14).
   await page.getByRole("button", { name: "Planned" }).click();
   await expect(page).toHaveURL(/kind=recorded%2Cplanned/);
-  await expect(page).toHaveURL(/[?&]bbox=/);
+  await expect(page).toHaveURL(REGION);
   await page.getByRole("button", { name: "Planned" }).click();
 
   // And a reload starts on it, still filtering.
   await page.reload();
   await expect(follow).toBeChecked();
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
-  await expect(page).toHaveURL(/[?&]bbox=/);
+  await expect(page).toHaveURL(REGION);
 
   // Off again: the region goes, and the map stays where it is.
   await expect(follow).toBeEnabled();
@@ -59,11 +63,35 @@ test("with Filter to map on, panning and zooming move the region (US-92)", async
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
   await follow.uncheck();
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
-  await expect(page).not.toHaveURL(/[?&]bbox=/);
+  await expect(page).toHaveURL(/[?&]bbox=off/);
+});
+
+// US-115: ticked by default, the list waits for the map to fit the trips
+// and then follows it; unticked is kept in the URL across a reload.
+test("Filter to map is on from the start, and an unticked one stays off (US-115)", async ({
+  page,
+}) => {
+  await page.goto("/app/");
+  const follow = page.locator("#region-follow");
+  await expect(follow).toBeChecked();
+  // The region is the view fitted to the trips: the list starts out whole.
+  await expect(page).toHaveURL(REGION);
+  await expect(rows(page)).toHaveCount(2);
+
+  await follow.uncheck();
+  await expect(page).toHaveURL(/[?&]bbox=off/);
+  await page.reload();
+  await expect(follow).not.toBeChecked();
+  await expect(rows(page)).toHaveCount(2);
+  await expect(page).toHaveURL(/[?&]bbox=off/);
+
+  // Ticked again, it takes the view.
+  await follow.check();
+  await expect(page).toHaveURL(REGION);
 });
 
 test("with Filter to map off, panning narrows nothing (US-92)", async ({ page }) => {
-  await page.goto("/app/");
+  await page.goto("/app/?bbox=off");
   await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
 
   await panRegion(page, 0.05, 0.95);
@@ -73,7 +101,7 @@ test("with Filter to map off, panning narrows nothing (US-92)", async ({ page })
   await page.waitForTimeout(300);
 
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
-  await expect(page).not.toHaveURL(/[?&]bbox=/);
+  await expect(page).not.toHaveURL(REGION);
   await expect(page.locator("#region-follow")).not.toBeChecked();
 });
 
@@ -129,7 +157,7 @@ async function currentZoom(page) {
 }
 
 // The toolbar's "Clear filters" clears the region too, so it must untick
-// "Filter to map" with it (US-92).
+// "Filter to map" with it (US-92), for good (US-115).
 test("clearing the filters stops filtering to the map (US-92)", async ({ page }) => {
   await page.goto("/app/?bbox=-30,30,-20,40");
   await expect(page.getByText("No trips match your filters.")).toBeVisible();
@@ -139,7 +167,7 @@ test("clearing the filters stops filtering to the map (US-92)", async ({ page })
 
   await expect(page.getByText("Oslo Hills Walk")).toBeVisible();
   await expect(page.locator("#region-follow")).not.toBeChecked();
-  await expect(page).not.toHaveURL(/[?&]bbox=/);
+  await expect(page).toHaveURL(/[?&]bbox=off/);
 });
 
 // US-58: the same control on the other map. The fix belongs to the control

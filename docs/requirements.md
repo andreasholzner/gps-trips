@@ -768,6 +768,9 @@ of their own; only the views are shared)
 shows, by switching region filtering on and then simply panning and zooming, instead of drawing a
 rectangle.
 
+**Superseded in part by US-115:** "Filter to map" is on by default, and an unticked one is kept in
+the URL.
+
 **Acceptance criteria:**
 
 **One switch instead of a rectangle.** Beside the trip-list map (US-63) a checkbox, "Filter to map",
@@ -879,6 +882,20 @@ tab, at the address a link to it has, and leaves this tab as it was. Where sever
 a page lie, the click opens US-104's menu, and a Ctrl- or ⌘-click on one of its entries does the
 same. What opens nothing opens nothing in a new tab either. A plain click and a tap are as US-104
 has them.
+
+### US-115 — Filter to map by default
+
+**Done ✅** — As the owner, the trip list follows the map from the start, so panning and zooming
+narrow it without my first switching that on.
+
+**Acceptance criteria:** "Filter to map" (US-92) is ticked whenever the list is opened without a
+region or a choice against it in the URL — from the menu, after a delete, or from a bare link.
+Until the map has fitted itself to the matching items, as it does on load (US-63), there is no
+region yet and the list is whole; the view it fits to then becomes the region, so the list starts
+out complete and narrows as I pan or zoom. Unticking it drops the region, as US-92 has it, and is
+kept in the URL as `bbox=off`, so a reload or a bookmark keeps it off; ticking it again takes the
+current view. "Clear filters" unticks it too. A region in the URL still ticks it and the map fits
+to that region. The server is unchanged: `bbox=off` is the SPA's own, never sent to the API.
 
 ## Trip page
 

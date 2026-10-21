@@ -106,15 +106,23 @@ const REGION_MAP_SCRIPT: &str = r##"
       waypoints?.remove();
       waypoints = null;
     };
-    const fitToMarks = () => {
+    const fitToMarks = (animate = true) => {
       if (points.length === 0) return;
-      map.fitBounds(L.latLngBounds(points), { padding: [20, 20], maxZoom: 12 });
+      map.fitBounds(L.latLngBounds(points), { padding: [20, 20], maxZoom: 12, animate });
     };
-    document.getElementById("region-fit")?.addEventListener("click", fitToMarks);
+    document.getElementById("region-fit")?.addEventListener("click", () => fitToMarks());
+    // The view fitted to the items on load is the first one the list can
+    // follow (US-115), so it is reported as fitted — at once, unanimated,
+    // and even when the fit did not move the map.
     const fitOnce = () => {
       if (!fitted && points.length > 0) {
-        fitToMarks();
         fitted = true;
+        let moved = false;
+        const onMove = () => (moved = true);
+        map.once("moveend", onMove);
+        fitToMarks(false);
+        map.off("moveend", onMove);
+        if (!moved) reportView();
       }
     };
 
@@ -122,11 +130,14 @@ const REGION_MAP_SCRIPT: &str = r##"
     // `moveend` too — for Rust to decide between marks and lines (US-73)
     // and, while filtering to the map is on, to take as the region (US-92).
     // The first report waits for the region the map starts on: reporting
-    // Europe before it would briefly make Europe the region.
+    // Europe before it would briefly make Europe the region. Whether the map
+    // has fitted yet — to that region or to the items — says whether a
+    // region still to come may be taken from the view (US-115).
     const reportView = () => {
       report({ view: {
         zoom: map.getZoom(),
         bounds: corners(map.wrapLatLngBounds(map.getBounds())),
+        fitted,
       } });
     };
     map.on("moveend", reportView);
@@ -372,10 +383,13 @@ mod tests {
         let read = |json| serde_json::from_value::<RegionEvent>(json).unwrap();
 
         assert_eq!(
-            read(serde_json::json!({ "view": { "zoom": 11, "bounds": [1.0, 2.0, 3.0, 4.0] } })),
+            read(serde_json::json!({ "view": {
+                "zoom": 11, "bounds": [1.0, 2.0, 3.0, 4.0], "fitted": true,
+            } })),
             RegionEvent::View(Viewport {
                 zoom: 11.0,
-                bounds: [1.0, 2.0, 3.0, 4.0]
+                bounds: [1.0, 2.0, 3.0, 4.0],
+                fitted: true,
             })
         );
         assert_eq!(

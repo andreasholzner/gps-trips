@@ -35,6 +35,11 @@ pub struct Filters {
     /// and to the server unchanged, and the map is the only thing that has
     /// to know it is four numbers.
     pub bbox: String,
+    /// "Filter to map" unticked (US-115): on by default, it is then off, and
+    /// the region with it. Travels in the URL as `bbox=off`, never to the
+    /// API; ticked with a blank `bbox`, the region is still to come from the
+    /// map.
+    pub unfollowed: bool,
     /// Only trips without a proper name (US-66) — what counts as one is the
     /// server's to decide.
     pub unnamed: bool,
@@ -53,7 +58,11 @@ impl Filters {
     /// something real changed. The trips are asked for with the same
     /// parameter names, but their own `kind` ([`Self::trip_query`]).
     pub fn to_query(&self) -> String {
-        self.query(Some(self.kinds.param()))
+        let query = self.query(Some(self.kinds.param()));
+        if self.unfollowed {
+            return format!("{query}&bbox={UNFOLLOWED}");
+        }
+        query
     }
 
     /// The query string with `kind` as given, or without one.
@@ -119,6 +128,7 @@ impl Filters {
                 "to" => filters.to = value,
                 "min_dist" => filters.min_dist = value,
                 "max_dist" => filters.max_dist = value,
+                "bbox" if value == UNFOLLOWED => filters.unfollowed = true,
                 "bbox" => filters.bbox = value,
                 "unnamed" => filters.unnamed = value == "true",
                 "unplaced" => filters.unplaced = value == "true",
@@ -158,16 +168,19 @@ impl Filters {
     /// What "Clear filters" leaves: the kinds, and with no kind of trip on
     /// the trip filters too, which are hidden then (US-87) — only what the
     /// owner can see is cleared.
+    /// "Filter to map" is unticked with it (US-115).
     pub fn cleared(&self) -> Filters {
         if self.kinds.has_trips() {
             Filters {
                 kinds: self.kinds,
+                unfollowed: true,
                 ..Default::default()
             }
         } else {
             Filters {
                 q: String::new(),
                 bbox: String::new(),
+                unfollowed: true,
                 activity: None,
                 recorded_trip: None,
                 ..self.clone()
@@ -206,6 +219,9 @@ impl Filters {
                 .any(|value| !value.trim().is_empty())
     }
 }
+
+/// `bbox`'s value for "Filter to map" unticked (US-115).
+const UNFOLLOWED: &str = "off";
 
 /// The parameters that narrow collections as well as trips (US-87, US-90,
 /// US-99).

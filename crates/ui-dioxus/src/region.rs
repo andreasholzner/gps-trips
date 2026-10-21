@@ -89,9 +89,9 @@ fn line_href(source: MapSource, id: i64) -> String {
 }
 
 /// Turns the map's view into the region filter, and back off (US-92). Ticked
-/// exactly when the filters hold a region, so a region from the URL ticks
-/// it and "Clear filters" unticks it; there is nothing to take until the
-/// map has said where it is looking.
+/// unless the filters say it is not (US-115), so `bbox=off` in the URL and
+/// "Clear filters" untick it; there is nothing to take until the map has
+/// said where it is looking.
 #[component]
 fn FilterToMap(mut filters: Signal<Filters>, viewport: Signal<Option<Viewport>>) -> Element {
     rsx! {
@@ -99,14 +99,16 @@ fn FilterToMap(mut filters: Signal<Filters>, viewport: Signal<Option<Viewport>>)
             input {
                 r#type: "checkbox",
                 id: "region-follow",
-                checked: !filters.read().bbox.is_empty(),
+                checked: !filters.read().unfollowed,
                 disabled: viewport().is_none(),
                 onchange: move |event| {
                     let region = match viewport() {
                         Some(view) if event.checked() => interop::bbox_param(region_of(&view)),
                         _ => String::new(),
                     };
-                    filters.write().bbox = region;
+                    let mut filters = filters.write();
+                    filters.bbox = region;
+                    filters.unfollowed = !event.checked();
                 },
             }
             "Filter to map"
@@ -126,15 +128,17 @@ fn region_of(view: &Viewport) -> [f64; 4] {
     }
 }
 
-/// The `bbox` the filters take once the map settles on `view` (US-92):
-/// `None` while filtering to the map is off, or when the region already is
-/// that view, so a settle without a move does not re-query the list.
-fn followed(bbox: &str, view: &Viewport) -> Option<String> {
-    if bbox.is_empty() {
+/// The `bbox` `filters` take once the map settles on `view` (US-92):
+/// `None` while filtering to the map is off, before the map has fitted
+/// itself to the items while there is no region yet (US-115), or when the
+/// region already is that view, so a settle without a move does not
+/// re-query the list.
+fn followed(filters: &Filters, view: &Viewport) -> Option<String> {
+    if filters.unfollowed || (filters.bbox.is_empty() && !view.fitted) {
         return None;
     }
     let region = interop::bbox_param(region_of(view));
-    (region != bbox).then_some(region)
+    (region != filters.bbox).then_some(region)
 }
 
 /// The map itself: draws the matching trips or collection tracks — as
@@ -183,7 +187,7 @@ fn RegionMap(
             match map.recv::<RegionEvent>().await {
                 Ok(RegionEvent::View(settled)) => {
                     viewport.set(Some(settled));
-                    let region = followed(&filters.peek().bbox, &settled);
+                    let region = followed(&filters.peek(), &settled);
                     if let Some(region) = region {
                         filters.write().bbox = region;
                     }

@@ -27,6 +27,9 @@ use crate::track;
 pub struct Viewport {
     pub zoom: f64,
     pub bounds: [f64; 4],
+    /// Whether the map has fitted itself to the region it started on or to
+    /// the matching items yet (US-115): before, the view is its default.
+    pub fitted: bool,
 }
 
 /// What the map draws in place of the heat marks: the lines, and where the

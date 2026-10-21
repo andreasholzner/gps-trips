@@ -23,6 +23,7 @@ fn set_fields_become_the_servers_own_parameter_names() {
         max_dist: "40".to_string(),
         tags: Vec::new(),
         bbox: String::new(),
+        unfollowed: false,
         unnamed: false,
         unplaced: false,
         recorded_trip: None,
@@ -73,6 +74,7 @@ fn every_filter_survives_a_round_trip_through_the_query_string() {
         max_dist: "40".to_string(),
         tags: vec!["alpine".to_string(), "summer".to_string()],
         bbox: String::new(),
+        unfollowed: true,
         unnamed: true,
         unplaced: true,
         recorded_trip: Some(RecordedTripFilter::Without),
@@ -201,6 +203,7 @@ fn every_filter_set(kinds: Kinds) -> Filters {
         max_dist: "40".to_string(),
         tags: vec!["alpine".to_string()],
         bbox: "10,59,11,60".to_string(),
+        unfollowed: false,
         unnamed: true,
         unplaced: true,
         recorded_trip: Some(RecordedTripFilter::Without),
@@ -330,6 +333,8 @@ fn us90_clearing_with_collections_alone_keeps_the_hidden_trip_filters() {
         Filters {
             q: String::new(),
             bbox: String::new(),
+            // Unticked (US-115).
+            unfollowed: true,
             activity: None,
             recorded_trip: None,
             ..filters
@@ -345,6 +350,8 @@ fn clearing_with_trips_on_clears_everything_but_the_kinds() {
         cleared,
         Filters {
             kinds: all_kinds(),
+            // "Filter to map" unticked (US-115).
+            unfollowed: true,
             ..Default::default()
         }
     );
@@ -393,4 +400,41 @@ fn us99_the_recorded_trip_filter_counts_only_while_it_can_narrow_something() {
 
     assert!(!recorded_only.any_set());
     assert!(with_planned.any_set());
+}
+
+// ── US-115: filtering to the map, on by default ─────────────────────────
+
+#[test]
+fn us115_an_unticked_filter_to_map_travels_in_the_url_as_bbox_off() {
+    let off = Filters {
+        unfollowed: true,
+        ..Default::default()
+    };
+
+    assert_eq!(off.to_query(), "kind=recorded&bbox=off");
+    assert_eq!(Filters::from_query("kind=recorded&bbox=off"), off);
+    // Ticked is the default, and needs nothing in the URL.
+    assert!(!Filters::from_query("kind=recorded").unfollowed);
+}
+
+#[test]
+fn us115_bbox_off_is_the_spas_own_never_sent_to_the_archive() {
+    let off = Filters {
+        kinds: all_kinds(),
+        unfollowed: true,
+        ..Default::default()
+    };
+
+    assert_eq!(off.trip_query(), Some(String::new()));
+    assert_eq!(off.collection_query(), "");
+}
+
+#[test]
+fn us115_an_unticked_filter_to_map_narrows_nothing() {
+    let off = Filters {
+        unfollowed: true,
+        ..Default::default()
+    };
+
+    assert!(!off.any_set());
 }

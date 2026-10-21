@@ -33,13 +33,13 @@ test.describe("with a touchscreen", () => {
     await ownTrip(request, "Touched Region");
     await page.goto("/app/");
     await expect(page.locator(TRIP).first()).toBeVisible();
-    await page.locator("#region-follow").tap();
-    await expect(page).toHaveURL(/[?&]bbox=/);
+    // On from the start (US-115).
+    await expect(page.locator("#region-follow")).toBeChecked();
+    await expect(page).toHaveURL(/[?&]bbox=-?\d/);
     const [west] = bboxOf(page);
 
     // Playwright's touchscreen can tap but not drag, so the finger is
-    // dispatched as real touch input. Read where the map is now: tapping
-    // the checkbox below it may have scrolled it.
+    // dispatched as real touch input.
     const touch = await page.context().newCDPSession(page);
     const map = await page.locator("#region-map").boundingBox();
     const at = (fx) => ({ x: map.x + map.width * fx, y: map.y + map.height * 0.5 });
