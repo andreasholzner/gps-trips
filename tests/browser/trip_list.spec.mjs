@@ -8,7 +8,7 @@
 import { expect, signIn, test } from "./session.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { zoomBy } from "./map.mjs";
+import { tileZooms, zoomBy } from "./map.mjs";
 import { chooseActivity } from "./trips.mjs";
 
 const SAMPLE_GPX = readFileSync(fileURLToPath(new URL("../fixtures/sample.gpx", import.meta.url)));
@@ -311,6 +311,57 @@ test("with Filter to map off, panning narrows nothing (US-92)", async ({ page })
   await expect(page).not.toHaveURL(/[?&]bbox=/);
   await expect(page.locator("#region-follow")).not.toBeChecked();
 });
+
+// The URL follows every filter (US-52), and the router scrolls to the top on
+// each change of it unless told otherwise. A real scroll position, a real
+// map drag and real typing — none of which the host-target tests have.
+test("changing a filter or moving the map leaves the page where it is scrolled to", async ({
+  page,
+}) => {
+  // Short enough that the map and the filters sit below the fold.
+  await page.setViewportSize({ width: 1000, height: 400 });
+  await page.goto("/app/");
+  await expect(page.locator("#region-map .trip-line").first()).toBeVisible();
+  await page.locator("#region-follow").check();
+  await expect(page).toHaveURL(/[?&]bbox=/);
+  const scrollY = () => page.evaluate(() => window.scrollY);
+  const bbox = () => new URL(page.url()).searchParams.get("bbox");
+
+  await page.locator("#region-map").evaluate((map) => map.scrollIntoView({ block: "center" }));
+  const atMap = await scrollY();
+  expect(atMap, "the map is below the fold").toBeGreaterThan(0);
+  let before = bbox();
+  await pan(page, 0.4, 0.6);
+  await expect.poll(bbox).not.toBe(before);
+  expect(await scrollY(), "after panning").toBe(atMap);
+  // Where the zoom button is in view, so clicking it scrolls nothing itself.
+  await page
+    .locator("#region-map")
+    .getByRole("button", { name: "Zoom out" })
+    .scrollIntoViewIfNeeded();
+  const atZoom = await scrollY();
+  expect(atZoom, "the zoom button is below the fold").toBeGreaterThan(0);
+  before = bbox();
+  await zoomBy(page, "region-map", "Zoom out", 1, await currentZoom(page));
+  await expect.poll(bbox).not.toBe(before);
+  expect(await scrollY(), "after zooming").toBe(atZoom);
+
+  await page.getByText("More filters").click();
+  const minKm = page.getByLabel("Min km");
+  await minKm.scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, 40));
+  const typed = await scrollY();
+  expect(typed, "the field is below the fold").toBeGreaterThan(0);
+  await minKm.pressSequentially("1");
+  await expect(page).toHaveURL(/[?&]min_dist=1/);
+  expect(await scrollY()).toBe(typed);
+});
+
+/// The region map's zoom level, from its tiles.
+async function currentZoom(page) {
+  const zooms = await tileZooms(page, "region-map");
+  return Math.max(...zooms.map(Number));
+}
 
 // The toolbar's "Clear filters" clears the region too, so it must untick
 // "Filter to map" with it (US-92).

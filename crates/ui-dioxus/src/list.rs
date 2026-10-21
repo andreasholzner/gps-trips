@@ -14,6 +14,7 @@ use crate::date_range::{self, Months};
 use crate::filter_bar::FilterBar;
 use crate::filters::Filters;
 use crate::format;
+use crate::interop;
 use crate::kinds::{Kind, Kinds};
 use crate::list_table::{self, ListTable};
 use crate::map_items::Mapped;
@@ -36,9 +37,14 @@ pub fn TripList(#[props(default)] filters: Filters) -> Element {
     //
     // Reading the signal inside the effect is what subscribes it; the URL is
     // written as a plain path so this does not depend on which router the
-    // screen happens to be mounted in (the test harness has its own).
+    // screen happens to be mounted in (the test harness has its own). The
+    // page stays where it is scrolled to: the router would otherwise jump to
+    // the top on every change of a filter, the map's region included.
     use_effect(move || {
-        navigator().replace(format!("/?{}", filters.read().to_query()));
+        let route = format!("/?{}", filters.read().to_query());
+        interop::keep_page_scroll(|| {
+            navigator().replace(route);
+        });
     });
     let mut trips = use_trips(filters);
     let mut collections = use_collections(filters);

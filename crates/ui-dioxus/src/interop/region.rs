@@ -55,7 +55,16 @@ const REGION_MAP_SCRIPT: &str = r##"
     if (el.dataset.mapReady === "1") return;
     el.dataset.mapReady = "1";
 
-    const map = L.map(el);
+    const map = L.map(el, { zoomControl: false });
+    // A click on the zoom buttons hands the keys back to the map, and
+    // Leaflet's plain `focus()` there scrolls the page to wherever the map
+    // sticks out of the window. The same refocus, minus the scrolling —
+    // set before the control is added, which is when Leaflet binds it.
+    const zoom = L.control.zoom();
+    zoom._refocusOnMap = (e) => {
+      if (e && e.screenX > 0 && e.screenY > 0) el.focus({ preventScroll: true });
+    };
+    zoom.addTo(map);
     const report = (event) => {
       try {
         dioxus.send(event);

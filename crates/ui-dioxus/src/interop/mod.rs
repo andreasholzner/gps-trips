@@ -116,3 +116,33 @@ pub fn hold_page_scroll(held: bool) {
     };
     let _ = document::eval(script);
 }
+
+/// Run `replace` — a `navigator().replace` of the query a screen keeps its
+/// filters in (US-52) — with the page left where it is scrolled to.
+///
+/// The router's web history scrolls to the top on a replace as on a push:
+/// right for a new page, wrong for a filter changed halfway down this one —
+/// a map moved with "Filter to map" on (US-92) or a field behind "More
+/// filters". The script notes the position before and puts it back after;
+/// on the web it runs at once and puts it back before the next paint, so
+/// nothing is seen to jump. Awaiting the acknowledgement keeps the handle —
+/// and so the script — alive until it has.
+pub fn keep_page_scroll(replace: impl FnOnce()) {
+    let mut held = document::eval(
+        r#"
+        const x = window.scrollX, y = window.scrollY;
+        await dioxus.recv();
+        window.scrollTo({ left: x, top: y, behavior: "instant" });
+        dioxus.send(true);
+        "#,
+    );
+    replace();
+    if held.send(true).is_err() {
+        return;
+    }
+    spawn(async move {
+        if let Err(err) = held.recv::<bool>().await {
+            dioxus::logger::tracing::error!("could not keep the page's scroll: {err}");
+        }
+    });
+}
