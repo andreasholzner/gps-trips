@@ -204,25 +204,18 @@ fn OverviewMap(
                     .collect(),
             );
             let mut map = interop::start_overview_map(
-                overview_lines(&trips, &tracks),
+                interop::opening_pages(overview_lines(&trips, &tracks), |event| {
+                    page_of(&token, event)
+                }),
                 Vec::new(),
                 Default::default(),
             );
             handle.set(Some(map));
             while let Ok(event) = map.recv::<OverviewEvent>().await {
-                match event {
-                    OverviewEvent::Open(id) => {
-                        navigator().push(Route::SharedTripDetail {
-                            token: token.clone(),
-                            id,
-                        });
-                    }
-                    OverviewEvent::Hover(id) => highlighted.set(id),
-                    // A share's overview has no waypoints, no links and no
-                    // lines with a source.
-                    OverviewEvent::OpenWaypoint(_)
-                    | OverviewEvent::OpenOverlay(_)
-                    | OverviewEvent::OpenItem(_) => {}
+                if let OverviewEvent::Hover(id) = event {
+                    highlighted.set(id);
+                } else if let Some(to) = page_of(&token, event) {
+                    navigator().push(to);
                 }
             }
         }
@@ -237,6 +230,18 @@ fn OverviewMap(
     rsx! {
         div { id: "overview-map", class: "overview-map" }
         ActivityLegend { shown: shown() }
+    }
+}
+
+/// The page a line chosen on the share's map opens: the shared trip's. A
+/// share's overview has no waypoints, no links and no lines with a source.
+fn page_of(token: &str, event: OverviewEvent) -> Option<Route> {
+    match event {
+        OverviewEvent::Open(id) => Some(Route::SharedTripDetail {
+            token: token.to_string(),
+            id,
+        }),
+        _ => None,
     }
 }
 
@@ -263,6 +268,7 @@ pub fn overview_lines(trips: &[SharedTripSummary], tracks: &[TripTrack]) -> Vec<
                 dash: None,
                 source: None,
                 points: track::lat_lon(&track.coordinates),
+                href: None,
             })
         })
         .collect()

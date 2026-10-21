@@ -346,3 +346,17 @@ async fn us98_the_page_lists_its_waypoints_below_its_tracks() {
 }
 
 mod recorded;
+
+// US-114: a Ctrl- or ⌘-click opens the page a click opens.
+#[test]
+fn us114_a_track_or_waypoint_on_the_collections_map_opens_its_page() {
+    assert_eq!(
+        page_of(OverviewEvent::Open(3)),
+        Some(Route::CollectionTrack { id: 3 })
+    );
+    assert_eq!(
+        page_of(OverviewEvent::OpenWaypoint(4)),
+        Some(Route::Waypoint { id: 4 })
+    );
+    assert_eq!(page_of(OverviewEvent::Hover(Some(3))), None);
+}

@@ -331,6 +331,7 @@ mod tests {
                 }),
                 dash: Some("1 7"),
                 points: vec![[60.0, 11.0]],
+                href: Some("/app/collection-tracks/7".to_string()),
             }],
             waypoints: vec![MapWaypoint {
                 id: 4,
@@ -339,6 +340,7 @@ mod tests {
                 lon: 9.8,
                 icon: None,
                 opens: true,
+                href: Some("/app/waypoints/4".to_string()),
             }],
             fit: vec![[60.0, 11.0]],
         };
@@ -354,8 +356,12 @@ mod tests {
                     "icon": { "paths": ["M0 0Z"], "color": "#b2182b" },
                     "dash": "1 7",
                     "points": [[60.0, 11.0]],
+                    "href": "/app/collection-tracks/7",
                 }],
-                "waypoints": [{ "id": 4, "name": "Pass", "lat": 46.5, "lon": 9.8, "opens": true }],
+                "waypoints": [{
+                    "id": 4, "name": "Pass", "lat": 46.5, "lon": 9.8, "opens": true,
+                    "href": "/app/waypoints/4",
+                }],
                 "fit": [[60.0, 11.0]],
             } })
         );

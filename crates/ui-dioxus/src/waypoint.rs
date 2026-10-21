@@ -126,30 +126,35 @@ fn WaypointMap(detail: WaypointDetail, overlays: Overlays) -> Element {
                     dash: None,
                     source: None,
                     points: track::polyline(&geometry),
+                    href: None,
                 }),
                 Err(err) => dioxus::logger::tracing::error!("could not read the track: {err}"),
             }
         }
         let mut map = interop::start_overview_map(
-            lines,
+            interop::opening_pages(lines, |event| page_of(&overlays, event)),
             vec![own_marker(&detail.waypoint)],
             overlays.clone(),
         );
         while let Ok(event) = map.recv::<OverviewEvent>().await {
-            let to = match event {
-                OverviewEvent::Open(track) => Some(Route::CollectionTrack { id: track }),
-                OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
-                OverviewEvent::OpenOverlay(n) => overlays.route(n),
-                // Its lines are given no source.
-                OverviewEvent::Hover(_) | OverviewEvent::OpenItem(_) => None,
-            };
-            if let Some(to) = to {
+            if let Some(to) = page_of(&overlays, event) {
                 navigator().push(to);
             }
         }
     }));
 
     rsx! { div { id: "overview-map", class: "overview-map" } }
+}
+
+/// The page a thing chosen on the waypoint's map opens: its track's, another
+/// waypoint's or a ticked link's. Its lines are given no source.
+fn page_of(overlays: &Overlays, event: OverviewEvent) -> Option<Route> {
+    match event {
+        OverviewEvent::Open(track) => Some(Route::CollectionTrack { id: track }),
+        OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
+        OverviewEvent::OpenOverlay(n) => overlays.route(n),
+        OverviewEvent::Hover(_) | OverviewEvent::OpenItem(_) => None,
+    }
 }
 
 /// The waypoint on its own page's map: named there, but opening nothing —

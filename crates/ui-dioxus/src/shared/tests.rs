@@ -228,6 +228,7 @@ fn us53_each_trip_whose_track_was_read_gets_a_line() {
             dash: None,
             source: None,
             points: vec![[59.9, 10.7], [60.0, 10.8]],
+            href: None,
         }]
     );
 }
@@ -348,4 +349,17 @@ async fn us72_each_row_shows_its_trips_color() {
             "{color}: {html}"
         );
     }
+}
+
+// US-114: a Ctrl- or ⌘-click on a line opens the page a click opens.
+#[test]
+fn us114_a_line_on_the_shares_map_opens_its_shared_trip() {
+    assert_eq!(
+        page_of("tok", OverviewEvent::Open(3)),
+        Some(Route::SharedTripDetail {
+            token: "tok".to_string(),
+            id: 3
+        })
+    );
+    assert_eq!(page_of("tok", OverviewEvent::Hover(Some(3))), None);
 }

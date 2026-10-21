@@ -216,6 +216,15 @@ fn us87_a_click_on_a_line_opens_its_trip_or_collection_track() {
 }
 
 #[test]
+fn us114_a_ctrl_click_on_a_line_opens_the_page_a_click_opens() {
+    assert_eq!(line_href(MapSource::Trips, 7), "/trips/7");
+    assert_eq!(
+        line_href(MapSource::CollectionTracks, 7),
+        "/collection-tracks/7"
+    );
+}
+
+#[test]
 fn the_map_is_not_busy_before_it_asks_for_anything() {
     let html = render(|| {
         let filters = Signal::new(Filters::default());

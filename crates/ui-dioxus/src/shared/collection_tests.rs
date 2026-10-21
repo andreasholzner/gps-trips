@@ -322,3 +322,17 @@ fn us104_a_recipients_waypoint_is_named_on_the_map_but_opens_nothing() {
     assert_eq!(drawn[0].name.as_deref(), Some("Pass"));
     assert!(!drawn[0].opens);
 }
+
+// US-114: a Ctrl- or ⌘-click opens the page a click opens; a recipient's
+// waypoint opens nothing (US-104).
+#[test]
+fn us114_a_track_on_a_shared_collections_map_opens_its_shared_page() {
+    assert_eq!(
+        collection::page_of("tok", OverviewEvent::Open(3)),
+        Some(crate::collection::track_route(Some("tok"), 3))
+    );
+    assert_eq!(
+        collection::page_of("tok", OverviewEvent::OpenWaypoint(4)),
+        None
+    );
+}

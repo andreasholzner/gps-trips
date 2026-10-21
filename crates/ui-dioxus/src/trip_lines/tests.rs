@@ -170,6 +170,20 @@ fn a_line_is_named_after_its_trip_and_follows_its_track() {
 }
 
 #[test]
+fn us114_each_line_carries_the_address_of_its_page() {
+    let trips = [hike(7, [10.0, 59.0, 11.0, 60.0])];
+
+    let drawn = lines(
+        &trips,
+        &[(MapSource::Trips, &a_track(7))],
+        &heat::marks(&trips),
+    )
+    .with_pages(|source, id| format!("{source:?}/{id}"));
+
+    assert_eq!(drawn.lines[0].href.as_deref(), Some("Trips/7"));
+}
+
+#[test]
 fn us104_a_line_leads_its_name_with_its_activitys_icon() {
     let trips = [
         hike(1, [10.0, 59.0, 11.0, 60.0]),

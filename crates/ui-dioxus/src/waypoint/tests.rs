@@ -254,3 +254,28 @@ async fn us98_a_waypoint_that_no_longer_exists_says_so() {
 
     assert!(html.contains("no such waypoint"), "{html}");
 }
+
+// US-114: a Ctrl- or ⌘-click opens the page a click opens.
+#[test]
+fn us114_what_the_waypoints_map_opens_it_opens_in_a_new_tab_too() {
+    let overlays = Overlays {
+        lines: vec![crate::interop::OverlayLine {
+            name: "Plan".to_string(),
+            color: "#1f4e9c",
+            icon: None,
+            to: Route::TripDetail { id: 2 },
+            dash: None,
+            points: Vec::new(),
+        }],
+        waypoints: Vec::new(),
+    };
+
+    assert_eq!(
+        page_of(&overlays, OverviewEvent::Open(3)),
+        Some(Route::CollectionTrack { id: 3 })
+    );
+    assert_eq!(
+        page_of(&overlays, OverviewEvent::OpenOverlay(0)),
+        Some(Route::TripDetail { id: 2 })
+    );
+}

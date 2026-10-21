@@ -55,13 +55,18 @@ pub struct OverlayLine {
     /// What leads its name in the map's hint and menu (US-104).
     pub icon: Option<MapIcon>,
     /// The page choosing it opens (US-104), kept here: the map reports
-    /// which line was chosen, never where it leads.
-    #[serde(skip)]
+    /// which line was chosen, never where it leads. It is given the page's
+    /// address alone, for a Ctrl- or ⌘-click to open in a new tab (US-114).
+    #[serde(rename = "href", serialize_with = "as_href")]
     pub to: Route,
     /// Its kind's Leaflet `dashArray` (US-90); `None` for a solid line.
     pub dash: Option<&'static str>,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
+}
+
+fn as_href<S: serde::Serializer>(to: &Route, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&crate::page_href(to))
 }
 
 /// Everything ticked to be shown, in the order it is listed.
@@ -101,8 +106,12 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&overlays).unwrap(),
             serde_json::json!({
-                // The page it leads to stays in Rust (US-104).
-                "lines": [{ "name": "Plan", "color": "#1f4e9c", "icon": null, "dash": "8 6", "points": [[46.5, 9.1]] }],
+                // Which page it leads to is Rust's (US-104); the map is given
+                // its address for a Ctrl- or ⌘-click alone (US-114).
+                "lines": [{
+                    "name": "Plan", "color": "#1f4e9c", "icon": null, "href": "/trips/2",
+                    "dash": "8 6", "points": [[46.5, 9.1]],
+                }],
                 "waypoints": [],
             })
         );

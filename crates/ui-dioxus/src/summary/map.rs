@@ -70,20 +70,10 @@ pub fn SummaryMap(summary: TagSummaries, viewer: Viewer) -> Element {
             .flat_map(|collection| &collection.waypoints)
             .map(MapWaypoint::from)
             .collect();
+        let lines = interop::opening_pages(lines, |event| page_of(&viewer, event));
         let mut map = interop::start_overview_map(lines, waypoints, Default::default());
         while let Ok(event) = map.recv::<OverviewEvent>().await {
-            let to = match event {
-                OverviewEvent::OpenItem(opened) => Some(match opened.source {
-                    MapSource::Trips => viewer.trip_route(opened.id),
-                    MapSource::CollectionTracks => Route::CollectionTrack { id: opened.id },
-                }),
-                OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
-                // Every line is given its source, and no links are drawn.
-                OverviewEvent::Open(_)
-                | OverviewEvent::OpenOverlay(_)
-                | OverviewEvent::Hover(_) => None,
-            };
-            if let Some(to) = to {
+            if let Some(to) = page_of(&viewer, event) {
                 navigator().push(to);
             }
         }
@@ -93,5 +83,18 @@ pub fn SummaryMap(summary: TagSummaries, viewer: Viewer) -> Element {
         if one_tag {
             ActivityLegend { shown: shown() }
         }
+    }
+}
+
+/// The page a line or a waypoint chosen on the summary's map opens, for
+/// `viewer`. Every line is given its source, and no links are drawn.
+pub(super) fn page_of(viewer: &Viewer, event: OverviewEvent) -> Option<Route> {
+    match event {
+        OverviewEvent::OpenItem(opened) => Some(match opened.source {
+            MapSource::Trips => viewer.trip_route(opened.id),
+            MapSource::CollectionTracks => Route::CollectionTrack { id: opened.id },
+        }),
+        OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
+        _ => None,
     }
 }

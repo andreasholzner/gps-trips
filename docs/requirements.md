@@ -865,6 +865,21 @@ with the rows from the JSON API (ADR-0008). Tested (ADR-0012) at the API and the
 
 **Decisions:** US-113 → ADR-0008 (the rows carry their tags), ADR-0028 (each kind's tags are its own)
 
+### US-114 — Open a map's item in a new tab
+
+**Done ✅** — As the owner and as a share's recipient at a desktop, I Ctrl-click (⌘-click on
+a Mac) a line or a waypoint on a map to open its page in a new tab, as I can a link, and keep the
+page I am on as it is.
+
+**Acceptance criteria:** This holds on every map where a click on a line or a waypoint opens a
+page — the maps US-104 lists — for each thing it opens there (US-104's "Opening"): a trip's, a
+collection track's or a waypoint's page, a shared trip's or track's page for a recipient, and the
+page of a line a ticked link put there (US-99). A Ctrl- or ⌘-click on it opens that page in a new
+tab, at the address a link to it has, and leaves this tab as it was. Where several things that open
+a page lie, the click opens US-104's menu, and a Ctrl- or ⌘-click on one of its entries does the
+same. What opens nothing opens nothing in a new tab either. A plain click and a tap are as US-104
+has them.
+
 ## Trip page
 
 ### US-7 — Trip detail page

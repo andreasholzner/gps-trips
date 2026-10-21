@@ -226,26 +226,20 @@ pub fn SharedMap(
             Vec::new()
         });
         let mut map = interop::start_overview_map(
-            collection_lines(&tracks, &positions),
+            interop::opening_pages(collection_lines(&tracks, &positions), |event| {
+                page_of(&token, event)
+            }),
             waypoints,
             Default::default(),
         );
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {
-            match event {
-                OverviewEvent::Open(track) => {
-                    navigator().push(track_route(Some(&token), track));
+            if let OverviewEvent::Hover(track) = event {
+                if let Some(map) = handle.read().as_ref() {
+                    interop::highlight_on_overview_map(map, track);
                 }
-                // A recipient's waypoints open nothing, nothing is linked to
-                // a collection, and its lines are given no source.
-                OverviewEvent::OpenWaypoint(_)
-                | OverviewEvent::OpenOverlay(_)
-                | OverviewEvent::OpenItem(_) => {}
-                OverviewEvent::Hover(track) => {
-                    if let Some(map) = handle.read().as_ref() {
-                        interop::highlight_on_overview_map(map, track);
-                    }
-                }
+            } else if let Some(to) = page_of(&token, event) {
+                navigator().push(to);
             }
         }
     }));
@@ -254,6 +248,16 @@ pub fn SharedMap(
     rsx! {
         div { id: "overview-map", class: "overview-map" }
         ActivityLegend { shown }
+    }
+}
+
+/// The page a track chosen on the shared collection's map opens: its shared
+/// page. A recipient's waypoints open nothing, nothing is linked to a
+/// collection, and its lines are given no source.
+pub(super) fn page_of(token: &str, event: OverviewEvent) -> Option<Route> {
+    match event {
+        OverviewEvent::Open(track) => Some(track_route(Some(token), track)),
+        _ => None,
     }
 }
 

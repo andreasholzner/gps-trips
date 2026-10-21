@@ -33,7 +33,9 @@ use crate::waypoint::UNNAMED;
 /// the highlight as for the hint and a click. A click with a mouse opens the one thing there is to
 /// open at once, or a menu of them; a tap always opens the menu, listing
 /// everything under the finger with what opens nothing as plain text — on a
-/// map there is no sign that a tap leads anywhere. The menu closes on a
+/// map there is no sign that a tap leads anywhere. A line given an `href`
+/// opens it in a new tab on a Ctrl- or ⌘-click, on the map and in the menu
+/// alike (US-114). The menu closes on a
 /// click elsewhere, on Escape and when the map moves. Both stay within the
 /// map's frame, wrapping long names and scrolling what still does not fit.
 ///
@@ -65,6 +67,7 @@ const PICKING_JS: &str = r##"
         name: line.name,
         icon: () => pickIcon(line.icon),
         opens,
+        href: line.href ?? null,
         hits: (at) => {
           const closest = path.closestLayerPoint(at);
           return closest !== null && closest.distance <= LINE_REACH;
@@ -84,6 +87,7 @@ const PICKING_JS: &str = r##"
           return box;
         },
         opens,
+        href: waypoint.href ?? null,
         hits: (point) => {
           const at = map.latLngToLayerPoint(marker.getLatLng());
           return Math.abs(point.x - at.x) <= MARKER_REACH && Math.abs(point.y - at.y) <= MARKER_REACH;
@@ -194,9 +198,16 @@ const PICKING_JS: &str = r##"
         container.addEventListener(kind, (event) => (mouse = event.pointerType === "mouse"), true);
       }
       const under = (event) => picking.items.filter((item) => item.hits(event.layerPoint));
-      const choose = (item) => {
+      // A Ctrl- or ⌘-click opens a page with an address in a new tab, as on
+      // a link (US-114) — from here, while the browser still counts it as
+      // the click, so it is not taken for a popup.
+      const choose = (item, event) => {
         closeMenu();
-        picking.report(item.opens);
+        if (item.href && (event.ctrlKey || event.metaKey)) {
+          window.open(item.href, "_blank", "noopener");
+        } else {
+          picking.report(item.opens);
+        }
       };
 
       const openMenu = (at, items) => {
@@ -207,7 +218,7 @@ const PICKING_JS: &str = r##"
           if (item.opens) {
             const button = pickRow(item, "button");
             button.type = "button";
-            button.addEventListener("click", () => choose(item));
+            button.addEventListener("click", (event) => choose(item, event));
             button.addEventListener("mouseenter", () => {
               unpoint();
               pointed = item;
@@ -255,7 +266,7 @@ const PICKING_JS: &str = r##"
         if (!mouse) {
           if (items.length > 0) openMenu(event.containerPoint, items);
         } else if (choosable.length === 1) {
-          choose(choosable[0]);
+          choose(choosable[0], event.originalEvent);
         } else if (choosable.length > 1) {
           openMenu(event.containerPoint, choosable);
         }
@@ -337,6 +348,18 @@ mod tests {
         assert!(!PICKING_JS.contains("L.popup"));
         assert!(PICKING_JS.contains("el.style.maxWidth = `${size.x - 2 * EDGE}px`"));
         assert!(PICKING_JS.contains("el.style.maxHeight = `${size.y - 2 * EDGE}px`"));
+    }
+
+    #[test]
+    fn us114_a_ctrl_or_cmd_click_opens_a_page_in_a_new_tab_from_the_click_itself() {
+        // Opened while the click is still being handled, not after a round
+        // trip through Rust, so the browser does not take it for a popup.
+        assert!(PICKING_JS.contains("href: line.href ?? null"));
+        assert!(PICKING_JS.contains("href: waypoint.href ?? null"));
+        assert!(PICKING_JS.contains("event.ctrlKey || event.metaKey"));
+        assert!(PICKING_JS.contains(r#"window.open(item.href, "_blank", "noopener")"#));
+        assert!(PICKING_JS.contains("choose(choosable[0], event.originalEvent)"));
+        assert!(PICKING_JS.contains("(event) => choose(item, event)"));
     }
 
     #[test]

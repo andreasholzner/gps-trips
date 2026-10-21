@@ -11,6 +11,7 @@ use super::region::Opened;
 use super::waypoints::MapWaypoint;
 use crate::activity_icon::MapIcon;
 use crate::map_items::MapSource;
+use crate::Route;
 
 /// Draws into `#overview-map`, over OSM tiles, one line per trip in the
 /// color it is given, and sends back what is chosen of what lies under the
@@ -135,6 +136,40 @@ pub struct OverviewLine {
     pub source: Option<MapSource>,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
+    /// The address of the page choosing it opens, for a Ctrl- or ⌘-click to
+    /// open in a new tab (US-114); see [`OverviewLine::opening`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub href: Option<String>,
+}
+
+impl OverviewLine {
+    /// What the map reports when it is chosen: by its source if it has one
+    /// (US-107), else by its id alone — as the script does.
+    fn chosen(&self) -> OverviewEvent {
+        match self.source {
+            Some(source) => OverviewEvent::OpenItem(Opened {
+                source,
+                id: self.id,
+            }),
+            None => OverviewEvent::Open(self.id),
+        }
+    }
+}
+
+/// `lines`, each with the address of the page `page_of` opens when it is
+/// chosen, for a Ctrl- or ⌘-click to open in a new tab (US-114). The same
+/// `page_of` a screen opens a chosen line with, so both open one page.
+pub fn opening_pages(
+    lines: Vec<OverviewLine>,
+    page_of: impl Fn(OverviewEvent) -> Option<Route>,
+) -> Vec<OverviewLine> {
+    lines
+        .into_iter()
+        .map(|line| OverviewLine {
+            href: page_of(line.chosen()).map(|to| crate::page_href(&to)),
+            ..line
+        })
+        .collect()
 }
 
 /// What the map reports about a trip's line.
@@ -236,12 +271,46 @@ mod tests {
             dash: Kind::Collections.dash(),
             source: Some(MapSource::CollectionTracks),
             points: vec![[46.5, 9.1]],
+            href: None,
         };
 
         let sent = serde_json::to_value(&line).unwrap();
 
         assert_eq!(sent["dash"], "1 7");
         assert_eq!(sent["source"], "collection_tracks");
+    }
+
+    #[test]
+    fn us114_a_line_reaches_the_map_with_the_address_of_the_page_a_click_opens() {
+        let line = OverviewLine {
+            id: 7,
+            name: "Stage 1".to_string(),
+            color: "#1f4e9c",
+            icon: None,
+            dash: None,
+            source: None,
+            points: vec![[46.5, 9.1]],
+            href: None,
+        };
+
+        let plain = serde_json::to_value(&line).unwrap();
+        let sourced = OverviewLine {
+            id: 8,
+            source: Some(MapSource::Trips),
+            ..line.clone()
+        };
+        let opening = opening_pages(vec![line, sourced], |event| match event {
+            OverviewEvent::Open(id) => Some(Route::CollectionTrack { id }),
+            OverviewEvent::OpenItem(opened) => Some(Route::TripDetail { id: opened.id }),
+            _ => None,
+        });
+        let nothing = opening_pages(opening.clone(), |_| None);
+
+        assert!(plain.get("href").is_none(), "{plain}");
+        let sent = serde_json::to_value(&opening).unwrap();
+        assert_eq!(sent[0]["href"], "/collection-tracks/7");
+        assert_eq!(sent[1]["href"], "/trips/8", "chosen by its source");
+        assert!(nothing.iter().all(|line| line.href.is_none()));
     }
 
     #[test]

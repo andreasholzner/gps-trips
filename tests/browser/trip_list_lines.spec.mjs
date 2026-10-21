@@ -6,7 +6,7 @@
 // exemptions (ADR-0012). Which trips get a line, and in which color, is
 // asserted in `crates/ui-dioxus` (`trip_lines`).
 import { expect, signIn, test } from "./session.mjs";
-import { menuEntries, onTheLine, zoomBy } from "./map.mjs";
+import { clickLine, menuEntries, onTheLine, zoomBy } from "./map.mjs";
 import { ownTrips, UNTIMED_GPX } from "./trips.mjs";
 
 const ownTrip = ownTrips(test);
@@ -137,6 +137,52 @@ test("a line is named and highlighted on hover, and a click opens its trip", asy
 
   await page.mouse.click(at.x, at.y);
   await expect(page).toHaveURL(new RegExp(`/app/trips/${id}$`));
+});
+
+/// Click with Ctrl held, as a desktop opens a link in a new tab, and the tab
+/// it opened (US-114).
+async function ctrlClick(page, click) {
+  await page.keyboard.down("Control");
+  try {
+    const [opened] = await Promise.all([page.context().waitForEvent("page"), click()]);
+    return opened;
+  } finally {
+    await page.keyboard.up("Control");
+  }
+}
+
+test("a Ctrl-click on a line opens its trip in a new tab (US-114)", async ({ page, request }) => {
+  const id = await ownTrip(request, "New Tab Walk", "hiking");
+  const name = await nameOf(request, id);
+  await page.goto(listOf(name));
+  await expect(lines(page)).toHaveCount(1);
+  const at = await onTheLine(lines(page));
+
+  const opened = await ctrlClick(page, () => page.mouse.click(at.x, at.y));
+
+  await expect(opened).toHaveURL(new RegExp(`/app/trips/${id}$`));
+  await expect(opened.getByRole("heading", { name })).toBeVisible();
+  await expect(page).not.toHaveURL(/\/trips\//);
+});
+
+test("a Ctrl-click on an entry of the menu opens its trip in a new tab (US-114)", async ({
+  page,
+  request,
+}) => {
+  // Every fixture track is the same walk: the two lines lie on each other.
+  const word = `tabbed${Math.random().toString(36).slice(2, 8)}`;
+  await ownTrip(request, `${word} One`, "hiking");
+  const second = await ownTrip(request, `${word} Two`, "cycling");
+  await page.goto(listOf(word));
+  await expect(lines(page)).toHaveCount(2);
+
+  await clickLine(page, lines(page).first());
+  const entries = menuEntries(page, "region-map");
+  await expect(entries).toHaveCount(2);
+  const opened = await ctrlClick(page, () => entries.filter({ hasText: `${word} Two` }).click());
+
+  await expect(opened).toHaveURL(new RegExp(`/app/trips/${second}$`));
+  await expect(page).not.toHaveURL(/\/trips\//);
 });
 
 test("a change of filters redraws the lines, in shades per trip", async ({ page, request }) => {

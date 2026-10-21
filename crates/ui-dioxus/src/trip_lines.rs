@@ -58,6 +58,10 @@ pub struct RegionLine {
     pub dash: Option<&'static str>,
     /// `[lat, lon]`, the order Leaflet takes.
     pub points: Vec<[f64; 2]>,
+    /// Its page's address, for a Ctrl- or ⌘-click to open in a new tab
+    /// (US-114).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub href: Option<String>,
 }
 
 /// Whether the map is zoomed in far enough to draw lines.
@@ -241,6 +245,7 @@ pub fn lines(
                 icon: activity_icon::map_icon(item.activity_type),
                 dash: item.kind.dash(),
                 points: track::lat_lon(&track.coordinates),
+                href: None,
             })
         })
         .collect();
@@ -255,6 +260,14 @@ impl TripLines {
     /// The same lines, with `waypoints` shown among them.
     pub fn with_waypoints(mut self, waypoints: Vec<MapWaypoint>) -> Self {
         self.waypoints = waypoints;
+        self
+    }
+
+    /// The same lines, each with the address `href` gives its page.
+    pub fn with_pages(mut self, href: impl Fn(MapSource, i64) -> String) -> Self {
+        for line in &mut self.lines {
+            line.href = Some(href(line.source, line.id));
+        }
         self
     }
 }

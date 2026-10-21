@@ -102,6 +102,10 @@ pub struct MapWaypoint {
     /// Whether choosing it on the map opens its page (US-104): not on its
     /// own page, nor for a share's recipient, who has no waypoint pages.
     pub opens: bool,
+    /// Its page's address, where it opens one, for a Ctrl- or ⌘-click to
+    /// open in a new tab (US-114).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub href: Option<String>,
 }
 
 impl MapWaypoint {
@@ -109,6 +113,7 @@ impl MapWaypoint {
     pub fn opening_nothing(self) -> Self {
         Self {
             opens: false,
+            href: None,
             ..self
         }
     }
@@ -123,6 +128,9 @@ impl From<&Waypoint> for MapWaypoint {
             lon: waypoint.lon,
             icon: waypoint.symbol.as_deref().and_then(waypoint_icon::icon),
             opens: true,
+            href: Some(crate::page_href(&crate::Route::Waypoint {
+                id: waypoint.id,
+            })),
         }
     }
 }
@@ -152,7 +160,11 @@ mod tests {
 
         assert_eq!(
             sent,
-            serde_json::json!({ "id": 3, "name": "Albula Pass", "lat": 46.58, "lon": 9.84, "opens": true })
+            serde_json::json!({
+                "id": 3, "name": "Albula Pass", "lat": 46.58, "lon": 9.84, "opens": true,
+                // Where a Ctrl- or ⌘-click opens it (US-114).
+                "href": "/waypoints/3",
+            })
         );
     }
 
@@ -161,6 +173,7 @@ mod tests {
         let shown = MapWaypoint::from(&albula(None)).opening_nothing();
 
         assert!(!shown.opens);
+        assert_eq!(shown.href, None, "nor in a new tab (US-114)");
         assert_eq!(shown.id, 3);
     }
 

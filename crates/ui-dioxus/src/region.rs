@@ -82,6 +82,12 @@ fn route_for(source: MapSource, id: i64) -> Route {
     }
 }
 
+/// Where that page is, for a Ctrl- or ⌘-click to open in a new tab
+/// (US-114).
+fn line_href(source: MapSource, id: i64) -> String {
+    crate::page_href(&route_for(source, id))
+}
+
 /// Turns the map's view into the region filter, and back off (US-92). Ticked
 /// exactly when the filters hold a region, so a region from the URL ticks
 /// it and "Clear filters" unticks it; there is nothing to take until the
@@ -272,7 +278,8 @@ fn RegionMap(
                     })
                     .collect();
                 let lines = trip_lines::lines(items, &tracks, &marks)
-                    .with_waypoints(waypoint_cache.read().waypoints(&collections));
+                    .with_waypoints(waypoint_cache.read().waypoints(&collections))
+                    .with_pages(line_href);
                 lined.set(Some(trip_lines::activities(items, &lines)));
                 waypointed.set(!lines.waypoints.is_empty());
                 drawn.set(Some(DrawnLines {

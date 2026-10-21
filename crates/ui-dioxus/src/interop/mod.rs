@@ -35,7 +35,9 @@ mod waypoints;
 
 pub use elevation::start_elevation_chart;
 pub use overlays::{OverlayLine, Overlays};
-pub use overview::{highlight_on_overview_map, start_overview_map, OverviewEvent, OverviewLine};
+pub use overview::{
+    highlight_on_overview_map, opening_pages, start_overview_map, OverviewEvent, OverviewLine,
+};
 pub use place::start_place_map;
 pub use region::{
     bbox_corners, bbox_param, draw_heat_marks, draw_trip_lines, start_region_map, RegionEvent,

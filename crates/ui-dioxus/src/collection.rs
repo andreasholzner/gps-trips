@@ -170,6 +170,17 @@ fn CollectionHeader(collection: CollectionDetail) -> Element {
     }
 }
 
+/// The page a track or a waypoint chosen on the collection's map opens.
+/// Nothing is linked to a collection itself, and its lines are given no
+/// source.
+fn page_of(event: OverviewEvent) -> Option<Route> {
+    match event {
+        OverviewEvent::Open(track) => Some(Route::CollectionTrack { id: track }),
+        OverviewEvent::OpenWaypoint(id) => Some(Route::Waypoint { id }),
+        _ => None,
+    }
+}
+
 /// One line per track whose positions were read, named after the track and
 /// in its activity's color — shaded per track, as a share's are (US-75).
 /// The colors are taken over every track, so one that could not be read
@@ -193,6 +204,7 @@ pub fn collection_lines(
                 dash: None,
                 source: None,
                 points: track::lat_lon(&read.coordinates),
+                href: None,
             })
         })
         .collect()
@@ -234,27 +246,18 @@ fn CollectionMap(
                 Vec::new()
             });
         let mut map = interop::start_overview_map(
-            collection_lines(&tracks, &positions),
+            interop::opening_pages(collection_lines(&tracks, &positions), page_of),
             waypoints,
             Default::default(),
         );
         handle.set(Some(map));
         while let Ok(event) = map.recv::<OverviewEvent>().await {
-            match event {
-                OverviewEvent::Open(track) => {
-                    navigator().push(Route::CollectionTrack { id: track });
+            if let OverviewEvent::Hover(track) = event {
+                if let Some(map) = handle.read().as_ref() {
+                    interop::highlight_on_overview_map(map, track);
                 }
-                OverviewEvent::OpenWaypoint(id) => {
-                    navigator().push(Route::Waypoint { id });
-                }
-                // Nothing is linked to a collection itself, and its lines
-                // are given no source.
-                OverviewEvent::OpenOverlay(_) | OverviewEvent::OpenItem(_) => {}
-                OverviewEvent::Hover(track) => {
-                    if let Some(map) = handle.read().as_ref() {
-                        interop::highlight_on_overview_map(map, track);
-                    }
-                }
+            } else if let Some(to) = page_of(event) {
+                navigator().push(to);
             }
         }
     }));

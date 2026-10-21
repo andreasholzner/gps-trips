@@ -216,3 +216,36 @@ async fn us78_several_tags_stand_side_by_side_each_in_its_color() {
     assert!(header.contains(lines::tag_color(0)), "{header}");
     assert!(header.contains(lines::tag_color(1)), "{header}");
 }
+
+// US-114: a Ctrl- or ⌘-click opens the page a click opens, the owner's or
+// the recipient's.
+#[test]
+fn us114_a_line_or_waypoint_on_the_summarys_map_opens_its_page() {
+    use crate::interop::OverviewEvent;
+    let trip = |source: &str| {
+        serde_json::from_value::<OverviewEvent>(serde_json::json!({
+            "open_item": { "source": source, "id": 3 }
+        }))
+        .unwrap()
+    };
+
+    assert_eq!(
+        map::page_of(&Viewer::Owner, trip("trips")),
+        Some(Route::TripDetail { id: 3 })
+    );
+    assert_eq!(
+        map::page_of(&Viewer::Share("tok".to_string()), trip("trips")),
+        Some(Route::SharedTripDetail {
+            token: "tok".to_string(),
+            id: 3
+        })
+    );
+    assert_eq!(
+        map::page_of(&Viewer::Owner, trip("collection_tracks")),
+        Some(Route::CollectionTrack { id: 3 })
+    );
+    assert_eq!(
+        map::page_of(&Viewer::Owner, OverviewEvent::OpenWaypoint(4)),
+        Some(Route::Waypoint { id: 4 })
+    );
+}

@@ -64,6 +64,7 @@ pub fn lines(
                 dash: entry.kind.dash(),
                 source: Some(entry.source),
                 points: track::lat_lon(&track.coordinates),
+                href: None,
             })
         })
         .collect()

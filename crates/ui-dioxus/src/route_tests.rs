@@ -239,3 +239,21 @@ fn us99_a_collections_narrowed_lists_round_trip_through_the_url() {
     };
     assert_eq!(back, view);
 }
+
+// US-114: a map opens a page in a new tab at the address a `Link` to it has.
+#[test]
+fn us114_a_page_is_addressed_under_the_routers_prefix() {
+    assert_eq!(
+        href_under(Some("/app".to_string()), &Route::Waypoint { id: 4 }),
+        "/app/waypoints/4"
+    );
+    assert_eq!(href_under(None, &Route::TripDetail { id: 7 }), "/trips/7");
+}
+
+#[test]
+fn us114_outside_the_app_a_page_has_no_prefix() {
+    assert_eq!(
+        page_href(&Route::CollectionTrack { id: 7 }),
+        "/collection-tracks/7"
+    );
+}

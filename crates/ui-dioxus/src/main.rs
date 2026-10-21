@@ -426,6 +426,23 @@ fn shared_token(path: &str) -> Option<String> {
     (!token.is_empty()).then(|| token.to_string())
 }
 
+/// Where `to` is, as a `Link` to it points: under the router's prefix, the
+/// path the deployed bundle is mounted at — for a map to open it in a new
+/// tab (US-114). Outside a running app, as in a unit test, there is none.
+fn page_href(to: &Route) -> String {
+    let in_app = dioxus::core::Runtime::try_current()
+        .is_some_and(|runtime| runtime.try_current_scope_id().is_some());
+    let prefix = in_app
+        .then(try_consume_context::<dioxus::router::RouterContext>)
+        .flatten()
+        .and_then(|router| router.prefix());
+    href_under(prefix, to)
+}
+
+fn href_under(prefix: Option<String>, to: &Route) -> String {
+    prefix.unwrap_or_default() + &to.to_string()
+}
+
 #[cfg(test)]
 mod route_tests;
 
