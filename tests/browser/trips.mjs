@@ -81,3 +81,43 @@ export async function addPhotos(request, id, photos) {
     expect(uploaded.status(), `seeding ${name}`).toBe(204);
   }
 }
+
+/// The trip list's archive (US-41): a recorded walk and ride, a plan, and
+/// one tag, so the tag filter has something to offer before any test
+/// creates one (US-33). Shared by the list's specs, which expect exactly it.
+export async function seedTripList(request) {
+  // Playwright restarts its worker after a failed test, which re-runs this
+  // hook. Seeding must therefore be idempotent: otherwise one real failure
+  // would duplicate the archive's contents and fail every later test for a
+  // reason that has nothing to do with what broke.
+  const existing = new Set(
+    (await (await request.get("/api/trips")).json()).map((trip) => trip.name),
+  );
+  const seed = [
+    { name: "Oslo Hills Walk", activity_type: "hiking" },
+    { name: "Inn Valley Ride", activity_type: "cycling" },
+    { name: "Planned Ridge Route", kind: "planned" },
+  ];
+  const ids = {};
+  for (const fields of seed) {
+    if (!existing.has(fields.name)) {
+      ids[fields.name] = await importTrip(
+        request,
+        fields.name,
+        fields.activity_type,
+        SAMPLE_GPX,
+        fields.kind,
+      );
+    }
+  }
+
+  // One pre-existing tag, so the tag filter has something to offer before
+  // any test creates one (US-33).
+  const tags = await (await request.get("/api/tags")).json();
+  if (!tags.some((tag) => tag.name === "alpine")) {
+    const tagged = await request.post(`/api/trips/${ids["Oslo Hills Walk"]}/tags`, {
+      data: { name: "alpine" },
+    });
+    expect(tagged.status(), "tagging the seeded trip").toBe(201);
+  }
+}

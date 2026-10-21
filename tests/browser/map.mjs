@@ -55,3 +55,25 @@ export const hintRows = (page, container) =>
 export const menuEntries = (page, container) =>
   page.locator(`#${container} .pick-menu`).getByRole("button");
 export const menuRows = (page, container) => page.locator(`#${container} .pick-menu .pick-row`);
+
+/// Drag the region map sideways from `from` to `to`, as fractions of its
+/// width, with the mouse: a real pan.
+///
+/// `page.mouse` works in viewport coordinates and does not scroll the way
+/// `locator.click()` does, so the map has to be brought into view first or
+/// the drag lands on whatever happens to be there instead.
+export async function panRegion(page, from, to) {
+  const map = page.locator("#region-map");
+  await map.scrollIntoViewIfNeeded();
+  const box = await map.boundingBox();
+  await page.mouse.move(box.x + box.width * from, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * to, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+}
+
+/// The corners in the URL's `bbox`, or `null` when there is none.
+export function bboxOf(page) {
+  const param = new URL(page.url()).searchParams.get("bbox");
+  return param === null ? null : param.split(",").map(Number);
+}
